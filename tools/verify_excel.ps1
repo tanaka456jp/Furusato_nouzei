@@ -19,6 +19,18 @@ $startedUtc = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
 function Assert-Value($actual, $expected, [string]$label) {
     if ($actual -cne $expected) { throw "$label expected [$expected], got [$actual]" }
 }
+function Assert-PrintConfiguration($sheet, [string]$label, [string]$rangePattern) {
+    $page = $sheet.PageSetup
+    $area = [string]$page.PrintArea
+    if ($area -notmatch $rangePattern) {
+        throw "$label print area is unexpected"
+    }
+    Assert-Value ([int]$page.PaperSize) 9 "$label A4 paper"
+    Assert-Value ([int]$page.Orientation) 1 "$label portrait orientation"
+    Assert-Value ([int]$page.FitToPagesWide) 1 "$label fit to one page wide"
+    Assert-Value ([int]$page.FitToPagesTall) 1 "$label fit to one page tall"
+    Assert-Value ([bool]$page.CenterHorizontally) $true "$label print centered"
+}
 function Assert-MacroAction([string]$actual, [string]$expected, [string]$label) {
     # Excel may normalize OnAction by removing quotes around an ASCII
     # workbook name. Ownership is validated after lexical normalization.
@@ -63,6 +75,10 @@ try {
     Assert-Value $homeSheet.Range('B8').Value2 '' 'Blank input hides limit'
     Assert-Value $detail.Visible 2 'Calculation details start hidden'
     QA-Stage 'initial-regressions-pass'
+    QA-Stage 'print-setup-validation-start'
+    Assert-PrintConfiguration $homeSheet 'Home' '\$A\$1:\$D\$31'
+    Assert-PrintConfiguration $detail 'Detail' '\$A\$1:\$D\$15'
+    QA-Stage 'print-setup-validation-done'
     foreach ($year in @(2025, 2026)) {
         QA-Stage ('synthetic-' + $year + '-input-start')
         $settings.Range('B4').Value2 = [double]$year
@@ -322,7 +338,8 @@ try {
                     '52 Excel regression fixtures', '2025 and 2026 synthetic salary reference',
                     'approved-year update and backup', 'unapproved 2027 rejection',
                     'persisted failed-update rollback', 'VBA PDF export and no-overwrite',
-                    'case save and reopen', 'workbook-specific macro buttons'
+                    'case save and reopen', 'workbook-specific macro buttons',
+                    'A4 one-page print configuration, without actual printer output'
                 )
                 not_covered = @(
                     'anonymous real withholding or residence tax documents',

@@ -35,6 +35,8 @@ jobs:
           python tools/test_workbook.py
           python tools/build_workbook.py Furusato_nouzei_audit.xlsx
           python tools/audit_tax_tables.py workbook/baseline.xlsx Furusato_nouzei_audit.xlsx
+          python tools/audit_statutory_tables.py workbook/baseline.xlsx
+          python tools/audit_statutory_tables.py Furusato_nouzei_audit.xlsx
           python tools/package_review.py Furusato_nouzei_v4_REVIEW.zip
           python tools/test_setup_contract.py Furusato_nouzei_v4_REVIEW.zip
           python tools/test_shared_runner_contract.py
@@ -91,6 +93,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Frozen baseline differs' }
           python tools/test_workbook.py
           if ($LASTEXITCODE -ne 0) { throw 'Workbook static regression failed' }
+          python tools/audit_statutory_tables.py workbook/baseline.xlsx
+          if ($LASTEXITCODE -ne 0) { throw 'Baseline statutory reference audit failed' }
+          python tools/build_workbook.py statutory_review.xlsx
+          if ($LASTEXITCODE -ne 0) { throw 'Review build for statutory audit failed' }
+          python tools/audit_statutory_tables.py statutory_review.xlsx
+          if ($LASTEXITCODE -ne 0) { throw 'Generated statutory reference audit failed' }
           python tools/package_review.py Furusato_nouzei_v4_REVIEW.zip
           if ($LASTEXITCODE -ne 0) { throw 'Review ZIP packaging failed' }
           python tools/test_setup_contract.py Furusato_nouzei_v4_REVIEW.zip
