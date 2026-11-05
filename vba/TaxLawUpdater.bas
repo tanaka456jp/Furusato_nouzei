@@ -73,14 +73,21 @@ Failed:
         settings.Range("B4").Value2 = oldYear
         home.Range("B29").Value2 = oldRevision
         home.Range("B30").Value2 = oldStatus
-        restored = (Err.Number = 0)
+        If Err.Number = 0 Then
+            Err.Clear
+            Application.Calculate
+            If Err.Number = 0 Then
+                Err.Clear
+                book.Save
+                restored = (Err.Number = 0)
+            End If
+        End If
     End If
-    Application.Calculate
     On Error GoTo 0
     If changed Then
         problem = problem & vbCrLf & "更新前のバックアップ：" & backup
         If restored Then
-            problem = problem & vbCrLf & "開いているブックの更新設定は元に戻しました。"
+            problem = problem & vbCrLf & "更新前の状態をブックに保存し直しました。"
         Else
             problem = problem & vbCrLf & "開いているブックを復元できませんでした。バックアップを使用してください。"
         End If
