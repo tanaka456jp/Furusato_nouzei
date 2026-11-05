@@ -32,6 +32,10 @@ for forbidden in (
 ):
     assert forbidden not in source, f"Forbidden side effect in runner setup: {forbidden}"
 
+hosted_script = (root / "tools/verify_windows_hosted.ps1").read_bytes()
+assert hosted_script.startswith(b"\\xef\\xbb\\xbf".decode("unicode_escape").encode("latin-1")), "Windows PowerShell 5.1 script with Japanese literals must carry UTF-8 BOM"
+assert "runs-on: windows-2022" in workflow, "Public-repository hosted Windows checks not enabled"
+assert "Verify native PowerShell 5.1 and Japanese-path extraction" in workflow
 assert "runs-on: [self-hosted, Windows, furusato-excel]" in workflow
 assert "github.event.pull_request.head.repo.full_name == github.repository" in workflow
 assert "[run-windows-excel]" in workflow
