@@ -47,7 +47,9 @@ jobs:
        github.event.pull_request.head.repo.full_name == github.repository &&
        contains(github.event.pull_request.body, '[run-windows-excel]')) ||
       (github.event_name == 'workflow_dispatch' && inputs.excel)
-    runs-on: [self-hosted, Windows, furusato-excel]
+    # Use a Windows runner available to THIS repository; other repos' runners
+    # cannot be borrowed unless also shared with this repository.
+    runs-on: [self-hosted, Windows]
     concurrency:
       group: furusato-excel-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
