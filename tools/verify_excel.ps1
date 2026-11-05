@@ -101,6 +101,10 @@ try {
     Assert-Value ([bool]($excel.Run('TaxLawUpdater.SaveCaseToFile', $casePath))) $true 'Case save command'
     if (-not (Test-Path -LiteralPath $casePath)) { throw 'Case save did not create file' }
     if ((Get-Item -LiteralPath $casePath).Length -lt 20000) { throw 'Case save produced a suspiciously small file' }
+    $originalCaseHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $casePath).Hash
+    if (@(Get-ChildItem -LiteralPath $dir -Filter '_furusato_case_*.xlsm' -File).Count -ne 0) {
+        throw 'Temporary case file remained after successful save'
+    }
     $mustRejectOverwrite = $false
     try {
         $null = $excel.Run('TaxLawUpdater.SaveCaseToFile', $casePath)
@@ -108,6 +112,10 @@ try {
         $mustRejectOverwrite = $true
     }
     if (-not $mustRejectOverwrite) { throw 'Existing case file was overwritten' }
+    Assert-Value ((Get-FileHash -Algorithm SHA256 -LiteralPath $casePath).Hash) $originalCaseHash 'Case not modified after overwrite refusal'
+    if (@(Get-ChildItem -LiteralPath $dir -Filter '_furusato_case_*.xlsm' -File).Count -ne 0) {
+        throw 'Temporary case file remained after failed save'
+    }
     $excel.AutomationSecurity = 1
     $excel.EnableEvents = $true
     try {
