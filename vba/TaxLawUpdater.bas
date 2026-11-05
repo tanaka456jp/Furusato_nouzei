@@ -4,9 +4,19 @@ Option Explicit
 Private Const CATALOG_URL As String = "https://raw.githubusercontent.com/tanaka456jp/Furusato_nouzei/main/taxdata/catalog.tsv"
 Private Const BUNDLED_REVISION As String = "2026-11-05-bundled"
 
+' User-facing command. The test entrypoint executes the very same transaction,
+' but reports failures as exceptions instead of modal dialogs.
 Public Sub TaxLawUpdate()
+    Call ApplyApprovedYear(False)
+End Sub
+
+Public Function TaxLawUpdateForTest() As Boolean
+    TaxLawUpdateForTest = ApplyApprovedYear(True)
+End Function
+
+Private Function ApplyApprovedYear(ByVal noDialogs As Boolean) As Boolean
     Dim book As Workbook, home As Worksheet, settings As Worksheet
-    Dim selectedYear As String, oldYear As Variant, oldRevision As Variant
+    Dim selectedYear As String, oldYear As Variant, oldRevision As Variant, oldStatus As Variant
     Dim backup As String, changed As Boolean, problem As String, restored As Boolean
 
     On Error GoTo Failed
@@ -24,8 +34,15 @@ Public Sub TaxLawUpdate()
 
     oldYear = settings.Range("B4").Value2
     oldRevision = home.Range("B29").Value2
+    oldStatus = home.Range("B30").Value2
     backup = UniqueBackupPath(book)
     book.SaveCopyAs backup
+    If Len(Dir$(backup, vbNormal)) = 0 Then
+        Err.Raise vbObjectError + 114, , "更新前のバックアップが作成されませんでした。"
+    End If
+    If FileLen(backup) = 0 Then
+        Err.Raise vbObjectError + 115, , "更新前のバックアップが空です。"
+    End If
     changed = True
     settings.Range("B4").Value2 = CLng(selectedYear)
     book.Worksheets("自動回帰テスト").Calculate
@@ -40,7 +57,12 @@ Public Sub TaxLawUpdate()
     home.Range("B30").Value2 = "適用済 " & Format$(Now, "yyyy/mm/dd hh:nn")
     Application.Calculate
     book.Save
-    Exit Sub
+    ApplyApprovedYear = True
+    If Not noDialogs Then
+        MsgBox selectedYear & "年分の承認済み税制を適用しました。" & vbCrLf & _
+               "税制版：" & BUNDLED_REVISION, vbInformation, "税制更新完了"
+    End If
+    Exit Function
 
 Failed:
     problem = Err.Description
@@ -50,14 +72,24 @@ Failed:
         Err.Clear
         settings.Range("B4").Value2 = oldYear
         home.Range("B29").Value2 = oldRevision
+        home.Range("B30").Value2 = oldStatus
         restored = (Err.Number = 0)
     End If
-    If Not home Is Nothing Then home.Range("B30").Value2 = "更新中止"
     Application.Calculate
     On Error GoTo 0
-    If Not restored Then problem = problem & vbCrLf & "更新前のバックアップを開いてください。" & vbCrLf & backup
+    If changed Then
+        problem = problem & vbCrLf & "更新前のバックアップ：" & backup
+        If restored Then
+            problem = problem & vbCrLf & "開いているブックの更新設定は元に戻しました。"
+        Else
+            problem = problem & vbCrLf & "開いているブックを復元できませんでした。バックアップを使用してください。"
+        End If
+    End If
+    If noDialogs Then
+        Err.Raise vbObjectError + 116, "TaxLawUpdater.TaxLawUpdateForTest", problem
+    End If
     MsgBox problem, vbExclamation, "税制更新を中止しました"
-End Sub
+End Function
 
 Private Sub CheckCatalog(ByVal selectedYear As String)
     Dim request As Object, line As Variant, fields As Variant
