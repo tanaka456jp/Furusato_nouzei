@@ -92,6 +92,32 @@ try {
     if ((Get-Item -LiteralPath $pdf).Length -eq 0) { throw 'Empty PDF' }
     $excel.Run('TaxLawUpdater.ReturnHome')
     Assert-Value $detail.Visible 2 'Details hidden after return'
+
+    # Save a separate case file, verify its content, and reject accidental overwrite.
+    $casePath = Join-Path $dir 'case_preservation.xlsm'
+    Assert-Value ([bool]($excel.Run('TaxLawUpdater.SaveCaseToFile', $casePath))) $true 'Case save command'
+    if (-not (Test-Path -LiteralPath $casePath)) { throw 'Case save did not create file' }
+    if ((Get-Item -LiteralPath $casePath).Length -lt 20000) { throw 'Case save produced a suspiciously small file' }
+    $mustRejectOverwrite = $false
+    try {
+        $null = $excel.Run('TaxLawUpdater.SaveCaseToFile', $casePath)
+    } catch {
+        $mustRejectOverwrite = $true
+    }
+    if (-not $mustRejectOverwrite) { throw 'Existing case file was overwritten' }
+    $excel.AutomationSecurity = 1
+    $savedCase = $excel.Workbooks.Open($casePath, 0, $true)
+    $excel.AutomationSecurity = 3
+    try {
+        Assert-Value $savedCase.Worksheets.Item('操作画面').Range('B12').Value2 7000000 'Separate case preserves salary'
+        Assert-Value $savedCase.Worksheets.Item('操作画面').Range('B8').Value2 109000 'Separate case preserves result'
+        if ($savedCase.Worksheets.Item('操作画面').Buttons().Item('btnTaxLawUpdate').OnAction -notmatch 'TaxLawUpdater.TaxLawUpdate') {
+            throw 'Separate saved case is missing the tax update button'
+        }
+    } finally {
+        $savedCase.Close($false)
+    }
+
     # Reopen the QA copy after a successful case save.
     $home.Range('B26').Value2 = '該当なし'
     $home.Range('B4').Value2 = 2026.0
@@ -140,7 +166,7 @@ try {
         throw 'Tax update button is not wired to its macro'
     }
     if (-not $detail.PageSetup.PrintArea) { throw 'Calculation details lack print area' }
-    Write-Output 'PASS: Windows Excel 52 fixtures; 2025/2026 amounts; approved/rejected updates; persisted fault rollback; backup; PDF; save/reopen; button wiring.'
+    Write-Output 'PASS: Windows Excel 52 fixtures; 2025/2026 amounts; approved/rejected updates; persisted fault rollback; backup; PDF; isolated no-overwrite case-save; save/reopen; button wiring.'
 } finally {
     if ($null -ne $book) { $book.Close($false) }
     if ($null -ne $excel) { $excel.Quit() }
