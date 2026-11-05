@@ -264,6 +264,65 @@ Failed:
     MsgBox Err.Description, vbExclamation, "印刷"
 End Sub
 
+' PDF export is verified and staged exactly like case saving.
+' The test calls this public entrypoint, not Excel's sheet export directly.
+Public Function ExportDetailsToFile(ByVal destination As String) As Boolean
+    Dim fso As Object, folder As String, temporary As String
+    Dim i As Long, code As Long, problem As String, openedDetail As Boolean
+    On Error GoTo Failed
+    Application.Calculate
+    If CStr(ThisWorkbook.Worksheets("操作画面").Range("B28").Value2) <> "正常" Then
+        Err.Raise vbObjectError + 111, , "入力と計算状態を確認してください。"
+    End If
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    If Len(Trim$(destination)) = 0 Or LCase$(Right$(destination, 4)) <> ".pdf" Then
+        Err.Raise vbObjectError + 112, , ".pdfの拡張子で保存してください。"
+    End If
+    If fso.FileExists(destination) Then
+        Err.Raise vbObjectError + 113, , "同名のPDFがあります。別の名前を指定してください。"
+    End If
+    folder = fso.GetParentFolderName(fso.GetAbsolutePathName(destination))
+    If Not fso.FolderExists(folder) Then
+        Err.Raise vbObjectError + 121, , "PDF保存先のフォルダが見つかりません。"
+    End If
+    For i = 1 To 1000
+        temporary = fso.BuildPath(folder, "_furusato_pdf_" & _
+                       Format$(Now, "yyyymmdd_hhnnss") & "_" & CStr(i) & ".pdf")
+        If Not fso.FileExists(temporary) Then Exit For
+    Next i
+    If i > 1000 Then
+        Err.Raise vbObjectError + 122, , "PDF用一時ファイル名を確保できません。"
+    End If
+    If ThisWorkbook.Worksheets("計算根拠").Visible <> xlSheetVisible Then
+        ShowDetails
+        openedDetail = True
+    End If
+    ThisWorkbook.Worksheets("計算根拠").ExportAsFixedFormat _
+        Type:=xlTypePDF, Filename:=temporary
+    If Not fso.FileExists(temporary) Then
+        Err.Raise vbObjectError + 123, , "PDFの作成を確認できません。"
+    End If
+    If fso.GetFile(temporary).Size < 500 Then
+        Err.Raise vbObjectError + 124, , "生成されたPDFのサイズが不正です。"
+    End If
+    fso.MoveFile temporary, destination
+    If openedDetail Then ReturnHome
+    ExportDetailsToFile = True
+    Exit Function
+Failed:
+    code = Err.Number
+    problem = Err.Description
+    On Error Resume Next
+    If Not fso Is Nothing Then
+        If Len(temporary) > 0 Then
+            If fso.FileExists(temporary) Then fso.DeleteFile temporary, True
+        End If
+    End If
+    If openedDetail Then ReturnHome
+    On Error GoTo 0
+    Err.Raise code, "TaxLawUpdater.ExportDetailsToFile", problem
+End Function
+
 Public Sub ExportDetails()
     Dim destination As Variant
     On Error GoTo Failed
@@ -274,14 +333,9 @@ Public Sub ExportDetails()
     destination = Application.GetSaveAsFilename(InitialFileName:="Furusato_result.pdf", _
                    FileFilter:="PDF (*.pdf),*.pdf")
     If VarType(destination) = vbBoolean Then Exit Sub
-    If LCase$(Right$(CStr(destination), 4)) <> ".pdf" Then
-        Err.Raise vbObjectError + 112, , ".pdfの拡張子で保存してください。"
+    If ExportDetailsToFile(CStr(destination)) Then
+        MsgBox "計算結果のPDFを保存しました。", vbInformation, "PDF出力完了"
     End If
-    If CreateObject("Scripting.FileSystemObject").FileExists(CStr(destination)) Then
-        Err.Raise vbObjectError + 113, , "同名のPDFがあります。別の名前を指定してください。"
-    End If
-    ShowDetails
-    ThisWorkbook.Worksheets("計算根拠").ExportAsFixedFormat Type:=xlTypePDF, Filename:=CStr(destination)
     Exit Sub
 Failed:
     MsgBox Err.Description, vbExclamation, "PDF出力"
