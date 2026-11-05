@@ -27,6 +27,8 @@ jobs:
       - run: |
           python tools/qa_contract.py workbook/baseline.xlsx
           python tools/test_workbook.py
+          python tools/build_workbook.py Furusato_nouzei_audit.xlsx
+          python tools/audit_tax_tables.py workbook/baseline.xlsx Furusato_nouzei_audit.xlsx
           python tools/package_review.py Furusato_nouzei_v4_REVIEW.zip
           python tools/test_setup_contract.py Furusato_nouzei_v4_REVIEW.zip
       - name: Upload reproducible review ZIP
