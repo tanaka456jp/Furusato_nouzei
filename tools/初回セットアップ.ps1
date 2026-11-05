@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 [CmdletBinding()]
 param(
-  [string]$WorkbookPath = (Join-Path $PSScriptRoot 'ふるさと納税限度額計算_ワンクリック更新.xlsx')
+  [string]$WorkbookPath = (Join-Path $PSScriptRoot 'ふるさと納税限度額計算_修正版.xlsx')
 )
 $ErrorActionPreference = 'Stop'
 $workbookPathFull = [IO.Path]::GetFullPath($WorkbookPath)
