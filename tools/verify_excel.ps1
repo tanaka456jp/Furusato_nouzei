@@ -126,15 +126,14 @@ try {
     QA-Stage 'approved-update-backup-check-done'
     $oldStatus = [string]$homeSheet.Range('B30').Value2
     $homeSheet.Range('B4').Value2 = 2027.0
-    $rejected = $false
     QA-Stage 'unsupported-year-update-start'
-    try {
-        $null = $excel.Run('TaxLawUpdater.TaxLawUpdateForTest')
-    } catch {
-        $rejected = $true
-    }
+    $rejected = -not [bool]($excel.Run('TaxLawUpdater.TaxLawUpdateForTest'))
     QA-Stage 'unsupported-year-update-done'
     if (-not $rejected) { throw 'Unapproved year was accepted' }
+    $reason = [string]($excel.Run('TaxLawUpdater.TaxLawUpdateLastFailure'))
+    if (-not $reason.Contains('承認対象年')) {
+        throw 'Unapproved year returned no expected refusal reason'
+    }
     Assert-Value $settings.Range('B4').Value2 2026 'Unapproved update preserved applied year'
     Assert-Value ([string]$homeSheet.Range('B30').Value2) $oldStatus 'Unapproved update preserved status'
     QA-Stage ('full-rebuild-start-after-' + $script:qaStage)
@@ -170,12 +169,11 @@ try {
     Assert-Value $pdfSignature '%PDF-' 'PDF header'
     Assert-Value $detail.Visible -1 'User remains on detail screen after PDF export'
     $originalPdfHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $pdf).Hash
-    $mustRejectPdfOverwrite = $false
-    try {
-        $null = $excel.Run('TaxLawUpdater.ExportDetailsToFile', $pdf)
-    } catch {
-        $mustRejectPdfOverwrite = $true
-    }
+    QA-Stage 'pdf-overwrite-rejection-start'
+    $mustRejectPdfOverwrite = -not [bool](
+        $excel.Run('TaxLawUpdater.TryExportDetailsToFileForTest', $pdf)
+    )
+    QA-Stage 'pdf-overwrite-rejection-done'
     if (-not $mustRejectPdfOverwrite) { throw 'Existing PDF was overwritten' }
     Assert-Value ((Get-FileHash -Algorithm SHA256 -LiteralPath $pdf).Hash) $originalPdfHash 'PDF not modified on refusal'
     $excel.Run('TaxLawUpdater.ReturnHome')
@@ -200,12 +198,11 @@ try {
     if (@(Get-ChildItem -LiteralPath $dir -Filter '_furusato_case_*.xlsm' -File).Count -ne 0) {
         throw 'Temporary case file remained after successful save'
     }
-    $mustRejectOverwrite = $false
-    try {
-        $null = $excel.Run('TaxLawUpdater.SaveCaseToFile', $casePath)
-    } catch {
-        $mustRejectOverwrite = $true
-    }
+    QA-Stage 'case-overwrite-rejection-start'
+    $mustRejectOverwrite = -not [bool](
+        $excel.Run('TaxLawUpdater.TrySaveCaseToFileForTest', $casePath)
+    )
+    QA-Stage 'case-overwrite-rejection-done'
     if (-not $mustRejectOverwrite) { throw 'Existing case file was overwritten' }
     Assert-Value ((Get-FileHash -Algorithm SHA256 -LiteralPath $casePath).Hash) $originalCaseHash 'Case not modified after overwrite refusal'
     if (@(Get-ChildItem -LiteralPath $dir -Filter '_furusato_case_*.xlsm' -File).Count -ne 0) {
@@ -244,14 +241,15 @@ try {
     QA-Stage 'rollback-injection-start'
     $checks.Range('B49').Formula = '="FAIL"'
     $homeSheet.Range('B4').Value2 = 2025.0
-    $failedAfterMutation = $false
-    try {
-        $null = $excel.Run('TaxLawUpdater.TaxLawUpdateForTest')
-    } catch {
-        $failedAfterMutation = $true
-    }
+    $failedAfterMutation = -not [bool](
+        $excel.Run('TaxLawUpdater.TaxLawUpdateForTest')
+    )
     QA-Stage 'rollback-injection-done'
     if (-not $failedAfterMutation) { throw 'Corrupted regression did not abort the transaction' }
+    $reason = [string]($excel.Run('TaxLawUpdater.TaxLawUpdateLastFailure'))
+    if (-not $reason.Contains('内蔵回帰試験')) {
+        throw 'Regression injection returned no expected refusal reason'
+    }
     Assert-Value $settings.Range('B4').Value2 2026 'Rollback applied year'
     Assert-Value $homeSheet.Range('B4').Value2 2026 'Rollback selected year'
     Assert-Value ([string]$homeSheet.Range('B30').Value2) $oldUpdateStatus 'Rollback update status'

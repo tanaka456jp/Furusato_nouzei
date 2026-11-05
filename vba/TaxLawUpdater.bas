@@ -1,6 +1,9 @@
 Attribute VB_Name = "TaxLawUpdater"
 Option Explicit
 
+' Only isolated tests use this nonmodal diagnostic state.
+Private mLastTestFailure As String
+
 Private Const CATALOG_URL As String = "https://raw.githubusercontent.com/tanaka456jp/Furusato_nouzei/main/taxdata/catalog.tsv"
 Private Const BUNDLED_REVISION As String = "2026-11-05-bundled"
 
@@ -11,7 +14,12 @@ Public Sub TaxLawUpdate()
 End Sub
 
 Public Function TaxLawUpdateForTest() As Boolean
+    mLastTestFailure = vbNullString
     TaxLawUpdateForTest = ApplyApprovedYear(True)
+End Function
+
+Public Function TaxLawUpdateLastFailure() As String
+    TaxLawUpdateLastFailure = mLastTestFailure
 End Function
 
 Private Function ApplyApprovedYear(ByVal noDialogs As Boolean) As Boolean
@@ -96,7 +104,11 @@ Failed:
         End If
     End If
     If noDialogs Then
-        Err.Raise vbObjectError + 116, "TaxLawUpdater.TaxLawUpdateForTest", problem
+        ' An unhandled VBA Err.Raise can open a blocking Office/VBE modal
+        ' dialog on unattended COM runners. Return False instead.
+        mLastTestFailure = problem
+        ApplyApprovedYear = False
+        Exit Function
     End If
     MsgBox problem, vbExclamation, "税制更新を中止しました"
 End Function
@@ -340,3 +352,21 @@ Public Sub ExportDetails()
 Failed:
     MsgBox Err.Description, vbExclamation, "PDF出力"
 End Sub
+
+' Nonmodal COM acceptance adapters for expected *refusal* paths only.
+' User-facing procedures still report failures through their normal handlers.
+Public Function TrySaveCaseToFileForTest(ByVal destination As String) As Boolean
+    On Error GoTo Refused
+    TrySaveCaseToFileForTest = SaveCaseToFile(destination)
+    Exit Function
+Refused:
+    TrySaveCaseToFileForTest = False
+End Function
+
+Public Function TryExportDetailsToFileForTest(ByVal destination As String) As Boolean
+    On Error GoTo Refused
+    TryExportDetailsToFileForTest = ExportDetailsToFile(destination)
+    Exit Function
+Refused:
+    TryExportDetailsToFileForTest = False
+End Function

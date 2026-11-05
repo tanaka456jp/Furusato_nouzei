@@ -69,3 +69,13 @@ assert "PowerShell exit code" in cmd
 assert not any(ord(c) > 127 for c in cmd), "CMD launcher must be ASCII-safe"
 
 print("PASS: flat ASCII delivery ZIP; source/payload matched; Unicode VBA import and smoke run present.")
+
+# Unexpected rejection in unattended VBA must report False, never an
+# unhandled COM/VBE exception that can block an Excel runner indefinitely.
+assert "mLastTestFailure = problem" in vba
+assert "ApplyApprovedYear = False" in vba
+assert 'Err.Raise vbObjectError + 116' not in vba
+assert "Public Function TaxLawUpdateLastFailure() As String" in vba
+assert "TrySaveCaseToFileForTest" in vba and "TryExportDetailsToFileForTest" in vba
+assert "TaxLawUpdater.TrySaveCaseToFileForTest" in ps
+assert "TaxLawUpdater.TryExportDetailsToFileForTest" in ps
