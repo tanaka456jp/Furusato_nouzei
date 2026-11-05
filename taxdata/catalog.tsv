@@ -1,0 +1,5 @@
+# Year|Status|Revision|Approved Excel package URL|SHA-256
+# APPPROVED years without a package use the audited master tables bundled in the workbook.
+2025|APPROVED|2026-11-05-bundled||
+2026|APPROVED|2026-11-05-bundled||
+2027|DRAFT|pending-review||
