@@ -46,3 +46,16 @@ GitHub Actionsの `pull_request.edited` でWindowsジョブを開始します。
 - 2027年以降の承認済マスタ追加配信
 
 これらが終わるまで製品の正式受入はHOLD。合成データの成功を実額の正確性と混同しないこと。
+
+
+## v4.3 追加した受入チェック（2026-11-05）
+
+- `tools/setup.ps1` で `VBComponents.Import` を廃止し、UTF-8のVBAコードを `CodeModule.AddFromString` へUnicodeのまま受け渡す。WindowsシステムのANSIコードページに依存しない。
+- 初回生成時に `RecalculateCase` マクロを実行し、VBAが動作することを保存前に確認する。構造検査だけではPASSとしない。
+- `tools/test_setup_contract.py` でZIPが平坦なASCII名であること、取り込み用のVBA/PowerShellがソースと一致すること、文字コード変換方式・マクロ実行検査を静的チェックする。
+- `SaveCase` と実機テストに共通の `SaveCaseToFile` を使用。実機テストでは保存コピー作成、再読込、入力値・計算結果・更新ボタン保持、既存案件上書き拒否を確認する。
+- **実機受入を実行できた場合に限り**上記のPASS/FAILを記録する。静的CI成功はマクロ受入完了を意味しない。
+
+### 現在のブロッカー
+
+受入ジョブは `self-hosted / Windows / furusato-excel` ラベルを持つrunnerを待機しています。専用Windows PCに該当runnerを登録・起動してからジョブを再実行してください。他用途の共有runnerにラベルを流用しないでください。
