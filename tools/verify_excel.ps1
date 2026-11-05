@@ -28,7 +28,14 @@ function Assert-MacroAction([string]$actual, [string]$expected, [string]$label) 
     }
     Assert-Value $normalized $expected $label
 }
+$script:qaStage = 'initializing'
+function QA-Stage([string]$stage) {
+    $script:qaStage = $stage
+    Write-Host ('QA_STAGE ' + [DateTime]::UtcNow.ToString('HH:mm:ss') + ' ' + $stage)
+}
+QA-Stage 'start'
 try {
+    QA-Stage 'excel-com-create'
     $excel = New-Object -ComObject Excel.Application
     $excelVersion = [string]$excel.Version
     $excel.DisplayAlerts = $false
@@ -36,21 +43,28 @@ try {
     $excel.AskToUpdateLinks = $false
     # This process opens only the fresh, locally built test copy.
     $excel.AutomationSecurity = 1
+    QA-Stage 'qa-workbook-open-start'
     $book = $excel.Workbooks.Open($copy, 0, $false)
+    QA-Stage 'qa-workbook-open-done'
     $excel.AutomationSecurity = 3
     $homeSheet = $book.Worksheets.Item('操作画面')
     $settings = $book.Worksheets.Item('設定・税率')
     $checks = $book.Worksheets.Item('自動回帰テスト')
     $detail = $book.Worksheets.Item('計算根拠')
+    QA-Stage 'worksheet-handles-acquired'
     # This is a renamed test COPY, so bind its buttons to the test workbook.
     $excel.Run('TaxLawUpdater.BindButtons')
     Assert-MacroAction ([string]$homeSheet.Buttons().Item('btnTaxLawUpdate').OnAction) 'FurusatoQA.xlsm!TaxLawUpdater.TaxLawUpdate' 'Main case macro ownership'
+    QA-Stage 'initial-recalculate-start'
     $excel.Run('TaxLawUpdater.RecalculateCase')
+    QA-Stage 'initial-recalculate-done'
     Assert-Value $checks.Range('B47').Value2 52 'Regression cases'
     Assert-Value $checks.Range('B49').Value2 'PASS' 'Regression verdict'
     Assert-Value $homeSheet.Range('B8').Value2 '' 'Blank input hides limit'
     Assert-Value $detail.Visible 2 'Calculation details start hidden'
+    QA-Stage 'initial-regressions-pass'
     foreach ($year in @(2025, 2026)) {
+        QA-Stage ('synthetic-' + $year + '-input-start')
         $settings.Range('B4').Value2 = [double]$year
         $homeSheet.Range('B4').Value2 = [double]$year
         $homeSheet.Range('B11').Value2 = [double]$year
@@ -64,7 +78,9 @@ try {
         $homeSheet.Range('B26').Value2 = '該当なし'
         $homeSheet.Range('D22').Value2 = '該当なし'
         $homeSheet.Range('D24').Value2 = '確定申告'
+        QA-Stage ('synthetic-' + $year + '-recalculate-start')
         $excel.Run('TaxLawUpdater.RecalculateCase')
+        QA-Stage ('synthetic-' + $year + '-recalculate-done')
         # If the synthetic fixture is inconsistent, log only deterministic
         # synthetic values. Never bypass the taxpayer input consistency gate.
         if ([string]$homeSheet.Range('B28').Value2 -ne '正常') {
@@ -90,9 +106,12 @@ try {
         Assert-Value $homeSheet.Range('D8').Value2 374500 "$year resident income levy"
         Assert-Value $homeSheet.Range('B8').Value2 109000 "$year donation estimate"
     }
+    QA-Stage 'synthetic-years-pass'
     # Exercise the actual GitHub-approved update transaction, not only recalculation.
     # The test runs on an isolated copy; no customer workbook is touched.
+    QA-Stage 'approved-update-start'
     Assert-Value ([bool]($excel.Run('TaxLawUpdater.TaxLawUpdateForTest'))) $true 'Online approved-year update'
+    QA-Stage 'approved-update-done'
     Assert-Value $settings.Range('B4').Value2 2026 'Approved year persisted in memory'
     Assert-Value $homeSheet.Range('B29').Value2 '2026-11-05-bundled' 'Revision after update'
     if (-not ([string]$homeSheet.Range('B30').Value2).StartsWith('適用済')) {
@@ -104,33 +123,48 @@ try {
     }
 
     # A non-approved year must be refused *without* modal dialogs or side effects.
+    QA-Stage 'approved-update-backup-check-done'
     $oldStatus = [string]$homeSheet.Range('B30').Value2
     $homeSheet.Range('B4').Value2 = 2027.0
     $rejected = $false
+    QA-Stage 'unsupported-year-update-start'
     try {
         $null = $excel.Run('TaxLawUpdater.TaxLawUpdateForTest')
     } catch {
         $rejected = $true
     }
+    QA-Stage 'unsupported-year-update-done'
     if (-not $rejected) { throw 'Unapproved year was accepted' }
     Assert-Value $settings.Range('B4').Value2 2026 'Unapproved update preserved applied year'
     Assert-Value ([string]$homeSheet.Range('B30').Value2) $oldStatus 'Unapproved update preserved status'
+    QA-Stage ('full-rebuild-start-after-' + $script:qaStage)
     $excel.CalculateFullRebuild()
+    QA-Stage 'full-rebuild-done'
     Assert-Value $homeSheet.Range('B8').Value2 '' 'Selected and applied year mismatch'
     $homeSheet.Range('B4').Value2 = 2026.0
     $homeSheet.Range('B26').Value2 = '該当あり'
+    QA-Stage ('full-rebuild-start-after-' + $script:qaStage)
     $excel.CalculateFullRebuild()
+    QA-Stage 'full-rebuild-done'
     Assert-Value $homeSheet.Range('B8').Value2 '' 'Unsupported case'
     $homeSheet.Range('B26').Value2 = '該当なし'
     $homeSheet.Range('D17:D18').Value2 = 0.0
+    QA-Stage ('full-rebuild-start-after-' + $script:qaStage)
     $excel.CalculateFullRebuild()
+    QA-Stage 'full-rebuild-done'
     Assert-Value $homeSheet.Range('B8').Value2 '' 'Duplicate spouse'
     $homeSheet.Range('D17:D18').ClearContents()
+    QA-Stage ('full-rebuild-start-after-' + $script:qaStage)
     $excel.CalculateFullRebuild()
+    QA-Stage 'full-rebuild-done'
+    QA-Stage 'show-details-start'
     $excel.Run('TaxLawUpdater.ShowDetails')
+    QA-Stage 'show-details-done'
     Assert-Value $detail.Visible -1 'Details opened by VBA'
     $pdf = Join-Path $dir 'FurusatoQA.pdf'
+    QA-Stage 'pdf-export-first-start'
     Assert-Value ([bool]($excel.Run('TaxLawUpdater.ExportDetailsToFile', $pdf))) $true 'VBA PDF export'
+    QA-Stage 'pdf-export-first-done'
     if ((Get-Item -LiteralPath $pdf).Length -lt 500) { throw 'Empty or corrupt PDF' }
     $pdfSignature = -join ((Get-Content -LiteralPath $pdf -Encoding Byte -TotalCount 5) | ForEach-Object { [char]$_ })
     Assert-Value $pdfSignature '%PDF-' 'PDF header'
@@ -147,7 +181,9 @@ try {
     $excel.Run('TaxLawUpdater.ReturnHome')
     Assert-Value $detail.Visible 2 'Details hidden after return'
     $hiddenPdf = Join-Path $dir 'FurusatoQA_hidden.pdf'
+    QA-Stage 'pdf-export-hidden-start'
     Assert-Value ([bool]($excel.Run('TaxLawUpdater.ExportDetailsToFile', $hiddenPdf))) $true 'PDF export from home screen'
+    QA-Stage 'pdf-export-hidden-done'
     Assert-Value $detail.Visible 2 'Details returned to hidden after home-screen PDF export'
     if (@(Get-ChildItem -LiteralPath $dir -Filter '_furusato_pdf_*.pdf' -File).Count -ne 0) {
         throw 'Temporary PDF remained after success or rejected overwrite'
@@ -155,7 +191,9 @@ try {
 
     # Save a separate case file, verify its content, and reject accidental overwrite.
     $casePath = Join-Path $dir 'case_preservation.xlsm'
+    QA-Stage 'case-save-start'
     Assert-Value ([bool]($excel.Run('TaxLawUpdater.SaveCaseToFile', $casePath))) $true 'Case save command'
+    QA-Stage 'case-save-done'
     if (-not (Test-Path -LiteralPath $casePath)) { throw 'Case save did not create file' }
     if ((Get-Item -LiteralPath $casePath).Length -lt 20000) { throw 'Case save produced a suspiciously small file' }
     $originalCaseHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $casePath).Hash
@@ -176,7 +214,9 @@ try {
     $excel.AutomationSecurity = 1
     $excel.EnableEvents = $true
     try {
+        QA-Stage 'case-reopen-start'
         $savedCase = $excel.Workbooks.Open($casePath, 0, $true)
+        QA-Stage 'case-reopen-done'
     } finally {
         $excel.EnableEvents = $false
         $excel.AutomationSecurity = 3
@@ -201,6 +241,7 @@ try {
     # This proves that rollback is persisted, not merely restored in memory.
     $originalRegressionFormula = [string]$checks.Range('B49').Formula
     $oldUpdateStatus = [string]$homeSheet.Range('B30').Value2
+    QA-Stage 'rollback-injection-start'
     $checks.Range('B49').Formula = '="FAIL"'
     $homeSheet.Range('B4').Value2 = 2025.0
     $failedAfterMutation = $false
@@ -209,6 +250,7 @@ try {
     } catch {
         $failedAfterMutation = $true
     }
+    QA-Stage 'rollback-injection-done'
     if (-not $failedAfterMutation) { throw 'Corrupted regression did not abort the transaction' }
     Assert-Value $settings.Range('B4').Value2 2026 'Rollback applied year'
     Assert-Value $homeSheet.Range('B4').Value2 2026 'Rollback selected year'
@@ -225,12 +267,15 @@ try {
     $settings = $book.Worksheets.Item('設定・税率')
     $checks = $book.Worksheets.Item('自動回帰テスト')
     $detail = $book.Worksheets.Item('計算根拠')
+    QA-Stage 'rollback-reopen-done'
     Assert-Value $settings.Range('B4').Value2 2026 'Rollback persisted across reopen'
     Assert-Value $homeSheet.Range('B4').Value2 2026 'Selected year rollback persisted across reopen'
     Assert-Value ([string]$homeSheet.Range('B30').Value2) $oldUpdateStatus 'Rollback status persisted across reopen'
     $checks.Range('B49').Formula = $originalRegressionFormula
     $homeSheet.Range('B4').Value2 = 2026.0
+    QA-Stage ('full-rebuild-start-after-' + $script:qaStage)
     $excel.CalculateFullRebuild()
+    QA-Stage 'full-rebuild-done'
     Assert-Value $checks.Range('B49').Value2 'PASS' 'Regression restored after injected fault'
     Assert-Value $homeSheet.Range('B12').Value2 7000000 'Salary retained after reopen'
     Assert-Value $homeSheet.Range('B8').Value2 109000 'Estimate retained after reopen'
@@ -239,10 +284,12 @@ try {
     $excel.Run('TaxLawUpdater.BindButtons')
     Assert-MacroAction ([string]$homeSheet.Buttons().Item('btnTaxLawUpdate').OnAction) 'FurusatoQA.xlsm!TaxLawUpdater.TaxLawUpdate' 'Reloaded case macro ownership'
     if (-not $detail.PageSetup.PrintArea) { throw 'Calculation details lack print area' }
+    QA-Stage 'all-acceptance-checks-pass'
     $passed = $true
     Write-Output 'PASS: Windows Excel 52 fixtures; 2025/2026 amounts; approved/rejected updates; persisted fault rollback; backup; VBA PDF/hidden UI/no-overwrite; isolated no-overwrite case-save; save/reopen; button wiring.'
 } catch {
     $failureSummary = $_.Exception.Message
+    Write-Host ('QA_FAIL_AT_STAGE ' + $script:qaStage + ': ' + $failureSummary)
     throw
 } finally {
     # Cleanup is best-effort and must not mask the original test failure.
@@ -285,6 +332,7 @@ try {
                     'product signature and production deployment'
                 )
                 failure = $failureSummary
+                last_stage = $script:qaStage
             }
             $json = $report | ConvertTo-Json -Depth 4
             $encoding = New-Object System.Text.UTF8Encoding($false)
