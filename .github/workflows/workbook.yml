@@ -51,6 +51,43 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  # Runs for every PR on GitHub-hosted Windows (free for this public repo).
+  # Microsoft Excel desktop is not installed here; COM/VBA execution is separate.
+  windows_compat:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install workbook test dependency
+        shell: powershell
+        run: |
+          python -m pip install openpyxl==3.1.5
+          if ($LASTEXITCODE -ne 0) { throw 'Python dependency installation failed' }
+      - name: Rebuild workbook and review ZIP on Windows
+        shell: powershell
+        run: |
+          python tools/verify_baseline.py
+          if ($LASTEXITCODE -ne 0) { throw 'Frozen baseline differs' }
+          python tools/test_workbook.py
+          if ($LASTEXITCODE -ne 0) { throw 'Workbook static regression failed' }
+          python tools/package_review.py Furusato_nouzei_v4_REVIEW.zip
+          if ($LASTEXITCODE -ne 0) { throw 'Review ZIP packaging failed' }
+          python tools/test_setup_contract.py Furusato_nouzei_v4_REVIEW.zip
+          if ($LASTEXITCODE -ne 0) { throw 'Package or installer contract failed' }
+      - name: Verify native PowerShell 5.1 and Japanese-path extraction
+        shell: powershell
+        run: |
+          & .\tools\verify_windows_hosted.ps1 -Package Furusato_nouzei_v4_REVIEW.zip
+          if (-not $?) { throw 'Windows-hosted acceptance failed' }
+      - name: Record clear separation from Excel COM acceptance
+        shell: powershell
+        run: |
+          "GitHub-hosted Windows compatibility: PASS if all prior steps passed." >> $env:GITHUB_STEP_SUMMARY
+          "Excel desktop, macros, tax-law update, printed output and real-case comparisons: NOT TESTED by this job." >> $env:GITHUB_STEP_SUMMARY
+
   # Explicit opt-in: never execute arbitrary fork PR code on a self-hosted runner.
   excel:
     if: >-
