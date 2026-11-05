@@ -7,6 +7,7 @@ import sys
 
 from openpyxl import Workbook, load_workbook
 from build_workbook import ROOT, HOME, build
+from rebuild_xlsx import reconstruct
 
 
 def checksum(path):
@@ -28,6 +29,9 @@ def make(folder):
         ("fresh_minimal_openpyxl", "06_fresh_minimal_openpyxl.xlsx"),
         ("baseline_values_only", "07_baseline_values_only.xlsx"),
         ("baseline_unstyled_formulas", "08_baseline_unstyled_formulas.xlsx"),
+        ("baseline_rebuilt_styles", "09_baseline_rebuilt_styles.xlsx"),
+        ("baseline_rebuilt_full", "10_baseline_rebuilt_full.xlsx"),
+        ("review_rebuilt_full", "11_review_rebuilt_full.xlsx"),
     ]
     paths = {key: folder / name for key, name in names}
     original_sha = checksum(source)
@@ -73,6 +77,9 @@ def make(folder):
 
     write_clean(False, paths["baseline_values_only"])
     write_clean(True, paths["baseline_unstyled_formulas"])
+    reconstruct(source, paths["baseline_rebuilt_styles"], styles=True, layout=False)
+    reconstruct(source, paths["baseline_rebuilt_full"], styles=True, layout=True)
+    build(paths["baseline_rebuilt_full"], paths["review_rebuilt_full"])
     assert checksum(source) == original_sha
     assert checksum(paths["baseline_original"]) == original_sha
     report = {
@@ -90,7 +97,7 @@ def make(folder):
         json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
     if len(sys.argv) == 3 and sys.argv[2] == "--self-test":
-        assert len(report["probes"]) == 8
+        assert len(report["probes"]) == 11
         assert all(p["bytes"] > 0 for p in report["probes"])
         assert all(p["bytes"] > 20000 for p in report["probes"][:5])
         assert paths["fresh_minimal_openpyxl"].stat().st_size < 20000
@@ -127,7 +134,26 @@ def make(folder):
             b.close()
             c.close()
         assert checksum(source) == original_sha
-    print("DIAGNOSTIC ONLY: generated eight XLSX opening candidates.")
+        for key in ("baseline_rebuilt_styles", "baseline_rebuilt_full"):
+            copybook = load_workbook(paths[key])
+            original = load_workbook(source)
+            try:
+                assert copybook.sheetnames == original.sheetnames
+                for a, b in zip(copybook, original):
+                    for row in b:
+                        for c in row:
+                            if c.value is not None:
+                                assert a[c.coordinate].value == c.value
+            finally:
+                copybook.close()
+                original.close()
+        rebuilt = load_workbook(paths["review_rebuilt_full"])
+        try:
+            assert len(rebuilt.sheetnames) == 20
+            assert rebuilt["自動回帰テスト"]["B49"].data_type == "f"
+        finally:
+            rebuilt.close()
+    print("DIAGNOSTIC ONLY: generated eleven XLSX opening candidates.")
     return report
 
 
