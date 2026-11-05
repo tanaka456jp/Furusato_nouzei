@@ -7,7 +7,7 @@ import sys
 
 from openpyxl import Workbook, load_workbook
 from build_workbook import ROOT, HOME, build
-from rebuild_xlsx import reconstruct
+from rebuild_xlsx import LAYOUT_GROUPS, reconstruct
 
 
 def checksum(path):
@@ -32,6 +32,10 @@ def make(folder):
         ("baseline_rebuilt_styles", "09_baseline_rebuilt_styles.xlsx"),
         ("baseline_rebuilt_full", "10_baseline_rebuilt_full.xlsx"),
         ("review_rebuilt_full", "11_review_rebuilt_full.xlsx"),
+        *[
+            ("layout_" + group, f"{number:02d}_layout_{group}.xlsx")
+            for number, group in enumerate(LAYOUT_GROUPS, 12)
+        ],
     ]
     paths = {key: folder / name for key, name in names}
     original_sha = checksum(source)
@@ -80,6 +84,9 @@ def make(folder):
     reconstruct(source, paths["baseline_rebuilt_styles"], styles=True, layout=False)
     reconstruct(source, paths["baseline_rebuilt_full"], styles=True, layout=True)
     build(paths["baseline_rebuilt_full"], paths["review_rebuilt_full"])
+    for group in LAYOUT_GROUPS:
+        reconstruct(source, paths["layout_" + group],
+                    styles=True, layout=False, layout_parts=[group])
     assert checksum(source) == original_sha
     assert checksum(paths["baseline_original"]) == original_sha
     report = {
@@ -97,7 +104,7 @@ def make(folder):
         json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
     if len(sys.argv) == 3 and sys.argv[2] == "--self-test":
-        assert len(report["probes"]) == 11
+        assert len(report["probes"]) == 11 + len(LAYOUT_GROUPS)
         assert all(p["bytes"] > 0 for p in report["probes"])
         assert all(p["bytes"] > 20000 for p in report["probes"][:5])
         assert paths["fresh_minimal_openpyxl"].stat().st_size < 20000
@@ -153,7 +160,7 @@ def make(folder):
             assert rebuilt["自動回帰テスト"]["B49"].data_type == "f"
         finally:
             rebuilt.close()
-    print("DIAGNOSTIC ONLY: generated eleven XLSX opening candidates.")
+    print(f"DIAGNOSTIC ONLY: generated {len(names)} XLSX opening candidates.")
     return report
 
 

@@ -10,7 +10,18 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.cell.cell import MergedCell
 
 
-def reconstruct(source: Path, output: Path, *, styles: bool, layout: bool) -> None:
+LAYOUT_GROUPS = (
+    "dimensions", "merges", "freeze", "validations", "conditional",
+    "views", "properties", "sheet_format", "page"
+)
+
+
+def reconstruct(source: Path, output: Path, *, styles: bool, layout: bool, layout_parts=None) -> None:
+    enabled = set(LAYOUT_GROUPS) if layout else set()
+    if layout_parts is not None:
+        enabled = set(layout_parts)
+    if enabled - set(LAYOUT_GROUPS):
+        raise ValueError("Unknown diagnostic layout group")
     original = load_workbook(source)
     fresh = Workbook()
     fresh.remove(fresh.active)
@@ -35,7 +46,7 @@ def reconstruct(source: Path, output: Path, *, styles: bool, layout: bool) -> No
                         target.hyperlink = copy(cell.hyperlink)
                     if styles and cell.comment is not None:
                         target.comment = copy(cell.comment)
-            if layout:
+            if "dimensions" in enabled:
                 for key, dimension in sheet.column_dimensions.items():
                     dest_dim = dest.column_dimensions[key]
                     for prop in ('width', 'hidden', 'outlineLevel', 'collapsed', 'min', 'max'):
@@ -44,14 +55,22 @@ def reconstruct(source: Path, output: Path, *, styles: bool, layout: bool) -> No
                     dest_dim = dest.row_dimensions[key]
                     for prop in ('height', 'hidden', 'outlineLevel', 'collapsed'):
                         setattr(dest_dim, prop, getattr(dimension, prop))
+            if "merges" in enabled:
                 for cell_range in sheet.merged_cells.ranges:
                     dest.merge_cells(str(cell_range))
+            if "freeze" in enabled:
                 dest.freeze_panes = sheet.freeze_panes
+            if "validations" in enabled:
                 dest.data_validations = deepcopy(sheet.data_validations)
+            if "conditional" in enabled:
                 dest.conditional_formatting = deepcopy(sheet.conditional_formatting)
+            if "views" in enabled:
                 dest.views = copy(sheet.views)
+            if "properties" in enabled:
                 dest.sheet_properties = copy(sheet.sheet_properties)
+            if "sheet_format" in enabled:
                 dest.sheet_format = copy(sheet.sheet_format)
+            if "page" in enabled:
                 dest.page_setup = copy(sheet.page_setup)
                 dest.page_margins = copy(sheet.page_margins)
                 dest.print_options = copy(sheet.print_options)
