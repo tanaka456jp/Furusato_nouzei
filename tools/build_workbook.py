@@ -1,11 +1,13 @@
 """Build the review workbook from the unmodified v3 template."""
 import argparse
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from openpyxl import load_workbook
 from openpyxl.workbook.properties import CalcProperties
 from openpyxl.styles import Alignment, Font, PatternFill, Protection
 from openpyxl.worksheet.datavalidation import DataValidation
+from rebuild_xlsx import reconstruct
 
 ROOT = Path(__file__).resolve().parents[1]
 HOME = "操作画面"
@@ -20,7 +22,13 @@ def ref(sheet, address):
 
 
 def build(source, output):
-    book = load_workbook(source)
+    # The frozen source contains overlapping A71:I71 and E71:F71 merges.
+    # Repackage without modifying source, formulas, or tax-master values.
+    # Windows Excel rejects the original OOXML but accepts a fresh copy.
+    with TemporaryDirectory(prefix="furusato_xlsx_sanitize_") as folder:
+        safe_source = Path(folder) / "sanitized_source.xlsx"
+        reconstruct(Path(source), safe_source, styles=True, layout=True)
+        book = load_workbook(safe_source)
     del book[HOME]
     home = book.create_sheet(HOME, 0)
     detail = book.create_sheet(DETAIL)

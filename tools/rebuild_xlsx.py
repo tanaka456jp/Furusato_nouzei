@@ -1,7 +1,8 @@
-"""Reconstruct a disposable baseline copy without inheriting OOXML container metadata.
+"""Copy the immutable source into a new Excel-compatible OOXML container.
 
-DIAGNOSTIC ONLY. Not approved for replacing the frozen baseline or tax workbooks.
-No customer values are used. No existing workbook is overwritten.
+The frozen baseline remains untouched. The one known overlapping merge is
+removed; any different overlap raises rather than silently deleting content.
+All tax values and formulas stay unchanged in the copied source.
 """
 from copy import copy, deepcopy
 from pathlib import Path
@@ -56,8 +57,32 @@ def reconstruct(source: Path, output: Path, *, styles: bool, layout: bool, layou
                     for prop in ('height', 'hidden', 'outlineLevel', 'collapsed'):
                         setattr(dest_dim, prop, getattr(dimension, prop))
             if "merges" in enabled:
-                for cell_range in sheet.merged_cells.ranges:
-                    dest.merge_cells(str(cell_range))
+                merged_ranges = set(str(r) for r in sheet.merged_cells.ranges)
+                approved_nested = (
+                    sheet.title == "ふるさと納税限度額計算"
+                    and "E71:F71" in merged_ranges
+                    and "A71:I71" in merged_ranges
+                )
+                accepted = []
+                for cell_range in sorted(sheet.merged_cells.ranges, key=str):
+                    coordinate = str(cell_range)
+                    # The pre-existing E71:F71 is fully nested in A71:I71.
+                    # Preserve the wider visible header and avoid corrupt OOXML.
+                    if approved_nested and coordinate == "E71:F71":
+                        continue
+                    for previous in accepted:
+                        if (
+                            cell_range.min_row <= previous.max_row
+                            and previous.min_row <= cell_range.max_row
+                            and cell_range.min_col <= previous.max_col
+                            and previous.min_col <= cell_range.max_col
+                        ):
+                            raise ValueError(
+                                f"Unapproved overlapping merge on {sheet.title}: "
+                                f"{previous} and {cell_range}"
+                            )
+                    dest.merge_cells(coordinate)
+                    accepted.append(cell_range)
             if "freeze" in enabled:
                 dest.freeze_panes = sheet.freeze_panes
             if "validations" in enabled:

@@ -28,6 +28,30 @@ class WorkbookTest(unittest.TestCase):
             self.assertIsNone(archive.testzip())
             self.assertFalse(any(n.startswith(("xl/externalLinks/", "xl/vbaProject")) for n in archive.namelist()))
 
+    def test_overlapping_source_merges_are_repaired_without_formula_changes(self):
+        original = self.baseline[ENGINE]
+        built = self.book[ENGINE]
+        old = {str(r) for r in original.merged_cells.ranges}
+        merged = {str(r) for r in built.merged_cells.ranges}
+        self.assertIn("A71:I71", old)
+        self.assertIn("E71:F71", old)
+        self.assertIn("A71:I71", merged)
+        self.assertNotIn("E71:F71", merged)
+        self.assertEqual(built["A71"].value, original["A71"].value)
+        self.assertEqual(built["J71"].value, original["J71"].value)
+        self.assertEqual(built["J71"].data_type, "f")
+        for sheet in self.book:
+            ranges = list(sheet.merged_cells.ranges)
+            for i, left in enumerate(ranges):
+                for right in ranges[i + 1:]:
+                    self.assertFalse(
+                        left.min_row <= right.max_row
+                        and right.min_row <= left.max_row
+                        and left.min_col <= right.max_col
+                        and right.min_col <= left.max_col,
+                        f"Overlapping merges on {sheet.title}: {left} vs {right}"
+                    )
+
     def test_unchanged_master_and_52_fixtures(self):
         for old in self.baseline:
             if not old.title.startswith("年度"):
