@@ -39,4 +39,13 @@ assert "Verify native PowerShell 5.1 and Japanese-path extraction" in workflow
 assert "runs-on: [self-hosted, Windows, furusato-excel]" in workflow
 assert "github.event.pull_request.head.repo.full_name == github.repository" in workflow
 assert "[run-windows-excel]" in workflow
+acceptance = (root / "tools/verify_excel.ps1").read_text(encoding="utf-8-sig")
+assert "[string]$EvidencePath" in acceptance, "Excel evidence output argument missing"
+assert "furusato-excel-acceptance/v1" in acceptance, "Versioned acceptance evidence missing"
+assert "Get-FileHash -LiteralPath $Workbook -Algorithm SHA256" in acceptance
+assert "Selected year rollback persisted across reopen" in acceptance
+assert "if ($null -ne $excel) { try { $excel.Quit() } catch {} }" in acceptance
+assert "excel_acceptance.json" in workflow
+assert "if ($report.status -ne 'PASS')" in workflow
+assert "if-no-files-found: error" in workflow
 print("PASS: shared-host PC1/PC2 script is isolated; workflow uses a scoped runner label.")
