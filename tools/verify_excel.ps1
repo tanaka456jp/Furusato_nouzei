@@ -7,7 +7,7 @@ $dir = Join-Path ([System.IO.Path]::GetTempPath()) ('FurusatoQA_' + [Guid]::NewG
 [void][IO.Directory]::CreateDirectory($dir)
 $copy = Join-Path $dir 'FurusatoQA.xlsm'
 [IO.File]::Copy($Workbook, $copy)
-$excel = $null; $book = $null; $home = $null; $settings = $null; $checks = $null; $detail = $null
+$excel = $null; $book = $null; $savedCase = $null; $home = $null; $settings = $null; $checks = $null; $detail = $null
 function Assert-Value($actual, $expected, [string]$label) {
     if ($actual -cne $expected) { throw "$label expected [$expected], got [$actual]" }
 }
@@ -172,6 +172,7 @@ try {
     }
     if (-not $failedAfterMutation) { throw 'Corrupted regression did not abort the transaction' }
     Assert-Value $settings.Range('B4').Value2 2026 'Rollback applied year'
+    Assert-Value $home.Range('B4').Value2 2026 'Rollback selected year'
     Assert-Value ([string]$home.Range('B30').Value2) $oldUpdateStatus 'Rollback update status'
     $book.Close($false)
     $book = $null
@@ -186,6 +187,7 @@ try {
     $checks = $book.Worksheets.Item('自動回帰テスト')
     $detail = $book.Worksheets.Item('計算根拠')
     Assert-Value $settings.Range('B4').Value2 2026 'Rollback persisted across reopen'
+    Assert-Value $home.Range('B4').Value2 2026 'Selected year rollback persisted across reopen'
     Assert-Value ([string]$home.Range('B30').Value2) $oldUpdateStatus 'Rollback status persisted across reopen'
     $checks.Range('B49').Formula = $originalRegressionFormula
     $home.Range('B4').Value2 = 2026.0
@@ -200,12 +202,20 @@ try {
     if (-not $detail.PageSetup.PrintArea) { throw 'Calculation details lack print area' }
     Write-Output 'PASS: Windows Excel 52 fixtures; 2025/2026 amounts; approved/rejected updates; persisted fault rollback; backup; VBA PDF/hidden UI/no-overwrite; isolated no-overwrite case-save; save/reopen; button wiring.'
 } finally {
-    if ($null -ne $book) { $book.Close($false) }
-    if ($null -ne $excel) { $excel.Quit() }
-    foreach ($obj in @($detail,$checks,$settings,$home,$book,$excel)) {
-        if ($null -ne $obj -and [Runtime.InteropServices.Marshal]::IsComObject($obj)) {
-            [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($obj)
-        }
+    # Cleanup is best-effort and must not mask the original test failure.
+    # Only the Excel instance created above is quit; other user sessions remain untouched.
+    if ($null -ne $savedCase) { try { $savedCase.Close($false) } catch {} }
+    if ($null -ne $book) { try { $book.Close($false) } catch {} }
+    if ($null -ne $excel) { try { $excel.Quit() } catch {} }
+    foreach ($obj in @($savedCase,$detail,$checks,$settings,$home,$book,$excel)) {
+        try {
+            if ($null -ne $obj -and [Runtime.InteropServices.Marshal]::IsComObject($obj)) {
+                [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($obj)
+            }
+        } catch {}
     }
-    Remove-Item -LiteralPath $dir -Recurse -Force
+    [GC]::Collect()
+    [GC]::WaitForPendingFinalizers()
+    try { Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction Stop }
+    catch { Write-Warning ('QA temporary folder cleanup failed: ' + $_.Exception.Message) }
 }
