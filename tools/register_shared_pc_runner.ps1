@@ -74,7 +74,14 @@ Write-Host 'Get a temporary runner token from:'
 Write-Host ($repo + '/settings/actions/runners')
 Write-Host 'Select New self-hosted runner > Windows > x64.'
 Write-Host 'Paste only the TOKEN (not the config command). Do not put it in chat or logs.'
-$token = Read-Host 'Temporary registration token'
+$secureToken = Read-Host 'Temporary registration token (input hidden)' -AsSecureString
+$ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureToken)
+try {
+    $token = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)
+} finally {
+    [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr)
+    $secureToken = $null
+}
 if ([string]::IsNullOrWhiteSpace($token)) { throw 'Runner registration token is empty.' }
 
 Push-Location $folder
