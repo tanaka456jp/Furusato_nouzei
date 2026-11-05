@@ -1,0 +1,53 @@
+name: Workbook checks
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      excel:
+        description: Run on a dedicated self-hosted Windows Excel runner
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install openpyxl==3.1.5
+      - run: |
+          python tools/qa_contract.py workbook/baseline.xlsx
+          python tools/test_workbook.py
+          python tools/package_review.py Furusato_nouzei_v4_REVIEW.zip
+  excel:
+    if: github.event_name == 'workflow_dispatch' && inputs.excel
+    runs-on: [self-hosted, Windows, furusato-excel]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - shell: powershell
+        run: |
+          python -m pip install openpyxl==3.1.5
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $work = Join-Path $env:RUNNER_TEMP ('furusato-' + [guid]::NewGuid())
+          New-Item -ItemType Directory -Path $work | Out-Null
+          try {
+            $zip = Join-Path $work 'review.zip'
+            python tools/package_review.py $zip
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            Expand-Archive -LiteralPath $zip -DestinationPath (Join-Path $work 'review')
+            $setup = Join-Path $work 'review/setup.ps1'
+            powershell.exe -NoProfile -File $setup
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            tools/verify_excel.ps1 -Workbook (Join-Path $work 'review/Furusato_nouzei.xlsm')
+          } finally {
+            Remove-Item -LiteralPath $work -Recurse -Force
+          }

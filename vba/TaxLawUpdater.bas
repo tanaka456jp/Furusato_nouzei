@@ -1,292 +1,179 @@
 Attribute VB_Name = "TaxLawUpdater"
 Option Explicit
 
-' Furusato_nouzei: audited year-by-year tax law updates (Excel 365 for Windows)
-' Publisher: https://github.com/tanaka456jp/Furusato_nouzei
-' The public catalog is data, NOT executable code. Never execute remote VBA.
 Private Const CATALOG_URL As String = "https://raw.githubusercontent.com/tanaka456jp/Furusato_nouzei/main/taxdata/catalog.tsv"
-Private Const TRUSTED_RELEASE_PREFIX As String = "https://github.com/tanaka456jp/Furusato_nouzei/releases/download/"
-Private Const UPDATER_VERSION As String = "1.0.0"
+Private Const BUNDLED_REVISION As String = "2026-11-05-bundled"
 
 Public Sub TaxLawUpdate()
-    Dim bk As Workbook, front As Worksheet, year As Long
-    Dim catalog As String, revision As String, packUrl As String, expectedHash As String
-    Dim approved As String, oldYear As Variant, oldStatus As Variant
-    Dim backupFile As String, downloadedFile As String, source As Workbook
-    Dim names As Variant, restoreValues() As Variant, oldTest As Variant
-    Dim i As Long, replaced As Boolean, hadTest As Boolean
-    Dim errMessage As String
-    Set bk = ThisWorkbook
-    Set front = bk.Worksheets("操作画面")
+    Dim book As Workbook, home As Worksheet, settings As Worksheet
+    Dim selectedYear As String, oldYear As Variant, oldRevision As Variant
+    Dim backup As String, changed As Boolean, problem As String, restored As Boolean
 
-    If Not IsNumeric(front.Range("B4").Value2) Then
-        MsgBox "適用年は西暦4桁で指定してください。", vbExclamation, "税制更新"
-        Exit Sub
+    On Error GoTo Failed
+    Set book = ThisWorkbook
+    Set home = book.Worksheets("操作画面")
+    Set settings = book.Worksheets("設定・税率")
+    selectedYear = CStr(home.Range("B4").Value2)
+    If selectedYear <> "2025" And selectedYear <> "2026" Then
+        Err.Raise vbObjectError + 101, , "この版に収録された承認対象年は2025年と2026年です。"
     End If
-    year = CLng(front.Range("B4").Value2)
-    If year < 2025 Or year > 2099 Then
-        MsgBox "適用年は2025～2099年の範囲で指定してください。", vbExclamation, "税制更新"
-        Exit Sub
+    CheckCatalog selectedYear
+    If book.ReadOnly Or Len(book.Path) = 0 Then
+        Err.Raise vbObjectError + 102, , "書き込み可能なローカルのブックを開いてください。"
     End If
 
-    On Error GoTo FAILED
-    Application.ScreenUpdating = False
-    Application.EnableEvents = False
-    Application.StatusBar = "法改正マスタの承認状態を確認中…"
-    catalog = DownloadText(CATALOG_URL)
-    If Not ParseCatalog(catalog, year, approved, revision, packUrl, expectedHash) Then
-        Err.Raise vbObjectError + 2001, , "選択年度は配信カタログにありません。未承認年度の更新は禁止します。"
+    oldYear = settings.Range("B4").Value2
+    oldRevision = home.Range("B29").Value2
+    backup = UniqueBackupPath(book)
+    book.SaveCopyAs backup
+    changed = True
+    settings.Range("B4").Value2 = CLng(selectedYear)
+    book.Worksheets("自動回帰テスト").Calculate
+    book.Worksheets("整合性チェック").Calculate
+    If CStr(book.Worksheets("自動回帰テスト").Range("B49").Value2) <> "PASS" Then
+        Err.Raise vbObjectError + 103, , "内蔵回帰試験が不合格です。"
     End If
-    If UCase$(approved) <> "APPROVED" Then
-        Err.Raise vbObjectError + 2002, , "指定年分は税法改正マスタが未承認です。計算年を変更しません。"
+    If Application.CountIf(book.Worksheets("整合性チェック").Range("B4:B12"), "OK") <> 9 Then
+        Err.Raise vbObjectError + 104, , "内蔵税制マスタに不整合があります。"
     End If
-    oldYear = bk.Worksheets("設定・税率").Range("B4").Value2
-    oldStatus = front.Range("B30").Value2
-
-    If Len(packUrl) > 0 Then
-        If Left$(packUrl, Len(TRUSTED_RELEASE_PREFIX)) <> TRUSTED_RELEASE_PREFIX Then
-            Err.Raise vbObjectError + 2003, , "配信元が許可されたGitHub Releasesではありません。"
-        End If
-        If Not IsSha256(expectedHash) Then
-            Err.Raise vbObjectError + 2004, , "SHA-256が不正です。更新を停止します。"
-        End If
-        downloadedFile = Environ$("TEMP") & "\furusato_taxdata_" & CStr(year) & ".xlsx"
-        Application.StatusBar = "署名済み配布物のダウンロードとSHA-256確認中…"
-        DownloadFile packUrl, downloadedFile
-        If LCase$(FileSha256(downloadedFile)) <> LCase$(expectedHash) Then
-            Err.Raise vbObjectError + 2005, , "SHA-256が一致しません。適用前に中止しました。"
-        End If
-        Set source = Application.Workbooks.Open(Filename:=downloadedFile, UpdateLinks:=0, ReadOnly:=True)
-        If Not YearApprovedIn(source, year) Then
-            Err.Raise vbObjectError + 2006, , "配布物の年度パラメータに承認済みの記載がありません。"
-        End If
-        ' Save a full, non-destructive backup before writing any master cells.
-        backupFile = BackupName(bk)
-        bk.SaveCopyAs backupFile
-        names = MasterSheetNames()
-        ReDim restoreValues(LBound(names) To UBound(names))
-        For i = LBound(names) To UBound(names)
-            restoreValues(i) = bk.Worksheets(CStr(names(i))).Range("A3:V900").Value2
-        Next i
-        oldTest = bk.Worksheets("自動回帰テスト").Range("A3:I400").Formula2
-        hadTest = True
-        replaced = True
-        Application.StatusBar = "年度マスタと独立テストを取り込み中…"
-        For i = LBound(names) To UBound(names)
-            ReplaceMasterSheet source.Worksheets(CStr(names(i))), bk.Worksheets(CStr(names(i)))
-        Next i
-        ' New-year releases must publish separate regression test fixtures.
-        If year >= 2027 Then
-            If Not HasWorksheet(source, "自動回帰テスト") Then
-                Err.Raise vbObjectError + 2007, , "新年度用回帰テストが添付されていません。"
-            End If
-            bk.Worksheets("自動回帰テスト").Range("A3:I400").ClearContents
-            bk.Worksheets("自動回帰テスト").Range("A3:I400").Formula2 = source.Worksheets("自動回帰テスト").Range("A3:I400").Formula2
-        End If
-    ElseIf year <> 2025 And year <> 2026 Then
-        Err.Raise vbObjectError + 2008, , "新しい年度には監査済みExcel更新パックが必須です。"
-    End If
-
-    bk.Worksheets("設定・税率").Range("B4").Value2 = year
-    Application.CalculateFullRebuild
-    If Not YearApprovedIn(bk, year) Then
-        Err.Raise vbObjectError + 2009, , "更新後の年度パラメータは未承認です。"
-    End If
-    If Not ValidateMasterCounts(bk, year) Then
-        Err.Raise vbObjectError + 2010, , "年度マスタの区分数が不足しています。"
-    End If
-    If CStr(bk.Worksheets("自動回帰テスト").Range("B49").Value2) <> "PASS" Then
-        Err.Raise vbObjectError + 2011, , "回帰テストがPASSではありません。反映を取り消します。"
-    End If
-    If year >= 2027 Then
-        If Not NewYearFixturesPassed(bk, year) Then
-            Err.Raise vbObjectError + 2012, , "新年度の独立期待値テストが3件以上PASSしませんでした。"
-        End If
-    End If
-    front.Range("B30").Value2 = "更新済：" & year & "年分 / " & revision & "｜金額は入力後に確認"
-    ' Do not report success if the workbook cannot be saved.
-    bk.Save
-    On Error Resume Next
-    If Not source Is Nothing Then source.Close SaveChanges:=False
-    If Len(downloadedFile) > 0 Then Kill downloadedFile
-    Application.StatusBar = False
-    Application.EnableEvents = True
-    Application.ScreenUpdating = True
-    On Error GoTo 0
-    MsgBox CStr(year) & "年分の承認済税制を適用しました。" & vbCrLf & _
-           "住民税は翌年度課税です。入力金額と整合性チェックを確認してください。", vbInformation, "税制更新"
+    home.Range("B29").Value2 = BUNDLED_REVISION
+    home.Range("B30").Value2 = "適用済 " & Format$(Now, "yyyy/mm/dd hh:nn")
+    Application.Calculate
+    book.Save
     Exit Sub
 
-FAILED:
-    errMessage = Err.Description
+Failed:
+    problem = Err.Description
+    restored = Not changed
     On Error Resume Next
-    If replaced Then
-        For i = LBound(names) To UBound(names)
-            bk.Worksheets(CStr(names(i))).Range("A3:V900").Value2 = restoreValues(i)
-        Next i
-        If hadTest Then bk.Worksheets("自動回帰テスト").Range("A3:I400").Formula2 = oldTest
+    If changed Then
+        Err.Clear
+        settings.Range("B4").Value2 = oldYear
+        home.Range("B29").Value2 = oldRevision
+        restored = (Err.Number = 0)
     End If
-    If Not IsEmpty(oldYear) Then bk.Worksheets("設定・税率").Range("B4").Value2 = oldYear
-    front.Range("B30").Value2 = "更新中止：" & Left$(errMessage, 100)
-    Application.CalculateFullRebuild
-    If Not source Is Nothing Then source.Close SaveChanges:=False
-    If Len(downloadedFile) > 0 Then Kill downloadedFile
-    Application.StatusBar = False
-    Application.EnableEvents = True
-    Application.ScreenUpdating = True
+    If Not home Is Nothing Then home.Range("B30").Value2 = "更新中止"
+    Application.Calculate
     On Error GoTo 0
-    MsgBox "税制更新を中止しました。適用中の年度・既存データは維持しています。" & vbCrLf & errMessage, vbExclamation, "税制更新"
+    If Not restored Then problem = problem & vbCrLf & "更新前のバックアップを開いてください。" & vbCrLf & backup
+    MsgBox problem, vbExclamation, "税制更新を中止しました"
 End Sub
 
-Private Function DownloadText(ByVal url As String) As String
-    Dim r As Object
-    Set r = CreateObject("WinHttp.WinHttpRequest.5.1")
-    r.SetTimeouts 5000, 5000, 12000, 25000
-    r.Open "GET", url, False
-    r.Send
-    If r.Status <> 200 Then Err.Raise vbObjectError + 2020, , "承認済カタログが取得できません（HTTP " & r.Status & "）。"
-    DownloadText = r.ResponseText
-End Function
-
-Private Function ParseCatalog(ByVal text As String, ByVal targetYear As Long, _
-                ByRef approved As String, ByRef revision As String, _
-                ByRef url As String, ByRef sha As String) As Boolean
-    Dim lines As Variant, parts As Variant, line As Variant
-    lines = Split(Replace(text, vbCr, vbNullString), vbLf)
-    For Each line In lines
-        If Len(Trim$(CStr(line))) > 0 And Left$(Trim$(CStr(line)), 1) <> "#" Then
-            parts = Split(CStr(line), "|")
-            If UBound(parts) >= 4 Then
-                If IsNumeric(parts(0)) Then
-                    If CLng(parts(0)) = targetYear Then
-                        approved = Trim$(parts(1))
-                        revision = Trim$(parts(2))
-                        url = Trim$(parts(3))
-                        sha = LCase$(Trim$(parts(4)))
-                        ParseCatalog = True
-                        Exit Function
-                    End If
+Private Sub CheckCatalog(ByVal selectedYear As String)
+    Dim request As Object, line As Variant, fields As Variant
+    Dim matches As Long, approved As Boolean
+    Set request = CreateObject("WinHttp.WinHttpRequest.5.1")
+    request.SetTimeouts 5000, 5000, 10000, 12000
+    request.Open "GET", CATALOG_URL, False
+    request.Option(6) = False ' Disable redirects for the fixed catalog endpoint.
+    request.Send
+    If request.Status <> 200 Then Err.Raise vbObjectError + 105, , "GitHubの税制カタログを取得できません。"
+    For Each line In Split(Replace(request.ResponseText, vbCr, ""), vbLf)
+        If Len(Trim$(CStr(line))) > 0 Then
+            fields = Split(CStr(line), "|")
+            If CStr(fields(0)) = selectedYear Then
+                matches = matches + 1
+                If UBound(fields) = 4 Then
+                    approved = fields(1) = "APPROVED" And fields(2) = BUNDLED_REVISION _
+                        And Len(fields(3)) = 0 And Len(fields(4)) = 0
                 End If
             End If
         End If
     Next line
-End Function
-
-Private Sub DownloadFile(ByVal url As String, ByVal savePath As String)
-    Dim r As Object, stm As Object
-    Set r = CreateObject("WinHttp.WinHttpRequest.5.1")
-    r.SetTimeouts 5000, 5000, 15000, 90000
-    r.Open "GET", url, False
-    r.Send
-    If r.Status <> 200 Then Err.Raise vbObjectError + 2021, , "更新パック取得失敗（HTTP " & r.Status & "）。"
-    Set stm = CreateObject("ADODB.Stream")
-    stm.Type = 1: stm.Open
-    stm.Write r.ResponseBody
-    stm.SaveToFile savePath, 2
-    stm.Close
+    If matches <> 1 Or Not approved Then
+        Err.Raise vbObjectError + 106, , "このブックに対応する承認済み内蔵版を確認できません。"
+    End If
 End Sub
 
-Private Function IsSha256(ByVal s As String) As Boolean
-    Dim i As Long, c As String
-    If Len(s) <> 64 Then Exit Function
-    For i = 1 To 64
-        c = LCase$(Mid$(s, i, 1))
-        If InStr(1, "0123456789abcdef", c, vbBinaryCompare) = 0 Then Exit Function
-    Next i
-    IsSha256 = True
+Private Function UniqueBackupPath(ByVal book As Workbook) As String
+    Dim fso As Object, folder As String, path As String, stem As String, serial As Long
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    If Not fso.FolderExists(book.Path) Then Err.Raise vbObjectError + 107, , "ローカルの保存先を確認してください。"
+    folder = fso.BuildPath(book.Path, "Furusato_backups")
+    If Not fso.FolderExists(folder) Then fso.CreateFolder folder
+    stem = fso.GetBaseName(book.Name) & "_" & Format$(Now, "yyyymmdd_hhnnss")
+    Do
+        serial = serial + 1
+        path = fso.BuildPath(folder, stem & "_" & CStr(serial) & ".xlsm")
+    Loop While fso.FileExists(path)
+    UniqueBackupPath = path
 End Function
 
-Private Function FileSha256(ByVal filename As String) As String
-    ' Reads SHA256 via the Windows built-in certutil; no downloaded code is executed.
-    Dim sh As Object, cmd As String, output As String, lines As Variant, one As Variant, token As String
-    Set sh = CreateObject("WScript.Shell")
-    cmd = "cmd.exe /d /c certutil -hashfile """ & filename & """ SHA256"
-    output = sh.Exec(cmd).StdOut.ReadAll
-    lines = Split(Replace(output, vbCr, vbNullString), vbLf)
-    For Each one In lines
-        token = LCase$(Replace(Trim$(CStr(one)), " ", ""))
-        If IsSha256(token) Then
-            FileSha256 = token
-            Exit Function
-        End If
-    Next one
-    Err.Raise vbObjectError + 2022, , "更新パックのSHA-256を検証できません。"
-End Function
-
-Private Function MasterSheetNames() As Variant
-    MasterSheetNames = Array("年度パラメータ", "年度別基礎控除", "年度別人的控除", _
-       "年度別特定親族", "年度別配偶者控除", "年度別保険料計算", _
-       "年度別控除上限", "年度別所得税率", "年度別給与控除")
-End Function
-
-Private Function HasWorksheet(ByVal b As Workbook, ByVal name As String) As Boolean
-    Dim s As Worksheet
-    On Error Resume Next
-    Set s = b.Worksheets(name)
-    HasWorksheet = Not s Is Nothing
-    On Error GoTo 0
-End Function
-
-Private Sub ReplaceMasterSheet(ByVal src As Worksheet, ByVal dst As Worksheet)
-    Dim lr As Long, lc As Long, formulaCells As Range
-    lr = src.Cells(src.Rows.Count, 1).End(xlUp).Row
-    lc = src.Cells(3, src.Columns.Count).End(xlToLeft).Column
-    If lr < 4 Or lr > 900 Or lc < 3 Or lc > 22 Then Err.Raise vbObjectError + 2023, , "配布マスタの行列範囲が不正：" & src.Name
-    ' Master sheets must contain VALUES only; never execute imported formulas.
-    If Application.WorksheetFunction.CountA(src.Range(src.Cells(4, 1), src.Cells(lr, lc))) = 0 Then Err.Raise vbObjectError + 2024, , "配布マスタが空です：" & src.Name
-    On Error Resume Next
-    Set formulaCells = src.Range(src.Cells(3, 1), src.Cells(lr, lc)).SpecialCells(xlCellTypeFormulas)
-    On Error GoTo 0
-    If Not formulaCells Is Nothing Then Err.Raise vbObjectError + 2025, , "配布マスタに数式が含まれます：" & src.Name
-    dst.Range("A3:V900").ClearContents
-    dst.Range(dst.Cells(3, 1), dst.Cells(lr, lc)).Value2 = src.Range(src.Cells(3, 1), src.Cells(lr, lc)).Value2
+Public Sub RecalculateCase()
+    Application.Calculate
 End Sub
 
-Private Function YearApprovedIn(ByVal b As Workbook, ByVal year As Long) As Boolean
-    Dim ws As Worksheet, i As Long, found As Long
-    Set ws = b.Worksheets("年度パラメータ")
-    For i = 4 To 50
-        If ws.Cells(i, 1).Value2 = year Then
-            found = found + 1
-            If CStr(ws.Cells(i, 2).Value2) = "承認済" Then YearApprovedIn = True
-        End If
-    Next i
-    If found <> 1 Then YearApprovedIn = False
-End Function
+Public Sub NewCase()
+    If MsgBox("現在の入力を消去しますか？保存が必要な場合は先に案件保存してください。", _
+              vbQuestion + vbYesNo + vbDefaultButton2, "新規入力") <> vbYes Then Exit Sub
+    ThisWorkbook.Worksheets("操作画面").Range("B11:B26,D11:D25").ClearContents
+    Application.Calculate
+End Sub
 
-Private Function ValidateMasterCounts(ByVal b As Workbook, ByVal year As Long) As Boolean
-    Dim n As Variant, ws As Worksheet, expected As Variant, i As Long, rows As Long
-    n = Array("年度別基礎控除", "年度別人的控除", "年度別特定親族", "年度別配偶者控除", _
-              "年度別保険料計算", "年度別控除上限", "年度別所得税率", "年度別給与控除")
-    expected = Array(9, 11, 11, 66, IIf(year = 2025, 16, 20), 1, 7, 5)
-    For i = LBound(n) To UBound(n)
-        Set ws = b.Worksheets(CStr(n(i)))
-        rows = Application.WorksheetFunction.CountIf(ws.Range("A4:A900"), year)
-        If year <= 2026 Then
-            If rows <> CLng(expected(i)) Then Exit Function
-        Else
-            If rows < 1 Then Exit Function
-        End If
-    Next i
-    ValidateMasterCounts = True
-End Function
+Public Sub SaveCase()
+    Dim destination As Variant
+    On Error GoTo Failed
+    destination = Application.GetSaveAsFilename(InitialFileName:="Furusato_case.xlsm", _
+                    FileFilter:="Excel Macro-Enabled Workbook (*.xlsm),*.xlsm")
+    If VarType(destination) = vbBoolean Then Exit Sub
+    If LCase$(Right$(CStr(destination), 5)) <> ".xlsm" Then
+        Err.Raise vbObjectError + 108, , ".xlsmの拡張子で保存してください。"
+    End If
+    If CreateObject("Scripting.FileSystemObject").FileExists(CStr(destination)) Then
+        Err.Raise vbObjectError + 109, , "同名ファイルがあります。別の名前で保存してください。"
+    End If
+    Application.Calculate
+    ThisWorkbook.SaveCopyAs CStr(destination)
+    MsgBox "案件を保存しました。再編集するときは保存したファイルをExcelで開いてください。", vbInformation
+    Exit Sub
+Failed:
+    MsgBox Err.Description, vbExclamation, "案件の保存"
+End Sub
 
-Private Function NewYearFixturesPassed(ByVal b As Workbook, ByVal year As Long) As Boolean
-    Dim ws As Worksheet, i As Long, countRows As Long
-    Set ws = b.Worksheets("自動回帰テスト")
-    For i = 4 To 400
-        If ws.Cells(i, 3).Value2 = year Then
-            countRows = countRows + 1
-            If ws.Cells(i, 8).Value2 <> "PASS" Then Exit Function
-        End If
-    Next i
-    NewYearFixturesPassed = (countRows >= 3)
-End Function
+Public Sub ShowDetails()
+    With ThisWorkbook.Worksheets("計算根拠")
+        .Visible = xlSheetVisible
+        .Activate
+    End With
+End Sub
 
-Private Function BackupName(ByVal b As Workbook) As String
-    Dim dot As Long, base As String
-    dot = InStrRev(b.FullName, ".")
-    If dot = 0 Then Err.Raise vbObjectError + 2026, , "ブックは先に保存してください。"
-    base = Left$(b.FullName, dot - 1)
-    BackupName = base & "_更新前_" & Format$(Now, "yyyymmdd_hhnnss") & ".xlsm"
-End Function
+Public Sub ReturnHome()
+    ThisWorkbook.Worksheets("操作画面").Activate
+    ThisWorkbook.Worksheets("計算根拠").Visible = xlSheetVeryHidden
+End Sub
+
+Public Sub PrintDetails()
+    On Error GoTo Failed
+    Application.Calculate
+    If CStr(ThisWorkbook.Worksheets("操作画面").Range("B28").Value2) <> "正常" Then
+        Err.Raise vbObjectError + 110, , "入力と計算状態を確認してください。"
+    End If
+    ShowDetails
+    ThisWorkbook.Worksheets("計算根拠").PrintPreview
+    Exit Sub
+Failed:
+    MsgBox Err.Description, vbExclamation, "印刷"
+End Sub
+
+Public Sub ExportDetails()
+    Dim destination As Variant
+    On Error GoTo Failed
+    Application.Calculate
+    If CStr(ThisWorkbook.Worksheets("操作画面").Range("B28").Value2) <> "正常" Then
+        Err.Raise vbObjectError + 111, , "入力と計算状態を確認してください。"
+    End If
+    destination = Application.GetSaveAsFilename(InitialFileName:="Furusato_result.pdf", _
+                   FileFilter:="PDF (*.pdf),*.pdf")
+    If VarType(destination) = vbBoolean Then Exit Sub
+    If LCase$(Right$(CStr(destination), 4)) <> ".pdf" Then
+        Err.Raise vbObjectError + 112, , ".pdfの拡張子で保存してください。"
+    End If
+    If CreateObject("Scripting.FileSystemObject").FileExists(CStr(destination)) Then
+        Err.Raise vbObjectError + 113, , "同名のPDFがあります。別の名前を指定してください。"
+    End If
+    ShowDetails
+    ThisWorkbook.Worksheets("計算根拠").ExportAsFixedFormat Type:=xlTypePDF, Filename:=CStr(destination)
+    Exit Sub
+Failed:
+    MsgBox Err.Description, vbExclamation, "PDF出力"
+End Sub
