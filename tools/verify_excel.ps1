@@ -48,7 +48,31 @@ try {
         Assert-Value $home.Range('D8').Value2 374500 "$year resident income levy"
         Assert-Value $home.Range('B8').Value2 109000 "$year donation estimate"
     }
+    # Exercise the actual GitHub-approved update transaction, not only recalculation.
+    # The test runs on an isolated copy; no customer workbook is touched.
+    Assert-Value ([bool]($excel.Run('TaxLawUpdater.TaxLawUpdateForTest'))) $true 'Online approved-year update'
+    Assert-Value $settings.Range('B4').Value2 2026 'Approved year persisted in memory'
+    Assert-Value $home.Range('B29').Value2 '2026-11-05-bundled' 'Revision after update'
+    if (-not ([string]$home.Range('B30').Value2).StartsWith('適用済')) {
+        throw 'Update status was not recorded'
+    }
+    $backups = @(Get-ChildItem -LiteralPath (Join-Path $dir 'Furusato_backups') -Filter '*.xlsm' -File)
+    if ($backups.Count -ne 1 -or $backups[0].Length -le 20000) {
+        throw 'Approved-year update did not produce a usable backup'
+    }
+
+    # A non-approved year must be refused *without* modal dialogs or side effects.
+    $oldStatus = [string]$home.Range('B30').Value2
     $home.Range('B4').Value2 = 2027.0
+    $rejected = $false
+    try {
+        $null = $excel.Run('TaxLawUpdater.TaxLawUpdateForTest')
+    } catch {
+        $rejected = $true
+    }
+    if (-not $rejected) { throw 'Unapproved year was accepted' }
+    Assert-Value $settings.Range('B4').Value2 2026 'Unapproved update preserved applied year'
+    Assert-Value ([string]$home.Range('B30').Value2) $oldStatus 'Unapproved update preserved status'
     $excel.CalculateFullRebuild()
     Assert-Value $home.Range('B8').Value2 '' 'Selected and applied year mismatch'
     $home.Range('B4').Value2 = 2026.0
@@ -68,8 +92,25 @@ try {
     if ((Get-Item -LiteralPath $pdf).Length -eq 0) { throw 'Empty PDF' }
     $excel.Run('TaxLawUpdater.ReturnHome')
     Assert-Value $detail.Visible 2 'Details hidden after return'
+    # Reopen the same QA copy and verify saved case inputs and output survive restart.
+    $home.Range('B26').Value2 = '該当なし'
+    $home.Range('B4').Value2 = 2026.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $home.Range('B8').Value2 109000 'Amount before reopen'
     $book.Save()
-    Write-Output 'PASS: Windows Excel workbook calculation, 52 fixtures, two reference cases, fail-closed display and PDF.'
+    $book.Close($false)
+    $book = $null
+    $book = $excel.Workbooks.Open($copy, 0, $false)
+    $home = $book.Worksheets.Item('操作画面')
+    $detail = $book.Worksheets.Item('計算根拠')
+    Assert-Value $home.Range('B12').Value2 7000000 'Salary retained after reopen'
+    Assert-Value $home.Range('B8').Value2 109000 'Estimate retained after reopen'
+    Assert-Value $detail.Visible 2 'Calculation details remain hidden after reopen'
+    if ($home.Buttons().Item('btnTaxLawUpdate').OnAction -notmatch 'TaxLawUpdater.TaxLawUpdate') {
+        throw 'Tax update button is not wired to its macro'
+    }
+    if (-not $detail.PageSetup.PrintArea) { throw 'Calculation details lack print area' }
+    Write-Output 'PASS: Windows Excel 52 fixtures; synthetic 2025/2026 values; approved and refused updates; backup; PDF; save/reopen; button wiring.'
 } finally {
     if ($null -ne $book) { $book.Close($false) }
     if ($null -ne $excel) { $excel.Quit() }
