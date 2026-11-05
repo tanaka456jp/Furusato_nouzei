@@ -25,6 +25,7 @@ jobs:
           python-version: '3.11'
       - run: python -m pip install openpyxl==3.1.5
       - run: |
+          python tools/verify_baseline.py
           python tools/qa_contract.py workbook/baseline.xlsx
           python tools/test_workbook.py
           python tools/build_workbook.py Furusato_nouzei_audit.xlsx
