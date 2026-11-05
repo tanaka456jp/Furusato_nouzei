@@ -5,7 +5,7 @@ import json
 from shutil import copyfile
 import sys
 
-from openpyxl import load_workbook
+from openpyxl import Workbook, load_workbook
 from build_workbook import ROOT, HOME, build
 
 
@@ -25,6 +25,9 @@ def make(folder):
         ("current_review", "03_current_review.xlsx"),
         ("all_sheets_visible", "04_all_sheets_visible.xlsx"),
         ("without_status_formula", "05_without_status_formula.xlsx"),
+        ("fresh_minimal_openpyxl", "06_fresh_minimal_openpyxl.xlsx"),
+        ("baseline_values_only", "07_baseline_values_only.xlsx"),
+        ("baseline_unstyled_formulas", "08_baseline_unstyled_formulas.xlsx"),
     ]
     paths = {key: folder / name for key, name in names}
     original_sha = checksum(source)
@@ -43,6 +46,33 @@ def make(folder):
     book[HOME]["B28"] = "診断専用・計算禁止"
     book.save(paths["without_status_formula"])
     book.close()
+    # OOXML origin control: if the trivial openpyxl file fails but Excel native
+    # succeeds, inspect host file-block policies rather than changing formulas.
+    clean = Workbook()
+    clean.active.title = "Probe"
+    clean.active["A1"] = "OOXML origin control - DIAGNOSTIC ONLY"
+    clean.save(paths["fresh_minimal_openpyxl"])
+    clean.close()
+
+    # Reconstruct 19 baseline worksheets with no source metadata or styles.
+    # Separate values-only from formula-preserving variants.
+    def write_clean(keep_formulas, target):
+        original = load_workbook(source)
+        fresh = Workbook()
+        fresh.remove(fresh.active)
+        for src in original:
+            dst = fresh.create_sheet(src.title)
+            for row in src:
+                for cell in row:
+                    if cell.value is not None and (keep_formulas or cell.data_type != "f"):
+                        dst[cell.coordinate] = cell.value
+        fresh.active = 0
+        fresh.save(target)
+        fresh.close()
+        original.close()
+
+    write_clean(False, paths["baseline_values_only"])
+    write_clean(True, paths["baseline_unstyled_formulas"])
     assert checksum(source) == original_sha
     assert checksum(paths["baseline_original"]) == original_sha
     report = {
@@ -60,8 +90,28 @@ def make(folder):
         json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
     if len(sys.argv) == 3 and sys.argv[2] == "--self-test":
-        assert len(report["probes"]) == 5
-        assert all(p["bytes"] > 20000 for p in report["probes"])
+        assert len(report["probes"]) == 8
+        assert all(p["bytes"] > 0 for p in report["probes"])
+        assert all(p["bytes"] > 20000 for p in report["probes"][:5])
+        assert paths["fresh_minimal_openpyxl"].stat().st_size < 20000
+        v = load_workbook(paths["baseline_values_only"])
+        f = load_workbook(paths["baseline_unstyled_formulas"])
+        original = load_workbook(source)
+        try:
+            assert len(v.sheetnames) == len(f.sheetnames) == len(original.sheetnames) == 19
+            for original_sheet in original:
+                vs, fs = v[original_sheet.title], f[original_sheet.title]
+                for row in original_sheet:
+                    for cell in row:
+                        expected = cell.value
+                        assert fs[cell.coordinate].value == expected
+                        assert vs[cell.coordinate].value == (
+                            expected if cell.data_type != "f" else None
+                        )
+        finally:
+            original.close()
+            v.close()
+            f.close()
         a = load_workbook(paths["current_review"])
         b = load_workbook(paths["all_sheets_visible"])
         c = load_workbook(paths["without_status_formula"])
@@ -77,7 +127,7 @@ def make(folder):
             b.close()
             c.close()
         assert checksum(source) == original_sha
-    print("DIAGNOSTIC ONLY: generated five XLSX opening candidates.")
+    print("DIAGNOSTIC ONLY: generated eight XLSX opening candidates.")
     return report
 
 
