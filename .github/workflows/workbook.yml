@@ -39,6 +39,7 @@ jobs:
           python tools/test_setup_contract.py Furusato_nouzei_v4_REVIEW.zip
           python tools/test_shared_runner_contract.py
           python tools/test_open_probe_launcher.py
+          python tools/test_vbaupdater_bridge.py
           python tools/make_excel_open_probes.py Excel_open_probes --self-test
       - name: Parse shared-PC Windows PowerShell setup (static syntax)
         shell: pwsh
@@ -98,6 +99,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Excel opening diagnostic contract failed' }
           python tools/test_open_probe_launcher.py
           if ($LASTEXITCODE -ne 0) { throw 'One-click Excel launcher contract failed' }
+          python tools/test_vbaupdater_bridge.py
+          if ($LASTEXITCODE -ne 0) { throw 'VBAUpdater sandbox staging contract failed' }
       - name: Verify native PowerShell 5.1 and Japanese-path extraction
         shell: powershell
         run: |
@@ -157,6 +160,22 @@ jobs:
           if (-not $report.workbook_sha256) { throw 'Excel acceptance report lacks workbook SHA-256' }
           $actual = (Get-FileHash -LiteralPath (Join-Path $work 'review/Furusato_nouzei.xlsm') -Algorithm SHA256).Hash
           if ($report.workbook_sha256 -ne $actual) { throw 'Excel acceptance evidence does not match generated workbook SHA-256' }
+      - name: VBAUpdater isolated read-only integration
+        if: success()
+        shell: powershell
+        run: |
+          $work = Join-Path $env:RUNNER_TEMP ('furusato-' + $env:GITHUB_RUN_ID + '-' + $env:GITHUB_RUN_ATTEMPT)
+          $reviewed = Join-Path $work 'review/Furusato_nouzei.xlsm'
+          $evidence = Join-Path $work 'excel_acceptance.json'
+          if (-not (Test-Path -LiteralPath $evidence)) { throw 'Excel acceptance evidence not found' }
+          $accepted = Get-Content -LiteralPath $evidence -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($accepted.status -ne 'PASS') { throw 'VBAUpdater must never run before Excel acceptance PASS' }
+          $bridgeEvidence = Join-Path $work 'vbaupdater_bridge.json'
+          & .\tools\verify_vbaupdater_bridge.ps1 -Workbook $reviewed -StagingRoot (Join-Path $work 'vbaupdater_project') -EvidencePath $bridgeEvidence
+          if (-not $?) { throw 'Isolated VBAUpdater bridge failed' }
+          $bridge = Get-Content -LiteralPath $bridgeEvidence -Raw -Encoding UTF8 | ConvertFrom-Json
+          if (-not $bridge.original_preserved -or $bridge.status -eq 'FAIL') { throw 'VBAUpdater evidence reported an unsafe result' }
+          ('VBAUpdater isolated integration: ' + $bridge.status + ' (independent of Excel acceptance).') >> $env:GITHUB_STEP_SUMMARY
       - name: Upload verified review XLSM
         if: success()
         uses: actions/upload-artifact@v4
@@ -165,6 +184,7 @@ jobs:
           path: |
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/review/Furusato_nouzei.xlsm
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/excel_acceptance.json
+            ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/vbaupdater_bridge.json
           if-no-files-found: error
           retention-days: 14
       - name: Upload setup diagnostics
@@ -177,6 +197,7 @@ jobs:
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/review/setup_launcher.log
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/excel_acceptance.json
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/excel_open_probe.json
+            ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/vbaupdater_bridge.json
           if-no-files-found: ignore
           retention-days: 7
       - name: Clean temporary acceptance data
