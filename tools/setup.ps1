@@ -74,6 +74,23 @@ try {
     } catch {
         $originalOpenError = $_.Exception.Message
         Log ('Excelが配布ブックを開けませんでした: ' + $originalOpenError)
+        # Try Excel's documented read-only Open and Repair mode on the
+        # disposable copy. Never silently use a repaired result for tax work.
+        $repair = $null
+        $optional = [Type]::Missing
+        try {
+            $repair = $excel.Workbooks.Open(
+                $stagedSource, 0, $true, $optional, $optional, $optional,
+                $optional, $optional, $optional, $optional, $optional,
+                $optional, $optional, $optional, 1)
+            if ($null -ne $repair) {
+                Log ('Excelの修復モードは開くことに成功：' + $repair.Worksheets.Count + 'シート。内容が修復された可能性があるため、製品への自動採用はしません。')
+            }
+        } catch {
+            Log ('Excelの修復モードでも開けませんでした。詳細: ' + $_.Exception.Message)
+        } finally {
+            if ($null -ne $repair) { try { $repair.Close($false) } catch {} }
+        }
         # A workbook generated within this SAME isolated Excel process
         # discriminates damaged/blocked input from a broken Office COM setup.
         $probe = $null
