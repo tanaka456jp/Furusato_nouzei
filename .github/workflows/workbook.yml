@@ -44,6 +44,9 @@ jobs:
        contains(github.event.pull_request.body, '[run-windows-excel]')) ||
       (github.event_name == 'workflow_dispatch' && inputs.excel)
     runs-on: [self-hosted, Windows, furusato-excel]
+    concurrency:
+      group: furusato-excel-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
