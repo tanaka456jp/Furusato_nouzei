@@ -92,25 +92,55 @@ try {
     if ((Get-Item -LiteralPath $pdf).Length -eq 0) { throw 'Empty PDF' }
     $excel.Run('TaxLawUpdater.ReturnHome')
     Assert-Value $detail.Visible 2 'Details hidden after return'
-    # Reopen the same QA copy and verify saved case inputs and output survive restart.
+    # Reopen the QA copy after a successful case save.
     $home.Range('B26').Value2 = '該当なし'
     $home.Range('B4').Value2 = 2026.0
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value $home.Range('B8').Value2 109000 'Amount before reopen'
     $book.Save()
+
+    # Inject a failed update *after* the applied year changes (test copy only).
+    # This proves that rollback is persisted, not merely restored in memory.
+    $originalRegressionFormula = [string]$checks.Range('B49').Formula
+    $oldUpdateStatus = [string]$home.Range('B30').Value2
+    $checks.Range('B49').Formula = '="FAIL"'
+    $home.Range('B4').Value2 = 2025.0
+    $failedAfterMutation = $false
+    try {
+        $null = $excel.Run('TaxLawUpdater.TaxLawUpdateForTest')
+    } catch {
+        $failedAfterMutation = $true
+    }
+    if (-not $failedAfterMutation) { throw 'Corrupted regression did not abort the transaction' }
+    Assert-Value $settings.Range('B4').Value2 2026 'Rollback applied year'
+    Assert-Value ([string]$home.Range('B30').Value2) $oldUpdateStatus 'Rollback update status'
     $book.Close($false)
     $book = $null
+
+    # Restore input to approved 2026 and the damaged fixture only AFTER
+    # verifying the transaction rollback survived closing without Save.
+    $excel.AutomationSecurity = 1
     $book = $excel.Workbooks.Open($copy, 0, $false)
+    $excel.AutomationSecurity = 3
     $home = $book.Worksheets.Item('操作画面')
+    $settings = $book.Worksheets.Item('設定・税率')
+    $checks = $book.Worksheets.Item('自動回帰テスト')
     $detail = $book.Worksheets.Item('計算根拠')
+    Assert-Value $settings.Range('B4').Value2 2026 'Rollback persisted across reopen'
+    Assert-Value ([string]$home.Range('B30').Value2) $oldUpdateStatus 'Rollback status persisted across reopen'
+    $checks.Range('B49').Formula = $originalRegressionFormula
+    $home.Range('B4').Value2 = 2026.0
+    $excel.CalculateFullRebuild()
+    Assert-Value $checks.Range('B49').Value2 'PASS' 'Regression restored after injected fault'
     Assert-Value $home.Range('B12').Value2 7000000 'Salary retained after reopen'
     Assert-Value $home.Range('B8').Value2 109000 'Estimate retained after reopen'
     Assert-Value $detail.Visible 2 'Calculation details remain hidden after reopen'
+    $book.Save()
     if ($home.Buttons().Item('btnTaxLawUpdate').OnAction -notmatch 'TaxLawUpdater.TaxLawUpdate') {
         throw 'Tax update button is not wired to its macro'
     }
     if (-not $detail.PageSetup.PrintArea) { throw 'Calculation details lack print area' }
-    Write-Output 'PASS: Windows Excel 52 fixtures; synthetic 2025/2026 values; approved and refused updates; backup; PDF; save/reopen; button wiring.'
+    Write-Output 'PASS: Windows Excel 52 fixtures; 2025/2026 amounts; approved/rejected updates; persisted fault rollback; backup; PDF; save/reopen; button wiring.'
 } finally {
     if ($null -ne $book) { $book.Close($false) }
     if ($null -ne $excel) { $excel.Quit() }
