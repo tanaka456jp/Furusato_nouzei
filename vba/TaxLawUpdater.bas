@@ -71,6 +71,9 @@ Failed:
     If changed Then
         Err.Clear
         settings.Range("B4").Value2 = oldYear
+        ' Restore the visible selection as well, so a failed update does not
+        ' leave the calculator in an unexplained year-mismatch state.
+        home.Range("B4").Value2 = oldYear
         home.Range("B29").Value2 = oldRevision
         home.Range("B30").Value2 = oldStatus
         If Err.Number = 0 Then
