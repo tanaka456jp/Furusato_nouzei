@@ -24,6 +24,9 @@ try {
     $settings = $book.Worksheets.Item('設定・税率')
     $checks = $book.Worksheets.Item('自動回帰テスト')
     $detail = $book.Worksheets.Item('計算根拠')
+    # This is a renamed test COPY, so bind its buttons to the test workbook.
+    $excel.Run('TaxLawUpdater.BindButtons')
+    Assert-Value ([string]$home.Buttons().Item('btnTaxLawUpdate').OnAction) "'FurusatoQA.xlsm'!TaxLawUpdater.TaxLawUpdate" 'Main case macro ownership'
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value $checks.Range('B47').Value2 52 'Regression cases'
     Assert-Value $checks.Range('B49').Value2 'PASS' 'Regression verdict'
@@ -106,14 +109,18 @@ try {
     }
     if (-not $mustRejectOverwrite) { throw 'Existing case file was overwritten' }
     $excel.AutomationSecurity = 1
-    $savedCase = $excel.Workbooks.Open($casePath, 0, $true)
-    $excel.AutomationSecurity = 3
+    $excel.EnableEvents = $true
+    try {
+        $savedCase = $excel.Workbooks.Open($casePath, 0, $true)
+    } finally {
+        $excel.EnableEvents = $false
+        $excel.AutomationSecurity = 3
+    }
     try {
         Assert-Value $savedCase.Worksheets.Item('操作画面').Range('B12').Value2 7000000 'Separate case preserves salary'
         Assert-Value $savedCase.Worksheets.Item('操作画面').Range('B8').Value2 109000 'Separate case preserves result'
-        if ($savedCase.Worksheets.Item('操作画面').Buttons().Item('btnTaxLawUpdate').OnAction -notmatch 'TaxLawUpdater.TaxLawUpdate') {
-            throw 'Separate saved case is missing the tax update button'
-        }
+        Assert-Value ([string]$savedCase.Worksheets.Item('操作画面').Buttons().Item('btnTaxLawUpdate').OnAction) "'case_preservation.xlsm'!TaxLawUpdater.TaxLawUpdate" 'Copied case macro ownership'
+        Assert-Value ([string]$savedCase.Worksheets.Item('計算根拠').Buttons().Item('btnExportDetails').OnAction) "'case_preservation.xlsm'!TaxLawUpdater.ExportDetails" 'Copied case PDF macro ownership'
     } finally {
         $savedCase.Close($false)
     }
@@ -162,9 +169,8 @@ try {
     Assert-Value $home.Range('B8').Value2 109000 'Estimate retained after reopen'
     Assert-Value $detail.Visible 2 'Calculation details remain hidden after reopen'
     $book.Save()
-    if ($home.Buttons().Item('btnTaxLawUpdate').OnAction -notmatch 'TaxLawUpdater.TaxLawUpdate') {
-        throw 'Tax update button is not wired to its macro'
-    }
+    $excel.Run('TaxLawUpdater.BindButtons')
+    Assert-Value ([string]$home.Buttons().Item('btnTaxLawUpdate').OnAction) "'FurusatoQA.xlsm'!TaxLawUpdater.TaxLawUpdate" 'Reloaded case macro ownership'
     if (-not $detail.PageSetup.PrintArea) { throw 'Calculation details lack print area' }
     Write-Output 'PASS: Windows Excel 52 fixtures; 2025/2026 amounts; approved/rejected updates; persisted fault rollback; backup; PDF; isolated no-overwrite case-save; save/reopen; button wiring.'
 } finally {
