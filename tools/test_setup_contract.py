@@ -34,6 +34,12 @@ assert "CodeModule.AddFromString($sourceBody)" in ps, "VBA Unicode registration 
 assert "GetBytes($sourceVba)" not in ps, "Installer still depends on local ANSI code page"
 assert "VBComponents.Import($tempBas)" not in ps, "Installer still imports locale-sensitive ANSI BAS"
 assert "TaxLawUpdater.RecalculateCase" in ps, "Macro smoke run missing"
+assert "TaxLawUpdater.BindButtons" in ps, "First-run macro rebinding smoke missing"
+assert "TaxLawUpdater.BindButtons" in ps.split("Private Sub Workbook_Open()", 1)[-1], "Workbook_Open must rebind buttons for saved cases"
+assert "Public Sub BindButtons()" in vba, "Workbook-specific button binding routine missing"
+assert "Replace(ThisWorkbook.Name" in vba, "Button macros are not workbook-qualified"
+assert "SaveCaseToFile" in vba, "Case save routine missing"
+assert "btnSaveCase" in vba and "btnExportDetails" in vba, "Buttons coverage incomplete"
 assert "xl/vbaProject.bin" in ps, "VBA project save validation missing"
 assert "Furusato_nouzei.xlsm" in ps and "Furusato_nouzei.xlsx" in ps, "Naming mismatch"
 assert 'Public Sub TaxLawUpdate()' in vba
