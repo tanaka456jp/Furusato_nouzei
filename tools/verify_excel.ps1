@@ -91,10 +91,28 @@ try {
     $excel.Run('TaxLawUpdater.ShowDetails')
     Assert-Value $detail.Visible -1 'Details opened by VBA'
     $pdf = Join-Path $dir 'FurusatoQA.pdf'
-    $detail.ExportAsFixedFormat(0, $pdf)
-    if ((Get-Item -LiteralPath $pdf).Length -eq 0) { throw 'Empty PDF' }
+    Assert-Value ([bool]($excel.Run('TaxLawUpdater.ExportDetailsToFile', $pdf))) $true 'VBA PDF export'
+    if ((Get-Item -LiteralPath $pdf).Length -lt 500) { throw 'Empty or corrupt PDF' }
+    $pdfSignature = -join ((Get-Content -LiteralPath $pdf -Encoding Byte -TotalCount 5) | ForEach-Object { [char]$_ })
+    Assert-Value $pdfSignature '%PDF-' 'PDF header'
+    Assert-Value $detail.Visible -1 'User remains on detail screen after PDF export'
+    $originalPdfHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $pdf).Hash
+    $mustRejectPdfOverwrite = $false
+    try {
+        $null = $excel.Run('TaxLawUpdater.ExportDetailsToFile', $pdf)
+    } catch {
+        $mustRejectPdfOverwrite = $true
+    }
+    if (-not $mustRejectPdfOverwrite) { throw 'Existing PDF was overwritten' }
+    Assert-Value ((Get-FileHash -Algorithm SHA256 -LiteralPath $pdf).Hash) $originalPdfHash 'PDF not modified on refusal'
     $excel.Run('TaxLawUpdater.ReturnHome')
     Assert-Value $detail.Visible 2 'Details hidden after return'
+    $hiddenPdf = Join-Path $dir 'FurusatoQA_hidden.pdf'
+    Assert-Value ([bool]($excel.Run('TaxLawUpdater.ExportDetailsToFile', $hiddenPdf))) $true 'PDF export from home screen'
+    Assert-Value $detail.Visible 2 'Details returned to hidden after home-screen PDF export'
+    if (@(Get-ChildItem -LiteralPath $dir -Filter '_furusato_pdf_*.pdf' -File).Count -ne 0) {
+        throw 'Temporary PDF remained after success or rejected overwrite'
+    }
 
     # Save a separate case file, verify its content, and reject accidental overwrite.
     $casePath = Join-Path $dir 'case_preservation.xlsm'
@@ -180,7 +198,7 @@ try {
     $excel.Run('TaxLawUpdater.BindButtons')
     Assert-Value ([string]$home.Buttons().Item('btnTaxLawUpdate').OnAction) "'FurusatoQA.xlsm'!TaxLawUpdater.TaxLawUpdate" 'Reloaded case macro ownership'
     if (-not $detail.PageSetup.PrintArea) { throw 'Calculation details lack print area' }
-    Write-Output 'PASS: Windows Excel 52 fixtures; 2025/2026 amounts; approved/rejected updates; persisted fault rollback; backup; PDF; isolated no-overwrite case-save; save/reopen; button wiring.'
+    Write-Output 'PASS: Windows Excel 52 fixtures; 2025/2026 amounts; approved/rejected updates; persisted fault rollback; backup; VBA PDF/hidden UI/no-overwrite; isolated no-overwrite case-save; save/reopen; button wiring.'
 } finally {
     if ($null -ne $book) { $book.Close($false) }
     if ($null -ne $excel) { $excel.Quit() }
