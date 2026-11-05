@@ -127,6 +127,8 @@ jobs:
           $report = Get-Content -LiteralPath $evidence -Raw -Encoding UTF8 | ConvertFrom-Json
           if ($report.status -ne 'PASS') { throw 'Excel acceptance report is not PASS' }
           if (-not $report.workbook_sha256) { throw 'Excel acceptance report lacks workbook SHA-256' }
+          $actual = (Get-FileHash -LiteralPath (Join-Path $work 'review/Furusato_nouzei.xlsm') -Algorithm SHA256).Hash
+          if ($report.workbook_sha256 -ne $actual) { throw 'Excel acceptance evidence does not match generated workbook SHA-256' }
       - name: Upload verified review XLSM
         if: success()
         uses: actions/upload-artifact@v4
