@@ -90,7 +90,7 @@ def audit(path: Path) -> int:
                 data = list(expected[year])
                 actual = []
                 for row in list(sheet.iter_rows(min_row=4, values_only=True)):
-                    if row[0] != year:
+                    if not row or row[0] != year:
                         continue
                     # A/B = year and exclusive lower bound; C+ values.
                     first = numeric(row[1])
