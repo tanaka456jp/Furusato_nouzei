@@ -5,6 +5,7 @@ Windows 11／Excel 365向け開発版。正式配布の判定はHOLDです。
 - [操作手順](docs/user-guide.md)
 - [税制マスタの更新管理](taxdata/README.md)
 - [品質検証・残存課題](docs/review-v4.md)
+- [Windows Excel実機受入・再現手順](docs/windows-acceptance.md)
 
 ## ビルドと検証
 
