@@ -2,7 +2,7 @@
 setlocal EnableExtensions DisableDelayedExpansion
 cd /d "%~dp0"
 set "LAUNCHER=%~dp0setup_launcher.log"
->"%LAUNCHER%" echo Furusato_nouzei setup launcher - ASCII-safe v4
+>"%LAUNCHER%" echo Furusato_nouzei setup launcher - ASCII-safe v4.10
 >>"%LAUNCHER%" echo Folder: %CD%
 echo.
 echo Furusato_nouzei - First-time Excel setup v4
