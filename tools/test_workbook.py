@@ -28,6 +28,25 @@ class WorkbookTest(unittest.TestCase):
             self.assertIsNone(archive.testzip())
             self.assertFalse(any(n.startswith(("xl/externalLinks/", "xl/vbaProject")) for n in archive.namelist()))
 
+    def test_a4_single_page_layout_and_legible_status(self):
+        for name in (HOME, DETAIL):
+            sheet = self.book[name]
+            self.assertEqual(sheet.page_setup.paperSize, sheet.PAPERSIZE_A4)
+            self.assertEqual(sheet.page_setup.orientation, "portrait")
+            self.assertTrue(sheet.sheet_properties.pageSetUpPr.fitToPage)
+            self.assertEqual(sheet.page_setup.fitToWidth, 1)
+            self.assertEqual(sheet.page_setup.fitToHeight, 1)
+            self.assertTrue(sheet.print_options.horizontalCentered)
+            self.assertFalse(sheet.print_options.gridLines)
+            self.assertLess(sheet.page_margins.left, 0.4)
+            self.assertLess(sheet.page_margins.right, 0.4)
+        self.assertEqual(str(self.book[HOME].print_area), "'操作画面'!$A$1:$D$31")
+        self.assertEqual(str(self.book[DETAIL].print_area), "'計算根拠'!$A$1:$D$15")
+        rules = self.book[HOME].conditional_formatting
+        self.assertIn("A9:D9", {str(r) for r in rules})
+        self.assertGreaterEqual(len(rules["A9:D9"]), 2)
+        self.assertGreaterEqual(self.book[HOME].row_dimensions[9].height, 36)
+
     def test_overlapping_source_merges_are_repaired_without_formula_changes(self):
         original = self.baseline[ENGINE]
         built = self.book[ENGINE]

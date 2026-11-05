@@ -6,6 +6,8 @@ from tempfile import TemporaryDirectory
 from openpyxl import load_workbook
 from openpyxl.workbook.properties import CalcProperties
 from openpyxl.styles import Alignment, Font, PatternFill, Protection
+from openpyxl.formatting.rule import FormulaRule
+from openpyxl.worksheet.page import PageMargins
 from openpyxl.worksheet.datavalidation import DataValidation
 from rebuild_xlsx import reconstruct
 
@@ -43,6 +45,13 @@ def build(source, output):
         view.page_setup.fitToWidth = 1
         view.page_setup.fitToHeight = 1
         view.page_setup.paperSize = view.PAPERSIZE_A4
+        view.page_setup.orientation = "portrait"
+        view.page_margins = PageMargins(
+            left=0.28, right=0.28, top=0.38, bottom=0.38,
+            header=0.15, footer=0.15,
+        )
+        view.print_options.horizontalCentered = True
+        view.print_options.gridLines = False
 
     def bar(sheet, row, text):
         sheet.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
@@ -94,6 +103,23 @@ def build(source, output):
         home[cell].alignment = Alignment(horizontal="right")
         home[cell].font = Font(name="Yu Gothic", bold=True, size=15, color="163A56")
     note(home, 9, '=B28')
+    home.row_dimensions[9].height = 40
+    home.conditional_formatting.add(
+        "A9:D9",
+        FormulaRule(
+            formula=['AND($B$28<>"正常",$B$28<>"")'],
+            fill=PatternFill("solid", fgColor="FCE8E6"),
+            font=Font(name="Yu Gothic", bold=True, color="A4242D"),
+        ),
+    )
+    home.conditional_formatting.add(
+        "A9:D9",
+        FormulaRule(
+            formula=['$B$28="正常"'],
+            fill=PatternFill("solid", fgColor="EAF5ED"),
+            font=Font(name="Yu Gothic", bold=True, color="206E40"),
+        ),
+    )
     bar(home, 10, "源泉徴収票から転記・該当する控除の内訳")
     field("B11", "源泉徴収票の所得年", choices=("2025", "2026"))
     labels = [
