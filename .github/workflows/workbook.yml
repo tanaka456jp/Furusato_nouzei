@@ -123,7 +123,8 @@ jobs:
     concurrency:
       group: furusato-excel-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
-    timeout-minutes: 20
+    # Stalled COM must fail closed; the runner terminates job-owned Excel.
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
       - name: Build, install and run real Excel acceptance
