@@ -37,6 +37,8 @@ try {
     [void]$sheet.Hyperlinks.Add($cell, '', "'" + $entry[1] + "'!A1", '', [string]$cell.Value2)
   }
   $book.Worksheets.Item('操作画面').Activate()
+  # Reduce clipping of the compact 4-column home screen on high-DPI Windows displays.
+  $excel.ActiveWindow.Zoom = 75
   $visibleTabs = @('操作画面','源泉徴収票入力','ふるさと納税限度額計算','追加人的控除','住民税再計算','整合性チェック')
   foreach ($ws in $book.Worksheets) {
     if ($visibleTabs -contains [string]$ws.Name) { $ws.Visible = -1 }
