@@ -12,7 +12,7 @@
 ## 専用runnerの準備
 
 1. Windows 11 / Excel 365が利用できる**専用の検証用PC**にself-hosted runnerを登録。
-2. runnerに `self-hosted`、`Windows`、`furusato-excel` のラベルを設定。
+2. runnerを**このリポジトリに登録**し、標準の `self-hosted`・`Windows` ラベルで稼働させる。既存の別リポジトリ専用runnerは自動的には利用できない。
 3. ローカルにPython 3.11以上を準備し、Excelを対話型ログオン可能なユーザーコンテキストで使用。
 4. VBAプロジェクトへのアクセス設定は**専用ビルドユーザーに限定**して許可。組織のポリシーで禁止されている場合は回避せずHOLDとする。
 5. 業務用データや他案件を操作しない独立した実行環境を使用。
@@ -58,7 +58,7 @@ GitHub Actionsの `pull_request.edited` でWindowsジョブを開始します。
 
 ### 現在のブロッカー
 
-受入ジョブは `self-hosted / Windows / furusato-excel` ラベルを持つrunnerを待機しています。専用Windows PCに該当runnerを登録・起動してからジョブを再実行してください。他用途の共有runnerにラベルを流用しないでください。
+受入ジョブは現在 `self-hosted / Windows` ラベルを持ち、**このリポジトリから使用可能なrunner** を待機しています。ほかのリポジトリではPC①/PC②のWindows runnerが稼働していますが、Furusato_nouzeiへの割当は確認できません。別のリポジトリ専用のrunnerを登録済みと誤認しないでください。
 
 
 ## v4.4：案件を複数同時に開く場合のマクロ誤実行防止（2026-11-05）
@@ -86,3 +86,17 @@ GitHub Actionsの `pull_request.edited` でWindowsジョブを開始します。
 - 不完全なPDF一時ファイルが保存先に残らないことを確認する。
 - 利用者向けの「印刷」ボタンは現時点では**Excelの印刷プレビューを開く操作**であり、直接印刷ではないためボタン名を「印刷プレビュー」に変更。
 - これらの受入試験はコードへ追加済み。ただしWindows Excelの実機ジョブがPENDINGの間、PASSと報告しない。
+
+
+## 既存PC①にFurusato_nouzei専用runnerを追加する方法
+
+既存のBankStatementJournalConverter / FXAutoTrader等のrunnerサービスや設定は変更・停止しません。**別フォルダ・別runnerとして**追加します。
+
+1. [Furusato_nouzei の Settings → Actions → Runners](https://github.com/tanaka456jp/Furusato_nouzei/settings/actions/runners)を開き、`New self-hosted runner` → `Windows` → `x64` を選択。
+2. PC①の検証専用ユーザーでWindows PowerShellを開く。例：`C:\gh-runners\Furusato_nouzei` を新しい空のフォルダとして使う。ほかのrunnerのフォルダを流用しない。
+3. **GitHub画面が提示するWindows用コマンド**に従ってrunner本体を取得・展開する。画面に提示された登録トークンをチャット、CIログ、リポジトリに貼り付けない。トークンは短時間で失効する。
+4. GitHub画面の `config.cmd --url https://github.com/tanaka456jp/Furusato_nouzei --token ...` を新しいrunnerフォルダで実行。runner名は例 `PC1-Furusato-Excel` とする。標準ラベル `self-hosted` / `Windows` を残す。
+5. Excel 365を使える**対話型ユーザーのセッション**で `run.cmd` を実行。Excel COMが動かない場合に、業務PCの既存Excelプロセスを強制終了しない。
+6. GitHubのrunner一覧に `Idle` と表示されたら、[Draft PR #1のActions](https://github.com/tanaka456jp/Furusato_nouzei/actions) で最新の `Workbook checks` のWindowsジョブを実行または再実行する。PR本文には既に `[run-windows-excel]` が設定済み。
+
+リポジトリにrunnerが割り当てられていない状態では、`runs-on` のラベルを変えるだけでは実行されません。実機ジョブが開始したときに初めてExcelマクロのPASS/FAILを判定できます。
