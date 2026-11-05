@@ -171,8 +171,12 @@ End Sub
 
 ' Save-copy core is shared between the UI and an isolated Windows acceptance test.
 ' Never overwrite an existing customer case, including a previous test run.
+' Write into the SAME destination folder, verify it, and then rename.
+' A failed Excel SaveCopyAs must never leave a half-written customer case.
 Public Function SaveCaseToFile(ByVal destination As String) As Boolean
-    Dim fso As Object
+    Dim fso As Object, folder As String, temporary As String
+    Dim i As Long, problem As String, errorCode As Long
+    On Error GoTo Failed
     Set fso = CreateObject("Scripting.FileSystemObject")
     If Len(Trim$(destination)) = 0 Or LCase$(Right$(destination, 5)) <> ".xlsm" Then
         Err.Raise vbObjectError + 108, , ".xlsmの拡張子で保存してください。"
@@ -180,15 +184,42 @@ Public Function SaveCaseToFile(ByVal destination As String) As Boolean
     If fso.FileExists(destination) Then
         Err.Raise vbObjectError + 109, , "同名ファイルがあります。別の名前で保存してください。"
     End If
+    folder = fso.GetParentFolderName(fso.GetAbsolutePathName(destination))
+    If Not fso.FolderExists(folder) Then
+        Err.Raise vbObjectError + 119, , "案件保存先のフォルダが見つかりません。"
+    End If
+    For i = 1 To 1000
+        temporary = fso.BuildPath(folder, "_furusato_case_" & _
+                        Format$(Now, "yyyymmdd_hhnnss") & "_" & CStr(i) & ".xlsm")
+        If Not fso.FileExists(temporary) Then Exit For
+    Next i
+    If i > 1000 Then
+        Err.Raise vbObjectError + 120, , "案件保存用の一時ファイル名を確保できません。"
+    End If
     Application.Calculate
-    ThisWorkbook.SaveCopyAs destination
-    If Not fso.FileExists(destination) Then
-        Err.Raise vbObjectError + 117, , "案件ファイルの保存を確認できません。"
+    ThisWorkbook.SaveCopyAs temporary
+    If Not fso.FileExists(temporary) Then
+        Err.Raise vbObjectError + 117, , "一時案件ファイルの保存を確認できません。"
     End If
-    If fso.GetFile(destination).Size = 0 Then
-        Err.Raise vbObjectError + 118, , "保存された案件ファイルが空です。"
+    If fso.GetFile(temporary).Size < 20000 Then
+        Err.Raise vbObjectError + 118, , "一時案件ファイルのサイズが不正です。"
     End If
+    ' MoveFile refuses an existing destination; it does not overwrite the file.
+    fso.MoveFile temporary, destination
     SaveCaseToFile = True
+    Exit Function
+
+Failed:
+    errorCode = Err.Number
+    problem = Err.Description
+    On Error Resume Next
+    If Not fso Is Nothing Then
+        If Len(temporary) > 0 Then
+            If fso.FileExists(temporary) Then fso.DeleteFile temporary, True
+        End If
+    End If
+    On Error GoTo 0
+    Err.Raise errorCode, "TaxLawUpdater.SaveCaseToFile", problem
 End Function
 
 Public Sub SaveCase()
