@@ -35,7 +35,7 @@ with ZipFile(PATH) as archive:
     reg = roots["自動回帰テスト"]
     assert cell(reg, "B47") == "52"
     assert cell(reg, "B48") == "0"
-    assert cell(reg, "B49") in ("PASS", None)
+    assert cell(reg, "B49") == "PASS", "Regression summary must have recalculated PASS"
     master = roots["年度パラメータ"]
     assert [cell(master, f"A{r}") for r in (4, 5, 6)] == ["2025", "2026", "2027"]
 print("PASS: 19 sheets, dashboard, master approvals, regression results and no #REF!")
