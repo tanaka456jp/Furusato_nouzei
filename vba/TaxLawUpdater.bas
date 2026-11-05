@@ -149,21 +149,37 @@ Public Sub NewCase()
     Application.Calculate
 End Sub
 
+' Save-copy core is shared between the UI and an isolated Windows acceptance test.
+' Never overwrite an existing customer case, including a previous test run.
+Public Function SaveCaseToFile(ByVal destination As String) As Boolean
+    Dim fso As Object
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    If Len(Trim$(destination)) = 0 Or LCase$(Right$(destination, 5)) <> ".xlsm" Then
+        Err.Raise vbObjectError + 108, , ".xlsmの拡張子で保存してください。"
+    End If
+    If fso.FileExists(destination) Then
+        Err.Raise vbObjectError + 109, , "同名ファイルがあります。別の名前で保存してください。"
+    End If
+    Application.Calculate
+    ThisWorkbook.SaveCopyAs destination
+    If Not fso.FileExists(destination) Then
+        Err.Raise vbObjectError + 117, , "案件ファイルの保存を確認できません。"
+    End If
+    If fso.GetFile(destination).Size = 0 Then
+        Err.Raise vbObjectError + 118, , "保存された案件ファイルが空です。"
+    End If
+    SaveCaseToFile = True
+End Function
+
 Public Sub SaveCase()
     Dim destination As Variant
     On Error GoTo Failed
     destination = Application.GetSaveAsFilename(InitialFileName:="Furusato_case.xlsm", _
                     FileFilter:="Excel Macro-Enabled Workbook (*.xlsm),*.xlsm")
     If VarType(destination) = vbBoolean Then Exit Sub
-    If LCase$(Right$(CStr(destination), 5)) <> ".xlsm" Then
-        Err.Raise vbObjectError + 108, , ".xlsmの拡張子で保存してください。"
+    If SaveCaseToFile(CStr(destination)) Then
+        MsgBox "案件を保存しました。再編集するときは保存したファイルをExcelで開いてください。", vbInformation
     End If
-    If CreateObject("Scripting.FileSystemObject").FileExists(CStr(destination)) Then
-        Err.Raise vbObjectError + 109, , "同名ファイルがあります。別の名前で保存してください。"
-    End If
-    Application.Calculate
-    ThisWorkbook.SaveCopyAs CStr(destination)
-    MsgBox "案件を保存しました。再編集するときは保存したファイルをExcelで開いてください。", vbInformation
     Exit Sub
 Failed:
     MsgBox Err.Description, vbExclamation, "案件の保存"
