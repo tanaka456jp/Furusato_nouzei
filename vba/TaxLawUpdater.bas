@@ -138,6 +138,26 @@ Private Function UniqueBackupPath(ByVal book As Workbook) As String
     UniqueBackupPath = path
 End Function
 
+' Bind each Forms button to the macro in THIS workbook.
+' An unqualified OnAction can invoke a macro in another open client case;
+' copied cases must rebind their own buttons when opened.
+Private Sub BindButton(ByVal sheetName As String, ByVal buttonName As String, ByVal procedure As String)
+    Dim target As Object
+    Set target = ThisWorkbook.Worksheets(sheetName).Buttons(buttonName)
+    target.OnAction = "'" & Replace(ThisWorkbook.Name, "'", "''") & "'!TaxLawUpdater." & procedure
+End Sub
+
+Public Sub BindButtons()
+    BindButton "操作画面", "btnTaxLawUpdate", "TaxLawUpdate"
+    BindButton "操作画面", "btnNewCase", "NewCase"
+    BindButton "操作画面", "btnSaveCase", "SaveCase"
+    BindButton "操作画面", "btnShowDetails", "ShowDetails"
+    BindButton "操作画面", "btnRecalculateCase", "RecalculateCase"
+    BindButton "計算根拠", "btnReturnHome", "ReturnHome"
+    BindButton "計算根拠", "btnPrintDetails", "PrintDetails"
+    BindButton "計算根拠", "btnExportDetails", "ExportDetails"
+End Sub
+
 Public Sub RecalculateCase()
     Application.Calculate
 End Sub
