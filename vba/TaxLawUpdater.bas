@@ -228,13 +228,12 @@ Private Function HasWorksheet(ByVal b As Workbook, ByVal name As String) As Bool
 End Function
 
 Private Sub ReplaceMasterSheet(ByVal src As Worksheet, ByVal dst As Worksheet)
-    Dim lr As Long, lc As Long
+    Dim lr As Long, lc As Long, formulaCells As Range
     lr = src.Cells(src.Rows.Count, 1).End(xlUp).Row
     lc = src.Cells(3, src.Columns.Count).End(xlToLeft).Column
     If lr < 4 Or lr > 900 Or lc < 3 Or lc > 22 Then Err.Raise vbObjectError + 2023, , "配布マスタの行列範囲が不正：" & src.Name
     ' Master sheets must contain VALUES only; never execute imported formulas.
     If Application.WorksheetFunction.CountA(src.Range(src.Cells(4, 1), src.Cells(lr, lc))) = 0 Then Err.Raise vbObjectError + 2024, , "配布マスタが空です：" & src.Name
-    Dim formulaCells As Range
     On Error Resume Next
     Set formulaCells = src.Range(src.Cells(3, 1), src.Cells(lr, lc)).SpecialCells(xlCellTypeFormulas)
     On Error GoTo 0
