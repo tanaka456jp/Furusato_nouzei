@@ -1,6 +1,9 @@
 ﻿#Requires -Version 5.1
 # Run on a dedicated Windows Excel desktop with VBOM access configured for the build user.
-param([Parameter(Mandatory=$true)][string]$Workbook)
+param(
+    [Parameter(Mandatory=$true)][string]$Workbook,
+    [string]$EvidencePath = ''
+)
 $ErrorActionPreference = 'Stop'
 $Workbook = (Resolve-Path -LiteralPath $Workbook).Path
 $dir = Join-Path ([System.IO.Path]::GetTempPath()) ('FurusatoQA_' + [Guid]::NewGuid().ToString('N'))
@@ -8,11 +11,17 @@ $dir = Join-Path ([System.IO.Path]::GetTempPath()) ('FurusatoQA_' + [Guid]::NewG
 $copy = Join-Path $dir 'FurusatoQA.xlsm'
 [IO.File]::Copy($Workbook, $copy)
 $excel = $null; $book = $null; $savedCase = $null; $home = $null; $settings = $null; $checks = $null; $detail = $null
+$passed = $false
+$failureSummary = ''
+$excelVersion = ''
+$sourceSha256 = (Get-FileHash -LiteralPath $Workbook -Algorithm SHA256).Hash
+$startedUtc = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
 function Assert-Value($actual, $expected, [string]$label) {
     if ($actual -cne $expected) { throw "$label expected [$expected], got [$actual]" }
 }
 try {
     $excel = New-Object -ComObject Excel.Application
+    $excelVersion = [string]$excel.Version
     $excel.DisplayAlerts = $false
     $excel.EnableEvents = $false
     $excel.AskToUpdateLinks = $false
@@ -200,7 +209,11 @@ try {
     $excel.Run('TaxLawUpdater.BindButtons')
     Assert-Value ([string]$home.Buttons().Item('btnTaxLawUpdate').OnAction) "'FurusatoQA.xlsm'!TaxLawUpdater.TaxLawUpdate" 'Reloaded case macro ownership'
     if (-not $detail.PageSetup.PrintArea) { throw 'Calculation details lack print area' }
+    $passed = $true
     Write-Output 'PASS: Windows Excel 52 fixtures; 2025/2026 amounts; approved/rejected updates; persisted fault rollback; backup; VBA PDF/hidden UI/no-overwrite; isolated no-overwrite case-save; save/reopen; button wiring.'
+} catch {
+    $failureSummary = $_.Exception.Message
+    throw
 } finally {
     # Cleanup is best-effort and must not mask the original test failure.
     # Only the Excel instance created above is quit; other user sessions remain untouched.
@@ -218,4 +231,36 @@ try {
     [GC]::WaitForPendingFinalizers()
     try { Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction Stop }
     catch { Write-Warning ('QA temporary folder cleanup failed: ' + $_.Exception.Message) }
+    # Only synthetic test identifiers are recorded. Do not log machine names,
+    # local user names, case contents, registration tokens or environment secrets.
+    if (-not [string]::IsNullOrWhiteSpace($EvidencePath)) {
+        try {
+            $result = if ($passed) { 'PASS' } else { 'FAIL' }
+            $report = [ordered]@{
+                schema = 'furusato-excel-acceptance/v1'
+                status = $result
+                started_utc = $startedUtc
+                finished_utc = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
+                workbook_sha256 = $sourceSha256
+                excel_version = $excelVersion
+                executed_checks = @(
+                    '52 Excel regression fixtures', '2025 and 2026 synthetic salary reference',
+                    'approved-year update and backup', 'unapproved 2027 rejection',
+                    'persisted failed-update rollback', 'VBA PDF export and no-overwrite',
+                    'case save and reopen', 'workbook-specific macro buttons'
+                )
+                not_covered = @(
+                    'anonymous real withholding or residence tax documents',
+                    'physical printing', 'three desktop display conditions',
+                    'product signature and production deployment'
+                )
+                failure = $failureSummary
+            }
+            $json = $report | ConvertTo-Json -Depth 4
+            $encoding = New-Object System.Text.UTF8Encoding($false)
+            [IO.File]::WriteAllText($EvidencePath, $json, $encoding)
+        } catch {
+            Write-Warning ('Could not write isolated Excel acceptance evidence: ' + $_.Exception.Message)
+        }
+    }
 }
