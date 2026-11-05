@@ -57,6 +57,14 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Excel installer failed; see setup.log' }
           & .\tools\verify_excel.ps1 -Workbook (Join-Path $work 'review/Furusato_nouzei.xlsm')
           if (-not $?) { throw 'Windows Excel acceptance failed' }
+      - name: Upload verified review XLSM
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Furusato_nouzei_Windows_REVIEW_${{ github.run_id }}
+          path: ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/review/Furusato_nouzei.xlsm
+          if-no-files-found: error
+          retention-days: 14
       - name: Upload setup diagnostics
         if: always()
         uses: actions/upload-artifact@v4
