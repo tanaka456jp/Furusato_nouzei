@@ -47,5 +47,7 @@ assert "Selected year rollback persisted across reopen" in acceptance
 assert "if ($null -ne $excel) { try { $excel.Quit() } catch {} }" in acceptance
 assert "excel_acceptance.json" in workflow
 assert "if ($report.status -ne 'PASS')" in workflow
+assert "Excel acceptance evidence does not match generated workbook SHA-256" in workflow
+assert "$report.workbook_sha256 -ne $actual" in workflow
 assert "if-no-files-found: error" in workflow
 print("PASS: shared-host PC1/PC2 script is isolated; workflow uses a scoped runner label.")
