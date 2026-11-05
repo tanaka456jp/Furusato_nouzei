@@ -139,3 +139,13 @@ powershell.exe -NoProfile -File .\tools\register_shared_pc_runner.ps1 -Role PC1 
 **実施していない検証：** GitHub-hosted WindowsにMicrosoft Excelデスクトップはないため、VBAコンパイル、Excel COMによる52件実再計算、実際の税制更新ボタン、案件保存復元、印刷、PDF出力、実画面3条件は確認できない。これらは引き続き `self-hosted / Windows / furusato-excel` で検証する。
 
 GitHub-hostedでの成功と、完成版.xlsmの正式受入を混同しない。Excel実機ジョブはrunner待機中、正式判定HOLDを維持する。
+
+
+## v4.9：通常CIとExcel実機受入の運用分離・検証証跡（2026-11-05）
+
+- `main` は税制カタログのみで、現行WorkflowはDraft PRブランチに存在しています。そのため現段階では手動 `workflow_dispatch` に依存せず、PR本文の明示的な許可文字列でExcel受入を有効化する方式を維持します。
+- PC①/PC②のFurusato用runnerがまだ未登録の間、PR本文から実機受入の許可文字列を外して、通常の`static`と`windows_compat`を完了させます。runnerを登録・起動してから、PR本文に指定の許可文字列を追加して実機ジョブを起動します。
+- Excel受入スクリプトでは、年度更新に失敗した後の**操作画面の選択年**も検証し、Excelを閉じた後の再起動でも復旧が保持されることを確認します。
+- Excel COMの解放処理を保護し、受入テスト失敗時にも専用Excelインスタンスの終了処理を試みます。既存の他業務Excelインスタンスを強制終了しません。
+- `verify_excel.ps1 -EvidencePath <path>` を指定すると、受入終了時に`excel_acceptance.json`を出力します。内容はPASS/FAIL、検証対象ブックのSHA-256、Excelバージョン、実施した検査の種類、対象外条件、開始・終了UTC日時です。PC名、利用者名、機密顧客データ、登録トークンは含めません。
+- 実機ジョブはJSONの状態が**PASS**であり、検証対象SHA-256が記録されている場合だけ、検証用XLSMとJSONをArtifactへアップロードします。FAIL時は可能な限りJSONを診断用Artifactへ保存します。**これらの証跡は実機ジョブが実行されてから生成されます。**
