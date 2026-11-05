@@ -14,6 +14,11 @@ on:
 permissions:
   contents: read
 
+# Cancel old queued Excel jobs when the PR's explicit opt-in is removed.
+concurrency:
+  group: furusato-workbook-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   static:
     runs-on: ubuntu-latest
