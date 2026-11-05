@@ -4,7 +4,7 @@ from zipfile import ZipFile
 from xml.etree import ElementTree as ET
 import sys
 
-PATH = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().parent.parent / "ふるさと納税限度額計算_ワンクリック更新.xlsx"
+PATH = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().parent.parent / "ふるさと納税限度額計算_修正版.xlsx"
 NS = {"x": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
 REQUIRED = {
     "操作画面", "設定・税率", "年度パラメータ", "年度別基礎控除",
@@ -38,4 +38,13 @@ with ZipFile(PATH) as archive:
     assert cell(reg, "B49") == "PASS", "Regression summary must have recalculated PASS"
     master = roots["年度パラメータ"]
     assert [cell(master, f"A{r}") for r in (4, 5, 6)] == ["2025", "2026", "2027"]
-print("PASS: 19 sheets, dashboard, master approvals, regression results and no #REF!")
+    main = roots["ふるさと納税限度額計算"]
+    assert cell(main, "A62") == "ふるさと納税｜限度額算定の根拠"
+    assert (cell(main, "A73") or "").startswith("住宅ローン控除・配当控除")
+    assert cell(main, "C70") in (None, "")
+    assert cell(main, "E73") in (None, "")
+    for ref in ("Z4", "C78"):
+        found = main.find(f".//x:sheetData/x:row/x:c[@r='{ref}']", NS)
+        assert found is not None and found.find("x:f", NS) is not None, "Core calculation reference missing: " + ref
+    assert not any(n.startswith("xl/media/") for n in archive.namelist()), "Old formula image remains"
+print("PASS: 19 sheets, dashboard, master approvals, regression, screen fixes, image removal and no #REF!")
