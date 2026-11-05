@@ -49,7 +49,7 @@ def reconstruct(source: Path, output: Path, *, styles: bool, layout: bool) -> No
                 dest.freeze_panes = sheet.freeze_panes
                 dest.data_validations = deepcopy(sheet.data_validations)
                 dest.conditional_formatting = deepcopy(sheet.conditional_formatting)
-                dest.sheet_view = copy(sheet.sheet_view)
+                dest.views = copy(sheet.views)
                 dest.sheet_properties = copy(sheet.sheet_properties)
                 dest.sheet_format = copy(sheet.sheet_format)
                 dest.page_setup = copy(sheet.page_setup)
