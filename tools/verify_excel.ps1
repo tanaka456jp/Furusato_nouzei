@@ -65,6 +65,27 @@ try {
         $homeSheet.Range('D22').Value2 = '該当なし'
         $homeSheet.Range('D24').Value2 = '確定申告'
         $excel.Run('TaxLawUpdater.RecalculateCase')
+        # If the synthetic fixture is inconsistent, log only deterministic
+        # synthetic values. Never bypass the taxpayer input consistency gate.
+        if ([string]$homeSheet.Range('B28').Value2 -ne '正常') {
+            $engineSheet = $book.Worksheets.Item('ふるさと納税限度額計算')
+            $familySheet = $book.Worksheets.Item('追加人的控除')
+            $fields = @('B12','B13','B14','B15','B16','B17','B18',
+                        'B19','B20','B21','B22','B23','B24','B25','B26',
+                        'D11','D12','D13','D14','D15','D16','D17','D18',
+                        'D19','D20','D21','D22','D23','D24','D25')
+            $pairs = @($fields | ForEach-Object {
+                $_ + '=' + [string]$homeSheet.Range($_).Value2
+            })
+            $reference = @('F15','F24','F25','F38','D15') | ForEach-Object {
+                $_ + '=' + [string]$engineSheet.Range($_).Value2
+            }
+            Write-Output ('SYNTHETIC_ONLY_INPUT_DIAGNOSTIC year=' + $year +
+                ' fields=' + ($pairs -join ';') +
+                ' engine=' + ($reference -join ';') +
+                ' family_C12=' + [string]$familySheet.Range('C12').Value2 +
+                ' status=' + [string]$homeSheet.Range('B28').Value2)
+        }
         Assert-Value $homeSheet.Range('B28').Value2 '正常' "$year status"
         Assert-Value $homeSheet.Range('D8').Value2 374500 "$year resident income levy"
         Assert-Value $homeSheet.Range('B8').Value2 109000 "$year donation estimate"
