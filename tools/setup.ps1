@@ -11,7 +11,7 @@ $moduleUtf8 = Join-Path $folder 'TaxLawUpdater.bas'
 $logFile = Join-Path $folder 'setup.log'
 $utf8 = New-Object System.Text.UTF8Encoding($true)
 $strictUtf8 = New-Object System.Text.UTF8Encoding($false, $true)
-$excel = $null; $workbook = $null; $tempBas = $null; $tempBook = $null
+$excel = $null; $workbook = $null; $tempBook = $null
 $button = $null; $sheet = $null; $anchor = $null; $component = $null
 try { [System.IO.File]::WriteAllText($logFile, ('Furusato_nouzei setup v4 ' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + "`r`n"), $utf8) }
 catch { Write-Host ('Unable to create setup.log: ' + $_.Exception.Message); exit 10 }
@@ -30,16 +30,17 @@ try {
     Assert (Test-Path -LiteralPath $source -PathType Leaf) "Furusato_nouzei.xlsx が見つかりません。"
     Assert (Test-Path -LiteralPath $moduleUtf8 -PathType Leaf) "TaxLawUpdater.bas が見つかりません。"
     Assert (-not (Test-Path -LiteralPath $final)) "同名の出力ブックが既に存在します（上書きしません）。"
-    $phase = 'VBA文字コード変換'
-    Log 'VBAをUTF-8からWindows標準ANSIへ一時変換します。'
+    $phase = 'VBA Unicode読込'
+    Log 'UTF-8 VBAをUnicodeのまま読み込みます。WindowsのANSIコードページには依存しません。'
     $sourceVba = [System.IO.File]::ReadAllText($moduleUtf8, $strictUtf8)
-    Assert ($sourceVba.Contains('Attribute VB_Name = "TaxLawUpdater"')) 'VBAソースの属性名が不正です。'
-    $ansi = [System.Text.Encoding]::Default
-    $ansiBytes = $ansi.GetBytes($sourceVba)
-    # VBComponents.Import uses the system ANSI code page. Prevent silent corruption.
-    Assert ($ansi.GetString($ansiBytes) -ceq $sourceVba) ('VBAコード中の日本語が現在のWindows文字コードへ変換できません。文字コード=' + $ansi.WebName)
-    $tempBas = Join-Path $env:TEMP ('Furusato_VBA_' + [Guid]::NewGuid().ToString('N') + '.bas')
-    [System.IO.File]::WriteAllBytes($tempBas, $ansiBytes)
+    if ($sourceVba.Length -gt 0 -and $sourceVba[0] -eq [char]0xFEFF) {
+        $sourceVba = $sourceVba.Substring(1)
+    }
+    Assert ($sourceVba.StartsWith('Attribute VB_Name = "TaxLawUpdater"')) 'VBAソースの属性名が不正です。'
+    $sourceBody = [System.Text.RegularExpressions.Regex]::Replace(
+        $sourceVba, '^Attribute VB_Name = "TaxLawUpdater"\r?\n', '')
+    Assert (-not $sourceBody.StartsWith('Attribute VB_Name')) 'VBA属性行の取り除きに失敗しました。'
+    Assert ($sourceBody.Contains('Public Sub TaxLawUpdate()')) '税制更新の実行プロシージャがありません。'
     $phase = 'Excel起動'
     Log 'Microsoft Excel (COM) を起動します。'
     $excel = New-Object -ComObject Excel.Application
@@ -64,10 +65,13 @@ try {
     $tempBook = Join-Path $folder ('_furusato_build_' + [Guid]::NewGuid().ToString('N') + '.xlsm')
     $workbook.SaveAs($tempBook, 52)
     Assert (Test-Path -LiteralPath $tempBook -PathType Leaf) 'Excelの.xlsm保存に失敗しました。'
-    $phase = 'VBAインポート'
-    Log '税制更新モジュールを取り込みます。'
-    $component = $workbook.VBProject.VBComponents.Import($tempBas)
-    Assert ($null -ne $component) 'VBAモジュールを取り込めませんでした。'
+    $phase = 'VBA Unicodeモジュール登録'
+    Log 'Unicode VBAを標準モジュールへ登録します。'
+    $component = $workbook.VBProject.VBComponents.Add(1) # vbext_ct_StdModule
+    Assert ($null -ne $component) 'VBA標準モジュールを作成できませんでした。'
+    $component.Name = 'TaxLawUpdater'
+    $component.CodeModule.AddFromString($sourceBody)
+    Assert ($component.CodeModule.CountOfLines -gt 50) 'VBAソースを登録できませんでした。'
     Assert ([string]$component.Name -eq 'TaxLawUpdater') ('予期しないVBAモジュール名です: ' + $component.Name)
     $phase = '再計算イベント登録'
     $eventCode = @'
@@ -117,6 +121,10 @@ End Sub
     $excel.ActiveWindow.Zoom = 85
     $excel.CalculateFullRebuild()
     Assert ($workbook.Worksheets.Item('自動回帰テスト').Range('B49').Value2 -ceq 'PASS') 'Excelでの内蔵回帰試験が不合格です。'
+    $phase = 'VBA実行スモーク'
+    Log 'マクロを実際に実行して、Excel/VBA連携を検査します。'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert ($workbook.Worksheets.Item('自動回帰テスト').Range('B49').Value2 -ceq 'PASS') 'マクロの実行後、回帰試験が不合格です。'
     $phase = 'ファイル確定保存'
     Log 'マクロ付きブックを保存します。'
     $workbook.Save()
@@ -159,8 +167,6 @@ End Sub
     if ($null -ne $tempBook -and (Test-Path -LiteralPath $tempBook)) {
         try { Remove-Item -LiteralPath $tempBook -Force } catch {}
     }
-    if ($null -ne $tempBas -and (Test-Path -LiteralPath $tempBas)) {
-        try { Remove-Item -LiteralPath $tempBas -Force } catch {}
-    }
+
 }
 exit $code
