@@ -87,6 +87,18 @@ class WorkbookTest(unittest.TestCase):
             self.assertFalse(home[cell].protection.locked, cell)
             self.assertTrue(any(cell in rule for rule in home.data_validations.dataValidation), cell)
 
+    def test_optional_numeric_fields_do_not_cause_fraction_gate_failures(self):
+        formula = self.book[HOME]["B28"].value
+        for group in ("B12:B24", "D11:D21", "D23"):
+            self.assertIn(
+                f"SUMPRODUCT(--(IFERROR(MOD({group},1),0)<>0))>0", formula
+            )
+            self.assertNotIn(
+                f"IFERROR(MOD({group},1)<>0,TRUE)", formula
+            )
+        self.assertIn("COUNTA(B12:B24)<>COUNT(B12:B24)", formula)
+        self.assertIn('COUNTIF(B12:B24,"<0")', formula)
+
     def test_independent_standard_salary_reference(self):
         # Single taxpayer, standard 10% residence tax, synthetic salary of ¥7m.
         taxable_resident = 5_200_000 - 1_000_000 - 430_000

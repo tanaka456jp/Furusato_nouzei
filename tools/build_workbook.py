@@ -142,11 +142,14 @@ def build(source, output):
     # Only inputs drive the gate. Result-dependent checks would create a circular reference.
     ranges = ("B12:B24", "D11:D21", "D23")
     invalid = []
+    # Empty optional fields must not trip the fractional-amount gate:
+    # COUNT/COUNTA rejects text, COUNTIF rejects out-of-range numbers,
+    # and the MOD test now treats a blank/error as zero instead of TRUE.
     for group in ranges:
         limit = 30 if group == "D23" else 100000000
         invalid.extend((f'COUNTA({group})<>COUNT({group})',
                         f'COUNTIF({group},"<0")+COUNTIF({group},">{limit}")>0',
-                        f'SUMPRODUCT(--IFERROR(MOD({group},1)<>0,TRUE))>0'))
+                        f'SUMPRODUCT(--(IFERROR(MOD({group},1),0)<>0))>0'))
     invalid += ['MAX(D11:D13,D19:D21)>30', 'COUNT(D17:D18)>1', 'B13>B12', 'B15>B12', 'B16>B14',
                 'AND(COUNT(D14:D16,D23)>0,B25="なし",OR(COUNT(D14:D16)>0,D23>0))',
                 f'OR(B17<>{ref(ENGINE,"F24")},B18<>{ref(ENGINE,"F25")})',
