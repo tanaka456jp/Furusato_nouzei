@@ -11,7 +11,7 @@ $moduleUtf8 = Join-Path $folder 'TaxLawUpdater.bas'
 $logFile = Join-Path $folder 'setup.log'
 $utf8 = New-Object System.Text.UTF8Encoding($true)
 $strictUtf8 = New-Object System.Text.UTF8Encoding($false, $true)
-$excel = $null; $workbook = $null; $tempBook = $null
+$excel = $null; $workbook = $null; $tempBook = $null; $stagingDir = $null; $stagedSource = $null
 $button = $null; $sheet = $null; $anchor = $null; $component = $null
 try { [System.IO.File]::WriteAllText($logFile, ('Furusato_nouzei setup v4 ' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + "`r`n"), $utf8) }
 catch { Write-Host ('Unable to create setup.log: ' + $_.Exception.Message); exit 10 }
@@ -30,6 +30,23 @@ try {
     Assert (Test-Path -LiteralPath $source -PathType Leaf) "Furusato_nouzei.xlsx が見つかりません。"
     Assert (Test-Path -LiteralPath $moduleUtf8 -PathType Leaf) "TaxLawUpdater.bas が見つかりません。"
     Assert (-not (Test-Path -LiteralPath $final)) "同名の出力ブックが既に存在します（上書きしません）。"
+    $phase = '入力ブック事前診断'
+    $inputBytes = (Get-Item -LiteralPath $source).Length
+    Assert ($inputBytes -gt 20000) '入力Excelファイルが小さすぎます。再ダウンロードしてください。'
+    $inputHash = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash
+    Log ('入力Excelを検査：' + $inputBytes + ' bytes / SHA-256 ' + $inputHash)
+    # Do not bypass Windows/Office internet-file security policy. A downloaded
+    # file may have a Mark-of-the-Web even after ZIP extraction.
+    $internetZone = @(Get-Item -LiteralPath $source -Stream Zone.Identifier -ErrorAction SilentlyContinue)
+    if ($internetZone.Count -gt 0) {
+        throw 'ExcelファイルがWindowsによりインターネット由来としてブロックされています。GitHub配布物を確認し、元のZIPのプロパティ→「許可する/ブロックの解除」を選択して、新しいフォルダに再展開してください。Excelの保護ビューを全体で無効にしないでください。'
+    }
+    $stagingDir = Join-Path ([IO.Path]::GetTempPath()) ('Furusato_Setup_' + [Guid]::NewGuid().ToString('N'))
+    [IO.Directory]::CreateDirectory($stagingDir) | Out-Null
+    $stagedSource = Join-Path $stagingDir 'input.xlsx'
+    [IO.File]::Copy($source, $stagedSource)
+    Assert ((Get-FileHash -LiteralPath $stagedSource -Algorithm SHA256).Hash -ceq $inputHash) '作業用Excelコピーのハッシュが一致しません。'
+    Log '元ファイルは変更せず、一時コピーからExcelへ読込みます。'
     $phase = 'VBA Unicode読込'
     Log 'UTF-8 VBAをUnicodeのまま読み込みます。WindowsのANSIコードページには依存しません。'
     $sourceVba = [System.IO.File]::ReadAllText($moduleUtf8, $strictUtf8)
@@ -52,7 +69,29 @@ try {
     $excel.AutomationSecurity = 3
     $phase = '入力ブック読込'
     Log 'Excelブックを読込中です。'
-    $workbook = $excel.Workbooks.Open($source, 0, $true)
+    try {
+        $workbook = $excel.Workbooks.Open($stagedSource, 0, $true)
+    } catch {
+        $originalOpenError = $_.Exception.Message
+        Log ('Excelが配布ブックを開けませんでした: ' + $originalOpenError)
+        # A workbook generated within this SAME isolated Excel process
+        # discriminates damaged/blocked input from a broken Office COM setup.
+        $probe = $null
+        $probeFile = Join-Path $stagingDir 'excel_probe.xlsx'
+        try {
+            $probe = $excel.Workbooks.Add()
+            $probe.SaveAs($probeFile, 51)
+            $probe.Close($false)
+            $probe = $null
+            $probe = $excel.Workbooks.Open($probeFile, 0, $true)
+            Log 'Excel自己生成ファイルの開き直し：成功。配布ファイル固有の制限または内容を確認してください。'
+        } catch {
+            Log ('Excel自己生成ファイルの開き直し：失敗。OfficeのCOM起動・権限・対話セッションを点検してください。詳細: ' + $_.Exception.Message)
+        } finally {
+            if ($null -ne $probe) { try { $probe.Close($false) } catch {} }
+        }
+        throw [Exception]::new('配布Excelファイルの読込に失敗しました。Furusato_nouzei.xlsxを手動でExcelから開き、保護ビュー・修復警告・ファイルブロックを確認してください。セキュリティ設定を一括で無効化しないでください。元エラー: ' + $originalOpenError)
+    }
     Assert ($null -ne $workbook) 'Excelブックを開けませんでした。'
     $phase = 'VBAプロジェクト権限'
     try {
@@ -171,6 +210,8 @@ End Sub
     if ($null -ne $tempBook -and (Test-Path -LiteralPath $tempBook)) {
         try { Remove-Item -LiteralPath $tempBook -Force } catch {}
     }
-
+    if ($null -ne $stagingDir -and (Test-Path -LiteralPath $stagingDir)) {
+        try { Remove-Item -LiteralPath $stagingDir -Recurse -Force } catch {}
+    }
 }
 exit $code
