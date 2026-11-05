@@ -28,6 +28,7 @@ jobs:
           python tools/qa_contract.py workbook/baseline.xlsx
           python tools/test_workbook.py
           python tools/package_review.py Furusato_nouzei_v4_REVIEW.zip
+          python tools/test_setup_contract.py Furusato_nouzei_v4_REVIEW.zip
       - name: Upload reproducible review ZIP
         uses: actions/upload-artifact@v4
         with:
