@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
 Checks Windows PowerShell 5.1 syntax, ZIP extraction in a Japanese path,
