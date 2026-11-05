@@ -9,7 +9,8 @@ param(
     [Parameter(Mandatory=$true)][string]$Workbook,
     [Parameter(Mandatory=$true)][string]$StagingRoot,
     [Parameter(Mandatory=$true)][string]$EvidencePath,
-    [string]$UpdaterRoot = ''
+    [string]$UpdaterRoot = '',
+    [switch]$PushInSandbox
 )
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
@@ -22,8 +23,12 @@ $report = [ordered]@{
     stage_prepared = $false
     project_preflight = 'NOT_RUN'
     project_diff = 'NOT_RUN'
+    project_push = 'NOT_RUN'
+    post_push_diff = 'NOT_RUN'
+    post_push_excel = 'NOT_RUN'
     original_workbook_sha256 = $originalHash
     stage_workbook_sha256 = ''
+    stage_post_push_sha256 = ''
     original_preserved = $false
     error_category = ''
     warning = 'Never interprets a staging PASS as product VBAUpdater deployment/compile acceptance.'
@@ -84,6 +89,48 @@ try {
         }
         $report.status = 'READONLY_PREFLIGHT_DIFF_PASS'
         Write-Host 'VBAUpdater: project-preflight and read-only project-diff PASS on isolated XLSM.'
+        if ($PushInSandbox) {
+            # This is deliberately NOT the distributed workbook or a client file.
+            # Before any write, re-check that the target is the staged copy.
+            if (-not $target.StartsWith($stage + [IO.Path]::DirectorySeparatorChar,
+                                       [StringComparison]::OrdinalIgnoreCase)) {
+                throw 'VBAUpdater target escaped the disposable staging directory'
+            }
+            Push-Location -LiteralPath $updater
+            try {
+                & $cli project-push -ProjectRoot $stage *> $null
+                if ($LASTEXITCODE -ne 0) {
+                    $report.project_push = 'FAIL'
+                    throw 'VBAUpdater project-push failed on disposable copy'
+                }
+                $report.project_push = 'PASS'
+                & $cli project-diff -ProjectRoot $stage *> $null
+                if ($LASTEXITCODE -ne 0) {
+                    $report.post_push_diff = 'FAIL'
+                    throw 'VBAUpdater diff remains after staged project-push'
+                }
+                $report.post_push_diff = 'PASS'
+            } finally {
+                Pop-Location
+            }
+            $report.stage_post_push_sha256 = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash
+            # The existing independent QA tests tax amounts, update rollback,
+            # macros, PDF, case save/reopen and data/formula preservation.
+            $qaEvidence = Join-Path (Split-Path -Parent $EvidencePath) 'vbaupdater_excel_acceptance.json'
+            & (Join-Path $root 'tools/verify_excel.ps1') -Workbook $target -EvidencePath $qaEvidence
+            if (-not $?) { throw 'Updated sandbox XLSM failed independent Excel QA' }
+            if (-not (Test-Path -LiteralPath $qaEvidence -PathType Leaf)) {
+                throw 'Updated sandbox XLSM has no Excel acceptance evidence'
+            }
+            $qa = Get-Content -LiteralPath $qaEvidence -Raw -Encoding UTF8 | ConvertFrom-Json
+            if ($qa.status -ne 'PASS') { throw 'Updated sandbox XLSM Excel QA did not PASS' }
+            if ($qa.workbook_sha256 -cne $report.stage_post_push_sha256) {
+                throw 'Updated sandbox XLSM QA evidence hash mismatch'
+            }
+            $report.post_push_excel = 'PASS'
+            $report.status = 'STAGED_PUSH_EXCEL_PASS'
+            Write-Host 'VBAUpdater: isolated project-push, post-push diff, and independent Excel QA PASS.'
+        }
     }
 } catch {
     $report.status = 'FAIL'
