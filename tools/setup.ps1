@@ -115,7 +115,7 @@ End Sub
     $details = $workbook.Worksheets.Item('計算根拠')
     try {
         Add-WorkbookButton $details 'A17' 'メイン画面に戻る' 'ReturnHome'
-        Add-WorkbookButton $details 'B17' '印刷' 'PrintDetails'
+        Add-WorkbookButton $details 'B17' '印刷プレビュー' 'PrintDetails'
         Add-WorkbookButton $details 'C17' 'PDF出力' 'ExportDetails'
     } finally {
         [void][Runtime.InteropServices.Marshal]::ReleaseComObject($details)
