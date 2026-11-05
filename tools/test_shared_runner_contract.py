@@ -11,7 +11,8 @@ workflow = (root / ".github/workflows/workbook.yml").read_text(encoding="utf-8")
 
 assert "https://github.com/tanaka456jp/Furusato_nouzei" in source
 assert "[ValidateSet('PC1', 'PC2')]" in source
-assert "New-Object -ComObject Excel.Application" in source
+assert "[Type]::GetTypeFromProgID('Excel.Application')" in source
+assert "New-Object -ComObject" not in source and ".Quit()" not in source
 assert "Test-Path -LiteralPath $folder" in source
 assert "Refusing to modify an existing runner folder" in source
 assert "'config.cmd'" in source
