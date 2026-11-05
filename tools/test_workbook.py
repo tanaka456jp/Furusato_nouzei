@@ -31,7 +31,7 @@ class WorkbookTest(unittest.TestCase):
     def test_a4_single_page_layout_and_legible_status(self):
         for name in (HOME, DETAIL):
             sheet = self.book[name]
-            self.assertEqual(sheet.page_setup.paperSize, sheet.PAPERSIZE_A4)
+            self.assertEqual(str(sheet.page_setup.paperSize), str(sheet.PAPERSIZE_A4))
             self.assertEqual(sheet.page_setup.orientation, "portrait")
             self.assertTrue(sheet.sheet_properties.pageSetUpPr.fitToPage)
             self.assertEqual(sheet.page_setup.fitToWidth, 1)
