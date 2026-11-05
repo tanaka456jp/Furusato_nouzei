@@ -51,19 +51,11 @@ try {
     $zip.Dispose()
 }
 
-$excel = $null
-try {
-    $excel = New-Object -ComObject Excel.Application
-    if ($null -eq $excel) { throw 'Excel COM could not be created.' }
-    Write-Host ('Excel detected: ' + $excel.Version)
-} finally {
-    if ($null -ne $excel) {
-        try { $excel.Quit() } catch {}
-        if ([Runtime.InteropServices.Marshal]::IsComObject($excel)) {
-            [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($excel)
-        }
-    }
-}
+# Check the COM class registration without starting/quitting any Excel process.
+# The acceptance job later tests an isolated, newly created Excel instance.
+$excelComClass = [Type]::GetTypeFromProgID('Excel.Application')
+if ($null -eq $excelComClass) { throw 'Microsoft Excel COM registration was not found.' }
+Write-Host 'Microsoft Excel COM registration detected (no Excel process was touched).'
 
 # Never change existing runner processes/services, VBA Trust Center, other
 # Excel instances, customer files, firewall settings or Windows policies.
