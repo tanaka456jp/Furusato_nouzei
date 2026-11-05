@@ -12,7 +12,7 @@
 ## 専用runnerの準備
 
 1. Windows 11 / Excel 365が利用できる**専用の検証用PC**にself-hosted runnerを登録。
-2. runnerを**このリポジトリに登録**し、標準の `self-hosted`・`Windows` ラベルで稼働させる。既存の別リポジトリ専用runnerは自動的には利用できない。
+2. runnerを**このリポジトリに登録**し、標準の `self-hosted`・`Windows` に加えて `furusato-excel` ラベルを付ける。`tools/register_shared_pc_runner.ps1` は新しいフォルダを使用してこの登録を支援する。
 3. ローカルにPython 3.11以上を準備し、Excelを対話型ログオン可能なユーザーコンテキストで使用。
 4. VBAプロジェクトへのアクセス設定は**専用ビルドユーザーに限定**して許可。組織のポリシーで禁止されている場合は回避せずHOLDとする。
 5. 業務用データや他案件を操作しない独立した実行環境を使用。
@@ -58,7 +58,7 @@ GitHub Actionsの `pull_request.edited` でWindowsジョブを開始します。
 
 ### 現在のブロッカー
 
-受入ジョブは現在 `self-hosted / Windows` ラベルを持ち、**このリポジトリから使用可能なrunner** を待機しています。ほかのリポジトリではPC①/PC②のWindows runnerが稼働していますが、Furusato_nouzeiへの割当は確認できません。別のリポジトリ専用のrunnerを登録済みと誤認しないでください。
+受入ジョブは `self-hosted / Windows / furusato-excel` を要求します。ほかのリポジトリで動いているWindows runnerを停止・流用せず、同じPCの**別フォルダ**にFurusato_nouzei用登録を追加してください。
 
 
 ## v4.4：案件を複数同時に開く場合のマクロ誤実行防止（2026-11-05）
@@ -100,3 +100,24 @@ GitHub Actionsの `pull_request.edited` でWindowsジョブを開始します。
 6. GitHubのrunner一覧に `Idle` と表示されたら、[Draft PR #1のActions](https://github.com/tanaka456jp/Furusato_nouzei/actions) で最新の `Workbook checks` のWindowsジョブを実行または再実行する。PR本文には既に `[run-windows-excel]` が設定済み。
 
 リポジトリにrunnerが割り当てられていない状態では、`runs-on` のラベルを変えるだけでは実行されません。実機ジョブが開始したときに初めてExcelマクロのPASS/FAILを判定できます。
+
+
+## 共有PCでの最小作業（2026-11-05更新）
+
+PC①を優先し、PC①に問題がある場合のみPC②を登録・起動します。1台のPCの中で、ほかのリポジトリのrunnerとFurusato_nouzei用runnerを並行運用できます。**厳密なGitHubジョブの優先順指定ではなく、通常PC①だけ起動し、障害時PC②を起動する運用**です。
+
+1. [このリポジトリのrunner設定](https://github.com/tanaka456jp/Furusato_nouzei/settings/actions/runners)から `New self-hosted runner` → `Windows` → `x64` を開く。
+2. GitHubの公式Windows runner ZIPをPC①へダウンロードし、公式のSHA-256が提示されていれば照合する。
+3. PC①でこのPRの作業コピーを開き、以下を実行する（ZIPパスは実際の保存先へ変更）。**登録トークンはコマンド引数やチャットに書かず、表示されたプロンプトへ入力**する。
+
+```powershell
+powershell.exe -NoProfile -File .\tools\register_shared_pc_runner.ps1 -Role PC1 -RunnerZip "C:\Downloads\actions-runner-win-x64.zip" -StartNow
+```
+
+4. PC①が利用できない場合、PC②で `-Role PC2` を指定して同じ操作を実施する。既存runnerのフォルダは一切変更しない。
+
+追加したrunnerの名前は `<PC名>-Furusato-PC1` または `<PC名>-Furusato-PC2`、追加ラベルは `furusato-excel` および `pc1` / `pc2` とする。既定の `self-hosted`、`Windows` ラベルも維持する。サービス登録やOS設定の変更は行わず、ログオン中の検証用ユーザーで `run.cmd` を実行する。
+
+**留意事項：** ExcelのCOM動作には対話型ユーザーセッションが必要な場合がある。VBAプロジェクト操作の許可が管理ポリシーで禁止されている場合は無理に回避しない。既存顧客データや他開発の実行中Excelは終了しない。資格情報や登録トークンはGitHubへ保存・報告しない。
+
+登録前は、CIの `excel` ジョブが `queued` のままになっても正常な待機であり、実機PASSを意味しません。
