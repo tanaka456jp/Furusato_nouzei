@@ -19,6 +19,15 @@ $startedUtc = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
 function Assert-Value($actual, $expected, [string]$label) {
     if ($actual -cne $expected) { throw "$label expected [$expected], got [$actual]" }
 }
+function Assert-MacroAction([string]$actual, [string]$expected, [string]$label) {
+    # Excel may normalize OnAction by removing quotes around an ASCII
+    # workbook name. Ownership is validated after lexical normalization.
+    $normalized = $actual
+    if ($actual -match "^'([^']+)'!(.+)$") {
+        $normalized = $Matches[1] + '!' + $Matches[2]
+    }
+    Assert-Value $normalized $expected $label
+}
 try {
     $excel = New-Object -ComObject Excel.Application
     $excelVersion = [string]$excel.Version
@@ -35,7 +44,7 @@ try {
     $detail = $book.Worksheets.Item('計算根拠')
     # This is a renamed test COPY, so bind its buttons to the test workbook.
     $excel.Run('TaxLawUpdater.BindButtons')
-    Assert-Value ([string]$homeSheet.Buttons().Item('btnTaxLawUpdate').OnAction) "'FurusatoQA.xlsm'!TaxLawUpdater.TaxLawUpdate" 'Main case macro ownership'
+    Assert-MacroAction ([string]$homeSheet.Buttons().Item('btnTaxLawUpdate').OnAction) 'FurusatoQA.xlsm!TaxLawUpdater.TaxLawUpdate' 'Main case macro ownership'
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value $checks.Range('B47').Value2 52 'Regression cases'
     Assert-Value $checks.Range('B49').Value2 'PASS' 'Regression verdict'
@@ -154,8 +163,8 @@ try {
     try {
         Assert-Value $savedCase.Worksheets.Item('操作画面').Range('B12').Value2 7000000 'Separate case preserves salary'
         Assert-Value $savedCase.Worksheets.Item('操作画面').Range('B8').Value2 109000 'Separate case preserves result'
-        Assert-Value ([string]$savedCase.Worksheets.Item('操作画面').Buttons().Item('btnTaxLawUpdate').OnAction) "'case_preservation.xlsm'!TaxLawUpdater.TaxLawUpdate" 'Copied case macro ownership'
-        Assert-Value ([string]$savedCase.Worksheets.Item('計算根拠').Buttons().Item('btnExportDetails').OnAction) "'case_preservation.xlsm'!TaxLawUpdater.ExportDetails" 'Copied case PDF macro ownership'
+        Assert-MacroAction ([string]$savedCase.Worksheets.Item('操作画面').Buttons().Item('btnTaxLawUpdate').OnAction) 'case_preservation.xlsm!TaxLawUpdater.TaxLawUpdate' 'Copied case macro ownership'
+        Assert-MacroAction ([string]$savedCase.Worksheets.Item('計算根拠').Buttons().Item('btnExportDetails').OnAction) 'case_preservation.xlsm!TaxLawUpdater.ExportDetails' 'Copied case PDF macro ownership'
     } finally {
         $savedCase.Close($false)
     }
@@ -207,7 +216,7 @@ try {
     Assert-Value $detail.Visible 2 'Calculation details remain hidden after reopen'
     $book.Save()
     $excel.Run('TaxLawUpdater.BindButtons')
-    Assert-Value ([string]$homeSheet.Buttons().Item('btnTaxLawUpdate').OnAction) "'FurusatoQA.xlsm'!TaxLawUpdater.TaxLawUpdate" 'Reloaded case macro ownership'
+    Assert-MacroAction ([string]$homeSheet.Buttons().Item('btnTaxLawUpdate').OnAction) 'FurusatoQA.xlsm!TaxLawUpdater.TaxLawUpdate' 'Reloaded case macro ownership'
     if (-not $detail.PageSetup.PrintArea) { throw 'Calculation details lack print area' }
     $passed = $true
     Write-Output 'PASS: Windows Excel 52 fixtures; 2025/2026 amounts; approved/rejected updates; persisted fault rollback; backup; VBA PDF/hidden UI/no-overwrite; isolated no-overwrite case-save; save/reopen; button wiring.'
