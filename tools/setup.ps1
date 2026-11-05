@@ -77,6 +77,7 @@ try {
     $eventCode = @'
 
 Private Sub Workbook_Open()
+    TaxLawUpdater.BindButtons
     TaxLawUpdater.ReturnHome
     Application.Calculate
 End Sub
@@ -95,7 +96,9 @@ End Sub
             $area = $target.Range($address)
             $control = $target.Buttons().Add($area.Left + 2, $area.Top + 2, $area.Width - 4, $area.Height - 4)
             $control.Name = 'btn' + $macro
-            $control.OnAction = 'TaxLawUpdater.' + $macro
+            # Qualify with the final workbook name; Workbook_Open will rebind
+            # automatically if a case is later opened under a different name.
+            $control.OnAction = "'" + [IO.Path]::GetFileName($final).Replace("'", "''") + "'!TaxLawUpdater." + $macro
             $control.Characters().Text = $caption
         } finally {
             foreach ($obj in @($control, $area)) {
@@ -123,6 +126,7 @@ End Sub
     Assert ($workbook.Worksheets.Item('自動回帰テスト').Range('B49').Value2 -ceq 'PASS') 'Excelでの内蔵回帰試験が不合格です。'
     $phase = 'VBA実行スモーク'
     Log 'マクロを実際に実行して、Excel/VBA連携を検査します。'
+    $excel.Run('TaxLawUpdater.BindButtons')
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert ($workbook.Worksheets.Item('自動回帰テスト').Range('B49').Value2 -ceq 'PASS') 'マクロの実行後、回帰試験が不合格です。'
     $phase = 'ファイル確定保存'
