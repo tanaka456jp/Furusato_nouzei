@@ -59,3 +59,12 @@ GitHub Actionsの `pull_request.edited` でWindowsジョブを開始します。
 ### 現在のブロッカー
 
 受入ジョブは `self-hosted / Windows / furusato-excel` ラベルを持つrunnerを待機しています。専用Windows PCに該当runnerを登録・起動してからジョブを再実行してください。他用途の共有runnerにラベルを流用しないでください。
+
+
+## v4.4：案件を複数同時に開く場合のマクロ誤実行防止（2026-11-05）
+
+- 従来のボタン `OnAction = TaxLawUpdater.処理名` はブック名で限定されておらず、複数の顧客案件ブックを同時に開いたときに別ブックのマクロを起動するおそれがありました。
+- 新たに `TaxLawUpdater.BindButtons` を実装し、すべてのフォームボタンの `OnAction` を `'現在のブック名.xlsm'!TaxLawUpdater.処理名` と明示的に限定します。ファイル名にアポストロフィがある場合も正しくエスケープします。
+- `Workbook_Open` で再割り当てするため、案件保存後に別のファイル名で開いても、その案件ブック自身を操作します。
+- Windows実機テストは `FurusatoQA.xlsm` と `case_preservation.xlsm` を別々に開き、更新ボタンとPDF出力ボタンの割当先が各ブックの名前と一致することを確認します。
+- **静的検査は実行コードの存在確認に過ぎず、Excelで複数ブックを開いた際の実動作判定はWindows受入待ちです。**
