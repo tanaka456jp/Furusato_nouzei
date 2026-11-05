@@ -48,8 +48,12 @@ echo.
 echo FAILED: Please attach setup.log AND setup_launcher.log.
 echo Both logs are in this folder. They capture errors before VBA installation.
 echo.
-if exist "%~dp0setup.log" type "%~dp0setup.log"
-if exist "%LAUNCHER%" type "%LAUNCHER%"
+echo.
+echo To identify the cause, open setup.log in Notepad.
+echo Long error details are preserved in setup_launcher.log.
+echo If Excel cannot open the .xlsx, check the original ZIP Properties
+echo for an Unblock button, then extract to a NEW folder.
+echo Do not disable all Microsoft Excel Protected View settings.
 echo.
 pause
 exit /b 1
