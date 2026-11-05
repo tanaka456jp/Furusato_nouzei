@@ -104,8 +104,9 @@ Public Sub TaxLawUpdate()
         End If
     End If
     front.Range("B30").Value2 = "更新済：" & year & "年分 / " & revision & "｜金額は入力後に確認"
-    On Error Resume Next
+    ' Do not report success if the workbook cannot be saved.
     bk.Save
+    On Error Resume Next
     If Not source Is Nothing Then source.Close SaveChanges:=False
     If Len(downloadedFile) > 0 Then Kill downloadedFile
     Application.StatusBar = False
@@ -233,7 +234,11 @@ Private Sub ReplaceMasterSheet(ByVal src As Worksheet, ByVal dst As Worksheet)
     If lr < 4 Or lr > 900 Or lc < 3 Or lc > 22 Then Err.Raise vbObjectError + 2023, , "配布マスタの行列範囲が不正：" & src.Name
     ' Master sheets must contain VALUES only; never execute imported formulas.
     If Application.WorksheetFunction.CountA(src.Range(src.Cells(4, 1), src.Cells(lr, lc))) = 0 Then Err.Raise vbObjectError + 2024, , "配布マスタが空です：" & src.Name
-    If Application.WorksheetFunction.CountIf(src.Range(src.Cells(4, 1), src.Cells(lr, lc)), "=*") > 0 Then Err.Raise vbObjectError + 2025, , "配布マスタに数式が含まれます：" & src.Name
+    Dim formulaCells As Range
+    On Error Resume Next
+    Set formulaCells = src.Range(src.Cells(3, 1), src.Cells(lr, lc)).SpecialCells(xlCellTypeFormulas)
+    On Error GoTo 0
+    If Not formulaCells Is Nothing Then Err.Raise vbObjectError + 2025, , "配布マスタに数式が含まれます：" & src.Name
     dst.Range("A3:V900").ClearContents
     dst.Range(dst.Cells(3, 1), dst.Cells(lr, lc)).Value2 = src.Range(src.Cells(3, 1), src.Cells(lr, lc)).Value2
 End Sub
