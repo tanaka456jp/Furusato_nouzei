@@ -43,7 +43,7 @@ class WorkbookTest(unittest.TestCase):
         self.assertEqual(str(self.book[HOME].print_area), "'操作画面'!$A$1:$D$31")
         self.assertEqual(str(self.book[DETAIL].print_area), "'計算根拠'!$A$1:$D$15")
         rules = self.book[HOME].conditional_formatting
-        self.assertIn("A9:D9", {str(r) for r in rules})
+        self.assertIn("A9:D9", {str(r.sqref) for r in rules})
         self.assertGreaterEqual(len(rules["A9:D9"]), 2)
         self.assertGreaterEqual(self.book[HOME].row_dimensions[9].height, 36)
 
