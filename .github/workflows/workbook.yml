@@ -33,6 +33,7 @@ jobs:
           python tools/package_review.py Furusato_nouzei_v4_REVIEW.zip
           python tools/test_setup_contract.py Furusato_nouzei_v4_REVIEW.zip
           python tools/test_shared_runner_contract.py
+          python tools/make_excel_open_probes.py Excel_open_probes --self-test
       - name: Parse shared-PC Windows PowerShell setup (static syntax)
         shell: pwsh
         run: |
@@ -43,6 +44,13 @@ jobs:
           if ($errors.Count -gt 0) {
             throw ($errors | Out-String)
           }
+      - name: Upload XLSX opening diagnostics (not production)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Furusato_nouzei_ExcelOpen_PROBES
+          path: Excel_open_probes/
+          if-no-files-found: error
+          retention-days: 7
       - name: Upload reproducible review ZIP
         uses: actions/upload-artifact@v4
         with:
@@ -77,6 +85,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Review ZIP packaging failed' }
           python tools/test_setup_contract.py Furusato_nouzei_v4_REVIEW.zip
           if ($LASTEXITCODE -ne 0) { throw 'Package or installer contract failed' }
+          python tools/make_excel_open_probes.py Excel_open_probes --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Excel opening diagnostic contract failed' }
       - name: Verify native PowerShell 5.1 and Japanese-path extraction
         shell: powershell
         run: |
@@ -117,6 +127,12 @@ jobs:
           python tools/package_review.py $zip
           if ($LASTEXITCODE -ne 0) { throw 'Review ZIP generation failed' }
           Expand-Archive -LiteralPath $zip -DestinationPath (Join-Path $work 'review')
+          $probes = Join-Path $work 'excel_open_probes'
+          python tools/make_excel_open_probes.py $probes --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Excel opening diagnostic preparation failed' }
+          $probeEvidence = Join-Path $work 'excel_open_probe.json'
+          powershell.exe -NoProfile -File .\tools\probe_excel_open.ps1 -ProbeDirectory $probes -EvidencePath $probeEvidence
+          if ($LASTEXITCODE -ne 0) { Write-Warning 'Excel opening diagnostic failed; installer verification continues.' }
           $setup = Join-Path $work 'review/setup.ps1'
           powershell.exe -NoProfile -File $setup
           if ($LASTEXITCODE -ne 0) { throw 'Excel installer failed; see setup.log' }
@@ -148,6 +164,7 @@ jobs:
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/review/setup.log
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/review/setup_launcher.log
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/excel_acceptance.json
+            ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/excel_open_probe.json
           if-no-files-found: ignore
           retention-days: 7
       - name: Clean temporary acceptance data

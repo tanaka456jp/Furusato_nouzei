@@ -20,7 +20,8 @@ foreach ($source in @(
     'tools/setup.ps1',
     'tools/verify_excel.ps1',
     'tools/register_shared_pc_runner.ps1',
-    'tools/verify_windows_hosted.ps1'
+    'tools/verify_windows_hosted.ps1',
+    'tools/probe_excel_open.ps1'
 )) {
     $tokens = $null
     $errors = $null
