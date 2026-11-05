@@ -171,10 +171,12 @@ jobs:
           $accepted = Get-Content -LiteralPath $evidence -Raw -Encoding UTF8 | ConvertFrom-Json
           if ($accepted.status -ne 'PASS') { throw 'VBAUpdater must never run before Excel acceptance PASS' }
           $bridgeEvidence = Join-Path $work 'vbaupdater_bridge.json'
-          & .\tools\verify_vbaupdater_bridge.ps1 -Workbook $reviewed -StagingRoot (Join-Path $work 'vbaupdater_project') -EvidencePath $bridgeEvidence
+          & .\tools\verify_vbaupdater_bridge.ps1 -Workbook $reviewed -StagingRoot (Join-Path $work 'vbaupdater_project') -EvidencePath $bridgeEvidence -PushInSandbox
           if (-not $?) { throw 'Isolated VBAUpdater bridge failed' }
           $bridge = Get-Content -LiteralPath $bridgeEvidence -Raw -Encoding UTF8 | ConvertFrom-Json
-          if (-not $bridge.original_preserved -or $bridge.status -eq 'FAIL') { throw 'VBAUpdater evidence reported an unsafe result' }
+          if (-not $bridge.original_preserved -or $bridge.status -notin @('STAGED_PUSH_EXCEL_PASS', 'PREPARED_UPDATER_NOT_FOUND')) {
+            throw 'VBAUpdater isolated update was not safely completed or explicitly skipped'
+          }
           ('VBAUpdater isolated integration: ' + $bridge.status + ' (independent of Excel acceptance).') >> $env:GITHUB_STEP_SUMMARY
       - name: Upload verified review XLSM
         if: success()
@@ -185,6 +187,7 @@ jobs:
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/review/Furusato_nouzei.xlsm
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/excel_acceptance.json
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/vbaupdater_bridge.json
+            ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/vbaupdater_excel_acceptance.json
           if-no-files-found: error
           retention-days: 14
       - name: Upload setup diagnostics
