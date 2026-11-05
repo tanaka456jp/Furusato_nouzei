@@ -120,14 +120,21 @@ jobs:
           $setup = Join-Path $work 'review/setup.ps1'
           powershell.exe -NoProfile -File $setup
           if ($LASTEXITCODE -ne 0) { throw 'Excel installer failed; see setup.log' }
-          & .\tools\verify_excel.ps1 -Workbook (Join-Path $work 'review/Furusato_nouzei.xlsm')
+          $evidence = Join-Path $work 'excel_acceptance.json'
+          & .\tools\verify_excel.ps1 -Workbook (Join-Path $work 'review/Furusato_nouzei.xlsm') -EvidencePath $evidence
           if (-not $?) { throw 'Windows Excel acceptance failed' }
+          if (-not (Test-Path -LiteralPath $evidence)) { throw 'Excel acceptance evidence was not created' }
+          $report = Get-Content -LiteralPath $evidence -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($report.status -ne 'PASS') { throw 'Excel acceptance report is not PASS' }
+          if (-not $report.workbook_sha256) { throw 'Excel acceptance report lacks workbook SHA-256' }
       - name: Upload verified review XLSM
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: Furusato_nouzei_Windows_REVIEW_${{ github.run_id }}
-          path: ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/review/Furusato_nouzei.xlsm
+          path: |
+            ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/review/Furusato_nouzei.xlsm
+            ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/excel_acceptance.json
           if-no-files-found: error
           retention-days: 14
       - name: Upload setup diagnostics
@@ -138,6 +145,7 @@ jobs:
           path: |
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/review/setup.log
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/review/setup_launcher.log
+            ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/excel_acceptance.json
           if-no-files-found: ignore
           retention-days: 7
       - name: Clean temporary acceptance data
