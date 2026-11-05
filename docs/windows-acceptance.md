@@ -121,3 +121,21 @@ powershell.exe -NoProfile -File .\tools\register_shared_pc_runner.ps1 -Role PC1 
 **留意事項：** ExcelのCOM動作には対話型ユーザーセッションが必要な場合がある。VBAプロジェクト操作の許可が管理ポリシーで禁止されている場合は無理に回避しない。既存顧客データや他開発の実行中Excelは終了しない。資格情報や登録トークンはGitHubへ保存・報告しない。
 
 登録前は、CIの `excel` ジョブが `queued` のままになっても正常な待機であり、実機PASSを意味しません。
+
+## v4.8: 公開リポジトリでのGitHub-hosted Windows互換性検証（2026-11-05）
+
+この公開リポジトリでは、**GitHub-hosted `windows-2022` をPRごとに自動実行**します。self-hosted runnerがオフラインでも、このジョブは別に進行します。
+
+`windows_compat` ジョブは次を確認します。
+
+- Windows上のPython 3.11で検証用ブックとZIPを再生成し、既存の静的契約テストを実行
+- Windows PowerShell 5.1でsetup/Excel受入/runner登録/Windows検証の各スクリプトを構文解析
+- 日本語を含むフォルダ名にZIPを展開し、5ファイルの存在・配布ソースのSHA-256を確認
+- ASCII安全な初回実行CMD、UTF-8 VBA、日本語文字の取扱い、XLSXの主要OOXML構造を確認
+- 日本語文字を含むPowerShell 5.1ファイルはUTF-8 **BOM必須**。初回CIでBOM欠落による文字化けを発見し、修復後のWindowsジョブでPASSを確認
+
+**実施した検証：** [GitHub Actions #41998559266](https://github.com/tanaka456jp/Furusato_nouzei/actions/runs/41998559266) — `static` PASS / `windows_compat` PASS（実際のGitHub-hosted Windows Server 2022で実行）。
+
+**実施していない検証：** GitHub-hosted WindowsにMicrosoft Excelデスクトップはないため、VBAコンパイル、Excel COMによる52件実再計算、実際の税制更新ボタン、案件保存復元、印刷、PDF出力、実画面3条件は確認できない。これらは引き続き `self-hosted / Windows / furusato-excel` で検証する。
+
+GitHub-hostedでの成功と、完成版.xlsmの正式受入を混同しない。Excel実機ジョブはrunner待機中、正式判定HOLDを維持する。
