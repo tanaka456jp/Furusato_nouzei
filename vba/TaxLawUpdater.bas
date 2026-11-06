@@ -438,7 +438,7 @@ Public Sub NewCase()
     End With
     With ThisWorkbook.Worksheets("例外・分離課税")
         ' Preserve calculated cells B7/B22/B28-B30.
-        .Range("B5:B6,B8:B12,B13:B21,B24:B26,B32").ClearContents
+        .Range("B5:B6,B8:B12,B13:B21,B24:B26,B32,B36").ClearContents
         .Range("B25").Value2 = "なし"
         .Range("B33").Value2 = "なし"
         ' B4 is calculated from B24, and must survive NewCase.
