@@ -17,7 +17,8 @@ CODE_MAP = {
     "G29":"mortgage_credit","G30":"life_new","G31":"life_old",
     "G32":"medical_care","G33":"annuity_new","G34":"annuity_old",
     "G35":"mortgage_claim_count","G36":"mortgage_possible_credit",
-    "G72":"under16_count",
+    "G72":"special_relative_count", "G73":"under16_count",
+    "G74":"special_relative_deduction_reference",
     "G46":"basic_reference",
     "G47":"income_adjustment",
 }
@@ -175,6 +176,18 @@ def finish(year,fields,mode,warnings=None):
         enough=False;warnings.append("MORTGAGE_OCCUPANCY_YEAR_MISSING")
     if possible>0 and used is not None and used>possible:
         enough=False;warnings.append("MORTGAGE_APPLIED_EXCEEDS_POSSIBLE")
+    # G72 is the special-relative count, G73 the under-16 count, and
+    # G74 the special-relative tax deduction. The slip does not reveal all
+    # qualifying relatives' incomes, so require an explicit reconciliation.
+    special_count=fields.get("special_relative_count",0)
+    special_deduction=fields.get("special_relative_deduction_reference",0)
+    if special_count or special_deduction:
+        enough=False
+        warnings.append("SPECIAL_RELATIVE_REQUIRES_INCOME_DETAILS")
+        if special_deduction and not special_count:
+            warnings.append("SPECIAL_RELATIVE_COUNT_MISSING")
+        if special_count>3:
+            warnings.append("SPECIAL_RELATIVE_COUNT_EXCEEDS_UI")
     if fields.get("mortgage_claim_count",0)>1:
         enough=False;warnings.append("MULTIPLE_MORTGAGE_CREDITS_REQUIRE_REVIEW")
     if "mortgage_occupancy_year" in fields:
