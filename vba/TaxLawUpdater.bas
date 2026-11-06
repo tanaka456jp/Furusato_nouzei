@@ -264,7 +264,8 @@ Public Sub ImportWithholding()
                      "earthquake_deduction_reference", "mortgage_credit", _
                      "mortgage_possible_credit", "mortgage_occupancy_year", _
                      "mortgage_claim_count", "basic_reference", "income_adjustment", _
-                     "under16_count"
+                     "under16_count", "special_relative_count", _
+                     "special_relative_deduction_reference"
                     ' Allowed amounts only; all other columns are rejected.
                 Case Else
                     Err.Raise vbObjectError + 213, , "未承認の取込項目を検出しました。"
@@ -287,6 +288,7 @@ Public Sub ImportWithholding()
     home.Range("B11:B12,B15:B16,B19:B25,B33:B36,D11:D23").ClearContents
     ' Leave independent pension, business and other income entries untouched.
     extra.Range("B13:B20").ClearContents
+    extra.Range("B38:B39").ClearContents
     extra.Range("B32").ClearContents
     ' B4 and home B26 are calculated indicators: never overwrite formulas.
     home.Range("B25").Value2 = "なし"
@@ -319,6 +321,8 @@ Public Sub ImportWithholding()
                     home.Range("D23").Value2 = value
                     If value > 0 Then home.Range("B25").Value2 = "あり"
                 Case "income_adjustment": extra.Range("B13").Value2 = value
+                Case "special_relative_count": extra.Range("B38").Value2 = value
+                Case "special_relative_deduction_reference": extra.Range("B39").Value2 = value
             End Select
         End If
     Next key
@@ -352,9 +356,46 @@ End Sub
 ' Provisional imports are editable, but never silently treated as tax-complete.
 ' The user must confirm the missing mortgage credit applied amount and the
 ' source reference amounts before a previously flagged import is released.
+' Apply the published 2025/2026 income-tax G74 special-relative bands.
+' The threshold changed from 580,000 to 620,000 for the 2026 income year.
+Public Function SpecialRelativeTaxDeduction(ByVal familyIncome As Double, ByVal incomeYear As Long) As Double
+    Dim minimum As Double
+    If incomeYear = 2025 Then
+        minimum = 580000#
+    ElseIf incomeYear = 2026 Then
+        minimum = 620000#
+    Else
+        SpecialRelativeTaxDeduction = 0#
+        Exit Function
+    End If
+    If familyIncome <= minimum Or familyIncome > 1230000# Then
+        SpecialRelativeTaxDeduction = 0#
+    ElseIf familyIncome <= 850000# Then
+        SpecialRelativeTaxDeduction = 630000#
+    ElseIf familyIncome <= 900000# Then
+        SpecialRelativeTaxDeduction = 610000#
+    ElseIf familyIncome <= 950000# Then
+        SpecialRelativeTaxDeduction = 510000#
+    ElseIf familyIncome <= 1000000# Then
+        SpecialRelativeTaxDeduction = 410000#
+    ElseIf familyIncome <= 1050000# Then
+        SpecialRelativeTaxDeduction = 310000#
+    ElseIf familyIncome <= 1100000# Then
+        SpecialRelativeTaxDeduction = 210000#
+    ElseIf familyIncome <= 1150000# Then
+        SpecialRelativeTaxDeduction = 110000#
+    ElseIf familyIncome <= 1200000# Then
+        SpecialRelativeTaxDeduction = 60000#
+    Else
+        SpecialRelativeTaxDeduction = 30000#
+    End If
+End Function
+
 Public Sub ReviewWithholding()
     Dim home As Worksheet, extra As Worksheet, msg As String
     Dim value As Double, refCell As Variant, calcCell As Variant
+    Dim familyCell As Variant, specialTotal As Double, specialCount As Long
+    Dim familyIncome As Double, specialDeduction As Double
     On Error GoTo Failed
     Set home = ThisWorkbook.Worksheets("操作画面")
     Set extra = ThisWorkbook.Worksheets("例外・分離課税")
@@ -374,6 +415,34 @@ Public Sub ReviewWithholding()
                Not IsNumeric(home.Range("B36").Value2) Then
                 Err.Raise vbObjectError + 241, , "住宅ローン控除の所得税適用額・居住開始年・適用数を確認してください。"
             End If
+        End If
+    End If
+    ' Keep G72/G74 provisional until the actual relatives' incomes
+    ' reconcile both the count and the official deduction table.
+    If Val(CStr(extra.Range("B39").Value2)) > 0 And _
+       Val(CStr(extra.Range("B38").Value2)) = 0 Then
+        Err.Raise vbObjectError + 244, , "特定親族の人数が原票から読み取れていません。"
+    End If
+    If Val(CStr(extra.Range("B38").Value2)) > 0 Then
+        If Not IsNumeric(extra.Range("B39").Value2) Then
+            Err.Raise vbObjectError + 245, , "特定親族特別控除額（G74）を確認してください。"
+        End If
+        For Each familyCell In Array("D14", "D15", "D16")
+            If IsNumeric(home.Range(CStr(familyCell)).Value2) Then
+                familyIncome = CDbl(home.Range(CStr(familyCell)).Value2)
+                specialDeduction = SpecialRelativeTaxDeduction( _
+                    familyIncome, CLng(home.Range("B11").Value2))
+                If specialDeduction > 0 Then
+                    specialCount = specialCount + 1
+                    specialTotal = specialTotal + specialDeduction
+                End If
+            End If
+        Next familyCell
+        If specialCount <> CLng(extra.Range("B38").Value2) Then
+            Err.Raise vbObjectError + 246, , "特定親族の合計所得を人数分入力し、原票と照合してください。"
+        End If
+        If Abs(specialTotal - CDbl(extra.Range("B39").Value2)) > 1 Then
+            Err.Raise vbObjectError + 247, , "特定親族特別控除額（G74）と所得内訳の計算が一致しません。"
         End If
     End If
     Application.Calculate
@@ -438,7 +507,7 @@ Public Sub NewCase()
     End With
     With ThisWorkbook.Worksheets("例外・分離課税")
         ' Preserve calculated cells B7/B22/B28-B30.
-        .Range("B5:B6,B8:B12,B13:B21,B24:B26,B32,B36").ClearContents
+        .Range("B5:B6,B8:B12,B13:B21,B24:B26,B32,B36,B38:B39").ClearContents
         .Range("B25").Value2 = "なし"
         .Range("B33").Value2 = "なし"
         ' B4 is calculated from B24, and must survive NewCase.
