@@ -66,9 +66,21 @@ test("statutory salary table boundaries and statutory quarter-rounding",()=>{
 });
 test("salary income supplied by the slip must match independently calculated salary income",()=>{
   const x=tax.calculate({...base,salaryGross:"5000000",salaryIncomeReference:"3560001",socialInsurance:"1000000"});
-  assert.equal(x.status,"ESTIMATE");
+  assert.equal(x.status,"HOLD");
+  assert.equal(x.donationLimitYen,null);
   const mismatch=tax.calculate({...base,salaryGross:"5000000",salaryIncomeReference:"3560400",socialInsurance:"1000000"});
   assert.equal(mismatch.status,"HOLD");assert.equal(mismatch.donationLimitYen,null);
+});
+test("one-yen source error at 4.89m basic deduction boundary is HOLD",()=>{
+  // 6,655,556 * 90% - 1,100,000 => 4,890,000 after rounding.
+  // Accepting a +1 yen source override would incorrectly change
+  // the 2026 basic deduction from 1,040,000 to 670,000.
+  const correct=tax.calculate({...base,salaryGross:6655556,salaryIncomeReference:4890000});
+  assert.equal(correct.status,"ESTIMATE");
+  assert.equal(correct.calculation.basicIncomeTaxDeductionYen,1040000);
+  const incorrect=tax.calculate({...base,salaryGross:6655556,salaryIncomeReference:4890001});
+  assert.equal(incorrect.status,"HOLD");
+  assert.equal(incorrect.donationLimitYen,null);
 });
 test("resident-tax special rate bracket derives from resident tax, not copied income tax",()=>{
   const x=tax.calculate(base);
