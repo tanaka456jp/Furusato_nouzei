@@ -250,7 +250,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: Furusato_nouzei_Windows_REVIEW_${{ github.run_id }}
+          name: Furusato_nouzei_Excel_XLSM_REVIEW_${{ github.run_id }}
           path: |
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/review/Furusato_nouzei.xlsm
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/excel_acceptance.json
