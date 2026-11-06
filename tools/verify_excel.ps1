@@ -399,7 +399,11 @@ try {
     if ($null -ne $savedCase) { try { $savedCase.Close($false) } catch {} }
     if ($null -ne $book) { try { $book.Close($false) } catch {} }
     if ($null -ne $excel) { try { $excel.Quit() } catch {} }
-    foreach ($obj in @($savedCase,$detail,$checks,$settings,$homeSheet,$book,$excel)) {
+    # Release new COM worksheet handles used by pension/other-income QA,
+    # otherwise an orphan Excel process can keep the staged XLSM locked
+    # when VBAUpdater immediately opens it in the same CI job.
+    foreach ($obj in @($extraSheet,$whtSheet,$engineSheet,$residentSheet,
+                       $savedCase,$detail,$checks,$settings,$homeSheet,$book,$excel)) {
         try {
             if ($null -ne $obj -and [Runtime.InteropServices.Marshal]::IsComObject($obj)) {
                 [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($obj)
