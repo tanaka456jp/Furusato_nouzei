@@ -338,6 +338,9 @@ def build(source, output):
                         f'COUNTIF({group},"<0")+COUNTIF({group},">{limit}")>0',
                         f'SUMPRODUCT(--(IFERROR(MOD({group},1),0)<>0))>0'))
     invalid += [
+        f'AND(N({ref(ADVANCED,"B5")})>0,{ref(ADVANCED,"B6")}="")',
+        f'OR(N({ref(ADVANCED,"B9")})>N({ref(ADVANCED,"B8")}),N({ref(ADVANCED,"B11")})>N({ref(ADVANCED,"B10")}))',
+        f'AND(N({ref(ADVANCED,"B24")})>0,{ref(ADVANCED,"B25")}="")',
         'AND(N(B34)>0,OR(NOT(ISNUMBER(B33)),NOT(ISNUMBER(B35)),B35<2022,B35>D4))',
         'AND(N(B34)>0,OR(NOT(ISNUMBER(B36)),B36<>1))',
         'AND(N(B34)>0,ISNUMBER(B33),B33>B34)',
@@ -353,11 +356,9 @@ def build(source, output):
     unsupported = (
         'OR(B26="該当あり",'
         +f'{ref(ADVANCED,"B4")}<>"通常",'
-        +f'N({ref(ADVANCED,"B5")})>0,N({ref(ADVANCED,"B6")})>0,'
-        +f'N({ref(ADVANCED,"B7")})>0,N({ref(ADVANCED,"B9")})>0,'
-        +f'N({ref(ADVANCED,"B10")})>0,N({ref(ADVANCED,"B12")})>0,'
-        +f'N({ref(ADVANCED,"B21")})>0,'
-        +'AND(D24="確定申告",B15=0),'
+        +f'N({ref(ADVANCED,"B24")})>0,N({ref(ADVANCED,"B21")})>0,'
+        +f'{ref(ADVANCED,"B20")}="REQUIRES_REVIEW",'
+        +'AND(D24="確定申告",B15=0,B34=""),'
         'B13<=IF(SUM(D11:D13,D23)+COUNT(D14:D18)=0,450000,'
         '350000*(1+SUM(D11:D13,D23)+COUNT(D14:D18))+420000),'
         'AND(OR(SUM(D19:D21)>0,D22<>"該当なし"),B13<=1350000))'
@@ -419,12 +420,12 @@ def build(source, output):
     note(detail, 2, "=" + ref(HOME, "B28"))
     note(detail, 3, f'="所得年 "&{ref(HOME,"D4")}&" ｜ 住民税課税年度 "&{ref(HOME,"D5")}&" ｜ 税制版 "&{ref(HOME,"B29")}')
     items = (
-        ("給与所得金額", ref(ENGINE, "D15"), "源泉徴収票の調整控除後の金額"),
+        ("総合課税所得（給与・年金等）", ref(ENGINE, "D15"), "給与所得＋追加の総合課税所得"),
         ("所得控除（住民税）", f'{ref(HOME,"B14")}-{ref(ENGINE,"J43")}', "所得税の所得控除合計 − 控除差額"),
-        ("住民税課税所得", ref(RESIDENT, "B6"), "給与所得 − 所得控除。千円未満切捨て"),
+        ("住民税課税所得", ref(RESIDENT, "B6"), "総合所得−住民税所得控除。千円未満切捨て"),
         ("住民税算出所得割", ref(RESIDENT, "B15"), "住民税課税所得 × 標準税率"),
         ("調整控除", ref(RESIDENT, "B14"), "課税所得と人的控除差から算定"),
-        ("調整控除後の所得割", ref(RESIDENT, "B16"), "算出所得割 − 調整控除"),
+        ("調整控除後の所得割", ref(RESIDENT, "B16"), "当年の給与・追加所得から自動推計"),
         ("ふるさと納税特例控除上限", ref(RESIDENT, "B19"), "調整控除後の所得割 × 特例控除限度割合"),
         ("特例割合判定の所得税率", ref(RESIDENT, "B21"), "住民税課税所得から人的控除差等を控除して判定"),
         ("寄附限度額（丸め前）", ref(RESIDENT, "B23"), "2,000円 ＋ 特例上限 ÷（90% − 所得税率 × 1.021）"),
