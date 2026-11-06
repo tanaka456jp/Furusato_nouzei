@@ -77,7 +77,7 @@ try {
     QA-Stage 'initial-regressions-pass'
     QA-Stage 'print-setup-validation-start'
     Assert-PrintConfiguration $homeSheet 'Home' '\$A\$1:\$D\$39'
-    Assert-PrintConfiguration $detail 'Detail' '\$A\$1:\$D\$15'
+    Assert-PrintConfiguration $detail 'Detail' '\$A\$1:\$D\$19'
     QA-Stage 'print-setup-validation-done'
     foreach ($year in @(2025, 2026)) {
         QA-Stage ('synthetic-' + $year + '-input-start')
@@ -239,6 +239,43 @@ try {
     $extraSheet.Range('B25').Value2 = 'なし'
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value $extraSheet.Range('B4').Value2 '通常' 'Normal case category restored automatically'
+    # Gross income 5.2m, certified non-donation deductions 5.1m:
+    # ordinary taxable 100k, split taxable 20m. On a 200k donation
+    # the first 100k is deducted from ordinary income, 98k from stock gains.
+    QA-Stage 'split-donation-overflow-start'
+    $allocation = $book.Worksheets.Item('分離課税寄附控除')
+    $sourceExtra.Range('B14').Value2 = 5100000.0
+    $extraSheet.Range('B24').Value2 = 20000000.0
+    $extraSheet.Range('B25').Value2 = '上場株式'
+    $extraSheet.Range('B33').Value2 = 'なし'
+    $extraSheet.Range('B36').Value2 = 20000000.0
+    $homeSheet.Range('B33:B36').ClearContents()
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Ordinary plus split supported'
+    Assert-Value $allocation.Range('B2').Value2 100000 'Ordinary taxable income before donation'
+    Assert-Value $allocation.Range('B3').Value2 20000000 'Split taxable income before donation'
+    Assert-Value $allocation.Range('F50').Value2 198000 '200k donation deduction'
+    Assert-Value $allocation.Range('G50').Value2 0 'Ordinary tax fully eliminated by donation'
+    Assert-Value $allocation.Range('H50').Value2 19902000 'Remaining split taxable after spillover'
+    Assert-Value $allocation.Range('Q50').Value2 98000 'Donated deduction allocated to split income'
+    Assert-Value $allocation.Range('I50').Value2 2985300 'After-donation income tax'
+    if ([double]$allocation.Range('J50').Value2 -lt 20113 -or
+        [double]$allocation.Range('J50').Value2 -gt 20115) {
+        throw 'Income tax delta is missing split-income reduction'
+    }
+    $candidate = [double]$allocation.Range('B46').Value2
+    if ($candidate -lt 2000 -or $candidate -ge 300000) {
+        throw "Donation ceiling is outside validated synthetic range: $candidate"
+    }
+    Assert-Value $homeSheet.Range('B8').Value2 $candidate 'Donation ceiling uses the split solver'
+    Assert-Value $homeSheet.Range('B26').Value2 '計算可能' 'Mixed case was automatically accepted'
+    $sourceExtra.Range('B14').ClearContents()
+    $extraSheet.Range('B24:B25').ClearContents()
+    $extraSheet.Range('B25').Value2 = 'なし'
+    $extraSheet.Range('B36').ClearContents()
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Ordinary case restored'
+    QA-Stage 'split-donation-overflow-pass'
     $extraSheet.Range('B20').Value2 = 'REQUIRES_REVIEW'
     $excel.Run('TaxLawUpdater.RecalculateCase')
     if ([string]$homeSheet.Range('B28').Value2 -eq '正常') {
