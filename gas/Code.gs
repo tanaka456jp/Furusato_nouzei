@@ -21,12 +21,10 @@ function setupBoundSpreadsheet() {
   var rows=FurusatoEngine.statutoryRows();
   var sheet=ss.getSheetByName(name);
   if (sheet) {
-    var old=sheet.getDataRange().getValues();
-    if (old.length!==rows.length || JSON.stringify(old.map(String))===JSON.stringify(rows.map(String))) {
-      // The existence of a previously edited or established sheet is not permission to overwrite it.
-      throw new Error("既存の税制参照シートは上書きしません。新規シートに移動して実行してください");
-    }
-    throw new Error("既存の税制参照シートがあるため、更新を中止しました");
+    // A reference tab may already have been prepared via Google Drive.
+    // It is never a calculation input or a target for destructive updates.
+    return {status:"EXISTING_REFERENCE_SHEET",spreadsheetUrl:ss.getUrl(),
+            sheetName:name,message:"既存の税制参照シートは変更していません"};
   }
   sheet=ss.insertSheet(name);
   sheet.getRange(1,1,rows.length,rows[0].length).setValues(rows);
