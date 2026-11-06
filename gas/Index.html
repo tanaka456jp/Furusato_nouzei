@@ -50,7 +50,7 @@ main{margin:0;padding:0;max-width:none}.panel{border:0;box-shadow:none;padding:0
 </style></head>
 <body>
 <header><h1>ふるさと納税 限度額シミュレーター</h1>
-<p>質問に答えるだけで計算結果と根拠を表示｜GAS検証版 v0.1.2</p></header>
+<p>質問に答えるだけで計算結果と根拠を表示｜GAS検証版 v0.1.3</p></header>
 <main><div class="panel">
 <div id="wizard">
 <div class="stepwords"><span>基本情報</span><span>所得</span><span>控除</span><span>入力確認</span><span>結果</span></div>
@@ -69,7 +69,7 @@ main{margin:0;padding:0;max-width:none}.panel{border:0;box-shadow:none;padding:0
 <div class="field-grid">
 <div class="field"><label for="salaryGross">支払金額（必須）</label><input id="salaryGross" inputmode="numeric" type="number" min="0" step="1" placeholder="7000000"></div>
 <div class="field"><label for="socialInsurance">社会保険料等の金額（必須）</label><input id="socialInsurance" inputmode="numeric" type="number" min="0" step="1" placeholder="1000000"></div>
-<div class="field"><label for="salaryIncomeReference">給与所得控除後の金額（原票の参考値）</label><input id="salaryIncomeReference" inputmode="numeric" type="number" min="0" step="1" placeholder="空欄可"><span class="hint">給与660万円以下の場合は必須。原票から転記してください。</span></div>
+<div class="field"><label for="salaryIncomeReference">給与所得控除後の金額（原票の参考値）</label><input id="salaryIncomeReference" inputmode="numeric" type="number" min="0" step="1" placeholder="空欄可"><span class="hint">給与190万円未満（2025年分）／220万円未満（2026年分）は必須。それ以外も原票の金額と照合してください。</span></div>
 <div class="field"><label for="deductionsReference">所得控除の額の合計額（原票の参考値）</label><input id="deductionsReference" inputmode="numeric" type="number" min="0" step="1" placeholder="空欄可"><span class="hint">入力時は基礎控除＋社会保険料のみの標準ケースと照合します。</span></div>
 </div>
 <h3>オフライン読取結果の取込</h3>
@@ -161,8 +161,8 @@ function validInput(){
   if(!/^(0|[1-9][0-9]*)$/.test(d.salaryGross)||!/^([0-9]+)$/.test(d.socialInsurance)){
     notify("支払金額と社会保険料を円単位の整数で入力してください");return false;
   }
-  if(Number(d.salaryGross)<=6600000 && d.salaryIncomeReference===""){
-    notify("給与660万円以下は源泉徴収票の「給与所得控除後の金額」を入力してください");return false;
+  if(Number(d.salaryGross)<(Number(d.year)===2026?2200000:1900000) && d.salaryIncomeReference===""){
+    notify("この給与帯域では源泉徴収票の「給与所得控除後の金額」を入力してください");return false;
   }
  }
  if(state.step===2&&!d.acknowledgedExclusions){notify("該当する控除・所得の有無を確認してください");return false;}
@@ -197,6 +197,7 @@ function processResult(result){
    ["給与所得金額",yen(c.salaryIncomeYen)],["社会保険料等",yen(c.socialInsuranceYen)],
    ["所得税基礎控除",yen(c.basicIncomeTaxDeductionYen)],
    ["所得税課税所得",yen(c.incomeTaxTaxableYen)],
+   ["住民税特例控除の税率判定額",yen(c.residentSpecialRateBaseYen)],
    ["所得税限界税率",(c.marginalIncomeTaxRate*100).toFixed(1)+"%"],
    ["住民税課税所得",yen(c.residentTaxTaxableYen)],
    ["住民税所得割・調整控除後",yen(c.residentIncomeLevyYen)],
@@ -207,7 +208,7 @@ function processResult(result){
   byId("formulaDetails").style.display="block";
   byId("formulaDetails").textContent=
    "計算式：2,000円 ＋（住民税所得割額 "+yen(c.residentIncomeLevyYen)+
-   " × 20％） ÷［90％ − 所得税率 "+(c.marginalIncomeTaxRate*100).toFixed(1)+
+   " × 20％） ÷［90％ − 住民税特例控除の適用税率 "+(c.marginalIncomeTaxRate*100).toFixed(1)+
    "％ × 1.021］＝ "+yen(c.preliminaryLimitYen)+
    "。住民税の所得基準による寄附金限度 "+yen(c.residentDonationIncomeCapYen)+
    " と比較し、安全側で1,000円未満を切捨て。";
