@@ -119,7 +119,7 @@ def build(source, output):
         home.add_data_validation(validation)
         validation.add(home[cell])
 
-    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.18.1 検証版")
+    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.18.2 検証版")
     bar(extra, 1, "追加所得・分離課税（所得年内で事前試算）")
     extra.merge_cells("A3:D3")
     extra["A3"] = "翌年度の住民税通知書は参照せず、所得年内の収入・経費・控除と法定税率表から計算します。"
@@ -156,13 +156,15 @@ def build(source, output):
         (33, "分離課税の特例・繰越損失等", "なし", ("なし", "あり")),
         (34, "分離課税の所得税率（自動）", None, None),
         (36, "分離所得の控除前額（任意・限度判定）", None, None),
+        (38, "特定親族の人数（源泉票G72・照合）", None, None),
+        (39, "特定親族特別控除額（源泉票G74・照合）", None, None),
     )
     for row, label, initial, choices in extra_items:
         extra[f"A{row}"] = label
         extra[f"A{row}"].alignment = Alignment(wrap_text=True, vertical="center")
         extra[f"B{row}"] = initial
         extra.row_dimensions[row].height = 27
-        if row not in (4, 7, 19, 20, 22, 27, 28, 29, 30, 32, 34):
+        if row not in (4, 7, 19, 20, 22, 27, 28, 29, 30, 32, 34, 38, 39):
             extra[f"B{row}"].fill = PatternFill("solid", fgColor="E2F2FF")
             extra[f"B{row}"].protection = Protection(locked=False)
             extra[f"B{row}"].number_format = '#,##0'
@@ -239,7 +241,12 @@ def build(source, output):
     extra.merge_cells("A37:D37")
     extra["A37"].alignment = Alignment(wrap_text=True)
     extra.row_dimensions[37].height = 34
-    extra.print_area = "A1:D37"
+    for addr in ("B38", "B39"):
+        extra[addr].fill = PatternFill("solid", fgColor="EAF3EA")
+        extra[addr].protection = Protection(locked=True)
+        extra[addr].alignment = Alignment(horizontal="right")
+        extra[addr].number_format = "#,##0"
+    extra.print_area = "A1:D39"
     home.row_dimensions[3].height = 28
     field("B4", "選択する所得年", "2026", ("2025", "2026"))
     home["C4"], home["D4"] = "適用中の所得年", "=" + ref("設定・税率", "B4")
