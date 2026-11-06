@@ -143,7 +143,7 @@ var FurusatoEngine = (function () {
     if (gross !== null && gross > 8500000) reasons.push("給与850万円超は所得金額調整控除の判定が必要なため初期版では停止します");
     var income = gross === null ? null : salaryIncome(gross, year);
     if (reference !== null) {
-      if (income !== null && Math.abs(reference-income)>1)
+      if (income !== null && reference !== income)
         reasons.push("原票の給与所得額と自動計算額が一致しません");
       income=reference;
     } else if (gross !== null && income === null) {
@@ -152,10 +152,10 @@ var FurusatoEngine = (function () {
     if (income !== null && income < 0) reasons.push("給与所得が不正です");
     var incomeBasic = year in BASIC && income !== null ? basic(year,income) : null;
     if (incomeBasic !== null && basicReference !== null &&
-        Math.abs(basicReference - incomeBasic) > 1)
+        basicReference !== incomeBasic)
       reasons.push("源泉徴収票の基礎控除額が選択年分の法定控除額と一致しません");
     if (incomeBasic !== null && social !== null && totalReference !== null &&
-        Math.abs(totalReference - incomeBasic - social)>1)
+        totalReference !== incomeBasic + social)
       reasons.push("源泉徴収票の所得控除合計と基礎控除・社会保険料の合計が一致しません");
     if (reasons.length) return result("HOLD", reasons, {year:year in BASIC?year:null});
     var taxableIncome = floor1000(Math.max(0,income-incomeBasic-social));
