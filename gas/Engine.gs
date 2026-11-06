@@ -7,7 +7,7 @@
  */
 var FurusatoEngine = (function () {
   "use strict";
-  var VERSION = "gas-mvp-0.1.1";
+  var VERSION = "gas-mvp-0.1.2";
   var TAX_REVISION = "2026-11-05-bundled";
   var BASIC = {
     2025: [[1320000,950000],[3360000,880000],[4890000,680000],
@@ -95,6 +95,20 @@ var FurusatoEngine = (function () {
       else if (typeof input[pair[0]] !== "undefined" && input[pair[0]] !== false)
         reasons.push("確認項目の値が不正です: " + pair[0]);
     });
+    // Keep evidence of deductions detected in an imported source separate from
+    // editable wizard checkboxes. Unchecking a UI flag cannot erase a source fact.
+    if (typeof input.sourceIndicators !== "undefined") {
+      var indicators = input.sourceIndicators;
+      var known = UNSUPPORTED.map(function(x){return x[0];});
+      if (!indicators || typeof indicators !== "object" || Array.isArray(indicators))
+        reasons.push("源泉徴収票の控除情報が不正です");
+      else Object.keys(indicators).forEach(function (flag) {
+        if (known.indexOf(flag) < 0 || indicators[flag] !== true)
+          reasons.push("源泉徴収票の控除情報が不正です");
+        else
+          reasons.push("源泉徴収票で検出した控除・扶養は未対応です: " + flag);
+      });
+    }
     if (typeof input.sourceYear !== "undefined" &&
         (String(input.sourceYear) !== String(input.year))) {
       reasons.push("取込んだ源泉徴収票と選択した所得年が一致しません");
