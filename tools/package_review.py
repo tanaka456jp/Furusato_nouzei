@@ -16,6 +16,7 @@ def package(destination):
             "START_SETUP.cmd": ROOT / "tools/START_SETUP.cmd",
             "setup.ps1": ROOT / "tools/setup.ps1",
             "TaxLawUpdater.bas": ROOT / "vba/TaxLawUpdater.bas",
+            "withholding_reader.py": ROOT / "tools/withholding_reader.py",
             "README.txt": ROOT / "docs/user-guide.md",
         }
         with ZipFile(destination, "w", ZIP_DEFLATED) as archive:

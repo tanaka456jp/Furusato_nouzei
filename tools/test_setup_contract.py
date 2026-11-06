@@ -15,6 +15,7 @@ expected = {
     "START_SETUP.cmd": ROOT / "tools/START_SETUP.cmd",
     "setup.ps1": ROOT / "tools/setup.ps1",
     "TaxLawUpdater.bas": ROOT / "vba/TaxLawUpdater.bas",
+    "withholding_reader.py": ROOT / "tools/withholding_reader.py",
     "README.txt": ROOT / "docs/user-guide.md",
 }
 assert package.exists(), f"Package not found: {package}"
@@ -22,7 +23,7 @@ with ZipFile(package) as archive:
     assert archive.testzip() is None, "Review ZIP CRC failure"
     assert set(archive.namelist()) == set(expected), "Unexpected or missing ZIP members"
     assert all(n.isascii() and n == Path(n).name for n in archive.namelist()), "Setup ZIP is not ASCII/flat"
-    for member in ("START_SETUP.cmd", "setup.ps1", "TaxLawUpdater.bas", "README.txt"):
+    for member in ("START_SETUP.cmd", "setup.ps1", "TaxLawUpdater.bas", "withholding_reader.py", "README.txt"):
         assert archive.read(member) == expected[member].read_bytes(), f"Stale ZIP payload: {member}"
     assert len(archive.read("Furusato_nouzei.xlsx")) > 20_000, "Incomplete workbook payload"
     ps = archive.read("setup.ps1").decode("utf-8-sig")

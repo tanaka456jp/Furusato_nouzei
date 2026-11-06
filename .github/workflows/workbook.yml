@@ -42,6 +42,7 @@ jobs:
           python tools/test_shared_runner_contract.py
           python tools/test_open_probe_launcher.py
           python tools/test_vbaupdater_bridge.py
+          python tools/test_withholding_reader.py
           python tools/make_excel_open_probes.py Excel_open_probes --self-test
       - name: Parse shared-PC Windows PowerShell setup (static syntax)
         shell: pwsh
@@ -109,6 +110,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'One-click Excel launcher contract failed' }
           python tools/test_vbaupdater_bridge.py
           if ($LASTEXITCODE -ne 0) { throw 'VBAUpdater sandbox staging contract failed' }
+          python tools/test_withholding_reader.py
+          if ($LASTEXITCODE -ne 0) { throw 'Offline withholding reader test failed' }
       - name: Verify native PowerShell 5.1 and Japanese-path extraction
         shell: powershell
         run: |
