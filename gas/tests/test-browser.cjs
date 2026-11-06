@@ -69,6 +69,27 @@ test("e-Tax five-stage wizard yields printable standard salary estimate",async()
   assert.equal(p.el("print").disabled,false);
  } finally {p.w.close();}
 });
+test("2026 salary 2m wizard calculates without salary reference input",async()=>{
+ const p=createPage();
+ try{
+  p.next();p.type("salaryGross",2000000);p.type("socialInsurance",100000);
+  assert.equal(p.el("salaryIncomeReference").value,"");
+  p.next();assert.equal(p.el("screen2").classList.contains("active"),true);
+  p.el("ack").checked=true;p.next();p.next();
+  assert.equal(p.el("reportAmount").textContent,"18,000 円");
+  assert.ok(p.el("reportLines").textContent.includes("1,260,000"));
+ }finally{p.w.close();}
+});
+test("2026 salary 2.193m special band is calculated and source mismatch stops",async()=>{
+ const p=createPage();
+ try{
+  p.next();p.type("salaryGross",2193000);p.type("socialInsurance",100000);
+  p.type("salaryIncomeReference",1451000);p.next();
+  p.el("ack").checked=true;p.next();p.next();
+  assert.equal(p.el("reportAmount").textContent,"計算停止");
+  assert.ok(p.el("reasonBlock").textContent.includes("一致しません"));
+ }finally{p.w.close();}
+});
 test("mortgage scenario does not expose a limit, but can print a HOLD report",async()=>{
  const p=createPage();
  try {
