@@ -76,7 +76,7 @@ try {
     Assert-Value $detail.Visible 2 'Calculation details start hidden'
     QA-Stage 'initial-regressions-pass'
     QA-Stage 'print-setup-validation-start'
-    Assert-PrintConfiguration $homeSheet 'Home' '\$A\$1:\$D\$31'
+    Assert-PrintConfiguration $homeSheet 'Home' '\$A\$1:\$D\$39'
     Assert-PrintConfiguration $detail 'Detail' '\$A\$1:\$D\$15'
     QA-Stage 'print-setup-validation-done'
     foreach ($year in @(2025, 2026)) {
@@ -138,7 +138,7 @@ try {
     Assert-Value ([bool]($excel.Run('TaxLawUpdater.TaxLawUpdateForTest'))) $true 'Online approved-year update'
     QA-Stage 'approved-update-done'
     Assert-Value $settings.Range('B4').Value2 2026 'Approved year persisted in memory'
-    Assert-Value $homeSheet.Range('B29').Value2 '2026-11-05-bundled' 'Revision after update'
+    Assert-Value $homeSheet.Range('B29').Value2 '2026-11-06-v4.13' 'Revision after update'
     if (-not ([string]$homeSheet.Range('B30').Value2).StartsWith('適用済')) {
         throw 'Update status was not recorded'
     }

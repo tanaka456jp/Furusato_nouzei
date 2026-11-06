@@ -40,7 +40,7 @@ class WorkbookTest(unittest.TestCase):
             self.assertFalse(sheet.print_options.gridLines)
             self.assertLess(sheet.page_margins.left, 0.4)
             self.assertLess(sheet.page_margins.right, 0.4)
-        self.assertEqual(str(self.book[HOME].print_area), "'操作画面'!$A$1:$D$31")
+        self.assertEqual(str(self.book[HOME].print_area), "'操作画面'!$A$1:$D$39")
         self.assertEqual(str(self.book[DETAIL].print_area), "'計算根拠'!$A$1:$D$15")
         rules = self.book[HOME].conditional_formatting
         self.assertIn("A9:D9", {str(r.sqref) for r in rules})
@@ -103,6 +103,13 @@ class WorkbookTest(unittest.TestCase):
         formula = self.book[HOME]["B28"].value
         for cell in ("B5", "B6", "B7", "B9", "B10", "B12", "B21"):
             self.assertIn(f"N('例外・分離課税'!{cell})>0", formula)
+        # Housing is normal processing: a positive B33 alone is not a fail gate.
+        self.assertNotIn("N(B33)>0", formula)
+        self.assertIn("N(B34)>0", formula)
+        self.assertIn("ISNUMBER(B38)", formula)
+        self.assertIn("住宅ローン", self.book[HOME]["A32"].value)
+        self.assertIn("B34-B33", self.book[HOME]["B38"].value)
+        self.assertTrue(self.book[HOME]["B38"].protection.locked)
 
     def test_advanced_form_is_hidden_until_explicitly_requested(self):
         self.assertEqual(self.book[ADVANCED].sheet_state, "veryHidden")
@@ -131,7 +138,7 @@ class WorkbookTest(unittest.TestCase):
 
     def test_no_customer_values_in_main_inputs(self):
         home = self.book[HOME]
-        user_fields = ["B11", "B12", "B15", "B16"] + [
+        user_fields = ["B11", "B12", "B15", "B16", "B33", "B34", "B35", "B36"] + [
             f"B{i}" for i in range(19, 27)
         ] + [f"D{i}" for i in range(11, 24)]
         for cell in user_fields:

@@ -97,15 +97,15 @@ def build(source, output):
         home.add_data_validation(validation)
         validation.add(home[cell])
 
-    bar(home, 1, "ふるさと納税 寄附限度額試算    1.0 開発版")
-    bar(extra, 1, "特例案件：分離課税・住宅ローン控除（検証入力）")
+    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.13 検証版")
+    bar(extra, 1, "追加確認：分離課税など（検証入力）")
     extra.merge_cells("A3:D3")
     extra["A3"] = "追加入力は既存計算エンジンと分離。未検証案件の寄附限度額は表示しません。"
     extra["A3"].alignment = Alignment(wrap_text=True)
     extra.row_dimensions[3].height = 35
     extra_items = (
-        (4, "案件区分", "通常", ("通常", "住宅ローン控除", "分離課税", "両方")),
-        (5, "住宅ローン控除額（所得税・源泉票）", None, None),
+        (4, "案件区分", "通常", ("通常", "分離課税", "その他要確認")),
+        (5, "旧方式：住宅ローン控除額（移行前のみ）", None, None),
         (6, "住宅ローン控除額（住民税適用実額）", None, None),
         (7, "分離課税の課税所得", None, None),
         (8, "分離所得の種類", None, ("なし", "上場株式", "土地建物長期", "土地建物短期", "先物", "その他")),
@@ -148,7 +148,7 @@ def build(source, output):
     home["C4"], home["D4"] = "適用中の所得年", "=" + ref("設定・税率", "B4")
     home["C5"], home["D5"] = "住民税課税年度", "=" + ref(RESIDENT, "B5")
     note(home, 6, '="税制版 "&B29&" ｜ "&B30')
-    home["B29"] = "2026-11-05-bundled"
+    home["B29"] = "2026-11-06-v4.13"
     home["B30"] = "内蔵マスタ"
     home.row_dimensions[29].hidden = True
     home.row_dimensions[30].hidden = True
@@ -203,10 +203,24 @@ def build(source, output):
     field("D23", "16歳未満の扶養（人数）", maximum=30)
     field("D24", "申告方式", choices=("ワンストップ", "確定申告"))
     home["D24"] = "確定申告"
-    note(home, 27, "対象外条件は年末調整未済、準確定申告、非居住者、給与以外の所得、住宅ローン・配当等の税額控除、医療費・他の寄附、旧長期損害保険、自治体独自の税率などです。")
+    note(home, 27, "対象外条件は年末調整未済、準確定申告、非居住者、給与以外の所得、配当等の税額控除、医療費・他の寄附、旧長期損害保険、自治体独自の税率などです。住宅ローン控除は下段の通常入力欄で処理します。")
     home.row_dimensions[27].height = 42
-    note(home, 31, "水色欄に支払金額・保険料を入力。自動計算欄は緑色。特例案件は専用フォームで入力します。")
-    home.print_area = "A1:D31"
+    note(home, 31, "水色欄に支払金額・保険料を入力。自動計算欄は緑色。分離課税などは追加確認へ。")
+    bar(home, 32, "住宅ローン控除（通常処理・源泉徴収票から転記）")
+    field("B33", "住宅ローン控除の所得税適用額")
+    field("B34", "住宅ローン控除可能額（G36）")
+    field("B35", "居住開始年（西暦）", maximum=2035)
+    field("B36", "住宅ローン控除適用数", maximum=3)
+    note(home, 37, "可能額と所得税適用額は別物です。控除可能額があって適用額が空欄なら、原票確認まで試算額を表示しません。")
+    home["A38"] = "住民税住宅ローン控除見込額"
+    home["B38"] = ('=IF(B34="",0,IF(AND(ISNUMBER(B33),ISNUMBER(B35),B35>=2022,B35<=D4),'
+                   'MIN(MAX(0,B34-B33),97500,ROUNDDOWN(MAX(0,B13-B14)/1000,0)*50),""))')
+    home["B38"].number_format = '#,##0'
+    home["B38"].fill = PatternFill("solid", fgColor="EAF3EA")
+    home["B38"].protection = Protection(locked=True)
+    note(home, 39, "住民税控除の自動見込は居住年2022年以降・通常の5%/97,500円枠のみ。古い住宅・複数適用・残余税額不足は追加照合で安全停止します。")
+    home.row_dimensions[39].height = 36
+    home.print_area = "A1:D39"
 
     def link(sheet, dest, src):
         target = ref(HOME, src)
@@ -272,6 +286,10 @@ def build(source, output):
                         f'COUNTIF({group},"<0")+COUNTIF({group},">{limit}")>0',
                         f'SUMPRODUCT(--(IFERROR(MOD({group},1),0)<>0))>0'))
     invalid += [
+        'AND(N(B34)>0,OR(NOT(ISNUMBER(B33)),NOT(ISNUMBER(B35)),B35<2022,B35>D4))',
+        'AND(N(B34)>0,OR(NOT(ISNUMBER(B36)),B36<>1))',
+        'AND(N(B34)>0,ISNUMBER(B33),B33>B34)',
+        'AND(ISNUMBER(B33),B33<0)',
         f'AND(ISNUMBER({ref(ADVANCED,"B14")}),ABS(B14-{ref(ADVANCED,"B14")})>1)',
         f'AND(ISNUMBER({ref(ADVANCED,"B15")}),ABS(B13-{ref(ADVANCED,"B15")})>1)',
         f'AND(ISNUMBER({ref(ADVANCED,"B16")}),ABS(B17-{ref(ADVANCED,"B16")})>1)',
@@ -301,6 +319,14 @@ def build(source, output):
     settings_b8 = ref("設定・税率", "B8")
     settings_b10 = ref("設定・税率", "B10")
     candidate = ref(RESIDENT, "B24")
+    # Resident levy after housing credit must cover the donation's resident
+    # tax credits. Reference the *unguarded* candidate, not home!B8,
+    # to avoid B28->B8->B28 circular references.
+    remaining_levy = f'N({ref(RESIDENT,"B16")})-N(B38)'
+    donation_resident = (
+        f'MAX(0,N({candidate})-2000)*'
+        f'IF(D24="ワンストップ",1,MAX(0,1-N({rate})*1.021))'
+    )
     status = [
         ('OR(IFERROR(1*B4,0)<>D4,IFERROR(1*B11,0)<>D4)', "警告：源泉徴収票と適用中の所得年を一致させてください"),
         ('OR(COUNT(B12:B18)<>7,AND(B25<>"あり",B25<>"なし"),'
@@ -316,6 +342,8 @@ def build(source, output):
          f'{ref(RESIDENT,"B16")}<=0)',
          "警告：給与所得または住民税所得割を個別に照合してください"),
         (unsupported, "警告：対象外または追加照合が必要なため、金額の表示を停止しました"),
+        (f'AND(N(B34)>0,ISNUMBER(B38),B38>0,{remaining_levy}<{donation_resident})',
+         "警告：住宅ローン控除後の住民税枠が不足するため、寄附限度額を個別に照合してください"),
         (f'OR(COUNTIF({ref("整合性チェック","B4:B12")},"OK")<>9,{ref("自動回帰テスト","B49")}<>"PASS")',
          "エラー：税制マスタまたは内蔵検証に異常があります"),
         (f'OR(NOT(ISNUMBER({ref(RESIDENT,"B24")})),NOT(ISNUMBER({ref(RESIDENT,"B25")})))',

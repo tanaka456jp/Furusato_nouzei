@@ -5,7 +5,7 @@ Option Explicit
 Private mLastTestFailure As String
 
 Private Const CATALOG_URL As String = "https://raw.githubusercontent.com/tanaka456jp/Furusato_nouzei/main/taxdata/catalog.tsv"
-Private Const BUNDLED_REVISION As String = "2026-11-05-bundled"
+Private Const BUNDLED_REVISION As String = "2026-11-06-v4.13"
 
 ' User-facing command. The test entrypoint executes the very same transaction,
 ' but reports failures as exceptions instead of modal dialogs.
@@ -189,7 +189,7 @@ Public Sub ImportWithholding()
     Dim home As Worksheet, extra As Worksheet, code As Long, problem As String
     On Error GoTo Failed
     picked = Application.GetOpenFilename( _
-        "源泉徴収票 (PDF/画像/データ),*.pdf;*.png;*.jpg;*.jpeg;*.webp;*.tif;*.tiff;*.bmp;*.csv;*.tsv;*.json;*.txt,すべてのファイル,*.*", _
+        "源泉徴収票 (PDF/画像/データ),*.pdf;*.png;*.jpg;*.jpeg;*.webp;*.tif;*.tiff;*.bmp;*.heic;*.heif;*.csv;*.tsv;*.json;*.txt,すべてのファイル,*.*", _
         , "源泉徴収票を選択")
     If VarType(picked) = vbBoolean Then Exit Sub
     If ThisWorkbook.ReadOnly Or Len(ThisWorkbook.Path) = 0 Then
@@ -198,14 +198,9 @@ Public Sub ImportWithholding()
     Set fso = CreateObject("Scripting.FileSystemObject")
     reader = fso.BuildPath(ThisWorkbook.Path, "FurusatoDocumentReader.exe")
     If Not fso.FileExists(reader) Then
-        reader = fso.BuildPath(ThisWorkbook.Path, "withholding_reader.py")
-        If Not fso.FileExists(reader) Then
-            Err.Raise vbObjectError + 202, , "読取プログラムがありません。配布ZIPのファイルを同じフォルダへ配置してください。"
-        End If
-        command = "python.exe " & Chr$(34) & reader & Chr$(34)
-    Else
-        command = Chr$(34) & reader & Chr$(34)
+        Err.Raise vbObjectError + 202, , "読取EXEがありません。Windows用配布ZIPをすべて展開してください。Pythonのインストールは不要です。"
     End If
+    command = Chr$(34) & reader & Chr$(34)
     Set shell = CreateObject("WScript.Shell")
     tempJson = fso.BuildPath(fso.GetSpecialFolder(2), fso.GetTempName & ".json")
     tempTsv = fso.BuildPath(fso.GetSpecialFolder(2), fso.GetTempName & ".tsv")
@@ -262,7 +257,8 @@ Public Sub ImportWithholding()
                      "annuity_old", "earthquake_paid", "salary_reference", _
                      "deductions_reference", "life_deduction_reference", _
                      "earthquake_deduction_reference", "mortgage_credit", _
-                     "mortgage_possible_credit", "basic_reference", "income_adjustment"
+                     "mortgage_possible_credit", "mortgage_occupancy_year", _
+                     "mortgage_claim_count", "basic_reference", "income_adjustment"
                     ' Allowed amounts only; all other columns are rejected.
                 Case Else
                     Err.Raise vbObjectError + 213, , "未承認の取込項目を検出しました。"
@@ -277,7 +273,7 @@ Public Sub ImportWithholding()
     If Not fso.FileExists(backup) Then Err.Raise vbObjectError + 214, , "更新前のバックアップを作成できません。"
     Set home = ThisWorkbook.Worksheets("操作画面")
     Set extra = ThisWorkbook.Worksheets("例外・分離課税")
-    home.Range("B11:B12,B15:B16,B19:B26,D11:D23").ClearContents
+    home.Range("B11:B12,B15:B16,B19:B26,B33:B36,D11:D23").ClearContents
     extra.Range("B5:B21").ClearContents
     extra.Range("B4").Value2 = "通常"
     home.Range("D24").Value2 = "確定申告"
@@ -300,26 +296,21 @@ Public Sub ImportWithholding()
                 Case "deductions_reference": extra.Range("B14").Value2 = value
                 Case "life_deduction_reference": extra.Range("B16").Value2 = value
                 Case "earthquake_deduction_reference": extra.Range("B17").Value2 = value
-                Case "mortgage_credit": extra.Range("B5").Value2 = value
+                Case "mortgage_credit": home.Range("B33").Value2 = value
+                Case "mortgage_possible_credit": home.Range("B34").Value2 = value
+                Case "mortgage_occupancy_year": home.Range("B35").Value2 = value
+                Case "mortgage_claim_count": home.Range("B36").Value2 = value
                 Case "income_adjustment": extra.Range("B13").Value2 = value
             End Select
         End If
     Next key
-    If fields.Exists("mortgage_credit") Then
-        If CDbl(fields("mortgage_credit")) > 0 Then
-            extra.Range("B4").Value2 = "住宅ローン控除"
-        End If
-    End If
-    If fields.Exists("mortgage_possible_credit") Then
-        If CDbl(fields("mortgage_possible_credit")) > 0 Then
-            extra.Range("B4").Value2 = "住宅ローン控除"
-        End If
-    End If
+    ' Housing credit is a routine on-sheet input, not an advanced-case switch.
+    ' The sheet formula still blocks missing applied amounts or unsupported years.
     extra.Range("B19").Value2 = "ローカル・項目コード照合"
     extra.Range("B20").Value2 = status
     Application.Calculate
     MsgBox "数値を取込みました。青色の未入力欄と原票の一致を確認してください。" & vbCrLf & _
-           "特殊案件は別フォームで補足入力し、計算の受入が完了するまで限度額を表示しません。", vbInformation
+           "住宅ローン控除は通常欄へ反映しました。不足項目や住民税残余枠の問題は安全停止します。", vbInformation
 CleanUp:
     On Error Resume Next
     If Not inFile Is Nothing Then inFile.Close
@@ -346,7 +337,7 @@ Public Sub NewCase()
         .Range("D24").Value2 = "確定申告"
     End With
     With ThisWorkbook.Worksheets("例外・分離課税")
-        .Range("B5:B18,B21").ClearContents
+        .Range("B5:B18,B21,B33:B36").ClearContents
         .Range("B4").Value2 = "通常"
         .Range("B8").ClearContents
         .Range("B19:B20").ClearContents

@@ -168,8 +168,10 @@ def finish(year,fields,mode,warnings=None):
         enough=False;warnings.append("MORTGAGE_APPLIED_EXCEEDS_POSSIBLE")
     if fields.get("mortgage_claim_count",0)>1:
         enough=False;warnings.append("MULTIPLE_MORTGAGE_CREDITS_REQUIRE_REVIEW")
-    if "mortgage_occupancy_year" in fields and not 1980<=fields["mortgage_occupancy_year"]<=year if isinstance(year,int) else False:
-        enough=False;warnings.append("INVALID_MORTGAGE_OCCUPANCY_YEAR")
+    if "mortgage_occupancy_year" in fields:
+        occupancy_year = fields["mortgage_occupancy_year"]
+        if not isinstance(year, int) or not 1980 <= occupancy_year <= year:
+            enough=False;warnings.append("INVALID_MORTGAGE_OCCUPANCY_YEAR")
     if mode in {"IMAGE_OCR","SCAN_OCR"}:
         enough=False;warnings.append("OCR_REQUIRES_VERIFICATION")
     if "MULTIPAGE" in mode:
