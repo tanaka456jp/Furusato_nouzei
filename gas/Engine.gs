@@ -149,7 +149,8 @@ var FurusatoEngine = (function () {
     var rows=[["所得年","総所得金額上限","所得税基礎控除","住民税基礎控除","参照版"]];
     [2025,2026].forEach(function(year) {
       BASIC[year].forEach(function(row) {
-        rows.push([year,row[0]===Infinity?"上限なし":row[0],row[1],430000,TAX_REVISION]);
+        var residentBasic = i < 6 ? 430000 : (i === 6 ? 290000 : (i === 7 ? 150000 : 0));
+        rows.push([year,row[0]===Infinity?"上限なし":row[0],row[1],residentBasic,TAX_REVISION]);
       });
     });
     return rows;
