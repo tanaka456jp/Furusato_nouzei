@@ -101,8 +101,14 @@ class WorkbookTest(unittest.TestCase):
 
     def test_derived_formulas_and_advanced_amounts_fail_closed(self):
         formula = self.book[HOME]["B28"].value
-        for cell in ("B5", "B6", "B7", "B9", "B10", "B12", "B21"):
+        # Only special tax cases should fail closed. Ordinary pension and
+        # business/misc income must not be treated as exclusions.
+        for cell in ("B24", "B21"):
             self.assertIn(f"N('例外・分離課税'!{cell})>0", formula)
+        self.assertIn("'例外・分離課税'!B20", formula)
+        self.assertIn('"REQUIRES_REVIEW"', formula)
+        for cell in ("B5", "B7", "B8", "B9", "B10", "B12"):
+            self.assertNotIn(f"N('例外・分離課税'!{cell})>0", formula)
         # Housing is normal processing: a positive B33 alone is not a fail gate.
         self.assertNotIn("N(B33)>0", formula)
         self.assertIn("N(B34)>0", formula)
@@ -115,8 +121,19 @@ class WorkbookTest(unittest.TestCase):
         self.assertEqual(self.book[ADVANCED].sheet_state, "veryHidden")
         extra = self.book[ADVANCED]
         self.assertEqual(extra["B4"].value, "通常")
-        self.assertIn("住宅ローン", extra["A5"].value)
-        self.assertIn("分離課税", extra["A7"].value)
+        self.assertIn("公的年金", extra["A5"].value)
+        self.assertIn("公的年金", extra["A7"].value)
+        self.assertIn("分離課税", extra["A24"].value)
+        self.assertIn("旧長期損害保険料", extra["A21"].value)
+        self.assertNotIn("旧方式", " ".join(str(extra[f"A{i}"].value or "") for i in range(4,33)))
+        self.assertIn("所得年内", extra["A3"].value)
+        self.assertIn("ROUNDDOWN", extra["B7"].value)
+        self.assertIn("MIN(100000", extra["B29"].value)
+        self.assertIn("MAX(0,N(B8)-N(B9))", extra["B28"].value)
+        self.assertIn("'住民税再計算'!B21", extra["B22"].value)
+        self.assertEqual(extra["B25"].value,"なし")
+        self.assertEqual(self.book[INPUT]["B11"].data_type,"f")
+        self.assertIn("'例外・分離課税'!B28",self.book[INPUT]["B11"].value)
         self.assertIn("源泉票", extra["A14"].value)
         self.assertIn("'例外・分離課税'!B4", self.book[HOME]["B28"].value)
         self.assertIn("'例外・分離課税'!B14", self.book[HOME]["B28"].value)
