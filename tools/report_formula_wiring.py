@@ -14,4 +14,4 @@ with TemporaryDirectory() as tmp:
         sheet=book[name]
         for addr in cells:
             val=sheet[addr].value
-            print("MODEL_WIRING",name,addr,str(val)[:240])
+            print("MODEL_WIRING",name,addr,str(val)[:1800] if (name=="住民税再計算" and addr in ("B20","B21","B25","B26")) else str(val)[:240])
