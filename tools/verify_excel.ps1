@@ -120,6 +120,14 @@ try {
         Assert-Value $homeSheet.Range('B28').Value2 '正常' "$year status"
         Assert-Value $homeSheet.Range('D8').Value2 374500 "$year resident income levy"
         Assert-Value $homeSheet.Range('B13').Value2 5200000 "$year computed salary income"
+        if ($year -eq 2026) {
+            # Published R8 source form sample: ¥5m salary -> ¥3.56m income.
+            $homeSheet.Range('B12').Value2 = 5000000
+            $excel.Run('TaxLawUpdater.RecalculateCase')
+            Assert-Value $homeSheet.Range('B13').Value2 3560000 '2026 salary table example'
+            $homeSheet.Range('B12').Value2 = 7000000
+            $excel.Run('TaxLawUpdater.RecalculateCase')
+        }
         Assert-Value $homeSheet.Range('B14').Value2 $(if ($year -eq 2025) { 1630000 } else { 1670000 }) "$year computed total deductions"
         Assert-Value $homeSheet.Range('B8').Value2 109000 "$year donation estimate"
     }

@@ -305,9 +305,15 @@ Public Sub ImportWithholding()
             End Select
         End If
     Next key
-    If (fields.Exists("mortgage_credit") And CDbl(fields("mortgage_credit")) > 0) Or _
-       (fields.Exists("mortgage_possible_credit") And CDbl(fields("mortgage_possible_credit")) > 0) Then
-        extra.Range("B4").Value2 = "住宅ローン控除"
+    If fields.Exists("mortgage_credit") Then
+        If CDbl(fields("mortgage_credit")) > 0 Then
+            extra.Range("B4").Value2 = "住宅ローン控除"
+        End If
+    End If
+    If fields.Exists("mortgage_possible_credit") Then
+        If CDbl(fields("mortgage_possible_credit")) > 0 Then
+            extra.Range("B4").Value2 = "住宅ローン控除"
+        End If
     End If
     extra.Range("B19").Value2 = "ローカル・項目コード照合"
     extra.Range("B20").Value2 = status

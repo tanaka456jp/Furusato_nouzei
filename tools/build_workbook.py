@@ -228,7 +228,17 @@ def build(source, output):
     # Salary and premiums are user inputs; corresponding deductions are
     # calculated from approved year masters, not retyped.
     derived = {
-        "B13": f'=IF(B12="","",MAX(0,{ref(INPUT, "B34")}-N({ref(ADVANCED, "B13")})))',
+        "B13": ('=IF(B12="","",MAX(0,'
+                 'IF(B12<6600000,'
+                 'IF(B12<=IF(D4=2025,1900000,2200000),'
+                 'MAX(0,B12-IF(D4=2025,650000,740000)),'
+                 'ROUNDDOWN(B12/4000,0)*4000*'
+                 'IF(B12<=3600000,0.7,0.8)-IF(B12<=3600000,80000,440000)),'
+                 f'{ref(INPUT,"B34")})-'
+                 f'IF(ISNUMBER({ref(ADVANCED,"B13")}),'
+                 f'{ref(ADVANCED,"B13")},'
+                 'IF(AND(B12>8500000,B25="あり"),'
+                 '(MIN(B12,10000000)-8500000)*0.1,0))))'),
         "B17": f'=IF(B12="","",{ref(ENGINE, "F24")})',
         "B18": f'=IF(B12="","",{ref(ENGINE, "F25")})',
         "B14": (f'=IF(OR(B13="",B16=""),"",'

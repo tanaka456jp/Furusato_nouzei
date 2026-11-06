@@ -40,7 +40,8 @@ class WithholdingTest(unittest.TestCase):
             self.assertNotIn("name",data["fields"])
             dest=Path(tmp)/"out.tsv"
             write_bridge(data,dest)
-            self.assertNotIn("private",dest.read_text(encoding="utf-8-sig"))
+            self.assertNotIn("private",dest.read_text(encoding="utf-8"))
+            self.assertFalse(dest.read_bytes().startswith(b"\xef\xbb\xbf"))
 
     def test_year_and_ocr_do_not_auto_approve(self):
         fields={"salary_gross":7000000,"social_insurance":1000000,"income_tax_withheld":0}

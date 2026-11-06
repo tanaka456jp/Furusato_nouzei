@@ -184,7 +184,7 @@ def extract(path):
 
 def write_bridge(result,output):
     """Allowlisted numeric rows only. Explicit status prevents implicit OCR use."""
-    with Path(output).open("w",encoding="utf-8-sig",newline="") as f:
+    with Path(output).open("w",encoding="utf-8",newline="") as f:
         writer=csv.writer(f,delimiter="\t")
         writer.writerow(["STATUS",result["status"]])
         writer.writerow(["YEAR",result["year"] if result["year"] is not None else ""])
