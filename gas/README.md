@@ -1,4 +1,4 @@
-# Furusato_nouzei GAS Web版 — v0.1.1（開発・検証版）
+# Furusato_nouzei GAS Web版 — v0.1.2（開発・検証版）
 
 ## 目的
 Excel VBA版 v4.18.2 の計算仕様を正本として、e-Tax Webのようなステップ式で
@@ -29,7 +29,7 @@ Excel VBA版 v4.18.2 の計算仕様を正本として、e-Tax Webのような�
 課税所得・住民税所得割の計算上は、所得税/住民税人的控除額差に関する標準的調整控除2,500円を用い、
 対象条件を限定しています。
 
-## v0.1.1 源泉徴収票仮取込と安全性の強化
+## v0.1.2 源泉徴収票仮取込と安全性の強化
 
 - 読取ツールが `READY_FOR_EXCEL_CROSSCHECK` を返しても、その状態だけでは**原票との照合完了を意味しません**。画面の原票照合チェックを付けない限り結果はHOLDです。
 - `REQUIRES_REVIEW`、警告が残るデータ、認識形式不正、読取項目不明、重複TSVキーなどは、読取結果の確認チェックでは解除できません。
@@ -99,3 +99,13 @@ Google Apps Script APIを有効化する必要がある場合があります。�
 `feature/gas-workflow-20261106` はExcel版の開発ブランチから派生したもの。
 GAS用PRのbaseを既存の `feature/oneclick-tax-update-20261105` に設定し、
 Excel版PR #1を変更・マージしない。正式リリースはHOLD。
+
+## v0.1.2 読取安全性と配布対象の検査
+
+- 原票から検出した住宅ローン控除・扶養・保険料控除などを `sourceIndicators` に別保持し、利用者が画面チェックを外してもHOLDになるよう改修。
+- 原票由来の該当チェックは編集不可。読取データの破棄時は入力・原票照合を初期化。
+- JSONの `personal_identifiers` が `NEVER_EXTRACTED` 以外の場合は取込拒否。原票側警告があれば引き続きHOLD。
+- `gas/tests/test-contract.cjs` でPython読取フィールドとGAS許可項目が厳密一致することを確認。
+- `gas/.claspignore` で `Code.gs`、`Engine.gs`、`Index.html`、`appsscript.json` のみGASへアップロード。生成プレビューとテストは対象外。
+- `gas/.gitignore` で個人のScript IDやOAuth情報、生成プレビューを誤コミットから保護。
+- Google実デプロイ、実PDF→GAS直接取込、全税制ケース一致は依然未検証。正式版はHOLD。
