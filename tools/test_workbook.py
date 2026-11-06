@@ -41,7 +41,7 @@ class WorkbookTest(unittest.TestCase):
             self.assertLess(sheet.page_margins.left, 0.4)
             self.assertLess(sheet.page_margins.right, 0.4)
         self.assertEqual(str(self.book[HOME].print_area), "'操作画面'!$A$1:$D$39")
-        self.assertEqual(str(self.book[DETAIL].print_area), "'計算根拠'!$A$1:$D$15")
+        self.assertEqual(str(self.book[DETAIL].print_area), "'計算根拠'!$A$1:$D$19")
         rules = self.book[HOME].conditional_formatting
         self.assertIn("A9:D9", {str(r.sqref) for r in rules})
         self.assertGreaterEqual(len(rules["A9:D9"]), 2)
@@ -117,6 +117,29 @@ class WorkbookTest(unittest.TestCase):
         self.assertIn("住宅ローン", self.book[HOME]["A32"].value)
         self.assertIn("B34-B33", self.book[HOME]["B38"].value)
         self.assertTrue(self.book[HOME]["B38"].protection.locked)
+
+    def test_split_donation_allocation_is_real_tax_difference(self):
+        model = self.book["分離課税寄附控除"]
+        self.assertEqual(model.sheet_state, "veryHidden")
+        self.assertIn("分離課税寄附控除", self.book[RESIDENT]["B26"].value)
+        self.assertIn("'例外・分離課税'!B24",self.book[RESIDENT]["B26"].value)
+        self.assertIn("ROUNDDOWN(MAX(0,",model["B4"].value)
+        self.assertIn("IF(",model["B4"].value)
+        self.assertIn("ROUNDDOWN(B3,-3)",model["B5"].value)
+        self.assertIn("0.4",model["B8"].value)
+        self.assertIn("0.3",model["B9"].value)
+        self.assertIn("MAX(0,$B$3-MAX(0,F50-$B$2))",model["H50"].value)
+        self.assertIn("($B$6-I50)*1.021",model["J50"].value)
+        self.assertIn("MAX(0,F50-$B$2)",model["Q50"].value)
+        self.assertIn("'住民税再計算'!B19",model["B10"].value)
+        self.assertIn("'住民税再計算'!B22",model["B12"].value)
+        self.assertEqual(model["E50"].value,"=200000")
+        self.assertEqual(model["B46"].data_type,"f")
+        self.assertIn("B43*1000",model["B46"].value)
+        self.assertTrue(all(model[f"P{x}"].data_type=="f" for x in range(19,43)))
+        extra=self.book[ADVANCED]
+        self.assertIn("控除前額",extra["A36"].value)
+        self.assertTrue(any("B36" in str(v.sqref) for v in extra.data_validations.dataValidation))
 
     def test_advanced_form_is_hidden_until_explicitly_requested(self):
         self.assertEqual(self.book[ADVANCED].sheet_state, "veryHidden")
