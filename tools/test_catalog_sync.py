@@ -15,5 +15,7 @@ for year in (2025,2026):
               if line.startswith(str(year)+"|")]
     assert len(matching)==1 and matching[0]==[str(year),"APPROVED",revision,"",""], (
         "Unapproved bundled catalog for",year,revision)
-assert "v4.18.1" in builder,"Application version must remain separate"
+application=re.search(r'ふるさと納税 寄附限度額試算\\s+(v4\\.\\d+\\.\\d+)\\s+検証版',builder)
+assert application, "Application version missing or malformed"
+assert application.group(1) != revision, "Application and tax-master revision conflated"
 print("Catalog/VBA/workbook approved tax-master revisions: PASS")
