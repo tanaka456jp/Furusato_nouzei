@@ -170,6 +170,7 @@ Public Sub BindButtons()
     BindButton "操作画面", "btnRecalculateCase", "RecalculateCase"
     BindButton "操作画面", "btnShowAdvanced", "ShowAdvanced"
     BindButton "操作画面", "btnImportWithholding", "ImportWithholding"
+    BindButton "操作画面", "btnReviewWithholding", "ReviewWithholding"
     BindButton "例外・分離課税", "btnReturnFromAdvanced", "ReturnFromAdvanced"
     BindButton "計算根拠", "btnReturnHome", "ReturnHome"
     BindButton "計算根拠", "btnPrintDetails", "PrintDetails"
@@ -230,8 +231,8 @@ Public Sub ImportWithholding()
         Err.Raise vbObjectError + 206, , "取込データの検証情報がありません。"
     End If
     status = CStr(fields("STATUS"))
-    If status <> "READY_FOR_EXCEL_CROSSCHECK" Then
-        Err.Raise vbObjectError + 207, , "未検証のOCR・様式・年分は自動転記しません。"
+    If status <> "READY_FOR_EXCEL_CROSSCHECK" And status <> "REQUIRES_REVIEW" Then
+        Err.Raise vbObjectError + 207, , "読取状態が不正です。"
     End If
     If Not IsNumeric(fields("YEAR")) Then Err.Raise vbObjectError + 208, , "所得年を認識できません。"
     year = CLng(fields("YEAR"))
@@ -242,7 +243,7 @@ Public Sub ImportWithholding()
         End If
     Next key
     For Each key In fields.Keys
-        If key <> "STATUS" And key <> "YEAR" Then
+        If key <> "STATUS" And key <> "YEAR" And key <> "WARNINGS" Then
             raw = CStr(fields(key))
             If Len(raw) = 0 Or Not IsNumeric(raw) Then
                 Err.Raise vbObjectError + 211, , "取込金額が不正です。"
@@ -265,16 +266,24 @@ Public Sub ImportWithholding()
             End Select
         End If
     Next key
-    If MsgBox("源泉徴収票の数値を取込み、現在の入力を置換しますか？" & vbCrLf & _
-              "既存データは更新前にバックアップします。", _
-              vbQuestion + vbYesNo + vbDefaultButton2) <> vbYes Then Exit Sub
+    Dim caution As String
+    caution = "源泉徴収票の読み取れた数値を転記し、現在の入力を置換しますか？" & vbCrLf & _
+              "既存データはバックアップします。"
+    If status = "REQUIRES_REVIEW" Then
+        caution = caution & vbCrLf & vbCrLf & _
+              "このPDFは一部項目が未確定です。読み取れた数値だけを仮転記します。" & vbCrLf & _
+              "原票照合を完了するまで寄附限度額の確定表示は停止します。"
+    End If
+    If MsgBox(caution, vbQuestion + vbYesNo + vbDefaultButton2) <> vbYes Then Exit Sub
     backup = UniqueBackupPath(ThisWorkbook)
     ThisWorkbook.SaveCopyAs backup
     If Not fso.FileExists(backup) Then Err.Raise vbObjectError + 214, , "更新前のバックアップを作成できません。"
     Set home = ThisWorkbook.Worksheets("操作画面")
     Set extra = ThisWorkbook.Worksheets("例外・分離課税")
     home.Range("B11:B12,B15:B16,B19:B26,B33:B36,D11:D23").ClearContents
-    extra.Range("B5:B21").ClearContents
+    ' Leave independent pension, business and other income entries untouched.
+    extra.Range("B13:B20").ClearContents
+    extra.Range("B32").ClearContents
     extra.Range("B4").Value2 = "通常"
     home.Range("D24").Value2 = "確定申告"
     home.Range("B4").Value2 = year
@@ -308,9 +317,15 @@ Public Sub ImportWithholding()
     ' The sheet formula still blocks missing applied amounts or unsupported years.
     extra.Range("B19").Value2 = "ローカル・項目コード照合"
     extra.Range("B20").Value2 = status
+    If fields.Exists("WARNINGS") Then extra.Range("B32").Value2 = fields("WARNINGS")
     Application.Calculate
-    MsgBox "数値を取込みました。青色の未入力欄と原票の一致を確認してください。" & vbCrLf & _
-           "住宅ローン控除は通常欄へ反映しました。不足項目や住民税残余枠の問題は安全停止します。", vbInformation
+    If status = "REQUIRES_REVIEW" Then
+        MsgBox "読み取れた金額を仮転記しました（未確定）。" & vbCrLf & _
+               "空欄・不一致を源泉徴収票と照合した後「読取内容の確認」を押してください。" & vbCrLf & _
+               "住宅ローン控除可能額は所得税適用額と別項目です。", vbExclamation
+    Else
+        MsgBox "源泉徴収票の数値を転記しました。控除・扶養などを確認してください。", vbInformation
+    End If
 CleanUp:
     On Error Resume Next
     If Not inFile Is Nothing Then inFile.Close
@@ -323,6 +338,62 @@ Failed:
     problem = Err.Description
     MsgBox problem, vbExclamation, "源泉徴収票の取込"
     Resume CleanUp
+End Sub
+
+' Provisional imports are editable, but never silently treated as tax-complete.
+' The user must confirm the missing mortgage credit applied amount and the
+' source reference amounts before a previously flagged import is released.
+Public Sub ReviewWithholding()
+    Dim home As Worksheet, extra As Worksheet, msg As String
+    Dim value As Double, refCell As Variant, calcCell As Variant
+    On Error GoTo Failed
+    Set home = ThisWorkbook.Worksheets("操作画面")
+    Set extra = ThisWorkbook.Worksheets("例外・分離課税")
+    If CStr(extra.Range("B20").Value2) <> "REQUIRES_REVIEW" Then
+        MsgBox "源泉徴収票の仮転記に未確認項目はありません。", vbInformation
+        Exit Sub
+    End If
+    If Not IsNumeric(home.Range("B12").Value2) Or _
+       Not IsNumeric(home.Range("B15").Value2) Or _
+       Not IsNumeric(home.Range("B16").Value2) Then
+        Err.Raise vbObjectError + 240, , "支払額・源泉徴収税額・社会保険料を確認してください。"
+    End If
+    If IsNumeric(home.Range("B34").Value2) Then
+        If CDbl(home.Range("B34").Value2) > 0 Then
+            If Not IsNumeric(home.Range("B33").Value2) Or _
+               Not IsNumeric(home.Range("B35").Value2) Or _
+               Not IsNumeric(home.Range("B36").Value2) Then
+                Err.Raise vbObjectError + 241, , "住宅ローン控除の所得税適用額・居住開始年・適用数を確認してください。"
+            End If
+        End If
+    End If
+    Application.Calculate
+    For Each refCell In Array("B14", "B15", "B16", "B17")
+        Select Case CStr(refCell)
+            Case "B14": Set calcCell = home.Range("B14")
+            Case "B15": Set calcCell = home.Range("B13")
+            Case "B16": Set calcCell = home.Range("B17")
+            Case "B17": Set calcCell = home.Range("B18")
+        End Select
+        If IsNumeric(extra.Range(CStr(refCell)).Value2) Then
+            If Not IsNumeric(calcCell.Value2) Then
+                Err.Raise vbObjectError + 242, , "自動控除額を算定できません。"
+            End If
+            If Abs(CDbl(extra.Range(CStr(refCell)).Value2) - CDbl(calcCell.Value2)) > 1 Then
+                Err.Raise vbObjectError + 243, , "源泉徴収票の金額と自動計算に差があります。控除内訳を見直してください。"
+            End If
+        End If
+        Set calcCell = Nothing
+    Next refCell
+    If MsgBox("源泉徴収票の未確認項目を確認しましたか？" & vbCrLf & _
+              "読取結果を照合済みにします。",vbQuestion + vbYesNo + vbDefaultButton2) <> vbYes Then Exit Sub
+    extra.Range("B20").Value2 = "VERIFIED_AFTER_CORRECTION"
+    Application.Calculate
+    MsgBox "原票照合状態を更新しました。未対応案件は引き続き限度額を表示しません。", vbInformation
+    Exit Sub
+Failed:
+    msg = Err.Description
+    MsgBox msg, vbExclamation, "読取内容の確認"
 End Sub
 
 Public Sub RecalculateCase()
