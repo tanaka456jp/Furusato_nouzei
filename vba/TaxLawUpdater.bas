@@ -288,7 +288,7 @@ Public Sub ImportWithholding()
     home.Range("B4").Value2 = year
     home.Range("B11").Value2 = year
     For Each key In fields.Keys
-        If key <> "STATUS" And key <> "YEAR" Then
+        If key <> "STATUS" And key <> "YEAR" And key <> "WARNINGS" Then
             value = CDbl(fields(key))
             Select Case CStr(key)
                 Case "salary_gross": home.Range("B12").Value2 = value
