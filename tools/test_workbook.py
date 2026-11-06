@@ -103,8 +103,9 @@ class WorkbookTest(unittest.TestCase):
         formula = self.book[HOME]["B28"].value
         # Only special tax cases should fail closed. Ordinary pension and
         # business/misc income must not be treated as exclusions.
-        for cell in ("B24", "B21"):
-            self.assertIn(f"N('例外・分離課税'!{cell})>0", formula)
+        self.assertIn("N('例外・分離課税'!B21)>0", formula)
+        self.assertIn("'例外・分離課税'!B33", formula)
+        self.assertNotIn("N('例外・分離課税'!B24)>0,N(", formula)
         self.assertIn("'例外・分離課税'!B20", formula)
         self.assertIn('"REQUIRES_REVIEW"', formula)
         for cell in ("B7", "B8", "B9", "B10", "B12"):
@@ -124,6 +125,13 @@ class WorkbookTest(unittest.TestCase):
         self.assertIn("公的年金", extra["A5"].value)
         self.assertIn("公的年金", extra["A7"].value)
         self.assertIn("分離課税", extra["A24"].value)
+        self.assertIn("ROUNDDOWN(B24*0.05",extra["B27"].value)
+        self.assertIn("ROUNDDOWN(B24*0.09",extra["B27"].value)
+        self.assertIn('B25="土地建物短期",0.3',extra["B34"].value)
+        self.assertIn("'例外・分離課税'!B27",self.book[RESIDENT]["B15"].value)
+        self.assertIn("'例外・分離課税'!B24",self.book[RESIDENT]["B25"].value)
+        self.assertIn("'例外・分離課税'!B34",self.book[RESIDENT]["B21"].value)
+        self.assertEqual(extra["B33"].value,"なし")
         self.assertIn("旧長期損害保険料", extra["A21"].value)
         self.assertNotIn("旧方式", " ".join(str(extra[f"A{i}"].value or "") for i in range(4,33)))
         self.assertIn("所得年内", extra["A3"].value)

@@ -194,12 +194,48 @@ try {
     Assert-Value $extraSheet.Range('B28').Value2 200000 'Business miscellaneous net income'
     Assert-Value $engineSheet.Range('J12').Value2 ($baseTaxable + 200000) 'Taxable income includes miscellaneous'
     $extraSheet.Range('B8:B9').ClearContents()
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    $regularLevy = [double]$residentSheet.Range('B16').Value2
+    $regularLimit = [double]$residentSheet.Range('B19').Value2
+    # Missing classification remains blocked.
     $extraSheet.Range('B24').Value2 = 1000000.0
     $excel.Run('TaxLawUpdater.RecalculateCase')
     if ([string]$homeSheet.Range('B28').Value2 -eq '正常') {
-        throw 'Separate income wrongly passed without complete tax regime'
+        throw 'Unclassified split income was accepted'
     }
-    $extraSheet.Range('B24').ClearContents()
+    $extraSheet.Range('B25').Value2 = '上場株式'
+    $extraSheet.Range('B4').Value2 = '分離課税'
+    $extraSheet.Range('B33').Value2 = 'なし'
+    $homeSheet.Range('D24').Value2 = 'ワンストップ'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('D24').Value2 '確定申告' 'Split income uses tax return'
+    Assert-Value $extraSheet.Range('B27').Value2 50000 'Listed shares resident tax 1m'
+    Assert-Value $residentSheet.Range('B16').Value2 ($regularLevy+50000) 'Split tax included in resident income levy'
+    Assert-Value $residentSheet.Range('B19').Value2 ($regularLimit+10000) 'Split special credit ceiling'
+    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Ordinary listed shares declared split case'
+    $extraSheet.Range('B24').Value2 = 500000.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $extraSheet.Range('B27').Value2 25000 'Screenshot listed shares 500k resident levy'
+    Assert-Value $residentSheet.Range('B16').Value2 ($regularLevy+25000) 'Screenshot total resident levy'
+    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Screenshot mixed salary plus stocks'
+    $extraSheet.Range('B25').Value2 = '土地建物短期'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $extraSheet.Range('B27').Value2 45000 'Standard short land resident levy'
+    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Standard short land tax case'
+    $extraSheet.Range('B33').Value2 = 'あり'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    if ([string]$homeSheet.Range('B28').Value2 -eq '正常') {
+        throw 'Special rate or carryforward mistakenly accepted'
+    }
+    $extraSheet.Range('B33').Value2 = 'なし'
+    $extraSheet.Range('B25').Value2 = 'その他'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    if ([string]$homeSheet.Range('B28').Value2 -eq '正常') {
+        throw 'Unsupported split tax classification mistakenly accepted'
+    }
+    $extraSheet.Range('B24:B25').ClearContents()
+    $extraSheet.Range('B25').Value2 = 'なし'
+    $extraSheet.Range('B4').Value2 = '通常'
     $extraSheet.Range('B20').Value2 = 'REQUIRES_REVIEW'
     $excel.Run('TaxLawUpdater.RecalculateCase')
     if ([string]$homeSheet.Range('B28').Value2 -eq '正常') {
