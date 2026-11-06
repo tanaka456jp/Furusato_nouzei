@@ -226,42 +226,133 @@ byId("next").addEventListener("click",function(){
 byId("back").addEventListener("click",function(){showStep(Math.max(0,state.step-1));});
 byId("edit").addEventListener("click",function(){showStep(3);});
 byId("print").addEventListener("click",function(){window.print();});
+var allowedReaderFields=[
+ "salary_gross","salary_reference","deductions_reference","income_tax_withheld",
+ "social_insurance","life_new","life_old","medical_care","annuity_new","annuity_old",
+ "earthquake_paid","life_deduction_reference","earthquake_deduction_reference",
+ "mortgage_credit","mortgage_possible_credit","mortgage_occupancy_year",
+ "mortgage_claim_count","income_adjustment","under16_count","basic_reference",
+ "special_relative_count","special_relative_deduction_reference"
+];
+function clearImportedState(clearAmounts){
+ state.sourceStatus="";state.sourceYear=null;
+ byId("sourceConfirmed").checked=false;
+ byId("sourceConfirmBox").style.display="none";
+ byId("clearImportedFile").style.display="none";
+ byId("file").value="";
+ if(clearAmounts){
+  ["salaryGross","socialInsurance","salaryIncomeReference","deductionsReference"]
+   .forEach(function(id){byId(id).value="";});
+  Array.prototype.forEach.call(document.querySelectorAll("[data-key]"),
+   function(el){el.checked=false;});
+  byId("ack").checked=false;
+ }
+ byId("sourceMessage").textContent="読取データを使用していません。原票から金額を手入力してください。";
+}
+byId("clearImportedFile").addEventListener("click",function(){clearImportedState(true);notify("");});
+["year","salaryGross","socialInsurance","salaryIncomeReference","deductionsReference"]
+.forEach(function(id){
+ byId(id).addEventListener("change",function(){
+  if(state.sourceStatus)byId("sourceConfirmed").checked=false;
+ });
+});
+function parseReaderFile(text,filename){
+ var data=Object.create(null), warnings=[];
+ if(/\.json$/i.test(filename)){
+  var obj=JSON.parse(text);
+  if(!obj||obj.schema!=="furusato-withholding-extract/v1"||
+     !obj.fields||typeof obj.fields!=="object"||Array.isArray(obj.fields))
+   throw new Error("読取JSONの形式が不正です");
+  var meta=["schema","status","year","format","fields","warnings","personal_identifiers"];
+  if(Object.keys(obj).some(function(key){return meta.indexOf(key)<0;}))
+   throw new Error("未対応の読取メタデータが含まれています");
+  Object.keys(obj.fields).forEach(function(key){data[key]=obj.fields[key];});
+  data.STATUS=obj.status; data.YEAR=obj.year;
+  if(obj.warnings!==undefined){
+   if(!Array.isArray(obj.warnings))throw new Error("警告情報が不正です");
+   warnings=obj.warnings;
+  }
+ }else{
+  text.split(/\r?\n/).forEach(function(line){
+   if(!line)return;
+   var cols=line.split("\t");
+   if(cols.length!==2||!/^[A-Za-z0-9_]+$/.test(cols[0]))
+    throw new Error("TSVに不正な行があります");
+   if(Object.prototype.hasOwnProperty.call(data,cols[0]))
+    throw new Error("TSVに重複項目があります");
+   data[cols[0]]=cols[1];
+  });
+  if(data.WARNINGS) warnings=String(data.WARNINGS).split(";");
+ }
+ if(data.STATUS!=="REQUIRES_REVIEW"&&data.STATUS!=="READY_FOR_EXCEL_CROSSCHECK")
+  throw new Error("読取状態が不正です");
+ if(String(data.YEAR)!=="2025"&&String(data.YEAR)!=="2026")
+  throw new Error("対応する所得年を認識できません");
+ Object.keys(data).forEach(function(key){
+  if(key==="YEAR"||key==="STATUS"||key==="WARNINGS")return;
+  if(allowedReaderFields.indexOf(key)<0)throw new Error("未対応の読取項目があります");
+  var value=data[key];
+  if((typeof value!=="number"&&typeof value!=="string")||
+     !/^(0|[1-9][0-9]{0,11})$/.test(String(value)))
+   throw new Error("読取数値が不正です");
+ });
+ ["salary_gross","social_insurance","income_tax_withheld"].forEach(function(key){
+  if(!Object.prototype.hasOwnProperty.call(data,key))
+   throw new Error("必須の読取項目がありません");
+ });
+ if(warnings.some(function(w){return typeof w!=="string"||!/^[A-Z0-9_]+$/.test(w);}))
+  throw new Error("警告情報の形式が不正です");
+ data._warnings=warnings;
+ return data;
+}
 byId("file").addEventListener("change",function(ev){
- var file=ev.target.files[0];if(!file)return;
+ var file=ev.target.files[0]; if(!file)return;
+ // A failed or partial import must not inherit a previous review approval.
+ state.sourceStatus="INVALID";state.sourceYear=null;
+ byId("sourceConfirmed").checked=false;
+ byId("sourceConfirmBox").style.display="none";
+ byId("clearImportedFile").style.display="block";
  if(file.size>1024*1024){notify("1MB以下の読取結果ファイルのみ対応します");return;}
- if(!/\.(json|tsv|txt)$/i.test(file.name)){notify("JSONまたはTSVを選択してください。PDF・画像OCRは未実装です");return;}
+ if(!/\.(json|tsv|txt)$/i.test(file.name)){
+  notify("JSON/TSV以外は未対応です。PDF/画像OCRは未実装です");return;
+ }
  var reader=new FileReader();
+ reader.onerror=function(){notify("読取結果ファイルを開けませんでした");};
  reader.onload=function(){
   try{
-   var text=String(reader.result||""), data={};
-   if(/\.json$/i.test(file.name)){
-    var obj=JSON.parse(text);
-    if(obj.schema!=="furusato-withholding-extract/v1")throw new Error("読取JSONの形式が異なります");
-    data=Object.assign({},obj.fields);
-    data.YEAR=obj.year;data.STATUS=obj.status;
-   }else{
-    text.split(/\r?\n/).forEach(function(line){if(!line)return;var arr=line.split("\t");if(arr.length===2&&/^[A-Za-z0-9_]+$/.test(arr[0]))data[arr[0]]=arr[1];});
-   }
-   if(Number(data.YEAR)!==2025&&Number(data.YEAR)!==2026)throw new Error("対応する年分を判定できません");
-   if(data.STATUS!=="REQUIRES_REVIEW"&&data.STATUS!=="READY_FOR_EXCEL_CROSSCHECK")throw new Error("読取の検証状態がないため取込できません");
-   if(!data.salary_gross||!data.social_insurance)throw new Error("必須項目がありません");
-   byId("year").value=String(data.YEAR);
+   var data=parseReaderFile(String(reader.result||""),file.name);
+   var provisional=data.STATUS==="REQUIRES_REVIEW"||data._warnings.length>0;
+   ["salaryGross","salaryIncomeReference","socialInsurance","deductionsReference"]
+    .forEach(function(id){byId(id).value="";});
    [["salaryGross","salary_gross"],["salaryIncomeReference","salary_reference"],
     ["socialInsurance","social_insurance"],["deductionsReference","deductions_reference"]]
     .forEach(function(pair){if(data[pair[1]]!==undefined)byId(pair[0]).value=String(data[pair[1]]);});
-   var autoFlags=[["hasDependents",["under16_count","special_relative_count","special_relative_deduction_reference"]],
-    ["hasMortgage",["mortgage_possible_credit","mortgage_credit"]],
-    ["hasLifeInsurance",["life_new","life_old","medical_care","annuity_new","annuity_old"]],
+   var autoFlags=[
+    ["hasDependents",["under16_count","special_relative_count","special_relative_deduction_reference"]],
+    ["hasMortgage",["mortgage_possible_credit","mortgage_credit","mortgage_claim_count","mortgage_occupancy_year"]],
+    ["hasLifeInsurance",["life_new","life_old","medical_care","annuity_new","annuity_old","life_deduction_reference"]],
     ["hasEarthquakeInsurance",["earthquake_paid","earthquake_deduction_reference"]],
-    ["hasIncomeAdjustment",["income_adjustment"]]];
-   autoFlags.forEach(function(entry){if(entry[1].some(function(key){return Number(data[key]||0)>0;})){
-    var checkbox=document.querySelector('[data-key="'+entry[0]+'"]');checkbox.checked=true;
-   }});
-   state.sourceReviewPending=data.STATUS==="REQUIRES_REVIEW";
+    ["hasIncomeAdjustment",["income_adjustment"]]
+   ];
+   Array.prototype.forEach.call(document.querySelectorAll("[data-key]"),
+    function(el){el.checked=false;});
+   autoFlags.forEach(function(entry){
+    if(entry[1].some(function(key){return Number(data[key]||0)>0;}))
+     document.querySelector('[data-key="'+entry[0]+'"]').checked=true;
+   });
+   state.sourceYear=Number(data.YEAR);
+   state.sourceStatus=provisional?"REQUIRES_REVIEW":"READY_FOR_EXCEL_CROSSCHECK";
+   byId("year").value=String(data.YEAR);
    byId("ack").checked=false;
-   byId("sourceMessage").textContent=state.sourceReviewPending?"取込完了。ただし原票未照合のためHOLDです。":"数字を仮転記しました。控除・扶養の有無を再確認してください。";
+   byId("sourceConfirmBox").style.display=provisional?"none":"flex";
+   byId("sourceMessage").textContent=provisional
+    ?"読取値は仮転記済みですが、未確定項目があるため試算はHOLDです。"
+    :"原票との照合が必要です。照合チェック前の試算はHOLDになります。";
    notify("");
-  }catch(err){notify("読取結果を取り込めませんでした："+err.message);}
+  }catch(err){
+   notify("読取結果を取り込めませんでした："+err.message);
+   byId("sourceMessage").textContent="検証失敗した読取ファイルは計算に使用できません（HOLD）。";
+  }
  };
  reader.readAsText(file,"UTF-8");
 });
