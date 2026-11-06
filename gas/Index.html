@@ -111,6 +111,7 @@ main{margin:0;padding:0;max-width:none}.panel{border:0;box-shadow:none;padding:0
 <div id="resultState"></div>
 <div class="amount" id="reportAmount">—</div><p id="reportNote" class="muted"></p>
 <h3>計算根拠</h3><table class="summary" id="reportLines"></table>
+<div class="info" id="formulaDetails" style="display:none"></div>
 <div id="reasonBlock"></div>
 <div class="footnote" id="footer">本書は税額申告の証明書ではありません。</div>
 </div>
@@ -122,7 +123,7 @@ main{margin:0;padding:0;max-width:none}.panel{border:0;box-shadow:none;padding:0
 <script>
 (function () {
 "use strict";
-var state={step:0,sourceStatus:"",sourceYear:null};
+var state={step:0,sourceStatus:"",sourceYear:null,sourceBasicReference:null};
 var steps=Array.prototype.slice.call(document.querySelectorAll(".stage"));
 function byId(id){return document.getElementById(id);}
 function notify(message){byId("flash").textContent=message||"";}
@@ -139,6 +140,7 @@ function formData(){
  sourceReviewPending:state.sourceStatus!==""&&
   (state.sourceStatus!=="READY_FOR_EXCEL_CROSSCHECK"||!byId("sourceConfirmed").checked)};
  if(state.sourceYear!==null)obj.sourceYear=state.sourceYear;
+ if(state.sourceBasicReference!==null)obj.sourceBasicReference=state.sourceBasicReference;
  Array.prototype.forEach.call(document.querySelectorAll("[data-key]"),function(node){obj[node.getAttribute("data-key")]=node.checked;});
  return obj;
 }
@@ -177,9 +179,11 @@ function buildConfirmation(){
  var flags=Array.prototype.slice.call(document.querySelectorAll("[data-key]:checked")).map(function(x){return x.parentNode.textContent.trim();});
  tableRow(table,"その他の所得・控除",flags.length?flags.join("、"):"該当なし");
  if(state.sourceStatus)tableRow(table,"取込文書",d.sourceReviewPending?"要照合（HOLD）":"原票照合済み（利用者確認）");
+ if(state.sourceBasicReference!==null)tableRow(table,"源泉票の基礎控除参考値",yen(state.sourceBasicReference));
 }
 function processResult(result){
  var lines=byId("reportLines");lines.textContent="";byId("reasonBlock").textContent="";
+ byId("formulaDetails").style.display="none";byId("formulaDetails").textContent="";
  if(!result||typeof result!=="object"){notify("計算結果を取得できませんでした");return;}
  var ok=result.status==="ESTIMATE";
  byId("resultState").textContent=ok?"計算対象内・暫定試算":"追加確認が必要（HOLD）";
@@ -199,6 +203,13 @@ function processResult(result){
    ["特例控除割合",(c.denominator*100).toFixed(2)+"%"],
    ["寄附限度額（概算）",yen(result.donationLimitYen)]]
    .forEach(function(row){tableRow(lines,row[0],row[1]);});
+  byId("formulaDetails").style.display="block";
+  byId("formulaDetails").textContent=
+   "計算式：2,000円 ＋（住民税所得割額 "+yen(c.residentIncomeLevyYen)+
+   " × 20％） ÷［90％ − 所得税率 "+(c.marginalIncomeTaxRate*100).toFixed(1)+
+   "％ × 1.021］＝ "+yen(c.preliminaryLimitYen)+
+   "。住民税の所得基準による寄附金限度 "+yen(c.residentDonationIncomeCapYen)+
+   " と比較し、安全側で1,000円未満を切捨て。";
  }else{
   (result.reasons||["対象外です"]).forEach(function(message){
    var p=document.createElement("p");p.textContent="・"+message;byId("reasonBlock").appendChild(p);
@@ -235,7 +246,7 @@ var allowedReaderFields=[
  "special_relative_count","special_relative_deduction_reference"
 ];
 function clearImportedState(clearAmounts){
- state.sourceStatus="";state.sourceYear=null;
+ state.sourceStatus="";state.sourceYear=null;state.sourceBasicReference=null;
  byId("sourceConfirmed").checked=false;
  byId("sourceConfirmBox").style.display="none";
  byId("clearImportedFile").style.display="none";
@@ -308,7 +319,7 @@ function parseReaderFile(text,filename){
 byId("file").addEventListener("change",function(ev){
  var file=ev.target.files[0]; if(!file)return;
  // A failed or partial import must not inherit a previous review approval.
- state.sourceStatus="INVALID";state.sourceYear=null;
+ state.sourceStatus="INVALID";state.sourceYear=null;state.sourceBasicReference=null;
  byId("sourceConfirmed").checked=false;
  byId("sourceConfirmBox").style.display="none";
  byId("clearImportedFile").style.display="block";
@@ -341,6 +352,7 @@ byId("file").addEventListener("change",function(ev){
      document.querySelector('[data-key="'+entry[0]+'"]').checked=true;
    });
    state.sourceYear=Number(data.YEAR);
+   state.sourceBasicReference=data.basic_reference===undefined?null:Number(data.basic_reference);
    state.sourceStatus=provisional?"REQUIRES_REVIEW":"READY_FOR_EXCEL_CROSSCHECK";
    byId("year").value=String(data.YEAR);
    byId("ack").checked=false;
