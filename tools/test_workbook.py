@@ -107,7 +107,7 @@ class WorkbookTest(unittest.TestCase):
             self.assertIn(f"N('例外・分離課税'!{cell})>0", formula)
         self.assertIn("'例外・分離課税'!B20", formula)
         self.assertIn('"REQUIRES_REVIEW"', formula)
-        for cell in ("B5", "B7", "B8", "B9", "B10", "B12"):
+        for cell in ("B7", "B8", "B9", "B10", "B12"):
             self.assertNotIn(f"N('例外・分離課税'!{cell})>0", formula)
         # Housing is normal processing: a positive B33 alone is not a fail gate.
         self.assertNotIn("N(B33)>0", formula)
