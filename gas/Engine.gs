@@ -1,5 +1,5 @@
 /**
- * Furusato GAS MVP 0.1.3 — pure, deterministic, no SpreadsheetApp dependency.
+ * Furusato GAS MVP 0.1.4 — pure, deterministic, no SpreadsheetApp dependency.
  * Scope: 2025/2026, one salary source, no family/insurance/mortgage/other income.
  * All unsupported cases fail closed. This is a pre-release ESTIMATE, never an assessment.
  * Source: NTA No.1155, No.1199, No.1410, No.2260 (see README).
@@ -7,7 +7,7 @@
  */
 var FurusatoEngine = (function () {
   "use strict";
-  var VERSION = "gas-mvp-0.1.3";
+  var VERSION = "gas-mvp-0.1.4";
   var TAX_REVISION = "2026-11-05-bundled";
   var BASIC = {
     2025: [[1320000,950000],[3360000,880000],[4890000,680000],
@@ -64,10 +64,20 @@ var FurusatoEngine = (function () {
     // adjustment. 2025: ¥1.9m–6.6m, 2026: ¥2.2m–6.6m.
     // The true table, NOT a naïve 30%/20% formula, rounds down
     // gross/4 to the nearest ¥1,000 before applying the coefficient.
-    // 2026 below ¥2.2m has special short bands; require a verified slip
-    // until all low-income exceptions have independent reference cases.
+    // 2026 special short bands are stated in NTA 2026 Tax Reform Q&A,
+    // Q3-1 (May 2026). The discontinuous short bands around ¥2.191m
+    // must NOT be approximated by gross minus the ¥740k minimum.
+    // 2025 uses the ordinary ¥650k minimum at low incomes.
     if (year !== 2025 && year !== 2026) return null;
-    if (gross < (year === 2026 ? 2200000 : 1900000)) return null;
+    if (year === 2025 && gross < 1900000)
+      return Math.max(0,gross-650000);
+    if (year === 2026 && gross < 2200000) {
+      if (gross < 741000) return 0;
+      if (gross < 2191000) return gross-740000;
+      if (gross < 2193000) return 1451000;
+      if (gross < 2196000) return 1453000;
+      return 1456000;
+    }
     if (gross < 6600000) {
       var quarter = Math.floor(gross / 4000) * 1000;
       return gross < 3600000
@@ -147,7 +157,7 @@ var FurusatoEngine = (function () {
         reasons.push("原票の給与所得額と自動計算額が一致しません");
       income=reference;
     } else if (gross !== null && income === null) {
-      reasons.push("この給与帯域は例外区分の確認が必要です。原票の給与所得控除後の金額を入力してください");
+      reasons.push("この所得年の給与所得額は未承認のため試算できません");
     }
     if (income !== null && income < 0) reasons.push("給与所得が不正です");
     var incomeBasic = year in BASIC && income !== null ? basic(year,income) : null;
