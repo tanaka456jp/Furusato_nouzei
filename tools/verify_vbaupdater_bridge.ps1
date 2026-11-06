@@ -38,6 +38,8 @@ $report = [ordered]@{
     post_push_diff_source_length = -1
     post_push_diff_target_length = -1
     post_push_diff_context = ''
+    synthetic_source_delta = 'NOT_RUN'
+    synthetic_source_verified = $false
     warning = 'Never interprets a staging PASS as product VBAUpdater deployment/compile acceptance.'
 }
 try {
@@ -103,6 +105,22 @@ try {
                                        [StringComparison]::OrdinalIgnoreCase)) {
                 throw 'VBAUpdater target escaped the disposable staging directory'
             }
+            # Force a real code write on the isolated copy. A no-op push
+            # cannot prove the editor's VBA update path works.
+            # Only insert an ASCII comment after Option Explicit; never touch
+            # the published VBA or source workbook.
+            $stagedSource = Join-Path $stage 'source/standard/TaxLawUpdater.bas'
+            $sourceText = [IO.File]::ReadAllText($stagedSource, [Text.Encoding]::UTF8)
+            $needle = 'Option Explicit'
+            $marker = "' FURUSATO_CI_SANDBOX_PUSH_PROBE"
+            $pos = $sourceText.IndexOf($needle, [StringComparison]::Ordinal)
+            if ($pos -lt 0 -or $sourceText.Contains($marker)) {
+                throw 'Cannot install safe disposable VBAUpdater push marker'
+            }
+            $changedSource = $sourceText.Insert($pos + $needle.Length, "`n" + $marker)
+            [IO.File]::WriteAllText($stagedSource, $changedSource,
+                (New-Object System.Text.UTF8Encoding($false)))
+            $report.synthetic_source_delta = 'MARKER_COMMENT_IN_STAGE_ONLY'
             Push-Location -LiteralPath $updater
             try {
                 # Capture developer-tool diagnostics only inside the disposable
@@ -199,6 +217,7 @@ try {
                     throw 'VBAUpdater diff remains after staged project-push'
                 }
                 $report.post_push_diff = 'PASS'
+                $report.synthetic_source_verified = $true
             } finally {
                 Pop-Location
             }
@@ -217,8 +236,12 @@ try {
                 throw 'Updated sandbox XLSM QA evidence hash mismatch'
             }
             $report.post_push_excel = 'PASS'
+            if ($report.synthetic_source_delta -ne 'MARKER_COMMENT_IN_STAGE_ONLY' -or
+                -not $report.synthetic_source_verified) {
+                throw 'Disposable VBAUpdater write path was not verified'
+            }
             $report.status = 'STAGED_PUSH_EXCEL_PASS'
-            Write-Host 'VBAUpdater: isolated project-push, post-push diff, and independent Excel QA PASS.'
+            Write-Host 'VBAUpdater: staged source mutation, project-push, zero post-diff, independent Excel QA PASS.'
         }
     }
 } catch {

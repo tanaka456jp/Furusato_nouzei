@@ -57,5 +57,15 @@ class VbaUpdaterBridgeTest(unittest.TestCase):
             self.assertFalse((root / "never-created").exists())
 
 
+    def test_vbe_roundtrip_source_spacing_and_forced_disposable_write(self):
+        canonical = (ROOT / "vba" / "TaxLawUpdater.bas").read_text(encoding="utf-8-sig")
+        self.assertNotIn('",vbQuestion', canonical)
+        self.assertIn('", vbQuestion', canonical)
+        bridge = (ROOT / "tools" / "verify_vbaupdater_bridge.ps1").read_text(encoding="utf-8-sig")
+        self.assertIn("FURUSATO_CI_SANDBOX_PUSH_PROBE", bridge)
+        self.assertIn("MARKER_COMMENT_IN_STAGE_ONLY", bridge)
+        self.assertIn("synthetic_source_verified", bridge)
+        self.assertIn("STAGED_PUSH_EXCEL_PASS", bridge)
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

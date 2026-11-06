@@ -15,5 +15,5 @@ for year in (2025,2026):
               if line.startswith(str(year)+"|")]
     assert len(matching)==1 and matching[0]==[str(year),"APPROVED",revision,"",""], (
         "Unapproved bundled catalog for",year,revision)
-assert "v4.18" in builder,"Application version must remain separate"
+assert "v4.18.1" in builder,"Application version must remain separate"
 print("Catalog/VBA/workbook approved tax-master revisions: PASS")

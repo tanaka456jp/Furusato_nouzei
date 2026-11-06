@@ -395,7 +395,7 @@ Public Sub ReviewWithholding()
         Set calcCell = Nothing
     Next refCell
     If MsgBox("源泉徴収票の未確認項目を確認しましたか？" & vbCrLf & _
-              "読取結果を照合済みにします。",vbQuestion + vbYesNo + vbDefaultButton2) <> vbYes Then Exit Sub
+              "読取結果を照合済みにします。", vbQuestion + vbYesNo + vbDefaultButton2) <> vbYes Then Exit Sub
     extra.Range("B20").Value2 = "VERIFIED_AFTER_CORRECTION"
     Application.Calculate
     MsgBox "原票照合状態を更新しました。未対応案件は引き続き限度額を表示しません。", vbInformation
