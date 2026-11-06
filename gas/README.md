@@ -171,3 +171,19 @@ https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1410.htm
 
 本改正は令和8年12月1日施行分の通常年末調整を想定しており、施行前準確定申告・特殊な申告は未対応。
 Google Apps Scriptでの実デプロイは引き続き未実施。正式リリースHOLD。
+
+## Windowsから非公開GASプロジェクトを作成する補助ツール（v0.1.4）
+
+`gas/scripts/setup-private-gas.ps1` を追加した。**何も引数を付けずに実行すると読取専用の事前検査だけ**を実施し、Googleへログインせず、コード転送・公開は一切行わない。
+
+1. Node.js 20以上とGoogle公式 `@google/clasp` をインストールする：`npm install -g @google/clasp`。
+2. Google Apps Script設定からApps Script APIによる管理アクセスを許可し、手元PCで `clasp login` を行い、正しいGoogleアカウントであることを確認する。個人用の認証情報をGitHubへ送らない。
+3. 展開した配布ZIPの `scripts/` 以下にPowerShell補助ツールがある。まず展開先のルートで `powershell -NoProfile -File .\\scripts\\setup-private-gas.ps1` を実行する。
+4. 利用者が**新規の非公開プロジェクト作成とコード登録を明示的に希望する場合に限り**、`powershell -NoProfile -File .\\scripts\\setup-private-gas.ps1 -SpreadsheetId <対象シートID> -CreateProject -PushSource -OpenProject` を実行する。補助ツールは `MYSELF/USER_DEPLOYING`、OAuthスコープ、4ファイル限定の転送設定を確認してから `clasp create-script` → `clasp show-file-status` → `clasp push` を行う。
+5. デプロイは自動実行しない。Googleのスクリプトエディタで所有者のみのテストデプロイを明示選択し、別途実際のブラウザで確認する。
+
+この補助ツールを含めた `Furusato_GAS_Windows_Private_Setup_<run-id>` ZIP をGitHub Actionsで生成する。
+本ツールが検証できるのはローカル側ソース・最低限の設定・転送先の新規作成経路であり、認証・GAS稼働・現物印刷・会計上の正確性まで証明するものではない。
+既存プロジェクトへの上書きは `-AllowExistingProject` を追加した明示操作が必要。
+
+Google公式資料：https://developers.google.com/apps-script/guides/clasp
