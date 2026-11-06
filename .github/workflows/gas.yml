@@ -30,6 +30,17 @@ jobs:
         run: node gas/tests/test-engine.cjs
       - name: Workflow and source import simulated browser regression
         run: node gas/tests/test-browser.cjs
+      - name: Build local standalone review preview
+        run: node gas/scripts/build-preview.cjs
+      - name: Verify preview with simulated browser
+        run: node gas/tests/test-preview.cjs
+      - name: Upload offline local preview (no Google deployment)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Furusato_GAS_Offline_Preview_${{ github.run_id }}
+          path: gas/dist/Furusato_GAS_LocalPreview.html
+          if-no-files-found: error
+          retention-days: 14
       - name: Explicit validation boundary
         run: |
           echo "GAS JavaScript regression: PASS if previous step passed." >> "$GITHUB_STEP_SUMMARY"
