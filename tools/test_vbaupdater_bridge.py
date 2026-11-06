@@ -6,7 +6,7 @@ from tempfile import TemporaryDirectory
 import unittest
 from zipfile import ZipFile
 
-from prepare_vbaupdater_project import CANONICAL_VBA, prepare
+from prepare_vbaupdater_project import CANONICAL_VBA, ROOT, prepare
 
 
 class VbaUpdaterBridgeTest(unittest.TestCase):
