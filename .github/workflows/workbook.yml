@@ -123,6 +123,46 @@ jobs:
           "GitHub-hosted Windows compatibility: PASS if all prior steps passed." >> $env:GITHUB_STEP_SUMMARY
           "Excel desktop, macros, tax-law update, printed output and real-case comparisons: NOT TESTED by this job." >> $env:GITHUB_STEP_SUMMARY
 
+  document_reader:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Build offline reader executable for end-user PDFs
+        shell: powershell
+        run: |
+          python -m pip install pyinstaller==6.16.0 pymupdf==1.26.7 pillow pytesseract pillow-heif
+          if ($LASTEXITCODE -ne 0) { throw 'Offline reader build dependencies unavailable' }
+          python tools/test_withholding_reader.py
+          if ($LASTEXITCODE -ne 0) { throw 'Offline parser contract failed' }
+          python -m PyInstaller --onefile --clean --noconfirm --name FurusatoDocumentReader tools/withholding_reader.py
+          if ($LASTEXITCODE -ne 0) { throw 'Reader executable build failed' }
+          $temp = Join-Path $env:RUNNER_TEMP ('furusato_reader_' + [guid]::NewGuid().ToString('N'))
+          New-Item -ItemType Directory -Path $temp | Out-Null
+          try {
+            $csv = Join-Path $temp 'synthetic.csv'
+            @('field,value','year,2026','salary_gross,7000000','social_insurance,1000000','income_tax_withheld,0') | Set-Content -LiteralPath $csv -Encoding Ascii
+            $out = Join-Path $temp 'result.json'
+            $bridge = Join-Path $temp 'bridge.tsv'
+            & .\dist\FurusatoDocumentReader.exe --input $csv --output $out --bridge $bridge
+            if ($LASTEXITCODE -ne 0) { throw 'Reader executable failed synthetic CLI smoke' }
+            $result = Get-Content -LiteralPath $out -Raw -Encoding UTF8 | ConvertFrom-Json
+            if ($result.status -ne 'READY_FOR_EXCEL_CROSSCHECK' -or $result.fields.salary_gross -ne 7000000) { throw 'Reader smoke wrong or incomplete' }
+            if (-not (Test-Path -LiteralPath $bridge -PathType Leaf)) { throw 'Reader VBA bridge missing' }
+          } finally {
+            Remove-Item -LiteralPath $temp -Recurse -Force
+          }
+      - name: Upload standalone local PDF reader
+        uses: actions/upload-artifact@v4
+        with:
+          name: Furusato_DocumentReader_Windows_EXE_${{ github.run_id }}
+          path: dist/FurusatoDocumentReader.exe
+          if-no-files-found: error
+          retention-days: 14
+
   # Explicit opt-in: never execute arbitrary fork PR code on a self-hosted runner.
   excel:
     if: >-
