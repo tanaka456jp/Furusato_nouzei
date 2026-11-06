@@ -60,9 +60,9 @@ class WithholdingTest(unittest.TestCase):
             dest=Path(tmp)/"bridge.tsv"
             write_bridge(data,dest)
             contents=dest.read_text(encoding="utf-8")
-            self.assertIn("STATUS\\tREQUIRES_REVIEW",contents)
-            self.assertIn("WARNINGS\\t",contents)
-            self.assertIn("mortgage_possible_credit\\t300000",contents)
+            self.assertIn("STATUS\tREQUIRES_REVIEW",contents)
+            self.assertIn("WARNINGS\t",contents)
+            self.assertIn("mortgage_possible_credit\t300000",contents)
             self.assertNotIn("山田",contents)
 
     def test_json_schema_and_identifier_rejection(self):
