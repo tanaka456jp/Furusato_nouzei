@@ -168,6 +168,7 @@ End Sub
     Add-WorkbookButton $sheet 'B7' '案件保存' 'SaveCase'
     Add-WorkbookButton $sheet 'C7' '計算根拠' 'ShowDetails'
     Add-WorkbookButton $sheet 'D7' '計算' 'RecalculateCase'
+    Add-WorkbookButton $sheet 'B5' '特例・分離課税' 'ShowAdvanced'
     $details = $workbook.Worksheets.Item('計算根拠')
     try {
         Add-WorkbookButton $details 'A17' 'メイン画面に戻る' 'ReturnHome'
@@ -175,6 +176,12 @@ End Sub
         Add-WorkbookButton $details 'C17' 'PDF出力' 'ExportDetails'
     } finally {
         [void][Runtime.InteropServices.Marshal]::ReleaseComObject($details)
+    }
+    $advanced = $workbook.Worksheets.Item('例外・分離課税')
+    try {
+        Add-WorkbookButton $advanced 'B2' 'メイン画面に戻る' 'ReturnFromAdvanced'
+    } finally {
+        [void][Runtime.InteropServices.Marshal]::ReleaseComObject($advanced)
     }
     $sheet.Activate()
     $excel.ActiveWindow.Zoom = 85

@@ -168,6 +168,8 @@ Public Sub BindButtons()
     BindButton "操作画面", "btnSaveCase", "SaveCase"
     BindButton "操作画面", "btnShowDetails", "ShowDetails"
     BindButton "操作画面", "btnRecalculateCase", "RecalculateCase"
+    BindButton "操作画面", "btnShowAdvanced", "ShowAdvanced"
+    BindButton "例外・分離課税", "btnReturnFromAdvanced", "ReturnFromAdvanced"
     BindButton "計算根拠", "btnReturnHome", "ReturnHome"
     BindButton "計算根拠", "btnPrintDetails", "PrintDetails"
     BindButton "計算根拠", "btnExportDetails", "ExportDetails"
@@ -183,6 +185,12 @@ Public Sub NewCase()
     With ThisWorkbook.Worksheets("操作画面")
         .Range("B11:B12,B15:B16,B19:B26,D11:D23").ClearContents
         .Range("D24").Value2 = "確定申告"
+    End With
+    With ThisWorkbook.Worksheets("例外・分離課税")
+        .Range("B5:B18,B21").ClearContents
+        .Range("B4").Value2 = "通常"
+        .Range("B8").ClearContents
+        .Range("B19:B20").ClearContents
     End With
     Application.Calculate
 End Sub
@@ -252,6 +260,18 @@ Public Sub SaveCase()
     Exit Sub
 Failed:
     MsgBox Err.Description, vbExclamation, "案件の保存"
+End Sub
+
+Public Sub ShowAdvanced()
+    With ThisWorkbook.Worksheets("例外・分離課税")
+        .Visible = xlSheetVisible
+        .Activate
+    End With
+End Sub
+
+Public Sub ReturnFromAdvanced()
+    ThisWorkbook.Worksheets("操作画面").Activate
+    ThisWorkbook.Worksheets("例外・分離課税").Visible = xlSheetVeryHidden
 End Sub
 
 Public Sub ShowDetails()

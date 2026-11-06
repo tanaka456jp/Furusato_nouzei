@@ -17,6 +17,7 @@ ENGINE = "ふるさと納税限度額計算"
 INPUT = "源泉徴収票入力"
 RESIDENT = "住民税再計算"
 DETAIL = "計算根拠"
+ADVANCED = "例外・分離課税"
 
 
 def ref(sheet, address):
@@ -34,6 +35,18 @@ def build(source, output):
     del book[HOME]
     home = book.create_sheet(HOME, 0)
     detail = book.create_sheet(DETAIL)
+    extra = book.create_sheet(ADVANCED)
+    extra.sheet_view.showGridLines = False
+    extra.column_dimensions["A"].width = 38
+    extra.column_dimensions["B"].width = 23
+    extra.column_dimensions["C"].width = 34
+    extra.column_dimensions["D"].width = 20
+    extra.sheet_properties.pageSetUpPr.fitToPage = True
+    extra.page_setup.fitToWidth = 1
+    extra.page_setup.fitToHeight = 1
+    extra.page_setup.orientation = "portrait"
+    extra.page_setup.paperSize = extra.PAPERSIZE_A4
+    extra.print_area = "A1:D25"
     original, withholding, resident = (book[name] for name in (ENGINE, INPUT, RESIDENT))
 
     for view, widths in ((home, (33, 16, 32, 18)), (detail, (33, 16, 32, 18))):
@@ -85,6 +98,52 @@ def build(source, output):
         validation.add(home[cell])
 
     bar(home, 1, "ふるさと納税 寄附限度額試算    1.0 開発版")
+    bar(extra, 1, "特例案件：分離課税・住宅ローン控除（検証入力）")
+    extra.merge_cells("A3:D3")
+    extra["A3"] = "追加入力は既存計算エンジンと分離。未検証案件の寄附限度額は表示しません。"
+    extra["A3"].alignment = Alignment(wrap_text=True)
+    extra.row_dimensions[3].height = 35
+    extra_items = (
+        (4, "案件区分", "通常", ("通常", "住宅ローン控除", "分離課税", "両方")),
+        (5, "住宅ローン控除額（所得税・源泉票）", None, None),
+        (6, "住宅ローン控除額（住民税適用実額）", None, None),
+        (7, "分離課税の課税所得", None, None),
+        (8, "分離所得の種類", None, ("なし", "上場株式", "土地建物長期", "土地建物短期", "先物", "その他")),
+        (9, "分離課税の住民税所得割額（資料値）", None, None),
+        (10, "住民税所得割額（調整控除後・通知書）", None, None),
+        (11, "所得税率（確定申告書・検証値）", None, None),
+        (12, "その他の税額控除（所得税・住民税）", None, None),
+        (13, "所得金額調整控除額（原票）", None, None),
+        (14, "源泉票：所得控除合計額（照合のみ）", None, None),
+        (15, "源泉票：給与所得控除後の額（照合）", None, None),
+        (16, "源泉票：生命保険料控除額（照合）", None, None),
+        (17, "源泉票：地震保険料控除額（照合）", None, None),
+        (18, "源泉票：源泉徴収税額（照合）", None, None),
+        (19, "読取ファイルの方式", None, None),
+        (20, "取込時の照合状態", None, None),
+        (21, "旧長期損害保険料（支払額）", None, None),
+    )
+    for row, label, initial, choices in extra_items:
+        extra[f"A{row}"] = label
+        extra[f"A{row}"].alignment = Alignment(wrap_text=True, vertical="center")
+        extra[f"B{row}"] = initial
+        extra.row_dimensions[row].height = 27
+        if row not in (19, 20):
+            extra[f"B{row}"].fill = PatternFill("solid", fgColor="E2F2FF")
+            extra[f"B{row}"].protection = Protection(locked=False)
+            extra[f"B{row}"].number_format = '#,##0'
+            if choices:
+                dv = DataValidation(type="list", formula1='"' + ",".join(choices) + '"')
+            else:
+                dv = DataValidation(type="whole", operator="between", formula1=0, formula2=1000000000)
+            dv.showErrorMessage = True
+            extra.add_data_validation(dv)
+            dv.add(extra[f"B{row}"])
+    extra.merge_cells("A23:D23")
+    extra["A23"] = "住宅ローン控除・分離課税などは適用順序や住民税通知値が必要です。未検証の自動計算は停止します。"
+    extra["A23"].alignment = Alignment(wrap_text=True)
+    extra.row_dimensions[23].height = 40
+    home.row_dimensions[3].height = 28
     field("B4", "選択する所得年", "2026", ("2025", "2026"))
     home["C4"], home["D4"] = "適用中の所得年", "=" + ref("設定・税率", "B4")
     home["C5"], home["D5"] = "住民税課税年度", "=" + ref(RESIDENT, "B5")
@@ -146,7 +205,7 @@ def build(source, output):
     home["D24"] = "確定申告"
     note(home, 27, "対象外条件は年末調整未済、準確定申告、非居住者、給与以外の所得、住宅ローン・配当等の税額控除、医療費・他の寄附、旧長期損害保険、自治体独自の税率などです。")
     home.row_dimensions[27].height = 42
-    note(home, 31, "水色の欄のみ入力。緑色の給与所得・保険料控除・所得控除合計は自動計算されます。")
+    note(home, 31, "水色欄に支払金額・保険料を入力。自動計算欄は緑色。特例案件は専用フォームで入力します。")
     home.print_area = "A1:D31"
 
     def link(sheet, dest, src):
@@ -169,7 +228,7 @@ def build(source, output):
     # Salary and premiums are user inputs; corresponding deductions are
     # calculated from approved year masters, not retyped.
     derived = {
-        "B13": f'=IF(B12="","",{ref(INPUT, "B34")})',
+        "B13": f'=IF(B12="","",MAX(0,{ref(INPUT, "B34")}-N({ref(ADVANCED, "B13")})))',
         "B17": f'=IF(B12="","",{ref(ENGINE, "F24")})',
         "B18": f'=IF(B12="","",{ref(ENGINE, "F25")})',
         "B14": (f'=IF(OR(B13="",B16=""),"",'
@@ -202,13 +261,17 @@ def build(source, output):
         invalid.extend((f'COUNTA({group})<>COUNT({group})',
                         f'COUNTIF({group},"<0")+COUNTIF({group},">{limit}")>0',
                         f'SUMPRODUCT(--(IFERROR(MOD({group},1),0)<>0))>0'))
-    invalid += ['MAX(D11:D13,D19:D21)>30', 'COUNT(D17:D18)>1', 'B13>B12', 'B15>B12', 'B16>B14',
+    invalid += [
+        f'AND(ISNUMBER({ref(ADVANCED,"B14")}),ABS(B14-{ref(ADVANCED,"B14")})>1)',
+        f'AND(ISNUMBER({ref(ADVANCED,"B15")}),ABS(B13-{ref(ADVANCED,"B15")})>1)',
+        f'AND(ISNUMBER({ref(ADVANCED,"B16")}),ABS(B17-{ref(ADVANCED,"B16")})>1)',
+        f'AND(ISNUMBER({ref(ADVANCED,"B17")}),ABS(B18-{ref(ADVANCED,"B17")})>1)',
+        'MAX(D11:D13,D19:D21)>30', 'COUNT(D17:D18)>1', 'B13>B12', 'B15>B12', 'B16>B14',
                 'AND(COUNT(D14:D16,D23)>0,B25="なし",OR(COUNT(D14:D16)>0,D23>0))',
                 f'OR(B17<>{ref(ENGINE,"F24")},B18<>{ref(ENGINE,"F25")})',
                 f'B14<>SUM(B16:B18,{ref(ENGINE,"F15")},{ref(ENGINE,"F38")},{ref("追加人的控除","C12")})']
     unsupported = (
-        'OR(B26="該当あり",AND(D24="確定申告",B15=0),'
-        ''
+        'OR(B26="該当あり",'+f'{ref(ADVANCED,"B4")}<>"通常",AND(D24="確定申告",B15=0),'        ''
         'B13<=IF(SUM(D11:D13,D23)+COUNT(D14:D18)=0,450000,'
         '350000*(1+SUM(D11:D13,D23)+COUNT(D14:D18))+420000),'
         'AND(OR(SUM(D19:D21)>0,D22<>"該当なし"),B13<=1350000))'

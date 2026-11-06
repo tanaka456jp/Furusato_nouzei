@@ -6,7 +6,7 @@ import unittest
 from zipfile import ZipFile
 
 from openpyxl import load_workbook
-from build_workbook import ROOT, HOME, ENGINE, DETAIL, RESIDENT, build
+from build_workbook import ROOT, HOME, ENGINE, DETAIL, RESIDENT, ADVANCED, build
 
 
 class WorkbookTest(unittest.TestCase):
@@ -98,6 +98,16 @@ class WorkbookTest(unittest.TestCase):
                 for cell in row:
                     if cell.data_type == "f":
                         self.assertNotIn("#REF!", cell.value, f"{sheet.title}!{cell.coordinate}")
+
+    def test_advanced_form_is_hidden_until_explicitly_requested(self):
+        self.assertEqual(self.book[ADVANCED].sheet_state, "veryHidden")
+        extra = self.book[ADVANCED]
+        self.assertEqual(extra["B4"].value, "通常")
+        self.assertIn("住宅ローン", extra["A5"].value)
+        self.assertIn("分離課税", extra["A7"].value)
+        self.assertIn("源泉票", extra["A14"].value)
+        self.assertIn("'例外・分離課税'!B4", self.book[HOME]["B28"].value)
+        self.assertIn("'例外・分離課税'!B14", self.book[HOME]["B28"].value)
 
     def test_auto_income_and_deductions_and_no_one_stop_attestation(self):
         home = self.book[HOME]
