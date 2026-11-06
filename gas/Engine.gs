@@ -133,6 +133,13 @@ var FurusatoEngine = (function () {
     if (gross !== null && gross === 0) reasons.push("給与支払金額は0円では計算できません");
     if (gross !== null && social !== null && social > gross) reasons.push("社会保険料が給与支払金額を超えています");
     if (gross !== null && reference !== null && reference > gross) reasons.push("給与所得控除後の金額が支払金額を超えています");
+    // Even in low salary bands whose exact table is not yet integrated,
+    // the amount after salary deduction cannot exceed gross minus the
+    // statutory minimum salary deduction (2025: 650k, 2026: 740k).
+    var minSalaryDeduction = year === 2026 ? 740000 : (year === 2025 ? 650000 : null);
+    if (gross !== null && reference !== null && minSalaryDeduction !== null &&
+        reference > Math.max(0,gross-minSalaryDeduction))
+      reasons.push("給与所得控除後の金額が法定の給与所得控除最低保障額と一致しません");
     if (gross !== null && gross > 8500000) reasons.push("給与850万円超は所得金額調整控除の判定が必要なため初期版では停止します");
     var income = gross === null ? null : salaryIncome(gross, year);
     if (reference !== null) {
