@@ -186,7 +186,7 @@ Public Sub ImportWithholding()
     Dim tempJson As String, tempTsv As String, command As String, line As String
     Dim inFile As Object, fields As Object, fragments As Variant
     Dim key As Variant, value As Double, year As Long, exitCode As Long
-    Dim status As String, raw As String, backup As String
+    Dim status As String, raw As String, backup As String, caution As String
     Dim home As Worksheet, extra As Worksheet, code As Long, problem As String
     On Error GoTo Failed
     picked = Application.GetOpenFilename( _
@@ -266,7 +266,6 @@ Public Sub ImportWithholding()
             End Select
         End If
     Next key
-    Dim caution As String
     caution = "源泉徴収票の読み取れた数値を転記し、現在の入力を置換しますか？" & vbCrLf & _
               "既存データはバックアップします。"
     If status = "REQUIRES_REVIEW" Then
