@@ -98,7 +98,7 @@ def build(source, output):
         home.add_data_validation(validation)
         validation.add(home[cell])
 
-    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.14 検証版")
+    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.15 検証版")
     bar(extra, 1, "追加所得・分離課税（所得年内で事前試算）")
     extra.merge_cells("A3:D3")
     extra["A3"] = "翌年度の住民税通知書は参照せず、所得年内の収入・経費・控除と法定税率表から計算します。"
@@ -229,7 +229,7 @@ def build(source, output):
         ),
     )
     bar(home, 10, "源泉徴収票から転記・該当する控除の内訳")
-    field("B11", "源泉徴収票の所得年", choices=("2025", "2026"))
+    field("B11", "源泉徴収票の所得年", "2026", ("2025", "2026"))
     labels = [
         "支払金額", "給与所得控除後の金額（調整控除後）", "所得控除の額の合計額", "源泉徴収税額",
         "社会保険料等の金額（総額）", "生命保険料の控除額", "地震保険料の控除額",
@@ -239,8 +239,8 @@ def build(source, output):
     for row, label in enumerate(("新生命保険料", "旧生命保険料", "新個人年金保険料", "旧個人年金保険料",
                                  "介護医療保険料", "地震保険料の支払額"), 19):
         field(f"B{row}", label)
-    field("B25", "23歳未満の扶養親族", choices=("あり", "なし"))
-    field("B26", "対象外条件の確認", choices=("該当なし", "該当あり"))
+    field("B25", "23歳未満の扶養親族", "なし", ("あり", "なし"))
+    field("B26", "対象外条件の確認", "該当なし", ("該当なし", "該当あり"))
     for row, label in enumerate(("一般扶養（人数）", "同居老親（人数）", "その他の老人扶養（人数）"), 11):
         field(f"D{row}", label, maximum=30)
     for row, label in enumerate(("特定親族1の合計所得", "特定親族2の合計所得", "特定親族3の合計所得",
@@ -248,13 +248,12 @@ def build(source, output):
         field(f"D{row}", label)
     for row, label in enumerate(("普通障害（人数）", "特別障害（人数）", "同居特別障害（人数）"), 19):
         field(f"D{row}", label, maximum=30)
-    field("D22", "本人の控除区分", choices=("該当なし", "寡婦", "ひとり親（母）", "ひとり親（父）", "勤労学生"))
+    field("D22", "本人の控除区分", "該当なし", ("該当なし", "寡婦", "ひとり親（母）", "ひとり親（父）", "勤労学生"))
     field("D23", "16歳未満の扶養（人数）", maximum=30)
-    field("D24", "申告方式", choices=("ワンストップ", "確定申告"))
-    home["D24"] = "確定申告"
+    field("D24", "申告方式", "ワンストップ", ("ワンストップ", "確定申告"))
     note(home, 27, "公的年金・事業所得・雑所得は追加所得から入力できます。分離課税・非居住者・医療費・他の寄附・自治体独自税率などは個別確認。住宅ローン控除は下段の通常入力欄で処理します。")
     home.row_dimensions[27].height = 42
-    note(home, 31, "給与以外の所得は「追加所得・分離課税」で入力。寄附する翌年の住民税通知書は不要です。")
+    note(home, 31, "原票の所得控除額を優先し、任意項目の空欄は原則0・該当なしとして計算します。追加所得は別画面へ。")
     bar(home, 32, "住宅ローン控除（通常処理・源泉徴収票から転記）")
     field("B33", "住宅ローン控除の所得税適用額")
     field("B34", "住宅ローン控除可能額（G36）")
@@ -294,7 +293,7 @@ def build(source, output):
     # Salary and premiums are user inputs; corresponding deductions are
     # calculated from approved year masters, not retyped.
     derived = {
-        "B13": ('=IF(B12="","",MAX(0,'
+        "B13": (f'=IF(ISNUMBER({ref(ADVANCED,"B15")}),{ref(ADVANCED,"B15")},IF(B12="","",MAX(0,'
                  'IF(B12<6600000,'
                  'IF(B12<=IF(D4=2025,1900000,2200000),'
                  'MAX(0,B12-IF(D4=2025,650000,740000)),'
@@ -304,12 +303,13 @@ def build(source, output):
                  f'IF(ISNUMBER({ref(ADVANCED,"B13")}),'
                  f'{ref(ADVANCED,"B13")},'
                  'IF(AND(B12>8500000,B25="あり"),'
-                 '(MIN(B12,10000000)-8500000)*0.1,0))))'),
-        "B17": f'=IF(B12="","",{ref(ENGINE, "F24")})',
-        "B18": f'=IF(B12="","",{ref(ENGINE, "F25")})',
-        "B14": (f'=IF(OR(B13="",B16=""),"",'
+                 '(MIN(B12,10000000)-8500000)*0.1,0)))))'),
+        "B17": f'=IF(ISNUMBER({ref(ADVANCED,"B16")}),{ref(ADVANCED,"B16")},IF(B12="","",{ref(ENGINE, "F24")}))',
+        "B18": f'=IF(ISNUMBER({ref(ADVANCED,"B17")}),{ref(ADVANCED,"B17")},IF(B12="","",{ref(ENGINE, "F25")}))',
+        "B14": (f'=IF(ISNUMBER({ref(ADVANCED,"B14")}),{ref(ADVANCED,"B14")},'
+                'IF(OR(B13="",B16=""),"",'
                 f'SUM(B16:B18,{ref(ENGINE,"F15")},'
-                f'{ref(ENGINE,"F38")},{ref("追加人的控除","C12")}))'),
+                f'{ref(ENGINE,"F38")},{ref("追加人的控除","C12")})))'),
     }
     for addr, formula in derived.items():
         home[addr] = formula
@@ -345,14 +345,15 @@ def build(source, output):
         'AND(N(B34)>0,OR(NOT(ISNUMBER(B36)),B36<>1))',
         'AND(N(B34)>0,ISNUMBER(B33),B33>B34)',
         'AND(ISNUMBER(B33),B33<0)',
-        f'AND(ISNUMBER({ref(ADVANCED,"B14")}),ABS(B14-{ref(ADVANCED,"B14")})>1)',
-        f'AND(ISNUMBER({ref(ADVANCED,"B15")}),ABS(B13-{ref(ADVANCED,"B15")})>1)',
-        f'AND(ISNUMBER({ref(ADVANCED,"B16")}),ABS(B17-{ref(ADVANCED,"B16")})>1)',
-        f'AND(ISNUMBER({ref(ADVANCED,"B17")}),ABS(B18-{ref(ADVANCED,"B17")})>1)',
+        # Source reference totals include omitted special and family deductions.
+        # They are authoritative when extracted from the withholding form.
+        f'AND(ISNUMBER({ref(ADVANCED,"B14")}),{ref(ADVANCED,"B14")}<B16)',
         'MAX(D11:D13,D19:D21)>30', 'COUNT(D17:D18)>1', 'B13>B12', 'B15>B12', 'B16>B14',
                 'AND(COUNT(D14:D16,D23)>0,B25="なし",OR(COUNT(D14:D16)>0,D23>0))',
-                f'OR(B17<>{ref(ENGINE,"F24")},B18<>{ref(ENGINE,"F25")})',
-                f'B14<>SUM(B16:B18,{ref(ENGINE,"F15")},{ref(ENGINE,"F38")},{ref("追加人的控除","C12")})']
+                f'OR(AND(NOT(ISNUMBER({ref(ADVANCED,"B16")})),B17<>{ref(ENGINE,"F24")}),'
+                f'AND(NOT(ISNUMBER({ref(ADVANCED,"B17")})),B18<>{ref(ENGINE,"F25")})))',
+                f'AND(NOT(ISNUMBER({ref(ADVANCED,"B14")})),'
+                f'B14<>SUM(B16:B18,{ref(ENGINE,"F15")},{ref(ENGINE,"F38")},{ref("追加人的控除","C12")}))']
     unsupported = (
         'OR(B26="該当あり",'
         +f'{ref(ADVANCED,"B4")}<>"通常",'
