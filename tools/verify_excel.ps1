@@ -75,6 +75,24 @@ try {
     Assert-Value $homeSheet.Range('B8').Value2 '' 'Blank input hides limit'
     Assert-Value $detail.Visible 2 'Calculation details start hidden'
     QA-Stage 'initial-regressions-pass'
+    # Statutory special-relative deduction edge cases, all synthetic.
+    $familyBands = @(
+        @{ Year=2025; Income=580000; Expected=0 },
+        @{ Year=2025; Income=580001; Expected=630000 },
+        @{ Year=2026; Income=620000; Expected=0 },
+        @{ Year=2026; Income=620001; Expected=630000 },
+        @{ Year=2026; Income=850000; Expected=630000 },
+        @{ Year=2026; Income=850001; Expected=610000 },
+        @{ Year=2026; Income=900001; Expected=510000 },
+        @{ Year=2026; Income=1200001; Expected=30000 },
+        @{ Year=2026; Income=1230001; Expected=0 }
+    )
+    foreach ($band in $familyBands) {
+        $actual = [double]($excel.Run('TaxLawUpdater.SpecialRelativeTaxDeduction',
+                                     [double]$band.Income, [int]$band.Year))
+        Assert-Value $actual $band.Expected ('Special relative income ' + $band.Year + ' / ' + $band.Income)
+    }
+    QA-Stage 'special-relative-income-bands-pass'
     QA-Stage 'print-setup-validation-start'
     Assert-PrintConfiguration $homeSheet 'Home' '\$A\$1:\$D\$39'
     Assert-PrintConfiguration $detail 'Detail' '\$A\$1:\$D\$19'
