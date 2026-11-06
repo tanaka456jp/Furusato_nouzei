@@ -421,7 +421,9 @@ try {
     }
 
     # Reopen the QA copy after a successful case save.
-    $homeSheet.Range('B26').Value2 = '該当なし'
+    if ([string]$homeSheet.Range('B26').Formula -notlike '*B28*') {
+        throw 'Automatic eligibility formula was lost during save/reopen'
+    }
     $homeSheet.Range('B4').Value2 = 2026.0
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value $homeSheet.Range('B8').Value2 109000 'Amount before reopen'
