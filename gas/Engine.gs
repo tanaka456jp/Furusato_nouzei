@@ -7,7 +7,7 @@
  */
 var FurusatoEngine = (function () {
   "use strict";
-  var VERSION = "gas-mvp-0.1.0";
+  var VERSION = "gas-mvp-0.1.1";
   var TAX_REVISION = "2026-11-05-bundled";
   var BASIC = {
     2025: [[1320000,950000],[3360000,880000],[4890000,680000],
@@ -90,7 +90,15 @@ var FurusatoEngine = (function () {
     if (input.incomeType !== "salary") reasons.push("給与所得のみが初期版の対応範囲です");
     if (input.filing !== "one-stop" && input.filing !== "return") reasons.push("申告方式を選択してください");
     if (input.acknowledgedExclusions !== true) reasons.push("控除・扶養の該当有無を確認してください");
-    UNSUPPORTED.forEach(function (pair) { if (input[pair[0]] === true) reasons.push(pair[1]); });
+    UNSUPPORTED.forEach(function (pair) {
+      if (input[pair[0]] === true) reasons.push(pair[1]);
+      else if (typeof input[pair[0]] !== "undefined" && input[pair[0]] !== false)
+        reasons.push("確認項目の値が不正です: " + pair[0]);
+    });
+    if (typeof input.sourceYear !== "undefined" &&
+        (String(input.sourceYear) !== String(input.year))) {
+      reasons.push("取込んだ源泉徴収票と選択した所得年が一致しません");
+    }
     var gross = money(input.salaryGross, "給与支払金額", true, reasons);
     var social = money(input.socialInsurance, "社会保険料等の金額", true, reasons);
     var reference = money(input.salaryIncomeReference, "給与所得控除後の金額", false, reasons);
