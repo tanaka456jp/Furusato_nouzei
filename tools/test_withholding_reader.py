@@ -142,7 +142,7 @@ class WithholdingTest(unittest.TestCase):
             dest=Path(tmp)/"bridge.tsv"
             write_bridge(report,dest)
             payload=dest.read_text(encoding="utf-8")
-            self.assertIn("special_relative_deduction_reference\\t630000",payload)
+            self.assertIn("special_relative_deduction_reference"+chr(9)+"630000",payload)
             self.assertNotIn("山田",payload)
 
     def test_special_relative_vba_bridge_contract(self):
