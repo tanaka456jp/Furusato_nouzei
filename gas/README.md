@@ -109,3 +109,18 @@ Excel版PR #1を変更・マージしない。正式リリースはHOLD。
 - `gas/.claspignore` で `Code.gs`、`Engine.gs`、`Index.html`、`appsscript.json` のみGASへアップロード。生成プレビューとテストは対象外。
 - `gas/.gitignore` で個人のScript IDやOAuth情報、生成プレビューを誤コミットから保護。
 - Google実デプロイ、実PDF→GAS直接取込、全税制ケース一致は依然未検証。正式版はHOLD。
+
+## GASを実際のGoogleスプレッドシートへ導入する前の確認（実デプロイ未実施）
+
+CI `GAS workflow regression` の `Furusato_GAS_DeploySources_<run-id>` Artifactは、
+`Code.gs`、`Engine.gs`、`Index.html`、`appsscript.json`、`.claspignore` の5ファイルだけを収録します。
+`.claspignore` はアップロード制御用でありGAS本体へ送信されません。
+実データ・Excelブック・認証情報・テストコード・プレビューは同梱しません。
+
+Google Sheetsを開いて「拡張機能 → Apps Script」を選び、既存の`Code.gs`の内容を上書きし、
+`Engine.gs`と`Index.html`を新規作成、`appsscript.json`をマニフェスト表示設定から更新してください。
+最初は「デプロイ → テストデプロイ（ウェブアプリ）」を選び、非公開・所有者のみで動作を検証してください。
+その後、一般公開を行うには別途認証方式・保存ポリシー・税額精度の正式受入が必要です。
+
+**この工程はGoogleアカウント所有者の認可操作が必要**であり、GitHub Actionsの成功のみで実デプロイ成功と判断しません。
+`.clasp.json` やOAuthトークンを公開GitHub/Artifactsへアップロードしてはいけません。
