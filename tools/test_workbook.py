@@ -121,7 +121,9 @@ class WorkbookTest(unittest.TestCase):
     def test_advanced_form_is_hidden_until_explicitly_requested(self):
         self.assertEqual(self.book[ADVANCED].sheet_state, "veryHidden")
         extra = self.book[ADVANCED]
-        self.assertEqual(extra["B4"].value, "通常")
+        self.assertEqual(extra["B4"].value, '=IF(N(B24)>0,"分離課税","通常")')
+        self.assertTrue(extra["B4"].protection.locked)
+        self.assertFalse(any("B4" in rule for rule in extra.data_validations.dataValidation))
         self.assertIn("公的年金", extra["A5"].value)
         self.assertIn("公的年金", extra["A7"].value)
         self.assertIn("分離課税", extra["A24"].value)
@@ -143,7 +145,7 @@ class WorkbookTest(unittest.TestCase):
         self.assertEqual(self.book[INPUT]["B11"].data_type,"f")
         self.assertIn("'例外・分離課税'!B28",self.book[INPUT]["B11"].value)
         self.assertIn("源泉票", extra["A14"].value)
-        self.assertIn("'例外・分離課税'!B4", self.book[HOME]["B28"].value)
+        self.assertNotIn("'例外・分離課税'!B4", self.book[HOME]["B28"].value)
         self.assertIn("'例外・分離課税'!B14", self.book[HOME]["B28"].value)
 
     def test_auto_income_and_deductions_and_no_one_stop_attestation(self):
@@ -164,16 +166,30 @@ class WorkbookTest(unittest.TestCase):
     def test_no_customer_values_in_main_inputs(self):
         home = self.book[HOME]
         user_fields = ["B11", "B12", "B15", "B16", "B33", "B34", "B35", "B36"] + [
-            f"B{i}" for i in range(19, 27)
+            f"B{i}" for i in range(19, 26)
         ] + [f"D{i}" for i in range(11, 24)]
-        defaults = {"B11": "2026", "B25": "なし",
-                    "B26": "該当なし", "D22": "該当なし"}
+        defaults = {"B11": "2026", "B25": "なし", "D22": "該当なし"}
         for cell in user_fields:
             self.assertEqual(home[cell].value, defaults.get(cell), cell)
             self.assertFalse(home[cell].protection.locked, cell)
             self.assertTrue(any(cell in rule for rule in home.data_validations.dataValidation), cell)
         for cell, source in (("B13","B15"),("B14","B14"),("B17","B16"),("B18","B17")):
             self.assertIn(f"ISNUMBER('例外・分離課税'!{source})", home[cell].value)
+
+    def test_no_manual_unsupported_toggle_and_auto_status(self):
+        home = self.book[HOME]
+        self.assertEqual(home["A26"].value, "計算可否（入力から自動判定）")
+        self.assertEqual(home["B26"].data_type, "f")
+        self.assertTrue(home["B26"].protection.locked)
+        self.assertIn('IF(B28="正常","計算可能","追加確認")',home["B26"].value)
+        self.assertNotIn('B26="該当あり"',home["B28"].value)
+        self.assertNotIn('B26<>"該当なし"',home["B28"].value)
+        for rule in home.data_validations.dataValidation:
+            self.assertNotIn("B26", str(rule.sqref))
+        source=(ROOT/"vba/TaxLawUpdater.bas").read_text(encoding="utf-8-sig")
+        self.assertNotIn('Range("B26").Value2 = ', source)
+        self.assertNotIn('B19:B26',source)
+        self.assertNotIn('Range("B4").Value2 = "通常"',source)
 
     def test_generated_formulas_have_valid_excel_parentheses(self):
         # Excel rejects a workbook when an overlong/malformed nested status

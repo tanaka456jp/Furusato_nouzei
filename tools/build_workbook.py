@@ -98,14 +98,14 @@ def build(source, output):
         home.add_data_validation(validation)
         validation.add(home[cell])
 
-    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.16 検証版")
+    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.17 検証版")
     bar(extra, 1, "追加所得・分離課税（所得年内で事前試算）")
     extra.merge_cells("A3:D3")
     extra["A3"] = "翌年度の住民税通知書は参照せず、所得年内の収入・経費・控除と法定税率表から計算します。"
     extra["A3"].alignment = Alignment(wrap_text=True)
     extra.row_dimensions[3].height = 35
     extra_items = (
-        (4, "案件区分", "通常", ("通常", "分離課税", "その他要確認")),
+        (4, "案件区分（自動）", None, None),
         (5, "公的年金等の年間収入（円）", None, None),
         (6, "公的年金受給者の年齢区分（所得年末）", None, ("65歳未満", "65歳以上")),
         (7, "公的年金等の雑所得（自動）", None, None),
@@ -140,7 +140,7 @@ def build(source, output):
         extra[f"A{row}"].alignment = Alignment(wrap_text=True, vertical="center")
         extra[f"B{row}"] = initial
         extra.row_dimensions[row].height = 27
-        if row not in (7, 19, 20, 22, 27, 28, 29, 30, 32, 34):
+        if row not in (4, 7, 19, 20, 22, 27, 28, 29, 30, 32, 34):
             extra[f"B{row}"].fill = PatternFill("solid", fgColor="E2F2FF")
             extra[f"B{row}"].protection = Protection(locked=False)
             extra[f"B{row}"].number_format = '#,##0'
@@ -151,6 +151,13 @@ def build(source, output):
             dv.showErrorMessage = True
             extra.add_data_validation(dv)
             dv.add(extra[f"B{row}"])
+    # Case classification is deduced from supplied taxable split income,
+    # never from a redundant "normal/exception" operator attestation.
+    extra["B4"] = '=IF(N(B24)>0,"分離課税","通常")'
+    extra["B4"].fill = PatternFill("solid", fgColor="EAF3EA")
+    extra["B4"].protection = Protection(locked=True)
+    extra["B4"].font = Font(name="Yu Gothic", bold=True, color="226044")
+    extra["B4"].alignment = Alignment(horizontal="right", vertical="center")
     # Excel formulas calculate pension taxable income and the adjustment for
     # taxpayers with both salary and public pension income.
     nonpension = (
@@ -255,7 +262,18 @@ def build(source, output):
                                  "介護医療保険料", "地震保険料の支払額"), 19):
         field(f"B{row}", label)
     field("B25", "23歳未満の扶養親族", "なし", ("あり", "なし"))
-    field("B26", "対象外条件の確認", "該当なし", ("該当なし", "該当あり"))
+    # Explicit manual "eligible/ineligible" toggle is removed. B26 now
+    # displays a read-only consequence of the existing substantive checks.
+    # B28 MUST NOT refer to B26, otherwise a circular dependency arises.
+    home["A26"] = "計算可否（入力から自動判定）"
+    home["A26"].alignment = Alignment(wrap_text=True, vertical="center")
+    home.row_dimensions[26].height = 27
+    home["B26"] = ('=IF(COUNT(B12,B15,B16)<3,"入力待ち",'
+                    'IF(B28="正常","計算可能","追加確認"))')
+    home["B26"].fill = PatternFill("solid", fgColor="EAF3EA")
+    home["B26"].font = Font(name="Yu Gothic", color="226044", bold=True)
+    home["B26"].alignment = Alignment(horizontal="right", vertical="center")
+    home["B26"].protection = Protection(locked=True)
     for row, label in enumerate(("一般扶養（人数）", "同居老親（人数）", "その他の老人扶養（人数）"), 11):
         field(f"D{row}", label, maximum=30)
     for row, label in enumerate(("特定親族1の合計所得", "特定親族2の合計所得", "特定親族3の合計所得",
@@ -268,7 +286,7 @@ def build(source, output):
     field("D24", "申告方式", "ワンストップ", ("ワンストップ", "確定申告"))
     note(home, 27, "公的年金・事業所得・雑所得・通常の申告分離課税は追加所得から入力できます。申告不要の上場株式・特例譲渡・繰越損失は区別してください。住宅ローン控除は通常欄です。")
     home.row_dimensions[27].height = 42
-    note(home, 31, "原票の所得控除額を優先。申告する株式譲渡益・分離課税は追加所得から入力し、申告方式は自動切替。")
+    note(home, 31, "対象外の手動判定は不要。原票の所得控除を優先し、入力内容に応じて計算可否を自動判定します。")
     bar(home, 32, "住宅ローン控除（通常処理・源泉徴収票から転記）")
     field("B33", "住宅ローン控除の所得税適用額")
     field("B34", "住宅ローン控除可能額（G36）")
@@ -370,9 +388,7 @@ def build(source, output):
                 f'AND(NOT(ISNUMBER({ref(ADVANCED,"B14")})),'
                 f'B14<>SUM(B16:B18,{ref(ENGINE,"F15")},{ref(ENGINE,"F38")},{ref("追加人的控除","C12")}))']
     unsupported = (
-        'OR(B26="該当あり",'
-        +f'{ref(ADVANCED,"B4")}="その他要確認",'
-        +f'AND({ref(ADVANCED,"B4")}="分離課税",N({ref(ADVANCED,"B24")})=0),'
+        'OR('
         +f'AND(N({ref(ADVANCED,"B24")})>0,NOT(OR('
         +f'{ref(ADVANCED,"B25")}="上場株式",'
         +f'{ref(ADVANCED,"B25")}="土地建物長期",'
@@ -426,7 +442,6 @@ def build(source, output):
     status = [
         ('OR(IFERROR(1*B4,0)<>D4,IFERROR(1*B11,0)<>D4)', "警告：源泉徴収票と適用中の所得年を一致させてください"),
         ('OR(COUNT(B12:B18)<>7,AND(B25<>"あり",B25<>"なし"),'
-         'AND(B26<>"該当なし",B26<>"該当あり"),'
          'AND(D24<>"ワンストップ",D24<>"確定申告"),'
          'AND(D22<>"該当なし",D22<>"寡婦",D22<>"ひとり親（母）",D22<>"ひとり親（父）",D22<>"勤労学生"))',
          "警告：源泉徴収票の金額と確認欄を入力してください"),
@@ -437,7 +452,17 @@ def build(source, output):
          '(MIN(B12,10000000)-8500000)*0.1,0)))>10000,'
          f'{ref(RESIDENT,"B16")}<=0)',
          "警告：給与所得または住民税所得割を個別に照合してください"),
-        (unsupported, "警告：対象外または追加照合が必要なため、金額の表示を停止しました"),
+        (f'AND(N({ref(ADVANCED,"B24")})>0,'
+         f'NOT(OR({ref(ADVANCED,"B25")}="上場株式",'
+         f'{ref(ADVANCED,"B25")}="土地建物長期",'
+         f'{ref(ADVANCED,"B25")}="土地建物短期",'
+         f'{ref(ADVANCED,"B25")}="先物")))',
+         "警告：申告分離課税の所得区分を選択してください"),
+        (f'AND(N({ref(ADVANCED,"B24")})>0,{ref(ADVANCED,"B33")}<>"なし")',
+         "警告：特例・繰越損失を伴う分離課税は個別照合が必要です"),
+        (f'{ref(ADVANCED,"B20")}="REQUIRES_REVIEW"',
+         "警告：源泉徴収票の読取内容を確認してください"),
+        (unsupported, "警告：入力内容から個別照合が必要と判定しました"),
         (f'AND(N(B34)>0,ISNUMBER(B38),B38>0,{remaining_levy}<{donation_resident})',
          "警告：住宅ローン控除後の住民税枠が不足するため、寄附限度額を個別に照合してください"),
         (f'OR(COUNTIF({ref("整合性チェック","B4:B12")},"OK")<>9,{ref("自動回帰テスト","B49")}<>"PASS")',

@@ -90,7 +90,7 @@ try {
         $homeSheet.Range('B16').Value2 = 1000000.0
         # Paid premiums drive the auto-calculated insurance deduction.
         $homeSheet.Range('B25').Value2 = 'なし'
-        $homeSheet.Range('B26').Value2 = '該当なし'
+        Assert-Value $homeSheet.Range('B26').Value2 '入力待ち' 'Automatic eligibility is not manual input'
         $homeSheet.Range('D22').Value2 = '該当なし'
         $homeSheet.Range('D24').Value2 = '確定申告'
         QA-Stage ('synthetic-' + $year + '-recalculate-start')
@@ -144,7 +144,7 @@ try {
     $sourceExtra.Range('B15').Value2 = 3550000.0
     $sourceExtra.Range('B16').Value2 = 46000.0
     $sourceExtra.Range('B17').Value2 = 17000.0
-    foreach ($cell in @('B25', 'B26', 'D22', 'D24')) {
+    foreach ($cell in @('B25', 'D22', 'D24')) {
         $homeSheet.Range($cell).ClearContents()
     }
     $excel.Run('TaxLawUpdater.RecalculateCase')
@@ -153,7 +153,7 @@ try {
     Assert-Value $homeSheet.Range('B17').Value2 46000 'Source life deduction preferred'
     Assert-Value $homeSheet.Range('B18').Value2 17000 'Source earthquake deduction preferred'
     Assert-Value $homeSheet.Range('B25').Value2 'なし' 'Blank dependent indicator normalized'
-    Assert-Value $homeSheet.Range('B26').Value2 '該当なし' 'Blank unsupported-conditions normalized'
+    Assert-Value $homeSheet.Range('B26').Value2 '追加確認' 'Unreconciled reference requires check'
     Assert-Value $homeSheet.Range('D22').Value2 '該当なし' 'Blank personal allowance normalized'
     Assert-Value $homeSheet.Range('D24').Value2 'ワンストップ' 'Blank filing mode normalized'
     if ([string]$homeSheet.Range('B28').Value2 -eq 'エラー：金額・人数・控除の内訳を源泉徴収票と照合してください') {
@@ -204,7 +204,7 @@ try {
         throw 'Unclassified split income was accepted'
     }
     $extraSheet.Range('B25').Value2 = '上場株式'
-    $extraSheet.Range('B4').Value2 = '分離課税'
+    Assert-Value $extraSheet.Range('B4').Value2 '分離課税' 'Split case classification auto'
     $extraSheet.Range('B33').Value2 = 'なし'
     $homeSheet.Range('D24').Value2 = 'ワンストップ'
     $excel.Run('TaxLawUpdater.RecalculateCase')
@@ -235,7 +235,8 @@ try {
     }
     $extraSheet.Range('B24:B25').ClearContents()
     $extraSheet.Range('B25').Value2 = 'なし'
-    $extraSheet.Range('B4').Value2 = '通常'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $extraSheet.Range('B4').Value2 '通常' 'Normal case category restored automatically'
     $extraSheet.Range('B20').Value2 = 'REQUIRES_REVIEW'
     $excel.Run('TaxLawUpdater.RecalculateCase')
     if ([string]$homeSheet.Range('B28').Value2 -eq '正常') {
@@ -244,6 +245,18 @@ try {
     $extraSheet.Range('B20').ClearContents()
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value $engineSheet.Range('J12').Value2 $baseTaxable 'Ordinary additional income reset'
+    Assert-Value $homeSheet.Range('B26').Value2 '計算可能' 'Supported case automatically accepted'
+    QA-Stage 'auto-eligibility-verdict-start'
+    $extraSheet.Range('B21').Value2 = 12000.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    if ([string]$homeSheet.Range('B28').Value2 -eq '正常') {
+        throw 'Unsupported old long-term insurance was accepted without computation'
+    }
+    Assert-Value $homeSheet.Range('B26').Value2 '追加確認' 'Unmodeled deduction automatically flagged'
+    $extraSheet.Range('B21').ClearContents()
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B26').Value2 '計算可能' 'Automatic eligibility restores after correcting input'
+    QA-Stage 'auto-eligibility-verdict-pass'
     QA-Stage 'other-income-regressions-pass'
     # Mortgage tax credit is routine input. Check the resident-tax credit and
     # every missing/unsupported branch against *real* Excel formula evaluation.

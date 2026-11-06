@@ -284,13 +284,12 @@ Public Sub ImportWithholding()
     If Not fso.FileExists(backup) Then Err.Raise vbObjectError + 214, , "更新前のバックアップを作成できません。"
     Set home = ThisWorkbook.Worksheets("操作画面")
     Set extra = ThisWorkbook.Worksheets("例外・分離課税")
-    home.Range("B11:B12,B15:B16,B19:B26,B33:B36,D11:D23").ClearContents
+    home.Range("B11:B12,B15:B16,B19:B25,B33:B36,D11:D23").ClearContents
     ' Leave independent pension, business and other income entries untouched.
     extra.Range("B13:B20").ClearContents
     extra.Range("B32").ClearContents
-    extra.Range("B4").Value2 = "通常"
+    ' B4 and home B26 are calculated indicators: never overwrite formulas.
     home.Range("B25").Value2 = "なし"
-    home.Range("B26").Value2 = "該当なし"
     home.Range("D22").Value2 = "該当なし"
     home.Range("D24").Value2 = "ワンストップ"
     home.Range("B4").Value2 = year
@@ -415,7 +414,7 @@ Public Sub RecalculateCase()
         home.Range("B11").Value2 = home.Range("B4").Value2
     End If
     If Trim$(CStr(home.Range("B25").Value2)) = "" Then home.Range("B25").Value2 = "なし"
-    If Trim$(CStr(home.Range("B26").Value2)) = "" Then home.Range("B26").Value2 = "該当なし"
+    ' Home B26 is a read-only formula; nothing to normalize.
     If Trim$(CStr(home.Range("D22").Value2)) = "" Then home.Range("D22").Value2 = "該当なし"
     If Trim$(CStr(home.Range("D24").Value2)) = "" Then home.Range("D24").Value2 = "ワンストップ"
     ' One-stop donations are invalid if split income is declared on a return.
@@ -431,10 +430,9 @@ Public Sub NewCase()
     If MsgBox("現在の入力を消去しますか？保存が必要な場合は先に案件保存してください。", _
               vbQuestion + vbYesNo + vbDefaultButton2, "新規入力") <> vbYes Then Exit Sub
     With ThisWorkbook.Worksheets("操作画面")
-        .Range("B11:B12,B15:B16,B19:B26,B33:B36,D11:D23").ClearContents
+        .Range("B11:B12,B15:B16,B19:B25,B33:B36,D11:D23").ClearContents
         .Range("B11").Value2 = .Range("B4").Value2
         .Range("B25").Value2 = "なし"
-        .Range("B26").Value2 = "該当なし"
         .Range("D22").Value2 = "該当なし"
         .Range("D24").Value2 = "ワンストップ"
     End With
@@ -443,7 +441,7 @@ Public Sub NewCase()
         .Range("B5:B6,B8:B12,B13:B21,B24:B26,B32").ClearContents
         .Range("B25").Value2 = "なし"
         .Range("B33").Value2 = "なし"
-        .Range("B4").Value2 = "通常"
+        ' B4 is calculated from B24, and must survive NewCase.
         .Range("B8").ClearContents
         .Range("B19:B20").ClearContents
     End With
