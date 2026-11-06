@@ -228,7 +228,9 @@ jobs:
           if (-not $report.workbook_sha256) { throw 'Excel acceptance report lacks workbook SHA-256' }
           $actual = (Get-FileHash -LiteralPath (Join-Path $work 'review/Furusato_nouzei.xlsm') -Algorithm SHA256).Hash
           if ($report.workbook_sha256 -ne $actual) { throw 'Excel acceptance evidence does not match generated workbook SHA-256' }
-      - name: VBAUpdater isolated read-only integration
+      # VBAUpdater preflight is mandatory, the external sandbox project-push
+      # is an independent diagnostic and never writes the distributed XLSM.
+      - name: VBAUpdater isolated read-only preflight and diff
         if: success()
         shell: powershell
         run: |
@@ -237,15 +239,36 @@ jobs:
           $evidence = Join-Path $work 'excel_acceptance.json'
           if (-not (Test-Path -LiteralPath $evidence)) { throw 'Excel acceptance evidence not found' }
           $accepted = Get-Content -LiteralPath $evidence -Raw -Encoding UTF8 | ConvertFrom-Json
-          if ($accepted.status -ne 'PASS') { throw 'VBAUpdater must never run before Excel acceptance PASS' }
+          if ($accepted.status -ne 'PASS') { throw 'VBAUpdater preflight must follow Excel acceptance PASS' }
           $bridgeEvidence = Join-Path $work 'vbaupdater_bridge.json'
-          & .\tools\verify_vbaupdater_bridge.ps1 -Workbook $reviewed -StagingRoot (Join-Path $work 'vbaupdater_project') -EvidencePath $bridgeEvidence -PushInSandbox
-          if (-not $?) { throw 'Isolated VBAUpdater bridge failed' }
+          & .\tools\verify_vbaupdater_bridge.ps1 -Workbook $reviewed -StagingRoot (Join-Path $work 'vbaupdater_readonly') -EvidencePath $bridgeEvidence
+          if (-not $?) { throw 'VBAUpdater read-only verification failed' }
           $bridge = Get-Content -LiteralPath $bridgeEvidence -Raw -Encoding UTF8 | ConvertFrom-Json
-          if (-not $bridge.original_preserved -or $bridge.status -notin @('STAGED_PUSH_EXCEL_PASS', 'PREPARED_UPDATER_NOT_FOUND')) {
-            throw 'VBAUpdater isolated update was not safely completed or explicitly skipped'
+          if (-not $bridge.original_preserved -or $bridge.status -notin @('READONLY_PREFLIGHT_DIFF_PASS', 'PREPARED_UPDATER_NOT_FOUND')) {
+            throw 'VBAUpdater read-only preflight and diff did not pass'
           }
-          ('VBAUpdater isolated integration: ' + $bridge.status + ' (independent of Excel acceptance).') >> $env:GITHUB_STEP_SUMMARY
+          ('VBAUpdater read-only preflight: ' + $bridge.status + '.') >> $env:GITHUB_STEP_SUMMARY
+      - name: VBAUpdater staged project-push (optional external-tool diagnostic)
+        id: staged_push
+        if: success()
+        continue-on-error: true
+        shell: powershell
+        run: |
+          $work = Join-Path $env:RUNNER_TEMP ('furusato-' + $env:GITHUB_RUN_ID + '-' + $env:GITHUB_RUN_ATTEMPT)
+          $reviewed = Join-Path $work 'review/Furusato_nouzei.xlsm'
+          $pushEvidence = Join-Path $work 'vbaupdater_push.json'
+          & .\tools\verify_vbaupdater_bridge.ps1 -Workbook $reviewed -StagingRoot (Join-Path $work 'vbaupdater_push') -EvidencePath $pushEvidence -PushInSandbox
+          if (-not $?) { throw 'Optional disposable VBAUpdater project-push failed' }
+          $push = Get-Content -LiteralPath $pushEvidence -Raw -Encoding UTF8 | ConvertFrom-Json
+          if (-not $push.original_preserved -or $push.status -notin @('STAGED_PUSH_EXCEL_PASS', 'PREPARED_UPDATER_NOT_FOUND')) {
+            throw 'Optional VBAUpdater staged push incomplete'
+          }
+          ('Optional VBAUpdater staged project-push: ' + $push.status + '.') >> $env:GITHUB_STEP_SUMMARY
+      - name: Report optional VBAUpdater staging failure
+        if: always() && steps.staged_push.outcome == 'failure'
+        shell: powershell
+        run: |
+          "WARNING: external VBAUpdater sandbox project-push did not pass. Core Excel acceptance is independent; formal release remains HOLD. See push evidence for classification." >> $env:GITHUB_STEP_SUMMARY
       - name: Upload verified review XLSM
         if: success()
         uses: actions/upload-artifact@v4
@@ -255,6 +278,7 @@ jobs:
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/review/Furusato_nouzei.xlsm
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/excel_acceptance.json
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/vbaupdater_bridge.json
+            ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/vbaupdater_push.json
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/vbaupdater_excel_acceptance.json
           if-no-files-found: error
           retention-days: 14
