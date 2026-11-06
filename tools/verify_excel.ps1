@@ -331,12 +331,15 @@ try {
     QA-Stage 'full-rebuild-done'
     Assert-Value $homeSheet.Range('B8').Value2 '' 'Selected and applied year mismatch'
     $homeSheet.Range('B4').Value2 = 2026.0
-    $homeSheet.Range('B26').Value2 = '該当あり'
+    $extraSheet.Range('B21').Value2 = 12000.0
     QA-Stage ('full-rebuild-start-after-' + $script:qaStage)
     $excel.CalculateFullRebuild()
     QA-Stage 'full-rebuild-done'
-    Assert-Value $homeSheet.Range('B8').Value2 '' 'Unsupported case'
-    $homeSheet.Range('B26').Value2 = '該当なし'
+    Assert-Value $homeSheet.Range('B8').Value2 '' 'Unsupported old long-term insurance case'
+    Assert-Value $homeSheet.Range('B26').Value2 '追加確認' 'Automatic status on unsupported deduction'
+    $extraSheet.Range('B21').ClearContents()
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B26').Value2 '計算可能' 'Automatic status after removing unsupported deduction'
     $homeSheet.Range('D17:D18').Value2 = 0.0
     QA-Stage ('full-rebuild-start-after-' + $script:qaStage)
     $excel.CalculateFullRebuild()
