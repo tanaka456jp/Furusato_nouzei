@@ -110,9 +110,12 @@ jobs:
           try {
             $entry=$zip.GetEntry('README.txt')
             if (-not $entry) { throw 'README.txt missing' }
-            $reader=New-Object IO.StreamReader($entry.Open(),[Text.Encoding]::UTF8)
-            try { $guide=$reader.ReadToEnd() } finally { $reader.Dispose() }
-            if (-not $guide.Contains('v4.18.2 正式版')) { throw 'Official README version mismatch' }
+            $stream=$entry.Open()
+            $hasher=[Security.Cryptography.SHA256]::Create()
+            try {
+              $actual=([BitConverter]::ToString($hasher.ComputeHash($stream))).Replace('-','')
+            } finally { $stream.Dispose(); $hasher.Dispose() }
+            if ($actual -cne $expected) { throw 'Official README hash mismatch' }
           } finally { $zip.Dispose() }
       - uses: actions/upload-artifact@v4
         with:
