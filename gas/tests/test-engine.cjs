@@ -86,6 +86,24 @@ test("app front end inline script is syntactically valid",()=>{
   assert.ok(html.includes("印刷・PDF保存"));
   assert.ok(html.includes("data-key=\"hasMortgage\""));
 });
+test("source YEAR mismatch blocks even an otherwise supported salary model",()=>{
+  const result=tax.calculate({...base,sourceYear:2025});
+  assert.equal(result.status,"HOLD");
+  assert.ok(result.reasons.some(r=>r.includes("所得年")));
+});
+test("malformed source-review flags never default to safe false",()=>{
+  for(const val of ["false","true",0,1,null,[],{}]){
+    const x=tax.calculate({...base,sourceReviewPending:val});
+    assert.equal(x.status,"HOLD","invalid flag "+String(val));
+    assert.equal(x.donationLimitYen,null);
+  }
+});
+test("none of the unsupported flags may contain malformed values",()=>{
+  for(const key of ["hasMortgage","hasDependents","hasLifeInsurance"]){
+    const result=tax.calculate({...base,[key]:"no"});
+    assert.equal(result.status,"HOLD",key);
+  }
+});
 test("GAS entrypoint does not collect or persist source documents",()=>{
   const code=fs.readFileSync(path.join(root,"Code.gs"),"utf8");
   assert.ok(code.includes("function doGet()"));
