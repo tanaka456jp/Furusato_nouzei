@@ -16,7 +16,8 @@ CODE_MAP = {
     "G27":"life_deduction_reference","G28":"earthquake_deduction_reference",
     "G29":"mortgage_credit","G30":"life_new","G31":"life_old",
     "G32":"medical_care","G33":"annuity_new","G34":"annuity_old",
-    "G36":"mortgage_possible_credit","G46":"basic_reference",
+    "G35":"mortgage_claim_count","G36":"mortgage_possible_credit",
+    "G46":"basic_reference",
     "G47":"income_adjustment",
 }
 TEXT_MAP = {
@@ -27,6 +28,9 @@ TEXT_MAP = {
     "新個人年金保険料":"annuity_new", "旧個人年金保険料":"annuity_old",
     "介護医療保険料":"medical_care", "地震保険料の支払額":"earthquake_paid",
     "住宅借入金等特別控除の額":"mortgage_credit",
+    "住宅借入金等特別控除可能額":"mortgage_possible_credit",
+    "住宅借入金等特別控除適用数":"mortgage_claim_count",
+    "住宅借入金等特別控除居住開始年":"mortgage_occupancy_year",
 }
 AMOUNT = re.compile(r"(?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]{1,12})$")
 YEAR = re.compile(r"令和\s*([0-9０-９]{1,2})\s*年分")
@@ -43,6 +47,19 @@ def number(value):
 def detect_year(text):
     found = {2018 + int(x.translate(DIGITS)) for x in YEAR.findall(text)}
     return next(iter(found)) if len(found) == 1 else None
+
+
+def extract_occupancy_year(text):
+    """Read first housing occupancy year only when the N01/Reiwa anchor is clear.
+
+    The Gregorian document income year (L01) must never be mistaken for
+    the occupancy year, and multiple housing applications need review.
+    """
+    matches = re.findall(r"1回目\s*N01\s*令和\s*([0-9０-９]{1,2})", text)
+    years = {2018 + int(x.translate(DIGITS)) for x in matches}
+    if len(years) == 1:
+        return {"mortgage_occupancy_year": years.pop()}
+    return {}
 
 
 def extract_codes(words):
@@ -139,6 +156,20 @@ def finish(year,fields,mode,warnings=None):
     enough=year in (2025,2026) and needed.issubset(fields)
     if fields.get("salary_reference",0)>fields.get("salary_gross",0):
         enough=False;warnings.append("INVALID_SALARY_REFERENCE")
+    possible=fields.get("mortgage_possible_credit",0)
+    used=fields.get("mortgage_credit")
+    if possible>0 and used is None:
+        # G36 is a *possible* tax credit, not the amount actually used
+        # on income tax. Blank G29 must never be silently changed to zero.
+        enough=False;warnings.append("MORTGAGE_APPLIED_CREDIT_MISSING")
+    if possible>0 and "mortgage_occupancy_year" not in fields:
+        enough=False;warnings.append("MORTGAGE_OCCUPANCY_YEAR_MISSING")
+    if possible>0 and used is not None and used>possible:
+        enough=False;warnings.append("MORTGAGE_APPLIED_EXCEEDS_POSSIBLE")
+    if fields.get("mortgage_claim_count",0)>1:
+        enough=False;warnings.append("MULTIPLE_MORTGAGE_CREDITS_REQUIRE_REVIEW")
+    if "mortgage_occupancy_year" in fields and not 1980<=fields["mortgage_occupancy_year"]<=year if isinstance(year,int) else False:
+        enough=False;warnings.append("INVALID_MORTGAGE_OCCUPANCY_YEAR")
     if mode in {"IMAGE_OCR","SCAN_OCR"}:
         enough=False;warnings.append("OCR_REQUIRES_VERIFICATION")
     if "MULTIPAGE" in mode:
@@ -179,6 +210,14 @@ def extract(path):
     text,words,mode=document_content(path)
     vals,flags=extract_codes(words) if words else ({},[])
     if not vals: vals=extract_labelled(text)
+    # Occupancy year is an anchored field, not the document income year.
+    # Never override a disagreeing structured value.
+    occupancy=extract_occupancy_year(text)
+    if occupancy and "mortgage_occupancy_year" in vals and vals["mortgage_occupancy_year"]!=occupancy["mortgage_occupancy_year"]:
+        flags.append("CONFLICT_mortgage_occupancy_year")
+        vals.pop("mortgage_occupancy_year",None)
+    elif occupancy:
+        vals.update(occupancy)
     return finish(detect_year(text),vals,mode,flags)
 
 

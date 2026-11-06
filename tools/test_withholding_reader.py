@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
-from withholding_reader import detect_year,extract_codes,extract_labelled,extract,finish,write_bridge
+from withholding_reader import detect_year,extract_codes,extract_labelled,extract_occupancy_year,extract,finish,write_bridge
 
 
 class WithholdingTest(unittest.TestCase):
@@ -56,6 +56,24 @@ class WithholdingTest(unittest.TestCase):
                 "social_insurance":1000000,"income_tax_withheld":0,
                 "full_name":"never_export"}}),encoding="utf-8")
             self.assertNotIn("full_name",extract(p)["fields"])
+
+    def test_housing_occupancy_and_credit_differ(self):
+        self.assertEqual(extract_occupancy_year("控除の額の内訳 1回目N01 令和 6 1 1 1回目G37"),
+                         {"mortgage_occupancy_year":2024})
+        base={"salary_gross":5000000,"salary_reference":3560000,
+              "deductions_reference":3956000,"social_insurance":1600000,
+              "income_tax_withheld":0,"mortgage_claim_count":1,
+              "mortgage_possible_credit":300000,"mortgage_occupancy_year":2024}
+        flagged=finish(2026,base,"PDF_TEXT")
+        self.assertEqual(flagged["status"],"REQUIRES_REVIEW")
+        self.assertIn("MORTGAGE_APPLIED_CREDIT_MISSING",flagged["warnings"])
+        self.assertEqual(flagged["fields"]["mortgage_possible_credit"],300000)
+        safe=finish(2026,{**base,"mortgage_credit":50000},"PDF_TEXT")
+        self.assertEqual(safe["status"],"READY_FOR_EXCEL_CROSSCHECK")
+        too_high=finish(2026,{**base,"mortgage_credit":400000},"PDF_TEXT")
+        self.assertIn("MORTGAGE_APPLIED_EXCEEDS_POSSIBLE",too_high["warnings"])
+        self.assertEqual(finish(2026,{**base,"mortgage_credit":0,"mortgage_claim_count":2},
+                                "PDF_TEXT")["status"],"REQUIRES_REVIEW")
 
 
 if __name__=="__main__":

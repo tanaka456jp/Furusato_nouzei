@@ -7,7 +7,7 @@ from zipfile import ZipFile, ZIP_DEFLATED
 from build_workbook import ROOT, build
 
 
-def package(destination):
+def package(destination, reader=None):
     with TemporaryDirectory() as work:
         workbook = Path(work) / "Furusato_nouzei.xlsx"
         build(ROOT / "workbook/baseline.xlsx", workbook)
@@ -16,9 +16,16 @@ def package(destination):
             "START_SETUP.cmd": ROOT / "tools/START_SETUP.cmd",
             "setup.ps1": ROOT / "tools/setup.ps1",
             "TaxLawUpdater.bas": ROOT / "vba/TaxLawUpdater.bas",
-            "withholding_reader.py": ROOT / "tools/withholding_reader.py",
             "README.txt": ROOT / "docs/user-guide.md",
         }
+        if reader is None:
+            # Developer review ZIP (not a customer-facing Python-free package).
+            files["withholding_reader.py"] = ROOT / "tools/withholding_reader.py"
+        else:
+            reader = Path(reader)
+            if not reader.is_file() or reader.stat().st_size < 10000:
+                raise ValueError("Verified standalone Windows reader EXE required")
+            files["FurusatoDocumentReader.exe"] = reader
         with ZipFile(destination, "w", ZIP_DEFLATED) as archive:
             for name, source in files.items():
                 archive.write(source, name)
@@ -29,4 +36,4 @@ def package(destination):
 
 
 if __name__ == "__main__":
-    package(Path(sys.argv[1]))
+    package(Path(sys.argv[1]), Path(sys.argv[2]) if len(sys.argv)>2 else None)

@@ -1,9 +1,18 @@
-源泉徴収票のオフライン読取基盤（開発版）
+# 源泉徴収票のローカル読取（開発・検証版）
 
-PDFは埋込文字とG04等の項目コード＋座標で解析し、画像／スキャンPDFは端末内Tesseract（日本語＋英語）を使用。JPEG、PNG、WebP、TIFF、BMP、HEIC／HEIF（プラグイン必須）、CSV、TSV、TXT、定義済みJSONをサポート。個人名・住所・個人番号は抽出結果に保存しない。外部クラウドへ送信しない。
+最終利用者向けWindows ZIPには `FurusatoDocumentReader.exe` を同梱し、
+Windows Excel/VBAから呼び出します。利用者にPythonのインストールは求めません。
+PythonはGitHub Actions上でのビルド・試験と、開発時の再現に限って使用します。
 
-実行: python tools/withholding_reader.py --input slip.pdf --output result.json --bridge result.tsv
+テキスト埋込PDFは項目コードG04等と座標を利用します。PDF・画像・HEIC/HEIF、
+CSV/TSV/TXT/JSONを対象とします。ただし画像・スキャンPDFの日本語OCRには
+Tesseractの日本語・英語言語データが別途必要なため、**現時点では完全同梱未達**
+です。画像系は認識できても自動承認しません。
 
-PDF依存: PyMuPDF。OCR依存: Pillow、pytesseract、Tesseract本体のjpn/eng言語データ。HEICはpillow-heif。コード位置が曖昧な場合、欠損、年度未承認の場合はREQUIRES_REVIEW。画像OCRは現段階では自動承認しない。READY_FOR_EXCEL_CROSSCHECKは数値抽出の候補であり、税額計算PASSではない。住宅ローン控除や分離課税は別フォームへ反映し、未対応の税額計算はHOLDとする。
+住宅ローン控除は通常の入力欄で扱います。G29（所得税適用額）、G35（適用数）、
+G36（可能額）とN01（居住開始年）を分けて読み取ります。可能額があっても
+所得税適用額が空欄のときはゼロ補完せず、原票照合のためHOLDします。
+複数適用もHOLDします。給与等の必須額、原票年度、原票との照合も必要です。
 
-Source samples should never be committed to a public repository or uploaded to CI. User data should be kept locally.
+個人名・住所・個人番号は取込結果に保存・転送しません。源泉徴収票そのもの、
+識別子、実額サンプルを公開GitHub/CIに置かないでください。
