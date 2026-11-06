@@ -167,6 +167,25 @@ class WorkbookTest(unittest.TestCase):
         for cell, source in (("B13","B15"),("B14","B14"),("B17","B16"),("B18","B17")):
             self.assertIn(f"ISNUMBER('例外・分離課税'!{source})", home[cell].value)
 
+    def test_generated_formulas_have_valid_excel_parentheses(self):
+        # Excel rejects a workbook when an overlong/malformed nested status
+        # formula is present. This catches accidental extra closings BEFORE COM.
+        for addr in ("B13", "B14", "B17", "B18", "B28"):
+            formula = self.book[HOME][addr].value
+            self.assertIsInstance(formula, str, addr)
+            self.assertLess(len(formula), 8192, addr)
+            depth, quoted = 0, False
+            for char in formula:
+                if char == '"':
+                    quoted = not quoted
+                elif not quoted and char == '(':
+                    depth += 1
+                elif not quoted and char == ')':
+                    depth -= 1
+                    self.assertGreaterEqual(depth, 0, f"{addr}: excess closing bracket")
+            self.assertEqual(depth, 0, f"{addr}: unclosed bracket")
+            self.assertFalse(quoted, f"{addr}: unmatched Excel string quote")
+
     def test_optional_numeric_fields_do_not_cause_fraction_gate_failures(self):
         formula = self.book[HOME]["B28"].value
         for group in ("B12:B24", "D11:D21", "D23"):
