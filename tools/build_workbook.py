@@ -302,8 +302,6 @@ def build(source, output):
     settings_b10 = ref("設定・税率", "B10")
     candidate = ref(RESIDENT, "B24")
     status = [
-        ('OR(NOT(ISFORMULA(B13)),NOT(ISFORMULA(B14)),NOT(ISFORMULA(B17)),NOT(ISFORMULA(B18)))',
-         "エラー：自動計算式が変更されました。元の検証済みブックを使用してください"),
         ('OR(IFERROR(1*B4,0)<>D4,IFERROR(1*B11,0)<>D4)', "警告：源泉徴収票と適用中の所得年を一致させてください"),
         ('OR(COUNT(B12:B18)<>7,AND(B25<>"あり",B25<>"なし"),'
          'AND(B26<>"該当なし",B26<>"該当あり"),'
