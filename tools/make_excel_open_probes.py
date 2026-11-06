@@ -130,7 +130,7 @@ def make(folder):
         b = load_workbook(paths["all_sheets_visible"])
         c = load_workbook(paths["without_status_formula"])
         try:
-            assert len(a.sheetnames) == len(b.sheetnames) == len(c.sheetnames) == 20
+            assert len(a.sheetnames) == len(b.sheetnames) == len(c.sheetnames) == 21
             assert a["自動回帰テスト"]["B49"].value == b["自動回帰テスト"]["B49"].value
             assert a["自動回帰テスト"]["B49"].value == c["自動回帰テスト"]["B49"].value
             assert a[HOME]["B28"].data_type == "f"
@@ -156,7 +156,7 @@ def make(folder):
                 original.close()
         rebuilt = load_workbook(paths["review_rebuilt_full"])
         try:
-            assert len(rebuilt.sheetnames) == 20
+            assert len(rebuilt.sheetnames) == 21
             assert rebuilt["自動回帰テスト"]["B49"].data_type == "f"
         finally:
             rebuilt.close()
