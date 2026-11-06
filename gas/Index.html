@@ -50,7 +50,7 @@ main{margin:0;padding:0;max-width:none}.panel{border:0;box-shadow:none;padding:0
 </style></head>
 <body>
 <header><h1>ふるさと納税 限度額シミュレーター</h1>
-<p>質問に答えるだけで計算結果と根拠を表示｜GAS検証版 v0.1.4</p></header>
+<p>質問に答えるだけで計算結果と根拠を表示｜GAS検証版 v0.1.5</p></header>
 <main><div class="panel">
 <div id="wizard">
 <div class="stepwords"><span>基本情報</span><span>所得</span><span>控除</span><span>入力確認</span><span>結果</span></div>
@@ -72,8 +72,14 @@ main{margin:0;padding:0;max-width:none}.panel{border:0;box-shadow:none;padding:0
 <div class="field"><label for="salaryIncomeReference">給与所得控除後の金額（原票の参考値）</label><input id="salaryIncomeReference" inputmode="numeric" type="number" min="0" step="1" placeholder="空欄可"><span class="hint">省略可能です。2025・2026年分の低所得帯も法定表から自動計算します。原票に記載があれば入力し、差異を照合してください。</span></div>
 <div class="field"><label for="deductionsReference">所得控除の額の合計額（原票の参考値）</label><input id="deductionsReference" inputmode="numeric" type="number" min="0" step="1" placeholder="空欄可"><span class="hint">入力時は基礎控除＋社会保険料のみの標準ケースと照合します。</span></div>
 </div>
+<h3>PDF・画像の直接OCR（非公開テスト）</h3>
+<p class="muted">PDF・JPEG・PNG（2MB以下）をGoogle Driveの一時ドキュメントへ変換してOCRを試します。処理後に削除しますが、Googleアカウントへの一時転送・保存が発生します。実務データの投入はGoogle実機受入完了まで禁止です。</p>
+<div class="field"><label for="ocrFile">源泉徴収票PDF・画像</label><input type="file" id="ocrFile" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"></div>
+<label class="check" style="margin-top:12px"><input id="ocrConsent" type="checkbox">一時Google Drive転送・OCR・処理後の削除に同意します。</label>
+<button type="button" id="ocrRun" style="margin-top:12px">選択したPDF・画像をOCR読取</button>
+<div class="info warning" id="ocrResult">OCR結果は自動承認されず、限度額の計算はHOLDとなります。</div>
 <h3>オフライン読取結果の取込</h3>
-<p class="muted">既存のローカル読取ツールが出力したJSON/TSVファイルを使えます。源泉徴収票のPDF・画像からの直接OCRは未移植です。</p>
+<p class="muted">既存のローカル読取ツールが出力したJSON/TSVファイルを使えます。PDF・画像の直接OCRは上の非公開試験機能です。</p>
 <div class="field"><label for="file">読取結果ファイル（任意、JSON/TSV）</label><input id="file" type="file" accept=".json,.tsv,.txt"></div>
 <div class="info warning" id="sourceMessage">源泉徴収票の数値は原票を照合するまで自動承認しません。</div>
 <label class="check" id="sourceConfirmBox" style="display:none;margin-top:12px">
@@ -245,6 +251,9 @@ var allowedReaderFields=[
  "special_relative_count","special_relative_deduction_reference"
 ];
 function clearImportedState(clearAmounts){
+ ++ocrSequence;
+ byId("ocrResult").textContent="OCR情報を破棄しました。";
+ byId("ocrRun").disabled=false;
  state.sourceStatus="";state.sourceYear=null;state.sourceBasicReference=null;state.sourceIndicators={};
  byId("sourceConfirmed").checked=false;
  byId("sourceConfirmBox").style.display="none";
@@ -374,6 +383,68 @@ byId("file").addEventListener("change",function(ev){
   }
  };
  reader.readAsText(file,"UTF-8");
+});
+
+var ocrSequence=0;
+byId("ocrRun").addEventListener("click",function(){
+ var f=byId("ocrFile").files[0];
+ if(!f){notify("PDF・画像を選択してください");return;}
+ if(!byId("ocrConsent").checked){notify("Google Driveへの一時転送に同意してください");return;}
+ if(f.size<1||f.size>2*1024*1024){notify("2MB以下のファイルのみ対応します");return;}
+ if(["application/pdf","image/png","image/jpeg"].indexOf(f.type)<0){
+  notify("PDF・JPEG・PNGのみ対応します");return;
+ }
+ if(typeof google==="undefined"||!google.script||!google.script.run||
+    typeof google.script.run.extractWithholdingOcr!=="function"){
+  notify("OCRはGoogle上の非公開Webアプリでのみ実行できます");return;
+ }
+ var nonce=++ocrSequence;
+ state.sourceStatus="REQUIRES_REVIEW";state.sourceYear=null;
+ state.sourceBasicReference=null;state.sourceIndicators={};
+ byId("sourceConfirmed").checked=false;
+ byId("sourceConfirmBox").style.display="none";
+ byId("clearImportedFile").style.display="block";
+ byId("ocrRun").disabled=true;byId("ocrResult").textContent="一時ドキュメントでOCR処理中です…";
+ var reader=new FileReader();
+ reader.onerror=function(){
+  if(nonce!==ocrSequence)return;
+  byId("ocrRun").disabled=false;byId("ocrResult").textContent="ファイル読取失敗。計算HOLD。";
+ };
+ reader.onload=function(){
+  if(nonce!==ocrSequence)return;
+  var encoded=String(reader.result||"").split(",")[1];
+  if(!encoded){byId("ocrRun").disabled=false;notify("入力ファイルが不正です");return;}
+  google.script.run.withSuccessHandler(function(result){
+   if(nonce!==ocrSequence)return;
+   byId("ocrRun").disabled=false;
+   if(!result||result.schema!=="furusato-ocr-review/v1"||
+      result.status!=="REQUIRES_REVIEW"){
+     byId("ocrResult").textContent="不正なOCR応答。HOLD";return;
+   }
+   if(result.year===2025||result.year===2026){
+     state.sourceYear=result.year;byId("year").value=String(result.year);
+   }
+   var mapping={salary_gross:"salaryGross",social_insurance:"socialInsurance",
+                salary_reference:"salaryIncomeReference",deductions_reference:"deductionsReference"};
+   var candidates=result.candidates||{},count=0;
+   Object.keys(mapping).forEach(function(key){
+    if(Number.isSafeInteger(candidates[key])&&candidates[key]>=0){
+     byId(mapping[key]).value=String(candidates[key]);count++;
+    }
+   });
+   state.sourceBasicReference=Number.isSafeInteger(candidates.basic_reference)?candidates.basic_reference:null;
+   byId("ack").checked=false;
+   byId("ocrResult").textContent="OCR完了（原票照合待ち・HOLD）。候補"+count+"項目。認識値は仮転記のみで計算に使えません。";
+   byId("sourceMessage").textContent="PDF・画像のOCR仮転記です。手元の原票を確認してください（HOLD）。";
+   notify("");
+  }).withFailureHandler(function(){
+   if(nonce!==ocrSequence)return;
+   byId("ocrRun").disabled=false;
+   byId("ocrResult").textContent="OCR処理または一時ファイル削除に失敗した可能性があります。Google DriveでFurusato_OCR_TEMP_を検索してください。";
+   notify("OCR失敗・計算HOLD。Google認可、Drive API、一時ファイル削除を確認してください");
+  }).extractWithholdingOcr({consent:true,mimeType:f.type,base64:encoded});
+ };
+ reader.readAsDataURL(f);
 });
 showStep(0);
 }());

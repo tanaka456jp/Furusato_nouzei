@@ -187,3 +187,15 @@ Google Apps Scriptでの実デプロイは引き続き未実施。正式リリ�
 既存プロジェクトへの上書きは `-AllowExistingProject` を追加した明示操作が必要。
 
 Google公式資料：https://developers.google.com/apps-script/guides/clasp
+
+
+## v0.1.5 — PDF・画像の非公開OCR試験（実Googleでの受入未実施）
+
+Google Drive Advanced Service v3によるPDF・JPEG・PNGの日本語OCRを追加。画面で明示同意後、2MB以下のファイルを所有者のGoogle Drive上で一時Googleドキュメントに変換し、読み取った年・金額候補だけをブラウザへ返却する。元の画像/PDF、OCR本文、氏名、住所などは結果に含めず、計算データをスプレッドシートへ保存しない。一時Googleドキュメントは成功・失敗時とも削除を試行し、削除失敗はエラー・HOLDにする。Google Drive上には処理中に一時保存が発生する。
+
+OCR候補は常にREQUIRES_REVIEWであり、候補値から寄附限度額を自動的に算定しない。読取が不確か・原票年度不一致のときはHOLDのまま。人が原票と照合して手入力し直す必要がある。検証中は合成PDFのみ使用し、実源泉徴収票の投入は禁止。
+
+Apps Scriptのサービス設定でGoogle Drive Advanced Service v3を有効化し、必要なGoogle Drive API設定・認可（drive.file、documents）を実施する。非公開GASでのOCR品質、削除監査、印刷、税額Excel一致は未検証。正式版はHOLD。
+
+参考: https://developers.google.com/workspace/drive/api/guides/manage-uploads
+https://developers.google.com/apps-script/advanced/drive

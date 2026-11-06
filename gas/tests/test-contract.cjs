@@ -14,8 +14,8 @@ const sourceFields=new Set([...readerCode.matchAll(/"[^"]+"\s*:\s*"([a-z][a-z0-9
 const acceptedFields=new Set([...browserFields.matchAll(/"([a-z][a-z0-9_]*)"/g)].map(x=>x[1]));
 assert.deepEqual([...sourceFields].sort(),[...acceptedFields].sort(),"Browser field allowlist must exactly match source reader keys");
 console.log("PASS: Python source-reader keys = GAS import allowlist ("+sourceFields.size+" unique)");
-assert.deepEqual(ignore,["**/**","!Code.gs","!Engine.gs","!Index.html","!appsscript.json"],"No test/preview file may be pushed to Google");
-console.log("PASS: clasp pushes only approved 4 files");
+assert.deepEqual(ignore,["**/**","!Code.gs","!Engine.gs","!Index.html","!appsscript.json","!SourceOCR.gs"],"No test/preview file may be pushed to Google");
+console.log("PASS: clasp pushes only approved 5 files");
 for(const key of [".clasp.json",".clasprc.json","node_modules/","dist/"])assert.ok(gitignore.includes(key),"Missing git ignore for "+key);
 console.log("PASS: script IDs, credentials and generated preview are git-ignored");
 assert.ok(reader.includes('"schema":"furusato-withholding-extract/v1"'));
@@ -23,3 +23,16 @@ assert.ok(reader.includes('"personal_identifiers":"NEVER_EXTRACTED"'));
 assert.ok(reader.includes('writer.writerow(["WARNINGS"'));
 assert.ok(html.includes('if(obj.personal_identifiers!=="NEVER_EXTRACTED")'));
 console.log("PASS: source JSON schema, warning fields, and privacy marker match");
+
+const manifest=JSON.parse(fs.readFileSync(path.join(root,"appsscript.json"),"utf8"));
+assert.equal(manifest.webapp.access,"MYSELF");
+assert.equal(manifest.webapp.executeAs,"USER_DEPLOYING");
+assert.deepEqual(manifest.oauthScopes,[
+ "https://www.googleapis.com/auth/spreadsheets.currentonly",
+ "https://www.googleapis.com/auth/drive.file",
+ "https://www.googleapis.com/auth/documents"
+]);
+assert.equal(manifest.dependencies.enabledAdvancedServices[0].serviceId,"drive");
+assert.equal(manifest.dependencies.enabledAdvancedServices[0].version,"v3");
+assert.ok(html.includes('id="ocrConsent"'));
+console.log("PASS: private OCR consent and explicit Drive v3 configuration");

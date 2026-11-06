@@ -23,8 +23,8 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
-$sourceFiles = @('Code.gs', 'Engine.gs', 'Index.html', 'appsscript.json')
-$expected = @('**/**', '!Code.gs', '!Engine.gs', '!Index.html', '!appsscript.json')
+$sourceFiles = @('Code.gs', 'Engine.gs', 'SourceOCR.gs', 'Index.html', 'appsscript.json')
+$expected = @('**/**', '!Code.gs', '!Engine.gs', '!Index.html', '!appsscript.json', '!SourceOCR.gs')
 
 foreach ($file in $sourceFiles) {
     $path = Join-Path $root $file
@@ -50,10 +50,11 @@ if ($manifest.webapp.access -cne 'MYSELF' -or $manifest.webapp.executeAs -cne 'U
     throw "The Apps Script manifest is not restricted to MYSELF / USER_DEPLOYING."
 }
 $scopes = @($manifest.oauthScopes)
-if ($scopes.Count -ne 1 -or $scopes[0] -cne 'https://www.googleapis.com/auth/spreadsheets.currentonly') {
+if ($scopes.Count -ne 3 -or $scopes[0] -cne 'https://www.googleapis.com/auth/spreadsheets.currentonly' -or $scopes[1] -cne 'https://www.googleapis.com/auth/drive.file' -or $scopes[2] -cne 'https://www.googleapis.com/auth/documents') {
     throw "Unexpected OAuth scopes in Apps Script manifest."
 }
-Write-Output 'PREFLIGHT_PASS: GAS source, publish allowlist, self-only access and OAuth scope verified.'
+if ($manifest.dependencies.enabledAdvancedServices.Count -ne 1 -or $manifest.dependencies.enabledAdvancedServices[0].serviceId -cne 'drive' -or $manifest.dependencies.enabledAdvancedServices[0].version -cne 'v3') { throw 'Advanced Drive v3 must be enabled.' }
+Write-Output 'PREFLIGHT_PASS: GAS source, publish allowlist, private OCR and OAuth scope verified.'
 $performWrite = [bool]($CreateProject -or $PushSource -or $OpenProject)
 if (-not $performWrite) {
     Write-Output 'READ_ONLY: No Google login, project creation, code upload or deployment attempted.'
