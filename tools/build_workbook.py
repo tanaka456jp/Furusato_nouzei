@@ -37,8 +37,9 @@ def build(source, output):
     detail = book.create_sheet(DETAIL)
     extra = book.create_sheet(ADVANCED)
     extra.sheet_view.showGridLines = False
-    extra.column_dimensions["A"].width = 38
-    extra.column_dimensions["B"].width = 23
+    extra.column_dimensions["A"].width = 42
+    extra.column_dimensions["B"].width = 25
+    extra.sheet_view.zoomScale = 85
     extra.column_dimensions["C"].width = 34
     extra.column_dimensions["D"].width = 20
     extra.sheet_properties.pageSetUpPr.fitToPage = True
@@ -97,38 +98,46 @@ def build(source, output):
         home.add_data_validation(validation)
         validation.add(home[cell])
 
-    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.13 検証版")
-    bar(extra, 1, "追加確認：分離課税など（検証入力）")
+    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.14 検証版")
+    bar(extra, 1, "追加所得・分離課税（所得年内で事前試算）")
     extra.merge_cells("A3:D3")
-    extra["A3"] = "追加入力は既存計算エンジンと分離。未検証案件の寄附限度額は表示しません。"
+    extra["A3"] = "翌年度の住民税通知書は参照せず、所得年内の収入・経費・控除と法定税率表から計算します。"
     extra["A3"].alignment = Alignment(wrap_text=True)
     extra.row_dimensions[3].height = 35
     extra_items = (
         (4, "案件区分", "通常", ("通常", "分離課税", "その他要確認")),
-        (5, "旧方式：住宅ローン控除額（移行前のみ）", None, None),
-        (6, "住宅ローン控除額（住民税適用実額）", None, None),
-        (7, "分離課税の課税所得", None, None),
-        (8, "分離所得の種類", None, ("なし", "上場株式", "土地建物長期", "土地建物短期", "先物", "その他")),
-        (9, "分離課税の住民税所得割額（資料値）", None, None),
-        (10, "住民税所得割額（調整控除後・通知書）", None, None),
-        (11, "所得税率（確定申告書・検証値）", None, None),
-        (12, "その他の税額控除（所得税・住民税）", None, None),
-        (13, "所得金額調整控除額（原票）", None, None),
+        (5, "公的年金等の年間収入（円）", None, None),
+        (6, "公的年金受給者の年齢区分（所得年末）", None, ("65歳未満", "65歳以上")),
+        (7, "公的年金等の雑所得（自動）", None, None),
+        (8, "業務に係る雑所得：年間収入", None, None),
+        (9, "業務に係る雑所得：必要経費", None, None),
+        (10, "その他の雑所得：年間収入", None, None),
+        (11, "その他の雑所得：必要経費", None, None),
+        (12, "事業・不動産所得：所得額（経費控除後）", None, None),
+        (13, "所得金額調整控除額（原票・照合）", None, None),
         (14, "源泉票：所得控除合計額（照合のみ）", None, None),
         (15, "源泉票：給与所得控除後の額（照合）", None, None),
         (16, "源泉票：生命保険料控除額（照合）", None, None),
         (17, "源泉票：地震保険料控除額（照合）", None, None),
         (18, "源泉票：源泉徴収税額（照合）", None, None),
-        (19, "読取ファイルの方式", None, None),
-        (20, "取込時の照合状態", None, None),
-        (21, "旧長期損害保険料（支払額）", None, None),
+        (19, "読取方式（自動設定）", None, None),
+        (20, "源泉票取込の確認状態（自動設定）", None, None),
+        (21, "旧長期損害保険料の支払額（別途確認）", None, None),
+        (22, "特例割合判定の所得税率（自動）", None, None),
+        (24, "申告分離課税の課税所得", None, None),
+        (25, "分離所得の種類", "なし", ("なし", "上場株式", "土地建物長期", "土地建物短期", "先物", "その他")),
+        (26, "その他の総合課税所得（所得額）", None, None),
+        (28, "追加所得の合計（調整控除後・自動）", None, None),
+        (29, "給与と年金の所得金額調整控除（自動）", None, None),
+        (30, "給与等と追加所得の合計（自動）", None, None),
+        (32, "源泉票読取の確認事項（自動設定）", None, None),
     )
     for row, label, initial, choices in extra_items:
         extra[f"A{row}"] = label
         extra[f"A{row}"].alignment = Alignment(wrap_text=True, vertical="center")
         extra[f"B{row}"] = initial
         extra.row_dimensions[row].height = 27
-        if row not in (19, 20):
+        if row not in (7, 19, 20, 22, 28, 29, 30, 32):
             extra[f"B{row}"].fill = PatternFill("solid", fgColor="E2F2FF")
             extra[f"B{row}"].protection = Protection(locked=False)
             extra[f"B{row}"].number_format = '#,##0'
@@ -139,10 +148,50 @@ def build(source, output):
             dv.showErrorMessage = True
             extra.add_data_validation(dv)
             dv.add(extra[f"B{row}"])
+    # Excel formulas calculate pension taxable income and the adjustment for
+    # taxpayers with both salary and public pension income.
+    nonpension = (
+        f'N({ref(HOME,"B13")})+'
+        'MAX(0,N(B8)-N(B9))+MAX(0,N(B10)-N(B11))+N(B12)+N(B26)'
+    )
+    pension_brackets = (
+        'IF(B5<IF(B6="65歳以上",3300000,1300000),'
+        'B5-IF(B6="65歳以上",1100000,600000),'
+        'IF(B5<4100000,B5*0.75-275000,'
+        'IF(B5<7700000,B5*0.85-685000,'
+        'IF(B5<10000000,B5*0.95-1455000,B5-1955000))))'
+    )
+    extra["B7"] = (
+        '=IF(OR(B5="",B5=0),0,IF(B6="","",MAX(0,ROUNDDOWN('
+        + pension_brackets + '+'
+        + f'IF({nonpension}>20000000,200000,IF({nonpension}>10000000,100000,0))'
+        + ',0))))'
+    )
+    extra["B29"] = f'=IF(B7="","",MAX(0,MIN(100000,N({ref(HOME,"B13")}))+MIN(100000,N(B7))-100000))'
+    extra["B28"] = (
+        '=IF(B7="","",MAX(0,N(B7)+MAX(0,N(B8)-N(B9))+'
+        'MAX(0,N(B10)-N(B11))+N(B12)+N(B26)-N(B29)))'
+    )
+    extra["B30"] = f'=IF(B28="","",N({ref(HOME,"B13")})+B28)'
+    extra["B22"] = f'=IF({ref(RESIDENT,"B21")}="","",{ref(RESIDENT,"B21")})'
+    for address in ("B7", "B22", "B28", "B29", "B30"):
+        cell = extra[address]
+        cell.fill = PatternFill("solid", fgColor="EAF3EA")
+        cell.protection = Protection(locked=True)
+        cell.font = Font(name="Yu Gothic", bold=True, color="226044")
+        cell.alignment = Alignment(horizontal="right", vertical="center")
+        cell.number_format = "0.0%" if address == "B22" else '#,##0'
     extra.merge_cells("A23:D23")
-    extra["A23"] = "住宅ローン控除・分離課税などは適用順序や住民税通知値が必要です。未検証の自動計算は停止します。"
+    extra["A23"] = "公的年金・雑所得・事業所得は総合課税に自動加算。分離課税と特殊控除は未確定表示のまま停止します。"
     extra["A23"].alignment = Alignment(wrap_text=True)
-    extra.row_dimensions[23].height = 40
+    extra.row_dimensions[23].height = 34
+    extra.merge_cells("A31:D31")
+    extra["A31"] = "公的年金の年齢区分は所得年12月31日時点。欠損・繰越損失・分離課税は個別精査が必要です。"
+    extra["A31"].alignment = Alignment(wrap_text=True)
+    extra.row_dimensions[31].height = 36
+    extra.row_dimensions[32].height = 42
+    extra["B32"].alignment = Alignment(wrap_text=True)
+    extra.print_area = "A1:D32"
     home.row_dimensions[3].height = 28
     field("B4", "選択する所得年", "2026", ("2025", "2026"))
     home["C4"], home["D4"] = "適用中の所得年", "=" + ref("設定・税率", "B4")
@@ -203,9 +252,9 @@ def build(source, output):
     field("D23", "16歳未満の扶養（人数）", maximum=30)
     field("D24", "申告方式", choices=("ワンストップ", "確定申告"))
     home["D24"] = "確定申告"
-    note(home, 27, "対象外条件は年末調整未済、準確定申告、非居住者、給与以外の所得、配当等の税額控除、医療費・他の寄附、旧長期損害保険、自治体独自の税率などです。住宅ローン控除は下段の通常入力欄で処理します。")
+    note(home, 27, "公的年金・事業所得・雑所得は追加所得から入力できます。分離課税・非居住者・医療費・他の寄附・自治体独自税率などは個別確認。住宅ローン控除は下段の通常入力欄で処理します。")
     home.row_dimensions[27].height = 42
-    note(home, 31, "水色欄に支払金額・保険料を入力。自動計算欄は緑色。分離課税などは追加確認へ。")
+    note(home, 31, "給与以外の所得は「追加所得・分離課税」で入力。寄附する翌年の住民税通知書は不要です。")
     bar(home, 32, "住宅ローン控除（通常処理・源泉徴収票から転記）")
     field("B33", "住宅ローン控除の所得税適用額")
     field("B34", "住宅ローン控除可能額（G36）")
@@ -228,6 +277,9 @@ def build(source, output):
 
     for row in range(7, 11):
         link(withholding, f"B{row}", f"B{row + 5}")
+    # Reuse native salary+other-ordinary-income calculations, not a separate
+    # ad-hoc resident-tax amount or next year's notice.
+    withholding["B11"] = f'=IF({ref(ADVANCED,"B28")}="","",{ref(ADVANCED,"B28")})'
     withholding["B25"] = f'=IF({ref(HOME, "B25")}="あり","該当あり",IF({ref(HOME, "B25")}="なし","該当なし","未確認"))'
     withholding["B22"] = f'=IF({ref(HOME, "B26")}="該当なし","確認済","未確認")'
     for row, source_row in zip((17, 18, 20, 21, 23, 25), range(19, 25)):
