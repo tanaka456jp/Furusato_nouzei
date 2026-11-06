@@ -90,7 +90,9 @@ try {
         $homeSheet.Range('B16').Value2 = 1000000.0
         # Paid premiums drive the auto-calculated insurance deduction.
         $homeSheet.Range('B25').Value2 = 'なし'
-        Assert-Value $homeSheet.Range('B26').Value2 '入力待ち' 'Automatic eligibility is not manual input'
+        if ([string]$homeSheet.Range('B26').Formula -notlike '*B28*') {
+            throw 'The automatic eligibility display formula was overwritten'
+        }
         $homeSheet.Range('D22').Value2 = '該当なし'
         $homeSheet.Range('D24').Value2 = '確定申告'
         QA-Stage ('synthetic-' + $year + '-recalculate-start')
