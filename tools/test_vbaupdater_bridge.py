@@ -66,6 +66,14 @@ class VbaUpdaterBridgeTest(unittest.TestCase):
         self.assertIn("MARKER_COMMENT_IN_STAGE_ONLY", bridge)
         self.assertIn("synthetic_source_verified", bridge)
         self.assertIn("STAGED_PUSH_EXCEL_PASS", bridge)
+        workflow = (ROOT / ".github" / "workflows" / "workbook.yml").read_text(encoding="utf-8")
+        mandatory = workflow.split("- name: VBAUpdater staged project-push (mandatory acceptance)", 1)[1].split("- name: Upload verified review XLSM", 1)[0]
+        self.assertNotIn("continue-on-error:", mandatory)
+        self.assertIn("project_push -ne 'PASS'", mandatory)
+        self.assertIn("post_push_diff -ne 'PASS'", mandatory)
+        self.assertIn("post_push_excel -ne 'PASS'", mandatory)
+        self.assertNotIn("PREPARED_UPDATER_NOT_FOUND", mandatory)
+        self.assertIn("synthetic_source_verified", mandatory)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

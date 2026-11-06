@@ -232,8 +232,9 @@ jobs:
           if (-not $report.workbook_sha256) { throw 'Excel acceptance report lacks workbook SHA-256' }
           $actual = (Get-FileHash -LiteralPath (Join-Path $work 'review/Furusato_nouzei.xlsm') -Algorithm SHA256).Hash
           if ($report.workbook_sha256 -ne $actual) { throw 'Excel acceptance evidence does not match generated workbook SHA-256' }
-      # VBAUpdater preflight is mandatory, the external sandbox project-push
-      # is an independent diagnostic and never writes the distributed XLSM.
+      # VBAUpdater read-only and real sandbox project-push are mandatory release
+      # gates. The sandbox source is intentionally modified by one ASCII comment
+      # to prove a real write; no customer or distributed workbook is changed.
       - name: VBAUpdater isolated read-only preflight and diff
         if: success()
         shell: powershell
@@ -248,31 +249,36 @@ jobs:
           & .\tools\verify_vbaupdater_bridge.ps1 -Workbook $reviewed -StagingRoot (Join-Path $work 'vbaupdater_readonly') -EvidencePath $bridgeEvidence
           if (-not $?) { throw 'VBAUpdater read-only verification failed' }
           $bridge = Get-Content -LiteralPath $bridgeEvidence -Raw -Encoding UTF8 | ConvertFrom-Json
-          if (-not $bridge.original_preserved -or $bridge.status -notin @('READONLY_PREFLIGHT_DIFF_PASS', 'PREPARED_UPDATER_NOT_FOUND')) {
+          if (-not $bridge.original_preserved -or $bridge.status -ne 'READONLY_PREFLIGHT_DIFF_PASS') {
             throw 'VBAUpdater read-only preflight and diff did not pass'
           }
           ('VBAUpdater read-only preflight: ' + $bridge.status + '.') >> $env:GITHUB_STEP_SUMMARY
-      - name: VBAUpdater staged project-push (optional external-tool diagnostic)
+      - name: VBAUpdater staged project-push (mandatory acceptance)
         id: staged_push
         if: success()
-        continue-on-error: true
         shell: powershell
         run: |
           $work = Join-Path $env:RUNNER_TEMP ('furusato-' + $env:GITHUB_RUN_ID + '-' + $env:GITHUB_RUN_ATTEMPT)
           $reviewed = Join-Path $work 'review/Furusato_nouzei.xlsm'
           $pushEvidence = Join-Path $work 'vbaupdater_push.json'
           & .\tools\verify_vbaupdater_bridge.ps1 -Workbook $reviewed -StagingRoot (Join-Path $work 'vbaupdater_push') -EvidencePath $pushEvidence -PushInSandbox
-          if (-not $?) { throw 'Optional disposable VBAUpdater project-push failed' }
+          if (-not $?) { throw 'Mandatory disposable VBAUpdater project-push failed' }
           $push = Get-Content -LiteralPath $pushEvidence -Raw -Encoding UTF8 | ConvertFrom-Json
-          if (-not $push.original_preserved -or $push.status -notin @('STAGED_PUSH_EXCEL_PASS', 'PREPARED_UPDATER_NOT_FOUND')) {
-            throw 'Optional VBAUpdater staged push incomplete'
+          if (-not $push.original_preserved -or
+              $push.status -ne 'STAGED_PUSH_EXCEL_PASS' -or
+              $push.project_push -ne 'PASS' -or
+              $push.post_push_diff -ne 'PASS' -or
+              $push.post_push_excel -ne 'PASS' -or
+              $push.synthetic_source_delta -ne 'MARKER_COMMENT_IN_STAGE_ONLY' -or
+              -not $push.synthetic_source_verified) {
+            throw 'Mandatory VBAUpdater module write, post-diff and Excel acceptance incomplete'
           }
-          ('Optional VBAUpdater staged project-push: ' + $push.status + '.') >> $env:GITHUB_STEP_SUMMARY
-      - name: Report optional VBAUpdater staging failure
-        if: always() && steps.staged_push.outcome == 'failure'
+          ('Mandatory VBAUpdater staged project-push: ' + $push.status + '.') >> $env:GITHUB_STEP_SUMMARY
+      - name: Report mandatory VBAUpdater staging failure
+        if: failure() && steps.staged_push.outcome == 'failure'
         shell: powershell
         run: |
-          "WARNING: external VBAUpdater sandbox project-push did not pass. Core Excel acceptance is independent; formal release remains HOLD. See push evidence for classification." >> $env:GITHUB_STEP_SUMMARY
+          "FAIL: VBAUpdater sandbox project-push is a mandatory acceptance gate. Product distribution is HOLD. Original workbook remains preserved. See staged push evidence." >> $env:GITHUB_STEP_SUMMARY
       - name: Upload verified review XLSM
         if: success()
         uses: actions/upload-artifact@v4
