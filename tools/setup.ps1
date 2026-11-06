@@ -168,7 +168,7 @@ End Sub
     Add-WorkbookButton $sheet 'B7' '案件保存' 'SaveCase'
     Add-WorkbookButton $sheet 'C7' '計算根拠' 'ShowDetails'
     Add-WorkbookButton $sheet 'D7' '計算' 'RecalculateCase'
-    Add-WorkbookButton $sheet 'B5' '特例・分離課税' 'ShowAdvanced'
+    Add-WorkbookButton $sheet 'B5' '追加所得・分離課税' 'ShowAdvanced'
     Add-WorkbookButton $sheet 'B3' '源泉票を取込' 'ImportWithholding'
     Add-WorkbookButton $sheet 'C3' '読取内容の確認' 'ReviewWithholding'
     $details = $workbook.Worksheets.Item('計算根拠')
