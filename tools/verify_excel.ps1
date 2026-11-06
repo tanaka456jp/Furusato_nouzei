@@ -132,6 +132,41 @@ try {
         Assert-Value $homeSheet.Range('B8').Value2 109000 "$year donation estimate"
     }
     QA-Stage 'synthetic-years-pass'
+    # Regression: certified source subtotals are not invalid just because a
+    # simplified entry screen omits special-dependent deduction components.
+    # All values below are synthetic and must never contain taxpayer data.
+    QA-Stage 'withholding-source-values-start'
+    $sourceExtra = $book.Worksheets.Item('例外・分離課税')
+    $homeSheet.Range('B12').Value2 = 5100000.0
+    $homeSheet.Range('B15').Value2 = 0.0
+    $homeSheet.Range('B16').Value2 = 1500000.0
+    $sourceExtra.Range('B14').Value2 = 3800000.0
+    $sourceExtra.Range('B15').Value2 = 3550000.0
+    $sourceExtra.Range('B16').Value2 = 46000.0
+    $sourceExtra.Range('B17').Value2 = 17000.0
+    foreach ($cell in @('B25', 'B26', 'D22', 'D24')) {
+        $homeSheet.Range($cell).ClearContents()
+    }
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B13').Value2 3550000 'Source salary income preferred'
+    Assert-Value $homeSheet.Range('B14').Value2 3800000 'Source deduction total preferred'
+    Assert-Value $homeSheet.Range('B17').Value2 46000 'Source life deduction preferred'
+    Assert-Value $homeSheet.Range('B18').Value2 17000 'Source earthquake deduction preferred'
+    Assert-Value $homeSheet.Range('B25').Value2 'なし' 'Blank dependent indicator normalized'
+    Assert-Value $homeSheet.Range('B26').Value2 '該当なし' 'Blank unsupported-conditions normalized'
+    Assert-Value $homeSheet.Range('D22').Value2 '該当なし' 'Blank personal allowance normalized'
+    Assert-Value $homeSheet.Range('D24').Value2 'ワンストップ' 'Blank filing mode normalized'
+    if ([string]$homeSheet.Range('B28').Value2 -eq 'エラー：金額・人数・控除の内訳を源泉徴収票と照合してください') {
+        throw 'Withholding source references were incorrectly rejected as invalid fields'
+    }
+    $sourceExtra.Range('B14:B17').ClearContents()
+    $homeSheet.Range('B12').Value2 = 7000000.0
+    $homeSheet.Range('B15').Value2 = 285800.0
+    $homeSheet.Range('B16').Value2 = 1000000.0
+    $homeSheet.Range('D24').Value2 = '確定申告'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Synthetic input restored'
+    QA-Stage 'withholding-source-values-pass'
     # Actual Excel recalculation: ordinary pension and miscellaneous income
     # use the native salary+other income engine; no notice/manual tax rate.
     $extraSheet = $book.Worksheets.Item('例外・分離課税')
