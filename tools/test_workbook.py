@@ -99,6 +99,13 @@ class WorkbookTest(unittest.TestCase):
                     if cell.data_type == "f":
                         self.assertNotIn("#REF!", cell.value, f"{sheet.title}!{cell.coordinate}")
 
+    def test_derived_formulas_and_advanced_amounts_fail_closed(self):
+        formula = self.book[HOME]["B28"].value
+        for cell in ("B13", "B14", "B17", "B18"):
+            self.assertIn(f"NOT(ISFORMULA({cell}))", formula)
+        for cell in ("B5", "B6", "B7", "B9", "B10", "B12", "B21"):
+            self.assertIn(f"N('例外・分離課税'!{cell})>0", formula)
+
     def test_advanced_form_is_hidden_until_explicitly_requested(self):
         self.assertEqual(self.book[ADVANCED].sheet_state, "veryHidden")
         extra = self.book[ADVANCED]

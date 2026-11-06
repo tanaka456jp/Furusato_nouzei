@@ -281,7 +281,13 @@ def build(source, output):
                 f'OR(B17<>{ref(ENGINE,"F24")},B18<>{ref(ENGINE,"F25")})',
                 f'B14<>SUM(B16:B18,{ref(ENGINE,"F15")},{ref(ENGINE,"F38")},{ref("追加人的控除","C12")})']
     unsupported = (
-        'OR(B26="該当あり",'+f'{ref(ADVANCED,"B4")}<>"通常",AND(D24="確定申告",B15=0),'        ''
+        'OR(B26="該当あり",'
+        +f'{ref(ADVANCED,"B4")}<>"通常",'
+        +f'N({ref(ADVANCED,"B5")})>0,N({ref(ADVANCED,"B6")})>0,'
+        +f'N({ref(ADVANCED,"B7")})>0,N({ref(ADVANCED,"B9")})>0,'
+        +f'N({ref(ADVANCED,"B10")})>0,N({ref(ADVANCED,"B12")})>0,'
+        +f'N({ref(ADVANCED,"B21")})>0,'
+        +'AND(D24="確定申告",B15=0),'
         'B13<=IF(SUM(D11:D13,D23)+COUNT(D14:D18)=0,450000,'
         '350000*(1+SUM(D11:D13,D23)+COUNT(D14:D18))+420000),'
         'AND(OR(SUM(D19:D21)>0,D22<>"該当なし"),B13<=1350000))'
@@ -296,6 +302,8 @@ def build(source, output):
     settings_b10 = ref("設定・税率", "B10")
     candidate = ref(RESIDENT, "B24")
     status = [
+        ('OR(NOT(ISFORMULA(B13)),NOT(ISFORMULA(B14)),NOT(ISFORMULA(B17)),NOT(ISFORMULA(B18)))',
+         "エラー：自動計算式が変更されました。元の検証済みブックを使用してください"),
         ('OR(IFERROR(1*B4,0)<>D4,IFERROR(1*B11,0)<>D4)', "警告：源泉徴収票と適用中の所得年を一致させてください"),
         ('OR(COUNT(B12:B18)<>7,AND(B25<>"あり",B25<>"なし"),'
          'AND(B26<>"該当なし",B26<>"該当あり"),'
@@ -303,7 +311,11 @@ def build(source, output):
          'AND(D22<>"該当なし",D22<>"寡婦",D22<>"ひとり親（母）",D22<>"ひとり親（父）",D22<>"勤労学生"))',
          "警告：源泉徴収票の金額と確認欄を入力してください"),
         ("OR(" + ",".join(invalid) + ")", "エラー：金額・人数・控除の内訳を源泉徴収票と照合してください"),
-        (f'OR(ABS({ref(INPUT,"B34")}-B13)>10000,{ref(RESIDENT,"B16")}<=0)',
+        (f'OR(ABS({ref(INPUT,"B34")}-B13-'
+         f'IF(ISNUMBER({ref(ADVANCED,"B13")}),{ref(ADVANCED,"B13")},'
+         'IF(AND(B12>8500000,B25="あり"),'
+         '(MIN(B12,10000000)-8500000)*0.1,0)))>10000,'
+         f'{ref(RESIDENT,"B16")}<=0)',
          "警告：給与所得または住民税所得割を個別に照合してください"),
         (unsupported, "警告：対象外または追加照合が必要なため、金額の表示を停止しました"),
         (f'OR(COUNTIF({ref("整合性チェック","B4:B12")},"OK")<>9,{ref("自動回帰テスト","B49")}<>"PASS")',
