@@ -65,6 +65,7 @@ test("e-Tax five-stage wizard yields printable standard salary estimate",async()
   assert.equal(p.el("resultScreen").classList.contains("active"),true);
   assert.equal(p.el("reportAmount").textContent,"109,000 円");
   assert.ok(p.el("reportLines").textContent.includes("住民税所得割"));
+  assert.ok(p.el("formulaDetails").textContent.includes("計算式"));
   assert.equal(p.el("print").disabled,false);
  } finally {p.w.close();}
 });
@@ -119,6 +120,19 @@ test("G74 and special-relative input forces HOLD even after READY source review"
   p.el("sourceConfirmed").checked=true;p.next();
   p.el("ack").checked=true;p.next();p.next();
   assert.equal(p.el("reportAmount").textContent,"計算停止");
+ } finally {p.w.close();}
+});
+test("G46 mismatch in a READY slip still fails closed after checkbox confirmation",async()=>{
+ const p=createPage();
+ try {
+  p.next();
+  const orig=source("READY_FOR_EXCEL_CROSSCHECK");
+  orig.fields.basic_reference=630000;
+  await importJson(p,orig);
+  p.el("sourceConfirmed").checked=true;
+  p.next();p.el("ack").checked=true;p.next();p.next();
+  assert.equal(p.el("reportAmount").textContent,"計算停止");
+  assert.ok(p.el("reasonBlock").textContent.includes("基礎控除額"));
  } finally {p.w.close();}
 });
 test("unknown personal identifiers are rejected and never shown",async()=>{
