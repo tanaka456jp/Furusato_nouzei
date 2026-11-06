@@ -43,6 +43,21 @@ jobs:
           path: gas/dist/Furusato_GAS_LocalPreview.html
           if-no-files-found: error
           retention-days: 14
+      - name: Package audited GAS source files for private test deployment
+        shell: bash
+        run: |
+          cd gas
+          zip -q dist/Furusato_GAS_DeploySources.zip Code.gs Engine.gs Index.html appsscript.json .claspignore
+          unzip -Z1 dist/Furusato_GAS_DeploySources.zip | LC_ALL=C sort > dist/actual-files.txt
+          printf '%s\n' .claspignore Code.gs Engine.gs Index.html appsscript.json | LC_ALL=C sort > dist/expected-files.txt
+          diff -u dist/expected-files.txt dist/actual-files.txt
+      - name: Upload audited private-deployment source kit (not deployed)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Furusato_GAS_DeploySources_${{ github.run_id }}
+          path: gas/dist/Furusato_GAS_DeploySources.zip
+          if-no-files-found: error
+          retention-days: 14
       - name: Explicit validation boundary
         run: |
           echo "GAS JavaScript regression: PASS if previous step passed." >> "$GITHUB_STEP_SUMMARY"
