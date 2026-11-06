@@ -132,6 +132,48 @@ try {
         Assert-Value $homeSheet.Range('B8').Value2 109000 "$year donation estimate"
     }
     QA-Stage 'synthetic-years-pass'
+    # Actual Excel recalculation: ordinary pension and miscellaneous income
+    # use the native salary+other income engine; no notice/manual tax rate.
+    $extraSheet = $book.Worksheets.Item('例外・分離課税')
+    $whtSheet = $book.Worksheets.Item('源泉徴収票入力')
+    $engineSheet = $book.Worksheets.Item('ふるさと納税限度額計算')
+    $residentSheet = $book.Worksheets.Item('住民税再計算')
+    QA-Stage 'other-income-start'
+    $baseTaxable = [double]$engineSheet.Range('J12').Value2
+    $baseResident = [double]$residentSheet.Range('B6').Value2
+    $extraSheet.Range('B5').Value2 = 2000000.0
+    $extraSheet.Range('B6').Value2 = '65歳以上'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $extraSheet.Range('B7').Value2 900000 'Pension income aged 65 plus'
+    Assert-Value $extraSheet.Range('B29').Value2 100000 'Salary and pension adjustment'
+    Assert-Value $extraSheet.Range('B28').Value2 800000 'Additional income net'
+    Assert-Value $engineSheet.Range('J12').Value2 ($baseTaxable + 800000) 'Taxable income includes pension'
+    Assert-Value $whtSheet.Range('B11').Value2 800000 'Source income link'
+    Assert-Value $residentSheet.Range('B6').Value2 ($baseResident + 800000) 'Resident income includes pension'
+    Assert-Value $extraSheet.Range('B22').Value2 $residentSheet.Range('B21').Value2 'Income tax rate auto'
+    $extraSheet.Range('B5').ClearContents()
+    $extraSheet.Range('B6').ClearContents()
+    $extraSheet.Range('B8').Value2 = 300000.0
+    $extraSheet.Range('B9').Value2 = 100000.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $extraSheet.Range('B28').Value2 200000 'Business miscellaneous net income'
+    Assert-Value $engineSheet.Range('J12').Value2 ($baseTaxable + 200000) 'Taxable income includes miscellaneous'
+    $extraSheet.Range('B8:B9').ClearContents()
+    $extraSheet.Range('B24').Value2 = 1000000.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    if ([string]$homeSheet.Range('B28').Value2 -eq '正常') {
+        throw 'Separate income wrongly passed without complete tax regime'
+    }
+    $extraSheet.Range('B24').ClearContents()
+    $extraSheet.Range('B20').Value2 = 'REQUIRES_REVIEW'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    if ([string]$homeSheet.Range('B28').Value2 -eq '正常') {
+        throw 'Unverified PDF was allowed to show a donation limit'
+    }
+    $extraSheet.Range('B20').ClearContents()
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $engineSheet.Range('J12').Value2 $baseTaxable 'Ordinary additional income reset'
+    QA-Stage 'other-income-regressions-pass'
     # Mortgage tax credit is routine input. Check the resident-tax credit and
     # every missing/unsupported branch against *real* Excel formula evaluation.
     QA-Stage 'mortgage-normal-start'
