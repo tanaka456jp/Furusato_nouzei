@@ -42,16 +42,25 @@ test("salary income is calculated automatically from the statutory table at 5m",
   assert.equal(x.calculation.incomeTaxTaxableYen,1520000);
   assert.equal(x.donationLimitYen,51000);
 });
-test("salary below the verified statutory table band still requires the source slip",()=>{
+test("2026 low salary 2m now uses 740k minimum allowance",()=>{
   const x=tax.calculate({...base,salaryGross:"2000000",socialInsurance:"100000"});
-  assert.equal(x.status,"HOLD");assert.equal(x.donationLimitYen,null);
+  assert.equal(x.status,"ESTIMATE");
+  assert.equal(x.calculation.salaryIncomeYen,1260000);
+  assert.equal(x.calculation.incomeTaxTaxableYen,120000);
+  assert.equal(x.donationLimitYen,18000);
+});
+test("2025 salary 1.8m uses the 650k minimum allowance",()=>{
+  const x=tax.calculate({...base,year:2025,salaryGross:"1800000",socialInsurance:"50000"});
+  assert.equal(x.status,"ESTIMATE");
+  assert.equal(x.calculation.salaryIncomeYen,1150000);
+  assert.equal(x.calculation.basicIncomeTaxDeductionYen,950000);
 });
 test("statutory salary table boundaries and statutory quarter-rounding",()=>{
   const x=tax.salaryIncome;
-  assert.equal(x(1899999,2025),null);
+  assert.equal(x(1899999,2025),1249999);
   assert.equal(x(1900000,2025),1250000);
   assert.equal(x(1900001,2025),1250000);
-  assert.equal(x(2199999,2026),null);
+  assert.equal(x(2199999,2026),1456000);
   assert.equal(x(2200000,2026),1460000);
   assert.equal(x(2200001,2026),1460000);
   assert.equal(x(3599999,2026),2437200);
@@ -63,6 +72,31 @@ test("statutory salary table boundaries and statutory quarter-rounding",()=>{
   assert.equal(x(7000000,2026),5200000);
   assert.equal(x(7000000,2025),5200000);
   assert.equal(x(5000000,2027),null);
+});
+test("2026 low-salary special bands reproduce NTA Q3-1 edge values",()=>{
+  const x=tax.salaryIncome;
+  // 2026 Q3-1: ordinary 740k allowance, plus three short ranges
+  const cases=[
+    [0,0],[690999,0],[691000,0],[740999,0],[741000,1000],
+    [2190999,1450999],[2191000,1451000],[2192999,1451000],
+    [2193000,1453000],[2195999,1453000],
+    [2196000,1456000],[2199999,1456000],[2200000,1460000]
+  ];
+  for(const [gross,expected] of cases)assert.equal(x(gross,2026),expected,"2026 gross="+gross);
+});
+test("2025 minimum allowance remains 650k at lower salary edges",()=>{
+  const x=tax.salaryIncome;
+  for(const [gross,expected] of [[0,0],[649999,0],[650000,0],
+    [650001,1],[1899999,1249999],[1900000,1250000]]) {
+    assert.equal(x(gross,2025),expected,"2025 gross="+gross);
+  }
+});
+test("low-salary slip amounts require exact statutory match",()=>{
+  const ok=tax.calculate({...base,salaryGross:2193000, salaryIncomeReference:1453000,socialInsurance:100000});
+  assert.equal(ok.status,"ESTIMATE");
+  const wrong=tax.calculate({...base,salaryGross:2193000,salaryIncomeReference:1451000,socialInsurance:100000});
+  assert.equal(wrong.status,"HOLD");
+  assert.equal(wrong.donationLimitYen,null);
 });
 test("salary income supplied by the slip must match independently calculated salary income",()=>{
   const x=tax.calculate({...base,salaryGross:"5000000",salaryIncomeReference:"3560001",socialInsurance:"1000000"});
