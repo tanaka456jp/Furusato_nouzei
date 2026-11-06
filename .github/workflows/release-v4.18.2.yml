@@ -33,7 +33,7 @@ jobs:
           cat /tmp/changes.txt
           while IFS= read -r file; do
             case "$file" in
-              tools/build_workbook.py|docs/user-guide.md|docs/release-notes-v4.18.2.md|.github/workflows/release-v4.18.2.yml) ;;
+              tools/build_workbook.py|tools/test_catalog_sync.py|docs/user-guide.md|docs/release-notes-v4.18.2.md|.github/workflows/release-v4.18.2.yml) ;;
               *) echo "Unexpected product source mutation: $file"; exit 1 ;;
             esac
           done < /tmp/changes.txt
