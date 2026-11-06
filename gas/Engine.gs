@@ -1,5 +1,5 @@
 /**
- * Furusato GAS MVP 0.1.0 — pure, deterministic, no SpreadsheetApp dependency.
+ * Furusato GAS MVP 0.1.3 — pure, deterministic, no SpreadsheetApp dependency.
  * Scope: 2025/2026, one salary source, no family/insurance/mortgage/other income.
  * All unsupported cases fail closed. This is a pre-release ESTIMATE, never an assessment.
  * Source: NTA No.1155, No.1199, No.1410, No.2260 (see README).
@@ -7,7 +7,7 @@
  */
 var FurusatoEngine = (function () {
   "use strict";
-  var VERSION = "gas-mvp-0.1.2";
+  var VERSION = "gas-mvp-0.1.3";
   var TAX_REVISION = "2026-11-05-bundled";
   var BASIC = {
     2025: [[1320000,950000],[3360000,880000],[4890000,680000],
@@ -60,8 +60,20 @@ var FurusatoEngine = (function () {
     return .45;
   }
   function salaryIncome(gross, year) {
-    // Below 6.6m the actual year-end table must be used from the source slip.
-    if (gross <= 6600000) return null;
+    // NTA statutory table: income tax, salary deduction after year-end
+    // adjustment. 2025: ¥1.9m–6.6m, 2026: ¥2.2m–6.6m.
+    // The true table, NOT a naïve 30%/20% formula, rounds down
+    // gross/4 to the nearest ¥1,000 before applying the coefficient.
+    // 2026 below ¥2.2m has special short bands; require a verified slip
+    // until all low-income exceptions have independent reference cases.
+    if (year !== 2025 && year !== 2026) return null;
+    if (gross < (year === 2026 ? 2200000 : 1900000)) return null;
+    if (gross < 6600000) {
+      var quarter = Math.floor(gross / 4000) * 1000;
+      return gross < 3600000
+        ? Math.round(quarter * 2.8 - 80000)
+        : Math.round(quarter * 3.2 - 440000);
+    }
     var allowance = gross <= 8500000 ? gross * .1 + 1100000 : 1950000;
     return Math.max(0, Math.floor(gross - allowance));
   }
@@ -127,8 +139,8 @@ var FurusatoEngine = (function () {
       if (income !== null && Math.abs(reference-income)>1)
         reasons.push("原票の給与所得額と自動計算額が一致しません");
       income=reference;
-    } else if (gross !== null && gross <= 6600000) {
-      reasons.push("給与660万円以下は年末調整の給与所得金額表による原票額を入力してください");
+    } else if (gross !== null && income === null) {
+      reasons.push("この給与帯域は例外区分の確認が必要です。原票の給与所得控除後の金額を入力してください");
     }
     if (income !== null && income < 0) reasons.push("給与所得が不正です");
     var incomeBasic = year in BASIC && income !== null ? basic(year,income) : null;
@@ -148,7 +160,18 @@ var FurusatoEngine = (function () {
     var adjustment = 2500;
     var residentLevy = floor100(Math.max(0,residentTaxable*.1-adjustment));
     if (residentLevy<=0) return result("HOLD",["住民税所得割がゼロです"],{year:year});
-    var rate = marginal(taxableIncome);
+    // Resident-tax special-credit bracket is determined using the
+    // *resident-tax* taxable income minus (1) statutory 50k personal
+    // deduction difference and (2) the excess income-tax basic deduction
+    // over 480k (2025/2026 law). In the supported basic-only case this
+    // equals the income-tax taxable income; calculate separately so an
+    // accidental future divergence fails closed instead of silently passing.
+    var specialRateBase = residentTaxable - 50000 -
+      Math.max(0, incomeBasic - 480000);
+    var bracketIncome = floor1000(Math.max(0,specialRateBase));
+    if (specialRateBase <= 0 || bracketIncome !== taxableIncome)
+      return result("HOLD",["住民税特例控除の税率判定額と所得税課税所得が一致しません"],{year:year});
+    var rate = marginal(bracketIncome);
     var denominator = .9 - rate * 1.021;
     if (denominator<=0) return result("HOLD",["特例控除割合を判定できません"],{year:year});
     var specialCap = Math.floor(residentLevy*.2);
@@ -162,6 +185,9 @@ var FurusatoEngine = (function () {
       salaryGrossYen:gross, salaryIncomeYen:income, socialInsuranceYen:social,
       basicIncomeTaxDeductionYen:incomeBasic, residentBasicDeductionYen:430000,
       incomeTaxTaxableYen:taxableIncome, marginalIncomeTaxRate:rate,
+      residentSpecialRateBaseYen:bracketIncome,
+      residentHumanDeductionDifferenceYen:50000,
+      residentBasicExcessDeductionYen:Math.max(0,incomeBasic-480000),
       residentTaxTaxableYen:residentTaxable, residentIncomeTaxBeforeAdjustmentYen:residentTaxable*.1,
       residentAdjustmentYen:adjustment, residentIncomeLevyYen:residentLevy,
       specialCreditCapYen:specialCap, reconstructionMultiplier:1.021,
@@ -181,6 +207,6 @@ var FurusatoEngine = (function () {
     });
     return rows;
   }
-  return {calculate:calculate,statutoryRows:statutoryRows,version:VERSION};
+  return {calculate:calculate,statutoryRows:statutoryRows,salaryIncome:salaryIncome,version:VERSION};
 }());
 if (typeof module !== "undefined" && module.exports) module.exports=FurusatoEngine;
