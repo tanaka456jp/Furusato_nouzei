@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
-from withholding_reader import detect_year,extract_codes,extract_labelled,extract_occupancy_year,extract,finish,write_bridge
+from withholding_reader import CODE_MAP,detect_year,extract_codes,extract_labelled,extract_occupancy_year,extract,finish,write_bridge
 
 
 class WithholdingTest(unittest.TestCase):
@@ -105,6 +105,55 @@ class WithholdingTest(unittest.TestCase):
         taxable={**base,"deductions_reference":1100000}
         self.assertIn("MORTGAGE_APPLIED_CREDIT_MISSING",
                       finish(2026,taxable,"PDF_TEXT")["warnings"])
+
+    def test_reiwa8_g72_g73_g74_are_distinct(self):
+        # Anonymous coordinates model the 2026 form, not any private document.
+        words=[
+            (380,265,391,271,"G72"),(395,264,402,271,"1"),
+            (408,265,419,271,"G73"),(423,264,430,271,"2"),
+            (33,300,44,305,"G74"),(102,296,138,305,"630,000"),
+        ]
+        self.assertEqual(CODE_MAP["G72"],"special_relative_count")
+        self.assertEqual(CODE_MAP["G73"],"under16_count")
+        self.assertEqual(CODE_MAP["G74"],"special_relative_deduction_reference")
+        fields,flags=extract_codes(words)
+        self.assertEqual(flags,[])
+        self.assertEqual(fields,{
+            "special_relative_count":1,
+            "under16_count":2,
+            "special_relative_deduction_reference":630000,
+        })
+        source={**fields,"salary_gross":5000000,
+                "salary_reference":3560000,"deductions_reference":3956000,
+                "social_insurance":1600000,"income_tax_withheld":0}
+        report=finish(2026,source,"PDF_TEXT")
+        self.assertEqual(report["status"],"REQUIRES_REVIEW")
+        self.assertIn("SPECIAL_RELATIVE_REQUIRES_INCOME_DETAILS",report["warnings"])
+        self.assertNotIn("SPECIAL_RELATIVE_COUNT_MISSING",report["warnings"])
+
+    def test_special_relative_amount_without_count_requires_review(self):
+        source={"salary_gross":5000000,"social_insurance":1000000,
+                "income_tax_withheld":0,
+                "special_relative_deduction_reference":630000}
+        report=finish(2026,source,"PDF_TEXT")
+        self.assertEqual(report["status"],"REQUIRES_REVIEW")
+        self.assertIn("SPECIAL_RELATIVE_COUNT_MISSING",report["warnings"])
+        with TemporaryDirectory() as tmp:
+            dest=Path(tmp)/"bridge.tsv"
+            write_bridge(report,dest)
+            payload=dest.read_text(encoding="utf-8")
+            self.assertIn("special_relative_deduction_reference\\t630000",payload)
+            self.assertNotIn("山田",payload)
+
+    def test_special_relative_vba_bridge_contract(self):
+        root=Path(__file__).resolve().parents[1]
+        code=(root/"vba"/"TaxLawUpdater.bas").read_text(encoding="utf-8")
+        self.assertIn('Case "special_relative_count": extra.Range("B38").Value2 = value',code)
+        self.assertIn('Case "special_relative_deduction_reference": extra.Range("B39").Value2 = value',code)
+        self.assertIn("Public Function SpecialRelativeTaxDeduction(",code)
+        self.assertIn('extra.Range("B38:B39").ClearContents',code)
+        self.assertIn('If specialCount <> CLng(extra.Range("B38").Value2) Then',code)
+        self.assertIn('Abs(specialTotal - CDbl(extra.Range("B39").Value2))',code)
 
 
 if __name__=="__main__":
