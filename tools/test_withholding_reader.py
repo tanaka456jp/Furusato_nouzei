@@ -48,6 +48,16 @@ class WithholdingTest(unittest.TestCase):
         self.assertEqual(finish(2027,fields,"PDF_TEXT")["status"],"REQUIRES_REVIEW")
         self.assertEqual(finish(2026,fields,"IMAGE_OCR")["status"],"REQUIRES_REVIEW")
 
+    def test_vba_skips_warning_metadata_for_numeric_import(self):
+        code = (Path(__file__).resolve().parents[1] / "vba" / "TaxLawUpdater.bas").read_text(encoding="utf-8")
+        # Both the validation and the application loop must skip the
+        # nonnumeric WARNINGS metadata before calling CDbl.
+        safe_loop = 'If key <> "STATUS" And key <> "YEAR" And key <> "WARNINGS" Then'
+        self.assertEqual(code.count(safe_loop), 2)
+        self.assertIn('extra.Range("B20").Value2 = status', code)
+        self.assertIn('extra.Range("B32").Value2 = fields("WARNINGS")', code)
+        self.assertIn("Public Sub ReviewWithholding()", code)
+
     def test_provisional_pdf_bridge_contains_only_status_and_warning_codes(self):
         with TemporaryDirectory() as tmp:
             fields={"salary_gross":5000000,"salary_reference":3560000,
