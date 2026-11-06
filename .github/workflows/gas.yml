@@ -1,0 +1,41 @@
+name: GAS workflow regression
+on:
+  pull_request:
+    paths:
+      - 'gas/**'
+      - '.github/workflows/gas.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'gas/**'
+      - '.github/workflows/gas.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gas-engine:
+    name: Node static and independent tax-model smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node gas/tests/test-engine.cjs
+      - name: Explicit validation boundary
+        run: |
+          echo "GAS JavaScript regression: PASS if previous step passed." >> "$GITHUB_STEP_SUMMARY"
+          echo "Not a GAS deployment, Google account auth test, PDF OCR, or full Excel parity acceptance." >> "$GITHUB_STEP_SUMMARY"
+  gas-windows:
+    name: Windows Node portability smoke
+    runs-on: windows-2022
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node gas/tests/test-engine.cjs
