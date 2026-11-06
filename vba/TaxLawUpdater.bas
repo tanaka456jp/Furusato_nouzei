@@ -404,11 +404,13 @@ Public Sub NewCase()
     If MsgBox("現在の入力を消去しますか？保存が必要な場合は先に案件保存してください。", _
               vbQuestion + vbYesNo + vbDefaultButton2, "新規入力") <> vbYes Then Exit Sub
     With ThisWorkbook.Worksheets("操作画面")
-        .Range("B11:B12,B15:B16,B19:B26,D11:D23").ClearContents
+        .Range("B11:B12,B15:B16,B19:B26,B33:B36,D11:D23").ClearContents
         .Range("D24").Value2 = "確定申告"
     End With
     With ThisWorkbook.Worksheets("例外・分離課税")
-        .Range("B5:B18,B21,B33:B36").ClearContents
+        ' Preserve calculated cells B7/B22/B28-B30.
+        .Range("B5:B6,B8:B12,B13:B21,B24:B26,B32").ClearContents
+        .Range("B25").Value2 = "なし"
         .Range("B4").Value2 = "通常"
         .Range("B8").ClearContents
         .Range("B19:B20").ClearContents
