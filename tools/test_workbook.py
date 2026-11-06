@@ -105,7 +105,10 @@ class WorkbookTest(unittest.TestCase):
         # business/misc income must not be treated as exclusions.
         self.assertIn("N('例外・分離課税'!B21)>0", formula)
         self.assertIn("'例外・分離課税'!B33", formula)
-        self.assertNotIn("N('例外・分離課税'!B24)>0,N(", formula)
+        # Split taxable income must not be an unconditional rejection.
+        # The only N(B24)>0,N(...) guard is for a *combined mortgage credit*.
+        self.assertIn("N('例外・分離課税'!B24)>0,N(B34)>0", formula)
+        self.assertIn("N('例外・分離課税'!B24)=0,OR(", formula)
         self.assertIn("'例外・分離課税'!B20", formula)
         self.assertIn('"REQUIRES_REVIEW"', formula)
         for cell in ("B7", "B8", "B9", "B10", "B12"):
