@@ -83,6 +83,17 @@ test("resident-tax special rate bracket derives from resident tax, not copied in
   assert.equal(last.calculation.residentBasicExcessDeductionYen,150000);
   assert.equal(last.calculation.residentSpecialRateBaseYen,last.calculation.incomeTaxTaxableYen);
 });
+test("low salary source slip cannot bypass the statutory minimum salary deduction",()=>{
+  for(const [year,gross,reference] of [
+    [2026,2000000,1350000],
+    [2025,1800000,1200000],
+    [2026,600000,10000]
+  ]) {
+    const x=tax.calculate({...base,year,salaryGross:gross,salaryIncomeReference:reference,socialInsurance:0});
+    assert.equal(x.status,"HOLD");
+    assert.ok(x.reasons.some(r=>r.includes("最低保障額")));
+  }
+});
 test("special-relative 2026 slip must not be silently estimated",()=>{
   const x=tax.calculate({...base,salaryGross:"5000000",salaryIncomeReference:"3560000",
     socialInsurance:"1600000",deductionsReference:"3956000",hasDependents:true});
