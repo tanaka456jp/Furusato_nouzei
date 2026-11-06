@@ -189,9 +189,13 @@ Public Sub ImportWithholding()
     Dim status As String, raw As String, backup As String, caution As String
     Dim home As Worksheet, extra As Worksheet, code As Long, problem As String
     On Error GoTo Failed
+    ' Select the PDF-only filter initially. Compound patterns hid PDFs.
     picked = Application.GetOpenFilename( _
-        "源泉徴収票 (PDF/画像/データ),*.pdf;*.png;*.jpg;*.jpeg;*.webp;*.tif;*.tiff;*.bmp;*.heic;*.heif;*.csv;*.tsv;*.json;*.txt,すべてのファイル,*.*", _
-        , "源泉徴収票を選択")
+        "PDF (*.pdf),*.pdf,PNG,*.png,JPG,*.jpg,JPEG,*.jpeg," & _
+        "WEBP,*.webp,TIF,*.tif,TIFF,*.tiff,BMP,*.bmp," & _
+        "HEIC,*.heic,HEIF,*.heif,CSV,*.csv,TSV,*.tsv," & _
+        "JSON,*.json,TXT,*.txt,すべてのファイル,*.*", _
+        1, "源泉徴収票を選択")
     If VarType(picked) = vbBoolean Then Exit Sub
     If ThisWorkbook.ReadOnly Or Len(ThisWorkbook.Path) = 0 Then
         Err.Raise vbObjectError + 201, , "書き込み可能なブックをローカルに保存してから取込んでください。"
@@ -259,7 +263,8 @@ Public Sub ImportWithholding()
                      "deductions_reference", "life_deduction_reference", _
                      "earthquake_deduction_reference", "mortgage_credit", _
                      "mortgage_possible_credit", "mortgage_occupancy_year", _
-                     "mortgage_claim_count", "basic_reference", "income_adjustment"
+                     "mortgage_claim_count", "basic_reference", "income_adjustment", _
+                     "under16_count"
                     ' Allowed amounts only; all other columns are rejected.
                 Case Else
                     Err.Raise vbObjectError + 213, , "未承認の取込項目を検出しました。"
@@ -284,7 +289,10 @@ Public Sub ImportWithholding()
     extra.Range("B13:B20").ClearContents
     extra.Range("B32").ClearContents
     extra.Range("B4").Value2 = "通常"
-    home.Range("D24").Value2 = "確定申告"
+    home.Range("B25").Value2 = "なし"
+    home.Range("B26").Value2 = "該当なし"
+    home.Range("D22").Value2 = "該当なし"
+    home.Range("D24").Value2 = "ワンストップ"
     home.Range("B4").Value2 = year
     home.Range("B11").Value2 = year
     For Each key In fields.Keys
@@ -308,6 +316,9 @@ Public Sub ImportWithholding()
                 Case "mortgage_possible_credit": home.Range("B34").Value2 = value
                 Case "mortgage_occupancy_year": home.Range("B35").Value2 = value
                 Case "mortgage_claim_count": home.Range("B36").Value2 = value
+                Case "under16_count":
+                    home.Range("D23").Value2 = value
+                    If value > 0 Then home.Range("B25").Value2 = "あり"
                 Case "income_adjustment": extra.Range("B13").Value2 = value
             End Select
         End If
@@ -404,7 +415,11 @@ Public Sub NewCase()
               vbQuestion + vbYesNo + vbDefaultButton2, "新規入力") <> vbYes Then Exit Sub
     With ThisWorkbook.Worksheets("操作画面")
         .Range("B11:B12,B15:B16,B19:B26,B33:B36,D11:D23").ClearContents
-        .Range("D24").Value2 = "確定申告"
+        .Range("B11").Value2 = .Range("B4").Value2
+        .Range("B25").Value2 = "なし"
+        .Range("B26").Value2 = "該当なし"
+        .Range("D22").Value2 = "該当なし"
+        .Range("D24").Value2 = "ワンストップ"
     End With
     With ThisWorkbook.Worksheets("例外・分離課税")
         ' Preserve calculated cells B7/B22/B28-B30.

@@ -17,6 +17,7 @@ CODE_MAP = {
     "G29":"mortgage_credit","G30":"life_new","G31":"life_old",
     "G32":"medical_care","G33":"annuity_new","G34":"annuity_old",
     "G35":"mortgage_claim_count","G36":"mortgage_possible_credit",
+    "G72":"under16_count",
     "G46":"basic_reference",
     "G47":"income_adjustment",
 }
@@ -159,9 +160,17 @@ def finish(year,fields,mode,warnings=None):
     possible=fields.get("mortgage_possible_credit",0)
     used=fields.get("mortgage_credit")
     if possible>0 and used is None:
-        # G36 is a *possible* tax credit, not the amount actually used
-        # on income tax. Blank G29 must never be silently changed to zero.
-        enough=False;warnings.append("MORTGAGE_APPLIED_CREDIT_MISSING")
+        # Infer an applied zero only where both the taxable salary income is
+        # proven nonpositive and the slip explicitly states zero tax.
+        if (fields.get("salary_reference") is not None
+                and fields.get("deductions_reference") is not None
+                and fields["deductions_reference"]>=fields["salary_reference"]
+                and fields.get("income_tax_withheld")==0):
+            fields["mortgage_credit"]=0
+            used=0
+            warnings.append("MORTGAGE_ZERO_FROM_ZERO_TAXABLE_INCOME")
+        else:
+            enough=False;warnings.append("MORTGAGE_APPLIED_CREDIT_MISSING")
     if possible>0 and "mortgage_occupancy_year" not in fields:
         enough=False;warnings.append("MORTGAGE_OCCUPANCY_YEAR_MISSING")
     if possible>0 and used is not None and used>possible:
