@@ -114,6 +114,22 @@ test("source G46 basic deduction must agree with selected income year",()=>{
   const lastYear=tax.calculate({...base,year:2025,sourceBasicReference:630000});
   assert.equal(lastYear.status,"ESTIMATE");
 });
+test("imported source flags are never waived by user unticking UI checkboxes",()=>{
+  const imported={...base,hasMortgage:false,hasDependents:false,
+    sourceIndicators:{hasMortgage:true,hasDependents:true}};
+  const r=tax.calculate(imported);
+  assert.equal(r.status,"HOLD");
+  assert.equal(r.donationLimitYen,null);
+  assert.ok(r.reasons.some(x=>x.includes("hasMortgage")));
+  assert.ok(r.reasons.some(x=>x.includes("hasDependents")));
+});
+test("malformed imported-source indicators are rejected rather than ignored",()=>{
+  for (const sourceIndicators of [null,"none",[],{hasMortgage:"false"},{bogus:true}]) {
+    const r=tax.calculate({...base,sourceIndicators});
+    assert.equal(r.status,"HOLD");
+    assert.equal(r.donationLimitYen,null);
+  }
+});
 test("GAS entrypoint does not collect or persist source documents",()=>{
   const code=fs.readFileSync(path.join(root,"Code.gs"),"utf8");
   assert.ok(code.includes("function doGet()"));
