@@ -48,6 +48,23 @@ class WithholdingTest(unittest.TestCase):
         self.assertEqual(finish(2027,fields,"PDF_TEXT")["status"],"REQUIRES_REVIEW")
         self.assertEqual(finish(2026,fields,"IMAGE_OCR")["status"],"REQUIRES_REVIEW")
 
+    def test_provisional_pdf_bridge_contains_only_status_and_warning_codes(self):
+        with TemporaryDirectory() as tmp:
+            fields={"salary_gross":5000000,"salary_reference":3560000,
+                    "deductions_reference":3956000,"social_insurance":1600000,
+                    "income_tax_withheld":0,"mortgage_possible_credit":300000,
+                    "mortgage_claim_count":1,"mortgage_occupancy_year":2024}
+            data=finish(2026,fields,"PDF_TEXT")
+            self.assertEqual(data["status"],"REQUIRES_REVIEW")
+            self.assertIn("MORTGAGE_APPLIED_CREDIT_MISSING",data["warnings"])
+            dest=Path(tmp)/"bridge.tsv"
+            write_bridge(data,dest)
+            contents=dest.read_text(encoding="utf-8")
+            self.assertIn("STATUS\\tREQUIRES_REVIEW",contents)
+            self.assertIn("WARNINGS\\t",contents)
+            self.assertIn("mortgage_possible_credit\\t300000",contents)
+            self.assertNotIn("山田",contents)
+
     def test_json_schema_and_identifier_rejection(self):
         with TemporaryDirectory() as tmp:
             p=Path(tmp)/"input.json"
