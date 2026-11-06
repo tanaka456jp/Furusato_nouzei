@@ -1,4 +1,4 @@
-# Furusato_nouzei GAS Web版 — v0.1.0（開発・検証版）
+# Furusato_nouzei GAS Web版 — v0.1.1（開発・検証版）
 
 ## 目的
 Excel VBA版 v4.18.2 の計算仕様を正本として、e-Tax Webのようなステップ式で
@@ -29,11 +29,33 @@ Excel VBA版 v4.18.2 の計算仕様を正本として、e-Tax Webのような�
 課税所得・住民税所得割の計算上は、所得税/住民税人的控除額差に関する標準的調整控除2,500円を用い、
 対象条件を限定しています。
 
+## v0.1.1 源泉徴収票仮取込と安全性の強化
+
+- 読取ツールが `READY_FOR_EXCEL_CROSSCHECK` を返しても、その状態だけでは**原票との照合完了を意味しません**。画面の原票照合チェックを付けない限り結果はHOLDです。
+- `REQUIRES_REVIEW`、警告が残るデータ、認識形式不正、読取項目不明、重複TSVキーなどは、読取結果の確認チェックでは解除できません。
+- 読取金額の修正・年度変更では原票照合チェックを解除します。読取文書の所得年が選択年と異なる場合もサーバー側でHOLDにします。
+- 令和7・8年分の源泉徴収票にある基礎控除額（G46）が取得できた場合、計算エンジンの年度別基礎控除額と照合します。不一致はHOLDです。
+- 扶養・生命保険料・地震保険料・住宅ローン控除等を読取れた場合は、金額の直接利用をせず該当フラグを立ててHOLDにします。
+- 未対応データや個人識別情報を含む読取JSON/TSVは拒否します。利用者の実書類とJSONはGitHub・CI・Google Sheetsへアップロードしません。
+- HOLDのまま理由を記載したレポートを印刷できますが、限度額を表示しません。
+- Linux/Windowsの税額計算試験に加え、DOMを用いたワークフロー・源泉票取込・HOLD解除防止のブラウザ動作試験を追加しました。
+
+### Google接続前に画面を確認する（ローカル動作プレビュー）
+
+`node gas/scripts/build-preview.cjs` で `gas/dist/Furusato_GAS_LocalPreview.html` を生成します。
+ブラウザでこのHTMLファイルを開くと同じGAS用の税額計算エンジンを**ネット接続なし**で操作できます。
+生成ファイルには明確に「ローカル検証プレビュー」と表示され、Google Apps Scriptへのデプロイ・実行承認を意味しません。
+
+GitHub Actions `GAS workflow regression` の `Furusato_GAS_Offline_Preview_<run-id>` Artifactにも同じHTMLを添付します。
+これは**ローカル試験専用**であり、販売・税務実務への利用は禁止です。
+ブラウザ内の入力データを保存・送信する通信処理はありません。
+`node gas/tests/test-preview.cjs` は単一HTMLによる試算と表示を自動検証します。
+
 ## Apps Script Webアプリの実行準備
 現段階では **GitHub内のソースであり、Google上のGASプロジェクト作成・Webデプロイは未実施** です。
 Google Sheetsの実データとは連動させていません。開発者による手順例：
 
-1. 利用者用の**新規**Googleスプレッドシートを作る。
+1. 既に作成済みの開発用Googleスプレッドシートを開く。新規に作る場合も必ず**非公開**とする。個人のファイルIDはGitHubへ登録しない。
 2. 「拡張機能 → Apps Script」でプロジェクトを作り、`gas/Code.gs` と `gas/Engine.gs` の内容を同名ファイルへ貼る。
 3. `gas/Index.html` をHTMLファイルとして追加。必要に応じ `gas/appsscript.json` のスコープを確認・設定する。
 4. エディタから `setupBoundSpreadsheet` を**明示実行**して参照シートを作る。既存の税制シートの上書きは禁止。
@@ -43,6 +65,18 @@ Google Sheetsの実データとは連動させていません。開発者によ�
 
 2026-11-06現在、このチャットの接続ツールではApps Scriptプロジェクトへのコードアップロードとデプロイ操作は提供されていないため、
 未デプロイの状態を成功として扱いません。
+
+
+### claspを利用する場合（任意・Google認可が必要）
+
+Googleの公式CLI `clasp` を利用して、既存スプレッドシートへ紐付くGASプロジェクトを作成することも可能です。
+Node.js 20以降のPCで `npm install -g @google/clasp`、`clasp login` の認可後、
+`gas/` フォルダで `clasp create "Furusato GAS検証版" --type sheets --parentId <スプレッドシートID>` を実行し、
+生成した `.clasp.json` と `appsscript.json` の対象プロジェクト・スコープを確認した上で `clasp push` します。
+`.clasp.json` は環境固有設定のためGitHubコミット対象にしません。OAuthトークン等の認証ファイルもGitHubに登録しません。
+Google Apps Script APIを有効化する必要がある場合があります。実Webアプリのデプロイ操作はGoogleアカウント所有者が実施します。
+
+公式資料：https://developers.google.com/apps-script/guides/clasp
 
 ## テスト
 `node gas/tests/test-engine.cjs`
