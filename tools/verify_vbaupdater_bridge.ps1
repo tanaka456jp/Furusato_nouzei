@@ -139,16 +139,39 @@ try {
                         $safe += $sanitized
                     }
                     $report.push_failure_safe_excerpt = @($safe)
-                    # VBAUpdater logs the exact FIRST semantic mismatch in
-                    # project_diff_diagnostic_*.log. Never expose raw paths.
-                    $diagFolder = Join-Path $updater 'logs'
-                    if (Test-Path -LiteralPath $diagFolder -PathType Container) {
-                        $diffFiles = @(Get-ChildItem -LiteralPath $diagFolder -File -Filter 'project_diff_diagnostic_*.log' |
+                    # Collect only the public VBA semantic-diff excerpts.
+                    # Never upload the raw CLI log or local Windows paths.
+                    $logDir = Join-Path $updater 'logs'
+                    if (Test-Path -LiteralPath $logDir -PathType Container) {
+                        $recent = @(Get-ChildItem -LiteralPath $logDir -Filter 'project_diff_diagnostic_*.log' -File |
                             Where-Object { $_.LastWriteTimeUtc -ge $pushStartedUtc.AddSeconds(-2) } |
                             Sort-Object LastWriteTimeUtc -Descending)
-                        foreach ($diag in $diffFiles) {
-                            $diagText = [IO.File]::ReadAllText($diag.FullName)
-                            $marker = [regex]::Match($diagText, '(?m)^.*D23 OK Status=changed SemanticLeftLength=(\\d+) SemanticRightLength=(\\d+) FirstDifference=(\\d+).*
+                        foreach ($file in $recent) {
+                            $diagLines = [IO.File]::ReadAllLines($file.FullName)
+                            $firstDiff = @($diagLines | Where-Object { $_.Contains('D23 OK Status=changed') } | Select-Object -Last 1)
+                            if ($firstDiff.Count -gt 0) {
+                                $indexText = ([string]$firstDiff[0]).Split(@('FirstDifference='), [StringSplitOptions]::None)
+                                if ($indexText.Count -gt 1) {
+                                    $digits = ([string]$indexText[1]).Split(' ')[0].Trim()
+                                    if ($digits -match '^[0-9]+$') { $report.post_push_diff_index = [int]$digits }
+                                }
+                                $contextLine = @($diagLines | Where-Object { $_.Contains('D23 DIFF LeftContext=') } | Select-Object -Last 1)
+                                if ($contextLine.Count -gt 0) {
+                                    $ctx = [string]$contextLine[0]
+                                    $pos = $ctx.IndexOf('D23 DIFF LeftContext=')
+                                    if ($pos -ge 0) {
+                                        $ctx = $ctx.Substring($pos)
+                                        $ctx = [regex]::Replace($ctx, '(?i)[A-Z]:[\\/][^ ;]+', '<REDACTED>')
+                                        if ($ctx.Length -gt 180) { $ctx = $ctx.Substring(0,180) }
+                                        $report.post_push_diff_context = $ctx
+                                    }
+                                }
+                                break
+                            }
+                        }
+                    }
+                    Write-Host ('VBAUpdater post-push difference index: ' + $report.post_push_diff_index)
+                    Write-Host ('VBAUpdater post-push difference context: ' + $report.post_push_diff_context)
                     Write-Host ('VBAUpdater staged push phases: ' + (($report.push_failure_stages) -join ','))
                     foreach ($diagnostic in $report.push_failure_safe_excerpt) {
                         Write-Host ('VBAUpdater staged push diagnostic: ' + $diagnostic)
