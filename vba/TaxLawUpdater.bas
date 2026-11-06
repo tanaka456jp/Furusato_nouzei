@@ -180,7 +180,10 @@ End Sub
 Public Sub NewCase()
     If MsgBox("現在の入力を消去しますか？保存が必要な場合は先に案件保存してください。", _
               vbQuestion + vbYesNo + vbDefaultButton2, "新規入力") <> vbYes Then Exit Sub
-    ThisWorkbook.Worksheets("操作画面").Range("B11:B26,D11:D25").ClearContents
+    With ThisWorkbook.Worksheets("操作画面")
+        .Range("B11:B12,B15:B16,B19:B26,D11:D23").ClearContents
+        .Range("D24").Value2 = "確定申告"
+    End With
     Application.Calculate
 End Sub
 

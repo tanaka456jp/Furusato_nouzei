@@ -99,9 +99,24 @@ class WorkbookTest(unittest.TestCase):
                     if cell.data_type == "f":
                         self.assertNotIn("#REF!", cell.value, f"{sheet.title}!{cell.coordinate}")
 
+    def test_auto_income_and_deductions_and_no_one_stop_attestation(self):
+        home = self.book[HOME]
+        for address in ("B13", "B14", "B17", "B18"):
+            self.assertEqual(home[address].data_type, "f")
+            self.assertTrue(home[address].protection.locked)
+        self.assertIn("'源泉徴収票入力'!B34", home["B13"].value)
+        self.assertIn("'ふるさと納税限度額計算'!F24", home["B17"].value)
+        self.assertIn("'ふるさと納税限度額計算'!F25", home["B18"].value)
+        self.assertEqual(home["D24"].value, "確定申告")
+        self.assertIsNone(home["D25"].value)
+        self.assertNotIn('D25<>"確認済"', home["B28"].value)
+
     def test_no_customer_values_in_main_inputs(self):
         home = self.book[HOME]
-        for cell in [f"B{i}" for i in range(11, 27)] + [f"D{i}" for i in range(11, 26)]:
+        user_fields = ["B11", "B12", "B15", "B16"] + [
+            f"B{i}" for i in range(19, 27)
+        ] + [f"D{i}" for i in range(11, 24)]
+        for cell in user_fields:
             self.assertIsNone(home[cell].value, cell)
             self.assertFalse(home[cell].protection.locked, cell)
             self.assertTrue(any(cell in rule for rule in home.data_validations.dataValidation), cell)

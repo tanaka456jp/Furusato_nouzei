@@ -143,9 +143,10 @@ def build(source, output):
     field("D22", "本人の控除区分", choices=("該当なし", "寡婦", "ひとり親（母）", "ひとり親（父）", "勤労学生"))
     field("D23", "16歳未満の扶養（人数）", maximum=30)
     field("D24", "申告方式", choices=("ワンストップ", "確定申告"))
+    home["D24"] = "確定申告"
     note(home, 27, "対象外条件は年末調整未済、準確定申告、非居住者、給与以外の所得、住宅ローン・配当等の税額控除、医療費・他の寄附、旧長期損害保険、自治体独自の税率などです。")
     home.row_dimensions[27].height = 42
-    note(home, 31, "票の必須金額は記載なしなら0を入力。控除の内訳は該当分のみ入力し、親族の合計所得が0円なら0と入力します。")
+    note(home, 31, "水色の欄のみ入力。緑色の給与所得・保険料控除・所得控除合計は自動計算されます。")
     home.print_area = "A1:D31"
 
     def link(sheet, dest, src):
@@ -165,6 +166,31 @@ def build(source, output):
     for row, label in enumerate(("寡婦", "ひとり親（母）", "ひとり親（父）", "勤労学生"), 7):
         book["追加人的控除"][f"B{row}"] = f'=IF({ref(HOME, "D22")}="{label}",1,0)'
 
+    # Salary and premiums are user inputs; corresponding deductions are
+    # calculated from approved year masters, not retyped.
+    derived = {
+        "B13": f'=IF(B12="","",{ref(INPUT, "B34")})',
+        "B17": f'=IF(B12="","",{ref(ENGINE, "F24")})',
+        "B18": f'=IF(B12="","",{ref(ENGINE, "F25")})',
+        "B14": (f'=IF(OR(B13="",B16=""),"",'
+                f'SUM(B16:B18,{ref(ENGINE,"F15")},'
+                f'{ref(ENGINE,"F38")},{ref("追加人的控除","C12")}))'),
+    }
+    for addr, formula in derived.items():
+        home[addr] = formula
+        home[addr].fill = PatternFill("solid", fgColor="EAF3EA")
+        home[addr].font = Font(name="Yu Gothic", color="226044", bold=True)
+        home[addr].alignment = Alignment(horizontal="right", vertical="center")
+        home[addr].number_format = '#,##0'
+        home[addr].protection = Protection(locked=True)
+    for addr, label in (
+        ("A13", "給与所得控除後の金額（自動）"),
+        ("A14", "所得控除の額の合計額（自動）"),
+        ("A17", "生命保険料控除額（自動）"),
+        ("A18", "地震保険料控除額（自動）"),
+    ):
+        home[addr] = label
+        home[addr].alignment = Alignment(wrap_text=True, vertical="center")
     # Only inputs drive the gate. Result-dependent checks would create a circular reference.
     ranges = ("B12:B24", "D11:D21", "D23")
     invalid = []
@@ -182,12 +208,12 @@ def build(source, output):
                 f'B14<>SUM(B16:B18,{ref(ENGINE,"F15")},{ref(ENGINE,"F38")},{ref("追加人的控除","C12")})']
     unsupported = (
         'OR(B26="該当あり",AND(D24="確定申告",B15=0),'
-        'AND(D24="ワンストップ",D25<>"確認済"),'
+        ''
         'B13<=IF(SUM(D11:D13,D23)+COUNT(D14:D18)=0,450000,'
         '350000*(1+SUM(D11:D13,D23)+COUNT(D14:D18))+420000),'
         'AND(OR(SUM(D19:D21)>0,D22<>"該当なし"),B13<=1350000))'
     )
-    field("D25", "ワンストップ要件", choices=("確認済",))
+    # No redundant one-stop attestation input.
     bracket_limits = "{0,1951000,3301000,6951000,9001000,18001000,40001000}"
     bracket_rates = "{0.05,0.1,0.2,0.23,0.33,0.4,0.45}"
     previous_bracket_max = "{0,1950000,3300000,6950000,9000000,18000000,40000000}"
