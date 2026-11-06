@@ -1,4 +1,4 @@
-# Furusato_nouzei GAS Web版 — v0.1.4（開発・検証版）
+# Furusato_nouzei GAS Web版 — v0.1.5（開発・検証版）
 
 ## 目的
 Excel VBA版 v4.18.2 の計算仕様を正本として、e-Tax Webのようなステップ式で
@@ -106,19 +106,19 @@ Excel版PR #1を変更・マージしない。正式リリースはHOLD。
 - 原票由来の該当チェックは編集不可。読取データの破棄時は入力・原票照合を初期化。
 - JSONの `personal_identifiers` が `NEVER_EXTRACTED` 以外の場合は取込拒否。原票側警告があれば引き続きHOLD。
 - `gas/tests/test-contract.cjs` でPython読取フィールドとGAS許可項目が厳密一致することを確認。
-- `gas/.claspignore` で `Code.gs`、`Engine.gs`、`Index.html`、`appsscript.json` のみGASへアップロード。生成プレビューとテストは対象外。
+- `gas/.claspignore` で `Code.gs`、`Engine.gs`、`SourceOCR.gs`、`Index.html`、`appsscript.json` のみGASへアップロード。生成プレビューとテストは対象外。
 - `gas/.gitignore` で個人のScript IDやOAuth情報、生成プレビューを誤コミットから保護。
 - Google実デプロイ、実PDF→GAS直接取込、全税制ケース一致は依然未検証。正式版はHOLD。
 
 ## GASを実際のGoogleスプレッドシートへ導入する前の確認（実デプロイ未実施）
 
 CI `GAS workflow regression` の `Furusato_GAS_DeploySources_<run-id>` Artifactは、
-`Code.gs`、`Engine.gs`、`Index.html`、`appsscript.json`、`.claspignore` の5ファイルだけを収録します。
+`Code.gs`、`Engine.gs`、`SourceOCR.gs`、`Index.html`、`appsscript.json`、`.claspignore` の6ファイルだけを収録します。
 `.claspignore` はアップロード制御用でありGAS本体へ送信されません。
 実データ・Excelブック・認証情報・テストコード・プレビューは同梱しません。
 
 Google Sheetsを開いて「拡張機能 → Apps Script」を選び、既存の`Code.gs`の内容を上書きし、
-`Engine.gs`と`Index.html`を新規作成、`appsscript.json`をマニフェスト表示設定から更新してください。
+`Engine.gs`、`SourceOCR.gs`と`Index.html`を新規作成、`appsscript.json`をマニフェスト表示設定から更新してください。
 最初は「デプロイ → テストデプロイ（ウェブアプリ）」を選び、非公開・所有者のみで動作を検証してください。
 その後、一般公開を行うには別途認証方式・保存ポリシー・税額精度の正式受入が必要です。
 
@@ -179,7 +179,7 @@ Google Apps Scriptでの実デプロイは引き続き未実施。正式リリ�
 1. Node.js 20以上とGoogle公式 `@google/clasp` をインストールする：`npm install -g @google/clasp`。
 2. Google Apps Script設定からApps Script APIによる管理アクセスを許可し、手元PCで `clasp login` を行い、正しいGoogleアカウントであることを確認する。個人用の認証情報をGitHubへ送らない。
 3. 展開した配布ZIPの `scripts/` 以下にPowerShell補助ツールがある。まず展開先のルートで `powershell -NoProfile -File .\\scripts\\setup-private-gas.ps1` を実行する。
-4. 利用者が**新規の非公開プロジェクト作成とコード登録を明示的に希望する場合に限り**、`powershell -NoProfile -File .\\scripts\\setup-private-gas.ps1 -SpreadsheetId <対象シートID> -CreateProject -PushSource -OpenProject` を実行する。補助ツールは `MYSELF/USER_DEPLOYING`、OAuthスコープ、4ファイル限定の転送設定を確認してから `clasp create-script` → `clasp show-file-status` → `clasp push` を行う。
+4. 利用者が**新規の非公開プロジェクト作成とコード登録を明示的に希望する場合に限り**、`powershell -NoProfile -File .\\scripts\\setup-private-gas.ps1 -SpreadsheetId <対象シートID> -CreateProject -PushSource -OpenProject` を実行する。補助ツールは `MYSELF/USER_DEPLOYING`、OAuthスコープ、5ファイル限定の転送設定を確認してから `clasp create-script` → `clasp show-file-status` → `clasp push` を行う。
 5. デプロイは自動実行しない。Googleのスクリプトエディタで所有者のみのテストデプロイを明示選択し、別途実際のブラウザで確認する。
 
 この補助ツールを含めた `Furusato_GAS_Windows_Private_Setup_<run-id>` ZIP をGitHub Actionsで生成する。
