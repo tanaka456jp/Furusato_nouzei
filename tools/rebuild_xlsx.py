@@ -1,0 +1,109 @@
+"""Copy the immutable source into a new Excel-compatible OOXML container.
+
+The frozen baseline remains untouched. The one known overlapping merge is
+removed; any different overlap raises rather than silently deleting content.
+All tax values and formulas stay unchanged in the copied source.
+"""
+from copy import copy, deepcopy
+from pathlib import Path
+
+from openpyxl import Workbook, load_workbook
+from openpyxl.cell.cell import MergedCell
+
+
+LAYOUT_GROUPS = (
+    "dimensions", "merges", "freeze", "validations", "conditional",
+    "views", "properties", "sheet_format", "page"
+)
+
+
+def reconstruct(source: Path, output: Path, *, styles: bool, layout: bool, layout_parts=None) -> None:
+    enabled = set(LAYOUT_GROUPS) if layout else set()
+    if layout_parts is not None:
+        enabled = set(layout_parts)
+    if enabled - set(LAYOUT_GROUPS):
+        raise ValueError("Unknown diagnostic layout group")
+    original = load_workbook(source)
+    fresh = Workbook()
+    fresh.remove(fresh.active)
+    try:
+        for sheet in original:
+            dest = fresh.create_sheet(sheet.title)
+            for row in sheet:
+                for cell in row:
+                    if isinstance(cell, MergedCell):
+                        continue
+                    target = dest[cell.coordinate]
+                    if cell.value is not None:
+                        target.value = cell.value
+                    if styles and cell.has_style:
+                        target.font = copy(cell.font)
+                        target.fill = copy(cell.fill)
+                        target.border = copy(cell.border)
+                        target.alignment = copy(cell.alignment)
+                        target.number_format = cell.number_format
+                        target.protection = copy(cell.protection)
+                    if styles and cell.hyperlink is not None:
+                        target.hyperlink = copy(cell.hyperlink)
+                    if styles and cell.comment is not None:
+                        target.comment = copy(cell.comment)
+            if "dimensions" in enabled:
+                for key, dimension in sheet.column_dimensions.items():
+                    dest_dim = dest.column_dimensions[key]
+                    for prop in ('width', 'hidden', 'outlineLevel', 'collapsed', 'min', 'max'):
+                        setattr(dest_dim, prop, getattr(dimension, prop))
+                for key, dimension in sheet.row_dimensions.items():
+                    dest_dim = dest.row_dimensions[key]
+                    for prop in ('height', 'hidden', 'outlineLevel', 'collapsed'):
+                        setattr(dest_dim, prop, getattr(dimension, prop))
+            if "merges" in enabled:
+                merged_ranges = set(str(r) for r in sheet.merged_cells.ranges)
+                approved_nested = (
+                    sheet.title == "ふるさと納税限度額計算"
+                    and "E71:F71" in merged_ranges
+                    and "A71:I71" in merged_ranges
+                )
+                accepted = []
+                for cell_range in sorted(sheet.merged_cells.ranges, key=str):
+                    coordinate = str(cell_range)
+                    # The pre-existing E71:F71 is fully nested in A71:I71.
+                    # Preserve the wider visible header and avoid corrupt OOXML.
+                    if approved_nested and coordinate == "E71:F71":
+                        continue
+                    for previous in accepted:
+                        if (
+                            cell_range.min_row <= previous.max_row
+                            and previous.min_row <= cell_range.max_row
+                            and cell_range.min_col <= previous.max_col
+                            and previous.min_col <= cell_range.max_col
+                        ):
+                            raise ValueError(
+                                f"Unapproved overlapping merge on {sheet.title}: "
+                                f"{previous} and {cell_range}"
+                            )
+                    dest.merge_cells(coordinate)
+                    accepted.append(cell_range)
+            if "freeze" in enabled:
+                dest.freeze_panes = sheet.freeze_panes
+            if "validations" in enabled:
+                dest.data_validations = deepcopy(sheet.data_validations)
+            if "conditional" in enabled:
+                dest.conditional_formatting = deepcopy(sheet.conditional_formatting)
+            if "views" in enabled:
+                dest.views = copy(sheet.views)
+            if "properties" in enabled:
+                dest.sheet_properties = copy(sheet.sheet_properties)
+            if "sheet_format" in enabled:
+                dest.sheet_format = copy(sheet.sheet_format)
+            if "page" in enabled:
+                dest.page_setup = copy(sheet.page_setup)
+                dest.page_margins = copy(sheet.page_margins)
+                dest.print_options = copy(sheet.print_options)
+                if sheet.print_area:
+                    dest.print_area = sheet.print_area
+        fresh.active = 0
+        output.parent.mkdir(parents=True, exist_ok=True)
+        fresh.save(output)
+    finally:
+        fresh.close()
+        original.close()
