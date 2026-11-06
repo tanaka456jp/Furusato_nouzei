@@ -132,6 +132,43 @@ try {
         Assert-Value $homeSheet.Range('B8').Value2 109000 "$year donation estimate"
     }
     QA-Stage 'synthetic-years-pass'
+    # Mortgage tax credit is routine input. Check the resident-tax credit and
+    # every missing/unsupported branch against *real* Excel formula evaluation.
+    QA-Stage 'mortgage-normal-start'
+    $homeSheet.Range('B33').Value2 = 0.0
+    $homeSheet.Range('B34').Value2 = 50000.0
+    $homeSheet.Range('B35').Value2 = 2024.0
+    $homeSheet.Range('B36').Value2 = 1.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B38').Value2 50000.0 'Mortgage resident credit 2024'
+    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Mortgage ordinary case'
+    $homeSheet.Range('B33').ClearContents()
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    if ([string]$homeSheet.Range('B28').Value2 -eq '正常') {
+        throw 'Missing mortgage applied tax credit incorrectly passed'
+    }
+    $homeSheet.Range('B33').Value2 = 0.0
+    $homeSheet.Range('B35').Value2 = 2021.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    if ([string]$homeSheet.Range('B28').Value2 -eq '正常') {
+        throw 'Unverified old mortgage occupancy year incorrectly passed'
+    }
+    $homeSheet.Range('B35').Value2 = 2024.0
+    $homeSheet.Range('B36').Value2 = 2.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    if ([string]$homeSheet.Range('B28').Value2 -eq '正常') {
+        throw 'Multiple mortgage credits incorrectly passed'
+    }
+    $homeSheet.Range('B36').Value2 = 1.0
+    $homeSheet.Range('B33').Value2 = 70000.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    if ([string]$homeSheet.Range('B28').Value2 -eq '正常') {
+        throw 'Applied mortgage credit exceeding possible amount passed'
+    }
+    $homeSheet.Range('B33:B36').ClearContents()
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Mortgage case reset'
+    QA-Stage 'mortgage-regressions-pass'
     # Exercise the actual GitHub-approved update transaction, not only recalculation.
     # The test runs on an isolated copy; no customer workbook is touched.
     QA-Stage 'approved-update-start'
