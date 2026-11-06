@@ -238,6 +238,7 @@ byId("file").addEventListener("change",function(ev){
     text.split(/\r?\n/).forEach(function(line){if(!line)return;var arr=line.split("\t");if(arr.length===2&&/^[A-Za-z0-9_]+$/.test(arr[0]))data[arr[0]]=arr[1];});
    }
    if(Number(data.YEAR)!==2025&&Number(data.YEAR)!==2026)throw new Error("対応する年分を判定できません");
+   if(data.STATUS!=="REQUIRES_REVIEW"&&data.STATUS!=="READY_FOR_EXCEL_CROSSCHECK")throw new Error("読取の検証状態がないため取込できません");
    if(!data.salary_gross||!data.social_insurance)throw new Error("必須項目がありません");
    byId("year").value=String(data.YEAR);
    [["salaryGross","salary_gross"],["salaryIncomeReference","salary_reference"],
