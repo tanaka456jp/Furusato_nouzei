@@ -42,7 +42,7 @@ try {
     $actual = @(Get-ChildItem -LiteralPath $extracted -File | ForEach-Object Name | Sort-Object)
     $expected = @(
         'Furusato_nouzei.xlsx', 'README.txt', 'START_SETUP.cmd',
-        'TaxLawUpdater.bas', 'setup.ps1'
+        'TaxLawUpdater.bas', 'setup.ps1', 'withholding_reader.py'
     ) | Sort-Object
     Require (($actual -join '|') -ceq ($expected -join '|')) 'Unexpected files in review ZIP'
 
@@ -51,6 +51,7 @@ try {
         'setup.ps1' = 'tools/setup.ps1'
         'TaxLawUpdater.bas' = 'vba/TaxLawUpdater.bas'
         'README.txt' = 'docs/user-guide.md'
+        'withholding_reader.py' = 'tools/withholding_reader.py'
     }
     foreach ($file in $pairs.Keys) {
         $expectedHash = (Get-FileHash -LiteralPath (Join-Path $root $pairs[$file]) -Algorithm SHA256).Hash
