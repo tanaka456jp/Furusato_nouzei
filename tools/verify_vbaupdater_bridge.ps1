@@ -98,11 +98,30 @@ try {
             }
             Push-Location -LiteralPath $updater
             try {
-                & $cli project-push -ProjectRoot $stage *> $null
-                if ($LASTEXITCODE -ne 0) {
+                # Capture developer-tool diagnostics only inside the disposable
+                # staging directory. Publish no raw output or local paths.
+                $pushLog = Join-Path $stage 'push_runtime.log'
+                & $cli project-push -ProjectRoot $stage *> $pushLog
+                $pushCode = $LASTEXITCODE
+                if ($pushCode -ne 0) {
                     $report.project_push = 'FAIL'
+                    $rawText = [IO.File]::ReadAllText($pushLog)
+                    $hints = New-Object System.Collections.Generic.List[string]
+                    if ($rawText -match '(?i)compile|syntax') { $hints.Add('VBA_COMPILE') }
+                    if ($rawText -match '(?i)trust|permission|access.denied|unauthorized') { $hints.Add('ACCESS_POLICY') }
+                    if ($rawText -match '(?i)backup|restore') { $hints.Add('BACKUP_OR_RESTORE') }
+                    if ($rawText -match '(?i)workbooks.open|excel.com|0x800a03ec') { $hints.Add('EXCEL_COM') }
+                    if ($rawText -match '(?i)module|vbproject') { $hints.Add('MODULE_OR_VBPROJECT') }
+                    if ($rawText -match '(?i)timeout|time.out') { $hints.Add('TIMEOUT') }
+                    if ($hints.Count -eq 0) { $hints.Add('UNCLASSIFIED') }
+                    $report.warning = ('VBAUpdater staging push failed: exit=' +
+                                       $pushCode + ';category=' + ($hints -join ',') +
+                                       '. No original workbook was changed.')
+                    Write-Host ('VBAUpdater staged push exit code: ' + $pushCode +
+                                ' / hint: ' + ($hints -join ','))
                     throw 'VBAUpdater project-push failed on disposable copy'
                 }
+                if (Test-Path -LiteralPath $pushLog) { Remove-Item -LiteralPath $pushLog -Force }
                 $report.project_push = 'PASS'
                 & $cli project-diff -ProjectRoot $stage *> $null
                 if ($LASTEXITCODE -ne 0) {
