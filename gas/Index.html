@@ -50,7 +50,7 @@ main{margin:0;padding:0;max-width:none}.panel{border:0;box-shadow:none;padding:0
 </style></head>
 <body>
 <header><h1>ふるさと納税 限度額シミュレーター</h1>
-<p>質問に答えるだけで計算結果と根拠を表示｜GAS検証版 v0.1.0</p></header>
+<p>質問に答えるだけで計算結果と根拠を表示｜GAS検証版 v0.1.1</p></header>
 <main><div class="panel">
 <div id="wizard">
 <div class="stepwords"><span>基本情報</span><span>所得</span><span>控除</span><span>入力確認</span><span>結果</span></div>
@@ -75,7 +75,10 @@ main{margin:0;padding:0;max-width:none}.panel{border:0;box-shadow:none;padding:0
 <h3>オフライン読取結果の取込</h3>
 <p class="muted">既存のローカル読取ツールが出力したJSON/TSVファイルを使えます。源泉徴収票のPDF・画像からの直接OCRは未移植です。</p>
 <div class="field"><label for="file">読取結果ファイル（任意、JSON/TSV）</label><input id="file" type="file" accept=".json,.tsv,.txt"></div>
-<div class="info warning" id="sourceMessage">未確認の源泉徴収票を自動承認しません。氏名・住所・個人番号はこの画面では求めません。</div>
+<div class="info warning" id="sourceMessage">源泉徴収票の数値は原票を照合するまで自動承認しません。</div>
+<label class="check" id="sourceConfirmBox" style="display:none;margin-top:12px">
+<input type="checkbox" id="sourceConfirmed">源泉徴収票の所得年・支払額・給与所得・社会保険料と、扶養・控除の有無を原票と照合しました。</label>
+<button type="button" id="clearImportedFile" style="display:none;margin-top:12px">読取データを破棄して手入力に戻る</button>
 </section>
 <section class="screen" id="screen2">
 <h2>STEP 3　その他の控除・所得</h2>
@@ -119,7 +122,7 @@ main{margin:0;padding:0;max-width:none}.panel{border:0;box-shadow:none;padding:0
 <script>
 (function () {
 "use strict";
-var state={step:0,sourceReviewPending:false,sourceInfo:""};
+var state={step:0,sourceStatus:"",sourceYear:null};
 var steps=Array.prototype.slice.call(document.querySelectorAll(".stage"));
 function byId(id){return document.getElementById(id);}
 function notify(message){byId("flash").textContent=message||"";}
@@ -133,7 +136,9 @@ function formData(){
  salaryIncomeReference:fieldValue("salaryIncomeReference"),
  deductionsReference:fieldValue("deductionsReference"),
  acknowledgedExclusions:byId("ack").checked,
- sourceReviewPending:state.sourceReviewPending};
+ sourceReviewPending:state.sourceStatus!==""&&
+  (state.sourceStatus!=="READY_FOR_EXCEL_CROSSCHECK"||!byId("sourceConfirmed").checked)};
+ if(state.sourceYear!==null)obj.sourceYear=state.sourceYear;
  Array.prototype.forEach.call(document.querySelectorAll("[data-key]"),function(node){obj[node.getAttribute("data-key")]=node.checked;});
  return obj;
 }
@@ -171,7 +176,7 @@ function buildConfirmation(){
  if(d.deductionsReference)tableRow(table,"原票の所得控除合計",yen(d.deductionsReference));
  var flags=Array.prototype.slice.call(document.querySelectorAll("[data-key]:checked")).map(function(x){return x.parentNode.textContent.trim();});
  tableRow(table,"その他の所得・控除",flags.length?flags.join("、"):"該当なし");
- if(d.sourceReviewPending)tableRow(table,"取込文書","要照合（HOLD）");
+ if(state.sourceStatus)tableRow(table,"取込文書",d.sourceReviewPending?"要照合（HOLD）":"原票照合済み（利用者確認）");
 }
 function processResult(result){
  var lines=byId("reportLines");lines.textContent="";byId("reasonBlock").textContent="";
@@ -200,7 +205,7 @@ function processResult(result){
   });
  }
  byId("footer").textContent="試算版 "+String(result.version||"")+"／税制マスタ "+String(result.taxRevision||"")+"／対象所得年 "+String(result.year||"未確定")+"。計算は標準条件の概算です。税務申告・自治体の最終税額を保証しません。";
- byId("print").disabled=!ok;
+ byId("print").disabled=false;
  showStep(4);
 }
 function send(){
