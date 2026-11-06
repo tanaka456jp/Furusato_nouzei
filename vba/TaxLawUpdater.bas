@@ -418,6 +418,12 @@ Public Sub RecalculateCase()
     If Trim$(CStr(home.Range("B26").Value2)) = "" Then home.Range("B26").Value2 = "該当なし"
     If Trim$(CStr(home.Range("D22").Value2)) = "" Then home.Range("D22").Value2 = "該当なし"
     If Trim$(CStr(home.Range("D24").Value2)) = "" Then home.Range("D24").Value2 = "ワンストップ"
+    ' One-stop donations are invalid if split income is declared on a return.
+    If IsNumeric(ThisWorkbook.Worksheets("例外・分離課税").Range("B24").Value2) Then
+        If CDbl(ThisWorkbook.Worksheets("例外・分離課税").Range("B24").Value2) > 0 Then
+            home.Range("D24").Value2 = "確定申告"
+        End If
+    End If
     Application.Calculate
 End Sub
 
@@ -436,6 +442,7 @@ Public Sub NewCase()
         ' Preserve calculated cells B7/B22/B28-B30.
         .Range("B5:B6,B8:B12,B13:B21,B24:B26,B32").ClearContents
         .Range("B25").Value2 = "なし"
+        .Range("B33").Value2 = "なし"
         .Range("B4").Value2 = "通常"
         .Range("B8").ClearContents
         .Range("B19:B20").ClearContents
@@ -518,6 +525,7 @@ Public Sub ShowAdvanced()
 End Sub
 
 Public Sub ReturnFromAdvanced()
+    Call RecalculateCase
     ThisWorkbook.Worksheets("操作画面").Activate
     ThisWorkbook.Worksheets("例外・分離課税").Visible = xlSheetVeryHidden
 End Sub

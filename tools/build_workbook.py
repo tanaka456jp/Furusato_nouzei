@@ -98,7 +98,7 @@ def build(source, output):
         home.add_data_validation(validation)
         validation.add(home[cell])
 
-    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.15 検証版")
+    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.16 検証版")
     bar(extra, 1, "追加所得・分離課税（所得年内で事前試算）")
     extra.merge_cells("A3:D3")
     extra["A3"] = "翌年度の住民税通知書は参照せず、所得年内の収入・経費・控除と法定税率表から計算します。"
@@ -127,17 +127,20 @@ def build(source, output):
         (24, "申告分離課税の課税所得", None, None),
         (25, "分離所得の種類", "なし", ("なし", "上場株式", "土地建物長期", "土地建物短期", "先物", "その他")),
         (26, "その他の総合課税所得（所得額）", None, None),
+        (27, "分離課税の住民税所得割（自動）", None, None),
         (28, "追加所得の合計（調整控除後・自動）", None, None),
         (29, "給与と年金の所得金額調整控除（自動）", None, None),
         (30, "給与等と追加所得の合計（自動）", None, None),
         (32, "源泉票読取の確認事項（自動設定）", None, None),
+        (33, "分離課税の特例・繰越損失等", "なし", ("なし", "あり")),
+        (34, "分離課税の所得税率（自動）", None, None),
     )
     for row, label, initial, choices in extra_items:
         extra[f"A{row}"] = label
         extra[f"A{row}"].alignment = Alignment(wrap_text=True, vertical="center")
         extra[f"B{row}"] = initial
         extra.row_dimensions[row].height = 27
-        if row not in (7, 19, 20, 22, 28, 29, 30, 32):
+        if row not in (7, 19, 20, 22, 27, 28, 29, 30, 32, 34):
             extra[f"B{row}"].fill = PatternFill("solid", fgColor="E2F2FF")
             extra[f"B{row}"].protection = Protection(locked=False)
             extra[f"B{row}"].number_format = '#,##0'
@@ -174,24 +177,36 @@ def build(source, output):
     )
     extra["B30"] = f'=IF(B28="","",N({ref(HOME,"B13")})+B28)'
     extra["B22"] = f'=IF({ref(RESIDENT,"B21")}="","",{ref(RESIDENT,"B21")})'
-    for address in ("B7", "B22", "B28", "B29", "B30"):
+    # Use the *taxable* split-income amount, not the proceeds before costs.
+    # No special deductions, carryforwards or reduced rates in this path.
+    extra["B27"] = ('=IF(N(B24)=0,0,IF(OR(B25="上場株式",'
+                     'B25="土地建物長期",B25="先物"),ROUNDDOWN(B24*0.05,0),'
+                     'IF(B25="土地建物短期",ROUNDDOWN(B24*0.09,0),"")))')
+    extra["B34"] = ('=IF(N(B24)=0,0,IF(B25="土地建物短期",0.3,'
+                     'IF(OR(B25="上場株式",B25="土地建物長期",'
+                     'B25="先物"),0.15,"")))')
+    for address in ("B7", "B22", "B27", "B28", "B29", "B30", "B34"):
         cell = extra[address]
         cell.fill = PatternFill("solid", fgColor="EAF3EA")
         cell.protection = Protection(locked=True)
         cell.font = Font(name="Yu Gothic", bold=True, color="226044")
         cell.alignment = Alignment(horizontal="right", vertical="center")
-        cell.number_format = "0.0%" if address == "B22" else '#,##0'
+        cell.number_format = "0.0%" if address in ("B22","B34") else '#,##0'
     extra.merge_cells("A23:D23")
-    extra["A23"] = "公的年金・雑所得・事業所得は総合課税に自動加算。分離課税と特殊控除は未確定表示のまま停止します。"
+    extra["A23"] = "通常の申告分離課税は所得割5%（短期土地建物9%）を自動加算。申告不要の上場株式等は入力しません。"
     extra["A23"].alignment = Alignment(wrap_text=True)
     extra.row_dimensions[23].height = 34
     extra.merge_cells("A31:D31")
-    extra["A31"] = "公的年金の年齢区分は所得年12月31日時点。欠損・繰越損失・分離課税は個別精査が必要です。"
+    extra["A31"] = "分離課税のB24は所得控除後の課税所得です。特別控除・繰越損失・軽減税率等はB33「あり」で安全停止します。"
     extra["A31"].alignment = Alignment(wrap_text=True)
     extra.row_dimensions[31].height = 36
     extra.row_dimensions[32].height = 42
     extra["B32"].alignment = Alignment(wrap_text=True)
-    extra.print_area = "A1:D32"
+    extra.merge_cells("A35:D35")
+    extra["A35"] = "申告分離課税として申告する所得のみ。NISA・申告不要の特定口座は加算しません。"
+    extra["A35"].alignment = Alignment(wrap_text=True)
+    extra.row_dimensions[35].height = 33
+    extra.print_area = "A1:D35"
     home.row_dimensions[3].height = 28
     field("B4", "選択する所得年", "2026", ("2025", "2026"))
     home["C4"], home["D4"] = "適用中の所得年", "=" + ref("設定・税率", "B4")
@@ -251,9 +266,9 @@ def build(source, output):
     field("D22", "本人の控除区分", "該当なし", ("該当なし", "寡婦", "ひとり親（母）", "ひとり親（父）", "勤労学生"))
     field("D23", "16歳未満の扶養（人数）", maximum=30)
     field("D24", "申告方式", "ワンストップ", ("ワンストップ", "確定申告"))
-    note(home, 27, "公的年金・事業所得・雑所得は追加所得から入力できます。分離課税・非居住者・医療費・他の寄附・自治体独自税率などは個別確認。住宅ローン控除は下段の通常入力欄で処理します。")
+    note(home, 27, "公的年金・事業所得・雑所得・通常の申告分離課税は追加所得から入力できます。申告不要の上場株式・特例譲渡・繰越損失は区別してください。住宅ローン控除は通常欄です。")
     home.row_dimensions[27].height = 42
-    note(home, 31, "原票の所得控除額を優先し、任意項目の空欄は原則0・該当なしとして計算します。追加所得は別画面へ。")
+    note(home, 31, "原票の所得控除額を優先。申告する株式譲渡益・分離課税は追加所得から入力し、申告方式は自動切替。")
     bar(home, 32, "住宅ローン控除（通常処理・源泉徴収票から転記）")
     field("B33", "住宅ローン控除の所得税適用額")
     field("B34", "住宅ローン控除可能額（G36）")
@@ -356,13 +371,40 @@ def build(source, output):
                 f'B14<>SUM(B16:B18,{ref(ENGINE,"F15")},{ref(ENGINE,"F38")},{ref("追加人的控除","C12")}))']
     unsupported = (
         'OR(B26="該当あり",'
-        +f'{ref(ADVANCED,"B4")}<>"通常",'
-        +f'N({ref(ADVANCED,"B24")})>0,N({ref(ADVANCED,"B21")})>0,'
+        +f'{ref(ADVANCED,"B4")}="その他要確認",'
+        +f'AND({ref(ADVANCED,"B4")}="分離課税",N({ref(ADVANCED,"B24")})=0),'
+        +f'AND(N({ref(ADVANCED,"B24")})>0,NOT(OR('
+        +f'{ref(ADVANCED,"B25")}="上場株式",'
+        +f'{ref(ADVANCED,"B25")}="土地建物長期",'
+        +f'{ref(ADVANCED,"B25")}="土地建物短期",'
+        +f'{ref(ADVANCED,"B25")}="先物"))),'
+        +f'AND(N({ref(ADVANCED,"B24")})>0,{ref(ADVANCED,"B33")}<>"なし"),'
+        +f'N({ref(ADVANCED,"B21")})>0,'
         +f'{ref(ADVANCED,"B20")}="REQUIRES_REVIEW",'
-        +'AND(D24="確定申告",B15=0,B34=""),'
+        +f'AND(D24="確定申告",B15=0,B34="",N({ref(ADVANCED,"B24")})=0),'
         'B13<=IF(SUM(D11:D13,D23)+COUNT(D14:D18)=0,450000,'
         '350000*(1+SUM(D11:D13,D23)+COUNT(D14:D18))+420000),'
         'AND(OR(SUM(D19:D21)>0,D22<>"該当なし"),B13<=1350000))'
+    )
+    # Add declared split-tax resident levy to the existing levy base. Do
+    # not mix split taxable income into the ordinary taxable bracket.
+    basic_levy = resident["B15"].value
+    if not basic_levy.endswith("))"):
+        raise ValueError("Unexpected resident-income levy formula")
+    resident["B15"] = basic_levy[:-1] + f'+N({ref(ADVANCED,"B27")}))'
+    # The statutory donation income ceiling includes declared split gains.
+    max_donation = resident["B25"].value
+    gross_factor = ref(ENGINE, "D15") + "*"
+    if max_donation.count(gross_factor) != 1:
+        raise ValueError("Unexpected resident donation ceiling formula")
+    resident["B25"] = max_donation.replace(
+        gross_factor, f'({ref(ENGINE,"D15")}+N({ref(ADVANCED,"B24")}))*')
+    # No ordinary taxable income: use the corresponding split 15% or 30%
+    # special ratio; mixed taxable income keeps the ordinary bracket.
+    general_rate = resident["B21"].value
+    resident["B21"] = (
+        f'=IF(AND(N({ref(ADVANCED,"B24")})>0,B20<=0),'
+        f'{ref(ADVANCED,"B34")},{general_rate[1:]})'
     )
     # No redundant one-stop attestation input.
     bracket_limits = "{0,1951000,3301000,6951000,9001000,18001000,40001000}"
@@ -424,9 +466,9 @@ def build(source, output):
         ("総合課税所得（給与・年金等）", ref(ENGINE, "D15"), "給与所得＋追加の総合課税所得"),
         ("所得控除（住民税）", f'{ref(HOME,"B14")}-{ref(ENGINE,"J43")}', "所得税の所得控除合計 − 控除差額"),
         ("住民税課税所得", ref(RESIDENT, "B6"), "総合所得−住民税所得控除。千円未満切捨て"),
-        ("住民税算出所得割", ref(RESIDENT, "B15"), "住民税課税所得 × 標準税率"),
+        ("住民税算出所得割", ref(RESIDENT, "B15"), "総合課税所得割＋申告分離課税所得割"),
         ("調整控除", ref(RESIDENT, "B14"), "課税所得と人的控除差から算定"),
-        ("調整控除後の所得割", ref(RESIDENT, "B16"), "当年の給与・追加所得から自動推計"),
+        ("調整控除後の所得割", ref(RESIDENT, "B16"), "当年の総合所得・申告分離課税から推計"),
         ("ふるさと納税特例控除上限", ref(RESIDENT, "B19"), "調整控除後の所得割 × 特例控除限度割合"),
         ("特例割合判定の所得税率", ref(RESIDENT, "B21"), "住民税課税所得から人的控除差等を控除して判定"),
         ("寄附限度額（丸め前）", ref(RESIDENT, "B23"), "2,000円 ＋ 特例上限 ÷（90% − 所得税率 × 1.021）"),
