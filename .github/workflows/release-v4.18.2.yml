@@ -1,0 +1,296 @@
+name: Publish Furusato_nouzei v4.18.2 (gated)
+
+on:
+  push:
+    branches: [release/v4.18.2]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: furusato-v4.18.2-official
+  cancel-in-progress: true
+
+jobs:
+  provenance:
+    name: Source provenance and statutory/regression audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Require original v4.18.2 code and release-only diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          baseline=fdb51dfd402f674366a0191d7f7095d335fbf723
+          git merge-base --is-ancestor "$baseline" "$GITHUB_SHA"
+          git diff --name-only "$baseline" "$GITHUB_SHA" > /tmp/changes.txt
+          cat /tmp/changes.txt
+          while IFS= read -r file; do
+            case "$file" in
+              tools/build_workbook.py|docs/user-guide.md|docs/release-notes-v4.18.2.md|.github/workflows/release-v4.18.2.yml) ;;
+              *) echo "Unexpected product source mutation: $file"; exit 1 ;;
+            esac
+          done < /tmp/changes.txt
+          grep -q 'v4.18.2 正式版' tools/build_workbook.py
+          grep -q 'v4.18.2 正式版' docs/user-guide.md
+          ! grep -q '^# ふるさと納税 .*検証用' docs/user-guide.md
+          echo "PASS: v4.18.2 code pinned; only display, guide and release infrastructure changed."
+      - name: Run independently checked workbook regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install openpyxl==3.1.5
+          python tools/verify_baseline.py
+          python tools/test_catalog_sync.py
+          python tools/test_file_picker_filter.py
+          python tools/qa_contract.py workbook/baseline.xlsx
+          python tools/report_formula_wiring.py
+          python tools/test_workbook.py
+          python tools/build_workbook.py release_source_check.xlsx
+          python tools/audit_tax_tables.py workbook/baseline.xlsx release_source_check.xlsx
+          python tools/audit_statutory_tables.py workbook/baseline.xlsx
+          python tools/audit_statutory_tables.py release_source_check.xlsx
+          python tools/test_withholding_reader.py
+          python tools/test_vbaupdater_bridge.py
+          python tools/test_shared_runner_contract.py
+          python tools/package_review.py review_setup.zip
+          python tools/test_setup_contract.py review_setup.zip
+
+  windows-package:
+    name: Windows reader EXE and Python-free delivery ZIP
+    needs: [provenance]
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Assemble and smoke-test Windows binary reader
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m pip install pyinstaller==6.16.0 pymupdf==1.26.7 pillow pytesseract pillow-heif openpyxl==3.1.5
+          if ($LASTEXITCODE -ne 0) { throw 'Install dependencies failed' }
+          python tools/test_withholding_reader.py
+          if ($LASTEXITCODE -ne 0) { throw 'Withholding reader unit tests failed' }
+          python -m PyInstaller --onefile --clean --noconfirm --name FurusatoDocumentReader tools/withholding_reader.py
+          if ($LASTEXITCODE -ne 0) { throw 'Windows reader EXE build failed' }
+          $tmp = Join-Path $env:RUNNER_TEMP ('furusato_reader_'+[guid]::NewGuid().ToString('N'))
+          New-Item -ItemType Directory -Path $tmp | Out-Null
+          try {
+            @('field,value','year,2026','salary_gross,7000000','social_insurance,1000000','income_tax_withheld,0') |
+              Set-Content -LiteralPath (Join-Path $tmp 'test.csv') -Encoding Ascii
+            & .\dist\FurusatoDocumentReader.exe --input (Join-Path $tmp 'test.csv') --output (Join-Path $tmp 'out.json') --bridge (Join-Path $tmp 'out.tsv')
+            if ($LASTEXITCODE -ne 0) { throw 'EXE input smoke failed' }
+            $response = Get-Content -LiteralPath (Join-Path $tmp 'out.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+            if ($response.status -ne 'READY_FOR_EXCEL_CROSSCHECK' -or $response.fields.salary_gross -ne 7000000) {
+              throw 'EXE smoke produced unexpected result'
+            }
+          } finally {
+            Remove-Item -LiteralPath $tmp -Recurse -Force
+          }
+      - name: Build final installer ZIP and verify entry contract
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Path release_out\windows -Force | Out-Null
+          python tools/package_review.py release_out\windows\Furusato_nouzei_v4.18.2_Windows.zip dist\FurusatoDocumentReader.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Windows ZIP failed' }
+          python tools/test_windows_package.py release_out\windows\Furusato_nouzei_v4.18.2_Windows.zip
+          if ($LASTEXITCODE -ne 0) { throw 'Windows ZIP verification failed' }
+          $expected = (Get-FileHash -LiteralPath docs\user-guide.md -Algorithm SHA256).Hash
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip=[IO.Compression.ZipFile]::OpenRead((Resolve-Path release_out\windows\Furusato_nouzei_v4.18.2_Windows.zip).Path)
+          try {
+            $entry=$zip.GetEntry('README.txt')
+            if (-not $entry) { throw 'README.txt missing' }
+            $reader=New-Object IO.StreamReader($entry.Open(),[Text.Encoding]::UTF8)
+            try { $guide=$reader.ReadToEnd() } finally { $reader.Dispose() }
+            if (-not $guide.Contains('v4.18.2 正式版')) { throw 'Official README version mismatch' }
+          } finally { $zip.Dispose() }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: official-windows
+          path: |
+            release_out/windows/Furusato_nouzei_v4.18.2_Windows.zip
+          if-no-files-found: error
+          retention-days: 30
+
+  excel-acceptance:
+    name: Real Windows Excel, PDF and staged VBAUpdater acceptance
+    needs: [provenance]
+    runs-on: [self-hosted, Windows, furusato-excel]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build native XLSM and rerun actual Excel acceptance
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m pip install openpyxl==3.1.5
+          if ($LASTEXITCODE -ne 0) { throw 'openpyxl install failed' }
+          $work = Join-Path $env:RUNNER_TEMP ('furusato-release-'+$env:GITHUB_RUN_ID)
+          if (Test-Path -LiteralPath $work) { throw 'Preexisting isolated release folder' }
+          New-Item -ItemType Directory -Path $work | Out-Null
+          python tools/package_review.py (Join-Path $work 'setup.zip')
+          if ($LASTEXITCODE -ne 0) { throw 'Release source package failed' }
+          Expand-Archive -LiteralPath (Join-Path $work 'setup.zip') -DestinationPath (Join-Path $work 'review')
+          powershell.exe -NoProfile -File (Join-Path $work 'review/setup.ps1')
+          if ($LASTEXITCODE -ne 0) { throw 'Native XLSM setup failed' }
+          $book=Join-Path $work 'review/Furusato_nouzei.xlsm'
+          $evidence=Join-Path $work 'excel_acceptance.json'
+          & .\tools\verify_excel.ps1 -Workbook $book -EvidencePath $evidence
+          if (-not $?) { throw 'Native Excel acceptance failed' }
+          $state=Get-Content -LiteralPath $evidence -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($state.status -ne 'PASS') { throw 'Excel acceptance status not PASS' }
+          if ($state.workbook_sha256 -cne (Get-FileHash -LiteralPath $book -Algorithm SHA256).Hash) {
+            throw 'Workbook SHA-256 mismatch against evidence'
+          }
+          $staged=Join-Path $work 'vbaupdater_bridge.json'
+          & .\tools\verify_vbaupdater_bridge.ps1 -Workbook $book -StagingRoot (Join-Path $work 'readonly') -EvidencePath $staged
+          if (-not $?) { throw 'VBAUpdater readonly failed' }
+          $readonly=Get-Content -LiteralPath $staged -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($readonly.status -ne 'READONLY_PREFLIGHT_DIFF_PASS' -or -not $readonly.original_preserved) {
+            throw 'VBAUpdater readonly evidence invalid'
+          }
+          $pushEvidence=Join-Path $work 'vbaupdater_push.json'
+          & .\tools\verify_vbaupdater_bridge.ps1 -Workbook $book -StagingRoot (Join-Path $work 'push') -EvidencePath $pushEvidence -PushInSandbox
+          if (-not $?) { throw 'VBAUpdater push failed' }
+          $push=Get-Content -LiteralPath $pushEvidence -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($push.status -ne 'STAGED_PUSH_EXCEL_PASS' -or
+              $push.project_push -ne 'PASS' -or $push.post_push_diff -ne 'PASS' -or
+              $push.post_push_excel -ne 'PASS' -or -not $push.original_preserved -or
+              -not $push.synthetic_source_verified -or
+              $push.synthetic_source_delta -ne 'MARKER_COMMENT_IN_STAGE_ONLY') {
+            throw 'VBAUpdater staged push/Excel verification incomplete'
+          }
+          New-Item -ItemType Directory -Path release_out\excel -Force | Out-Null
+          Copy-Item -LiteralPath $book -Destination release_out\excel\Furusato_nouzei.xlsm
+          Copy-Item -LiteralPath $evidence -Destination release_out\excel\excel_acceptance.json
+          Copy-Item -LiteralPath $staged -Destination release_out\excel\vbaupdater_bridge.json
+          Copy-Item -LiteralPath $pushEvidence -Destination release_out\excel\vbaupdater_push.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: official-excel
+          path: release_out/excel/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Delete isolated job-owned copies only
+        if: always()
+        shell: powershell
+        run: |
+          $work=Join-Path $env:RUNNER_TEMP ('furusato-release-'+$env:GITHUB_RUN_ID)
+          if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -Force }
+
+  publish:
+    name: Verify both deliveries and publish immutable v4.18.2 release
+    needs: [provenance, windows-package, excel-acceptance]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: official-windows
+          path: bundle/windows
+      - uses: actions/download-artifact@v4
+        with:
+          name: official-excel
+          path: bundle/excel
+      - name: Validate acceptance JSON and create ready-to-use delivery and hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          from zipfile import ZipFile, ZIP_DEFLATED
+          ex=Path('bundle/excel')
+          win=Path('bundle/windows/Furusato_nouzei_v4.18.2_Windows.zip')
+          book=ex/'Furusato_nouzei.xlsm'
+          assert book.stat().st_size>20000 and win.stat().st_size>1000000
+          sha=lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
+          excel=json.loads((ex/'excel_acceptance.json').read_text(encoding='utf-8-sig'))
+          assert excel['status']=='PASS'
+          assert excel['workbook_sha256'].lower()==sha(book)
+          readonly=json.loads((ex/'vbaupdater_bridge.json').read_text(encoding='utf-8-sig'))
+          push=json.loads((ex/'vbaupdater_push.json').read_text(encoding='utf-8-sig'))
+          assert readonly['status']=='READONLY_PREFLIGHT_DIFF_PASS' and readonly['original_preserved']
+          assert push['status']=='STAGED_PUSH_EXCEL_PASS' and push['original_preserved']
+          assert push['project_push']=='PASS' and push['post_push_diff']=='PASS' and push['post_push_excel']=='PASS'
+          assert push['synthetic_source_delta']=='MARKER_COMMENT_IN_STAGE_ONLY' and push['synthetic_source_verified']
+          with ZipFile(win) as archive:
+            assert archive.testzip() is None
+            required={'Furusato_nouzei.xlsx','START_SETUP.cmd','setup.ps1','TaxLawUpdater.bas','FurusatoDocumentReader.exe','README.txt'}
+            assert set(archive.namelist())==required
+            reader=archive.read('FurusatoDocumentReader.exe')
+            assert len(reader)>1000000
+            readme=archive.read('README.txt')
+            assert 'v4.18.2 正式版'.encode('utf8') in readme
+          out=Path('dist')
+          out.mkdir(exist_ok=True)
+          ready=out/'Furusato_nouzei_v4.18.2_ReadyToUse.zip'
+          with ZipFile(ready,'w',ZIP_DEFLATED,compresslevel=6) as archive:
+            archive.write(book,'Furusato_nouzei.xlsm')
+            archive.writestr('FurusatoDocumentReader.exe',reader)
+            archive.writestr('README.txt',readme)
+          with ZipFile(ready) as archive:
+            assert archive.testzip() is None
+            assert set(archive.namelist())=={'Furusato_nouzei.xlsm','FurusatoDocumentReader.exe','README.txt'}
+            assert hashlib.sha256(archive.read('Furusato_nouzei.xlsm')).hexdigest()==sha(book)
+          installer=out/'Furusato_nouzei_v4.18.2_Windows.zip'
+          installer.write_bytes(win.read_bytes())
+          lines=[f'{sha(p)}  {p.name}' for p in [ready,installer]]
+          (out/'SHA256SUMS.txt').write_text('\n'.join(lines)+'\n',encoding='utf8')
+          (out/'acceptance-v4.18.2.json').write_text(json.dumps({
+            'version':'v4.18.2','source_baseline':'fdb51dfd402f674366a0191d7f7095d335fbf723',
+            'release_commit':'release-branch-validated','excel_acceptance':'PASS',
+            'vbaupdater_readonly':readonly['status'],'vbaupdater_push':push['status'],
+            'ready_to_use_sha256':sha(ready),'installer_sha256':sha(installer)
+          },ensure_ascii=False,indent=2),encoding='utf8')
+          print('PASS: source checks, real Excel, VBAUpdater and both release ZIPs verified')
+          PY
+      - name: Publish official GitHub release (never overwrite an existing tag)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if gh release view v4.18.2 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release v4.18.2 already exists; refusing to overwrite official assets."
+            exit 1
+          fi
+          gh release create v4.18.2 \
+            dist/Furusato_nouzei_v4.18.2_ReadyToUse.zip \
+            dist/Furusato_nouzei_v4.18.2_Windows.zip \
+            dist/SHA256SUMS.txt \
+            dist/acceptance-v4.18.2.json \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Furusato_nouzei v4.18.2 正式版" \
+            --notes-file docs/release-notes-v4.18.2.md \
+            --latest
+          gh release view v4.18.2 --repo "$GITHUB_REPOSITORY" --json url,tagName,assets
+      - name: Verify online public release and all four assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release view v4.18.2 --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | sort > /tmp/assets.txt
+          printf '%s\n' \
+            Furusato_nouzei_v4.18.2_ReadyToUse.zip \
+            Furusato_nouzei_v4.18.2_Windows.zip \
+            SHA256SUMS.txt \
+            acceptance-v4.18.2.json | sort > /tmp/expected.txt
+          diff -u /tmp/expected.txt /tmp/assets.txt
+          echo "Official GitHub release v4.18.2 published with four verified assets." >> "$GITHUB_STEP_SUMMARY"
