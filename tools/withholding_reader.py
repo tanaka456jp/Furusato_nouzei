@@ -229,6 +229,9 @@ def write_bridge(result,output):
         writer=csv.writer(f,delimiter="\t")
         writer.writerow(["STATUS",result["status"]])
         writer.writerow(["YEAR",result["year"] if result["year"] is not None else ""])
+        # ASCII warnings, not raw personal data. The VBA UI can show precisely
+        # why the extracted document is only a *provisional* import.
+        writer.writerow(["WARNINGS",";".join(result.get("warnings",[]))])
         for key,val in sorted(result["fields"].items()):
             writer.writerow([key,val])
 
