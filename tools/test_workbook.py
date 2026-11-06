@@ -6,7 +6,7 @@ import unittest
 from zipfile import ZipFile
 
 from openpyxl import load_workbook
-from build_workbook import ROOT, HOME, ENGINE, DETAIL, RESIDENT, ADVANCED, build
+from build_workbook import ROOT, HOME, ENGINE, DETAIL, RESIDENT, ADVANCED, INPUT, build
 
 
 class WorkbookTest(unittest.TestCase):
