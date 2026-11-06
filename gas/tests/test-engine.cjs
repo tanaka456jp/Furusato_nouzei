@@ -34,9 +34,54 @@ test("2027 is unapproved and fails closed",()=>{
   const x=tax.calculate({...base,year:2027});
   assert.equal(x.status,"HOLD");assert.equal(x.donationLimitYen,null);
 });
-test("source salary income required for lower wage",()=>{
-  const x=tax.calculate({...base,salaryGross:"5000000",socialInsurance:"1600000"});
+test("salary income is calculated automatically from the statutory table at 5m",()=>{
+  const x=tax.calculate({...base,salaryGross:"5000000",socialInsurance:"1000000"});
+  assert.equal(x.status,"ESTIMATE");
+  assert.equal(x.calculation.salaryIncomeYen,3560000);
+  assert.equal(x.calculation.basicIncomeTaxDeductionYen,1040000);
+  assert.equal(x.calculation.incomeTaxTaxableYen,1520000);
+  assert.equal(x.donationLimitYen,51000);
+});
+test("salary below the verified statutory table band still requires the source slip",()=>{
+  const x=tax.calculate({...base,salaryGross:"2000000",socialInsurance:"100000"});
   assert.equal(x.status,"HOLD");assert.equal(x.donationLimitYen,null);
+});
+test("statutory salary table boundaries and statutory quarter-rounding",()=>{
+  const x=tax.salaryIncome;
+  assert.equal(x(1899999,2025),null);
+  assert.equal(x(1900000,2025),1250000);
+  assert.equal(x(1900001,2025),1250000);
+  assert.equal(x(2199999,2026),null);
+  assert.equal(x(2200000,2026),1460000);
+  assert.equal(x(2200001,2026),1460000);
+  assert.equal(x(3599999,2026),2437200);
+  assert.equal(x(3600000,2026),2440000);
+  assert.equal(x(5000000,2026),3560000);
+  assert.equal(x(5812500,2026),4209600);
+  assert.equal(x(6599999,2026),4836800);
+  assert.equal(x(6600000,2026),4840000);
+  assert.equal(x(7000000,2026),5200000);
+  assert.equal(x(7000000,2025),5200000);
+  assert.equal(x(5000000,2027),null);
+});
+test("salary income supplied by the slip must match independently calculated salary income",()=>{
+  const x=tax.calculate({...base,salaryGross:"5000000",salaryIncomeReference:"3560001",socialInsurance:"1000000"});
+  assert.equal(x.status,"ESTIMATE");
+  const mismatch=tax.calculate({...base,salaryGross:"5000000",salaryIncomeReference:"3560400",socialInsurance:"1000000"});
+  assert.equal(mismatch.status,"HOLD");assert.equal(mismatch.donationLimitYen,null);
+});
+test("resident-tax special rate bracket derives from resident tax, not copied income tax",()=>{
+  const x=tax.calculate(base);
+  assert.equal(x.status,"ESTIMATE");
+  assert.equal(x.calculation.residentTaxTaxableYen,3770000);
+  assert.equal(x.calculation.residentHumanDeductionDifferenceYen,50000);
+  assert.equal(x.calculation.residentBasicExcessDeductionYen,190000);
+  assert.equal(x.calculation.residentSpecialRateBaseYen,3530000);
+  assert.equal(x.calculation.incomeTaxTaxableYen,3530000);
+  const last=tax.calculate({...base,year:2025});
+  assert.equal(last.status,"ESTIMATE");
+  assert.equal(last.calculation.residentBasicExcessDeductionYen,150000);
+  assert.equal(last.calculation.residentSpecialRateBaseYen,last.calculation.incomeTaxTaxableYen);
 });
 test("special-relative 2026 slip must not be silently estimated",()=>{
   const x=tax.calculate({...base,salaryGross:"5000000",salaryIncomeReference:"3560000",
