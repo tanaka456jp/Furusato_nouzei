@@ -31,6 +31,9 @@ $report = [ordered]@{
     stage_post_push_sha256 = ''
     original_preserved = $false
     error_category = ''
+    push_failure_codes = @()
+    push_failure_stages = @()
+    push_failure_safe_excerpt = @()
     warning = 'Never interprets a staging PASS as product VBAUpdater deployment/compile acceptance.'
 }
 try {
@@ -106,6 +109,36 @@ try {
                 if ($pushCode -ne 0) {
                     $report.project_push = 'FAIL'
                     $rawText = [IO.File]::ReadAllText($pushLog)
+                    # Only publish structured codes and sanitized diagnostic
+                    # phrases. The raw failure log may contain private Windows
+                    # paths and must remain inside disposable staging.
+                    $report.push_failure_codes = @(
+                        [regex]::Matches($rawText, '(?i)(?:\\[)?(ENC|VBA|WB)\\d{4}|0x800[0-9A-F]{5}', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase) |
+                        ForEach-Object { $_.Value.ToUpperInvariant().TrimStart('[') } |
+                        Select-Object -Unique
+                    )
+                    $stageTokens = @('Assert-ProjectVbaSourceEncodingSafe',
+                        'Assert-VbaSourceEncodingSafe','Get-ProjectDiff',
+                        'New-ProjectRestorePoint','Invoke-ManifestComponentPush',
+                        'Invoke-PushStandard','VBComponents.Import',
+                        'Invoke-ProjectCompileGate','Write-DifferentialPushJson',
+                        'Restore-WorkbookFromVerifiedBackup',
+                        'P01 START','P02 START')
+                    $report.push_failure_stages = @($stageTokens | Where-Object { $rawText.Contains($_) })
+                    $safe = @()
+                    foreach ($line in @($rawText -split '\\r?\\n' | Where-Object {
+                        $_ -match '(?i)\\[(?:ENC|VBA|WB)\\d{4}\\]|exception|error|fail|round.trip|could not|access denied|unexpected|復元|失敗|差分' } | Select-Object -Last 6)) {
+                        $sanitized = [regex]::Replace([string]$line, '(?i)(?:[A-Z]:[\\/]|\\\\)[^\\r\\n]*', '<LOCAL_PATH_REDACTED>')
+                        $sanitized = [regex]::Replace($sanitized, '(?i)[A-Z0-9._%+\\-]+@[A-Z0-9.\\-]+\\.[A-Z]{2,}', '<EMAIL_REDACTED>')
+                        if ($sanitized.Length -gt 220) { $sanitized = $sanitized.Substring(0,220) }
+                        $safe += $sanitized
+                    }
+                    $report.push_failure_safe_excerpt = @($safe)
+                    Write-Host ('VBAUpdater staged push codes: ' + (($report.push_failure_codes) -join ','))
+                    Write-Host ('VBAUpdater staged push phases: ' + (($report.push_failure_stages) -join ','))
+                    foreach ($diagnostic in $report.push_failure_safe_excerpt) {
+                        Write-Host ('VBAUpdater staged push diagnostic: ' + $diagnostic)
+                    }
                     $hints = New-Object System.Collections.Generic.List[string]
                     if ($rawText -match '(?i)compile|syntax') { $hints.Add('VBA_COMPILE') }
                     if ($rawText -match '(?i)trust|permission|access.denied|unauthorized') { $hints.Add('ACCESS_POLICY') }
