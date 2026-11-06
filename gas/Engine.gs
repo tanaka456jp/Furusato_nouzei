@@ -103,6 +103,7 @@ var FurusatoEngine = (function () {
     var social = money(input.socialInsurance, "社会保険料等の金額", true, reasons);
     var reference = money(input.salaryIncomeReference, "給与所得控除後の金額", false, reasons);
     var totalReference = money(input.deductionsReference, "所得控除合計額", false, reasons);
+    var basicReference = money(input.sourceBasicReference, "源泉徴収票の基礎控除額", false, reasons);
     if (gross !== null && gross === 0) reasons.push("給与支払金額は0円では計算できません");
     if (gross !== null && social !== null && social > gross) reasons.push("社会保険料が給与支払金額を超えています");
     if (gross !== null && reference !== null && reference > gross) reasons.push("給与所得控除後の金額が支払金額を超えています");
@@ -117,6 +118,9 @@ var FurusatoEngine = (function () {
     }
     if (income !== null && income < 0) reasons.push("給与所得が不正です");
     var incomeBasic = year in BASIC && income !== null ? basic(year,income) : null;
+    if (incomeBasic !== null && basicReference !== null &&
+        Math.abs(basicReference - incomeBasic) > 1)
+      reasons.push("源泉徴収票の基礎控除額が選択年分の法定控除額と一致しません");
     if (incomeBasic !== null && social !== null && totalReference !== null &&
         Math.abs(totalReference - incomeBasic - social)>1)
       reasons.push("源泉徴収票の所得控除合計と基礎控除・社会保険料の合計が一致しません");
