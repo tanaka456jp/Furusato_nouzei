@@ -1,0 +1,7 @@
+.clasp.json
+.clasprc.json
+.clasp-credentials.json
+credentials.json
+*.token
+node_modules/
+dist/
