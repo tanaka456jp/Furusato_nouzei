@@ -135,6 +135,36 @@ test("G46 mismatch in a READY slip still fails closed after checkbox confirmatio
   assert.ok(p.el("reasonBlock").textContent.includes("基礎控除額"));
  } finally {p.w.close();}
 });
+test("source-detected mortgage remains blocked even when checkbox is manually changed",async()=>{
+ const p=createPage();
+ try {
+  p.next();
+  const src=source("READY_FOR_EXCEL_CROSSCHECK");
+  src.fields.mortgage_credit=100000;
+  await importJson(p,src);
+  const checkbox=p.w.document.querySelector('[data-key="hasMortgage"]');
+  assert.equal(checkbox.checked,true);
+  assert.equal(checkbox.disabled,true);
+  // Simulate stale UI state or an unintended programmatic form reset.
+  checkbox.checked=false;
+  p.el("sourceConfirmed").checked=true;
+  p.next();p.el("ack").checked=true;p.next();p.next();
+  assert.equal(p.el("reportAmount").textContent,"計算停止");
+  assert.equal(p.calls.at(-1).sourceIndicators.hasMortgage,true);
+  assert.ok(p.el("reasonBlock").textContent.includes("hasMortgage"));
+ } finally {p.w.close();}
+});
+test("reader JSON marked as identifying people is never imported",async()=>{
+ const p=createPage();
+ try {
+  p.next();
+  const src=source("READY_FOR_EXCEL_CROSSCHECK");
+  src.personal_identifiers="PRESENT";
+  await importJson(p,src);
+  assert.ok(p.el("flash").textContent.includes("個人識別情報"));
+  assert.equal(p.el("sourceConfirmBox").style.display,"none");
+ } finally {p.w.close();}
+});
 test("unknown personal identifiers are rejected and never shown",async()=>{
  const p=createPage();
  try {
