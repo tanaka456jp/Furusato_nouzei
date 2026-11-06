@@ -79,3 +79,8 @@ jobs:
         run: node gas/tests/test-engine.cjs
       - name: Workflow and source import simulated browser regression
         run: node gas/tests/test-browser.cjs
+      - name: Readonly Windows GAS installation preflight
+        shell: powershell
+        run: |
+          .\gas\scripts\setup-private-gas.ps1
+
