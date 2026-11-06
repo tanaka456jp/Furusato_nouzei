@@ -26,6 +26,8 @@ jobs:
           node-version: '22'
       - name: Install isolated browser DOM test dependency
         run: npm install --no-save --ignore-scripts --no-audit --no-fund jsdom@26.1.0
+      - name: Verify source-reader/GAS field and clasp publish contracts
+        run: node gas/tests/test-contract.cjs
       - name: Independent engine regression
         run: node gas/tests/test-engine.cjs
       - name: Workflow and source import simulated browser regression
@@ -56,6 +58,8 @@ jobs:
           node-version: '22'
       - name: Install isolated browser DOM test dependency
         run: npm install --no-save --ignore-scripts --no-audit --no-fund jsdom@26.1.0
+      - name: Verify source-reader/GAS field and clasp publish contracts
+        run: node gas/tests/test-contract.cjs
       - name: Independent engine regression
         run: node gas/tests/test-engine.cjs
       - name: Workflow and source import simulated browser regression
