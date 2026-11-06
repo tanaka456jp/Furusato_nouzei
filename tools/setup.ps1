@@ -169,6 +169,7 @@ End Sub
     Add-WorkbookButton $sheet 'C7' '計算根拠' 'ShowDetails'
     Add-WorkbookButton $sheet 'D7' '計算' 'RecalculateCase'
     Add-WorkbookButton $sheet 'B5' '特例・分離課税' 'ShowAdvanced'
+    Add-WorkbookButton $sheet 'B3' '源泉票を取込' 'ImportWithholding'
     $details = $workbook.Worksheets.Item('計算根拠')
     try {
         Add-WorkbookButton $details 'A17' 'メイン画面に戻る' 'ReturnHome'

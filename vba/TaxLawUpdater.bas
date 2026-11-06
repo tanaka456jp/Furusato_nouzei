@@ -169,10 +169,163 @@ Public Sub BindButtons()
     BindButton "操作画面", "btnShowDetails", "ShowDetails"
     BindButton "操作画面", "btnRecalculateCase", "RecalculateCase"
     BindButton "操作画面", "btnShowAdvanced", "ShowAdvanced"
+    BindButton "操作画面", "btnImportWithholding", "ImportWithholding"
     BindButton "例外・分離課税", "btnReturnFromAdvanced", "ReturnFromAdvanced"
     BindButton "計算根拠", "btnReturnHome", "ReturnHome"
     BindButton "計算根拠", "btnPrintDetails", "PrintDetails"
     BindButton "計算根拠", "btnExportDetails", "ExportDetails"
+End Sub
+
+
+' Import only allowlisted numeric fields from a local, explicitly selected file.
+' Do not put names, addresses, tax IDs, or raw document text into the workbook.
+' An immutable snapshot is saved before mutating a user's current input.
+Public Sub ImportWithholding()
+    Dim picked As Variant, fso As Object, shell As Object, reader As String
+    Dim tempJson As String, tempTsv As String, command As String, line As String
+    Dim inFile As Object, fields As Object, fragments As Variant
+    Dim key As Variant, value As Double, year As Long, exitCode As Long
+    Dim status As String, raw As String, backup As String
+    Dim home As Worksheet, extra As Worksheet, code As Long, problem As String
+    On Error GoTo Failed
+    picked = Application.GetOpenFilename( _
+        "源泉徴収票 (PDF/画像/データ),*.pdf;*.png;*.jpg;*.jpeg;*.webp;*.tif;*.tiff;*.bmp;*.csv;*.tsv;*.json;*.txt,すべてのファイル,*.*", _
+        , "源泉徴収票を選択")
+    If VarType(picked) = vbBoolean Then Exit Sub
+    If ThisWorkbook.ReadOnly Or Len(ThisWorkbook.Path) = 0 Then
+        Err.Raise vbObjectError + 201, , "書き込み可能なブックをローカルに保存してから取込んでください。"
+    End If
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    reader = fso.BuildPath(ThisWorkbook.Path, "FurusatoDocumentReader.exe")
+    If Not fso.FileExists(reader) Then
+        reader = fso.BuildPath(ThisWorkbook.Path, "withholding_reader.py")
+        If Not fso.FileExists(reader) Then
+            Err.Raise vbObjectError + 202, , "読取プログラムがありません。配布ZIPのファイルを同じフォルダへ配置してください。"
+        End If
+        command = "python.exe " & Chr$(34) & reader & Chr$(34)
+    Else
+        command = Chr$(34) & reader & Chr$(34)
+    End If
+    Set shell = CreateObject("WScript.Shell")
+    tempJson = fso.BuildPath(fso.GetSpecialFolder(2), fso.GetTempName & ".json")
+    tempTsv = fso.BuildPath(fso.GetSpecialFolder(2), fso.GetTempName & ".tsv")
+    command = command & " --input " & Chr$(34) & CStr(picked) & Chr$(34) & _
+              " --output " & Chr$(34) & tempJson & Chr$(34) & _
+              " --bridge " & Chr$(34) & tempTsv & Chr$(34)
+    exitCode = shell.Run(command, 0, True)
+    If exitCode <> 0 Or Not fso.FileExists(tempTsv) Then
+        Err.Raise vbObjectError + 203, , "源泉徴収票の読取に失敗しました。形式・OCR環境を確認してください。"
+    End If
+    Set fields = CreateObject("Scripting.Dictionary")
+    Set inFile = fso.OpenTextFile(tempTsv, 1, False, 0) ' ASCII-only bridge: no PII
+    Do Until inFile.AtEndOfStream
+        line = inFile.ReadLine
+        fragments = Split(line, vbTab)
+        If UBound(fragments) <> 1 Then
+            Err.Raise vbObjectError + 204, , "取込データが不正です。"
+        End If
+        If fields.Exists(CStr(fragments(0))) Then
+            Err.Raise vbObjectError + 205, , "取込データ内に重複項目があります。"
+        End If
+        fields.Add CStr(fragments(0)), CStr(fragments(1))
+    Loop
+    inFile.Close
+    Set inFile = Nothing
+    If Not fields.Exists("STATUS") Or Not fields.Exists("YEAR") Then
+        Err.Raise vbObjectError + 206, , "取込データの検証情報がありません。"
+    End If
+    status = CStr(fields("STATUS"))
+    If status <> "READY_FOR_EXCEL_CROSSCHECK" Then
+        Err.Raise vbObjectError + 207, , "未検証のOCR・様式・年分は自動転記しません。"
+    End If
+    If Not IsNumeric(fields("YEAR")) Then Err.Raise vbObjectError + 208, , "所得年を認識できません。"
+    year = CLng(fields("YEAR"))
+    If year <> 2025 And year <> 2026 Then Err.Raise vbObjectError + 209, , "未承認の年分です。"
+    For Each key In Array("salary_gross", "income_tax_withheld", "social_insurance")
+        If Not fields.Exists(CStr(key)) Then
+            Err.Raise vbObjectError + 210, , "必須の支払金額・源泉税・社会保険料が読み取れていません。"
+        End If
+    Next key
+    For Each key In fields.Keys
+        If key <> "STATUS" And key <> "YEAR" Then
+            raw = CStr(fields(key))
+            If Len(raw) = 0 Or Not IsNumeric(raw) Then
+                Err.Raise vbObjectError + 211, , "取込金額が不正です。"
+            End If
+            value = CDbl(raw)
+            If value < 0 Or value > 1000000000000# Or value <> Fix(value) Then
+                Err.Raise vbObjectError + 212, , "金額は非負整数で指定してください。"
+            End If
+            Select Case CStr(key)
+                Case "salary_gross", "income_tax_withheld", "social_insurance", _
+                     "life_new", "life_old", "medical_care", "annuity_new", _
+                     "annuity_old", "earthquake_paid", "salary_reference", _
+                     "deductions_reference", "life_deduction_reference", _
+                     "earthquake_deduction_reference", "mortgage_credit", _
+                     "mortgage_possible_credit", "basic_reference", "income_adjustment"
+                    ' Allowed amounts only; all other columns are rejected.
+                Case Else
+                    Err.Raise vbObjectError + 213, , "未承認の取込項目を検出しました。"
+            End Select
+        End If
+    Next key
+    If MsgBox("源泉徴収票の数値を取込み、現在の入力を置換しますか？" & vbCrLf & _
+              "既存データは更新前にバックアップします。", _
+              vbQuestion + vbYesNo + vbDefaultButton2) <> vbYes Then Exit Sub
+    backup = UniqueBackupPath(ThisWorkbook)
+    ThisWorkbook.SaveCopyAs backup
+    If Not fso.FileExists(backup) Then Err.Raise vbObjectError + 214, , "更新前のバックアップを作成できません。"
+    Set home = ThisWorkbook.Worksheets("操作画面")
+    Set extra = ThisWorkbook.Worksheets("例外・分離課税")
+    home.Range("B11:B12,B15:B16,B19:B26,D11:D23").ClearContents
+    extra.Range("B5:B21").ClearContents
+    extra.Range("B4").Value2 = "通常"
+    home.Range("D24").Value2 = "確定申告"
+    home.Range("B4").Value2 = year
+    home.Range("B11").Value2 = year
+    For Each key In fields.Keys
+        If key <> "STATUS" And key <> "YEAR" Then
+            value = CDbl(fields(key))
+            Select Case CStr(key)
+                Case "salary_gross": home.Range("B12").Value2 = value
+                Case "income_tax_withheld": home.Range("B15").Value2 = value
+                Case "social_insurance": home.Range("B16").Value2 = value
+                Case "life_new": home.Range("B19").Value2 = value
+                Case "life_old": home.Range("B20").Value2 = value
+                Case "annuity_new": home.Range("B21").Value2 = value
+                Case "annuity_old": home.Range("B22").Value2 = value
+                Case "medical_care": home.Range("B23").Value2 = value
+                Case "earthquake_paid": home.Range("B24").Value2 = value
+                Case "salary_reference": extra.Range("B15").Value2 = value
+                Case "deductions_reference": extra.Range("B14").Value2 = value
+                Case "life_deduction_reference": extra.Range("B16").Value2 = value
+                Case "earthquake_deduction_reference": extra.Range("B17").Value2 = value
+                Case "mortgage_credit": extra.Range("B5").Value2 = value
+                Case "income_adjustment": extra.Range("B13").Value2 = value
+            End Select
+        End If
+    Next key
+    If (fields.Exists("mortgage_credit") And CDbl(fields("mortgage_credit")) > 0) Or _
+       (fields.Exists("mortgage_possible_credit") And CDbl(fields("mortgage_possible_credit")) > 0) Then
+        extra.Range("B4").Value2 = "住宅ローン控除"
+    End If
+    extra.Range("B19").Value2 = "ローカル・項目コード照合"
+    extra.Range("B20").Value2 = status
+    Application.Calculate
+    MsgBox "数値を取込みました。青色の未入力欄と原票の一致を確認してください。" & vbCrLf & _
+           "特殊案件は別フォームで補足入力し、計算の受入が完了するまで限度額を表示しません。", vbInformation
+CleanUp:
+    On Error Resume Next
+    If Not inFile Is Nothing Then inFile.Close
+    If Not fso Is Nothing Then
+        If Len(tempTsv) > 0 Then If fso.FileExists(tempTsv) Then fso.DeleteFile tempTsv, True
+        If Len(tempJson) > 0 Then If fso.FileExists(tempJson) Then fso.DeleteFile tempJson, True
+    End If
+    Exit Sub
+Failed:
+    problem = Err.Description
+    MsgBox problem, vbExclamation, "源泉徴収票の取込"
+    Resume CleanUp
 End Sub
 
 Public Sub RecalculateCase()

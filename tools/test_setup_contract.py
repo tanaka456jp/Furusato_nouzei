@@ -60,6 +60,11 @@ assert "fso.MoveFile temporary, destination" in vba, "Export must use staged fil
 assert "fso.GetFile(temporary).Size < 500" in vba, "PDF minimum size validation missing"
 assert "If openedDetail Then ReturnHome" in vba, "PDF must restore original detail visibility"
 assert "btnSaveCase" in vba and "btnExportDetails" in vba, "Buttons coverage incomplete"
+assert "Public Sub ImportWithholding()" in vba
+assert "UniqueBackupPath(ThisWorkbook)" in vba
+assert "READY_FOR_EXCEL_CROSSCHECK" in vba
+assert "ImportWithholding' " not in ps
+assert "'ImportWithholding'" in ps
 assert "xl/vbaProject.bin" in ps, "VBA project save validation missing"
 assert "Furusato_nouzei.xlsm" in ps and "Furusato_nouzei.xlsx" in ps, "Naming mismatch"
 assert 'Public Sub TaxLawUpdate()' in vba
