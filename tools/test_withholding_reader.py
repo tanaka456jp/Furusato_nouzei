@@ -61,7 +61,7 @@ class WithholdingTest(unittest.TestCase):
     def test_provisional_pdf_bridge_contains_only_status_and_warning_codes(self):
         with TemporaryDirectory() as tmp:
             fields={"salary_gross":5000000,"salary_reference":3560000,
-                    "deductions_reference":3956000,"social_insurance":1600000,
+                    "deductions_reference":1500000,"social_insurance":1600000,
                     "income_tax_withheld":0,"mortgage_possible_credit":300000,
                     "mortgage_claim_count":1,"mortgage_occupancy_year":2024}
             data=finish(2026,fields,"PDF_TEXT")
@@ -92,8 +92,9 @@ class WithholdingTest(unittest.TestCase):
               "income_tax_withheld":0,"mortgage_claim_count":1,
               "mortgage_possible_credit":300000,"mortgage_occupancy_year":2024}
         flagged=finish(2026,base,"PDF_TEXT")
-        self.assertEqual(flagged["status"],"REQUIRES_REVIEW")
-        self.assertIn("MORTGAGE_APPLIED_CREDIT_MISSING",flagged["warnings"])
+        self.assertEqual(flagged["status"],"READY_FOR_EXCEL_CROSSCHECK")
+        self.assertIn("MORTGAGE_ZERO_FROM_ZERO_TAXABLE_INCOME",flagged["warnings"])
+        self.assertEqual(flagged["fields"]["mortgage_credit"],0)
         self.assertEqual(flagged["fields"]["mortgage_possible_credit"],300000)
         safe=finish(2026,{**base,"mortgage_credit":50000},"PDF_TEXT")
         self.assertEqual(safe["status"],"READY_FOR_EXCEL_CROSSCHECK")
@@ -101,6 +102,9 @@ class WithholdingTest(unittest.TestCase):
         self.assertIn("MORTGAGE_APPLIED_EXCEEDS_POSSIBLE",too_high["warnings"])
         self.assertEqual(finish(2026,{**base,"mortgage_credit":0,"mortgage_claim_count":2},
                                 "PDF_TEXT")["status"],"REQUIRES_REVIEW")
+        taxable={**base,"deductions_reference":1100000}
+        self.assertIn("MORTGAGE_APPLIED_CREDIT_MISSING",
+                      finish(2026,taxable,"PDF_TEXT")["warnings"])
 
 
 if __name__=="__main__":

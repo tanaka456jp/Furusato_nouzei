@@ -32,6 +32,7 @@ jobs:
       - run: |
           python tools/verify_baseline.py
           python tools/test_catalog_sync.py
+          python tools/test_file_picker_filter.py
           python tools/qa_contract.py workbook/baseline.xlsx
           python tools/test_workbook.py
           python tools/build_workbook.py Furusato_nouzei_audit.xlsx
@@ -95,6 +96,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Frozen baseline differs' }
           python tools/test_catalog_sync.py
           if ($LASTEXITCODE -ne 0) { throw 'Approved tax-master revision mismatch' }
+          python tools/test_file_picker_filter.py
+          if ($LASTEXITCODE -ne 0) { throw 'PDF filter contract mismatch' }
           python tools/test_workbook.py
           if ($LASTEXITCODE -ne 0) { throw 'Workbook static regression failed' }
           python tools/audit_statutory_tables.py workbook/baseline.xlsx

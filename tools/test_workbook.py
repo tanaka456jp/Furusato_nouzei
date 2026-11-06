@@ -149,7 +149,7 @@ class WorkbookTest(unittest.TestCase):
         self.assertIn("'例外・分離課税'!B13", home["B13"].value)
         self.assertIn("'ふるさと納税限度額計算'!F24", home["B17"].value)
         self.assertIn("'ふるさと納税限度額計算'!F25", home["B18"].value)
-        self.assertEqual(home["D24"].value, "確定申告")
+        self.assertEqual(home["D24"].value, "ワンストップ")
         self.assertIsNone(home["D25"].value)
         self.assertNotIn('D25<>"確認済"', home["B28"].value)
 
@@ -158,10 +158,14 @@ class WorkbookTest(unittest.TestCase):
         user_fields = ["B11", "B12", "B15", "B16", "B33", "B34", "B35", "B36"] + [
             f"B{i}" for i in range(19, 27)
         ] + [f"D{i}" for i in range(11, 24)]
+        defaults = {"B11": "2026", "B25": "なし",
+                    "B26": "該当なし", "D22": "該当なし"}
         for cell in user_fields:
-            self.assertIsNone(home[cell].value, cell)
+            self.assertEqual(home[cell].value, defaults.get(cell), cell)
             self.assertFalse(home[cell].protection.locked, cell)
             self.assertTrue(any(cell in rule for rule in home.data_validations.dataValidation), cell)
+        for cell, source in (("B13","B15"),("B14","B14"),("B17","B16"),("B18","B17")):
+            self.assertIn(f"ISNUMBER('例外・分離課税'!{source})", home[cell].value)
 
     def test_optional_numeric_fields_do_not_cause_fraction_gate_failures(self):
         formula = self.book[HOME]["B28"].value

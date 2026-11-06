@@ -407,6 +407,17 @@ Failed:
 End Sub
 
 Public Sub RecalculateCase()
+    ' Optional blanks are not errors. Only when explicitly recalculating,
+    ' normalize the categorical fields to their conventional default values.
+    Dim home As Worksheet
+    Set home = ThisWorkbook.Worksheets("操作画面")
+    If Trim$(CStr(home.Range("B11").Value2)) = "" Then
+        home.Range("B11").Value2 = home.Range("B4").Value2
+    End If
+    If Trim$(CStr(home.Range("B25").Value2)) = "" Then home.Range("B25").Value2 = "なし"
+    If Trim$(CStr(home.Range("B26").Value2)) = "" Then home.Range("B26").Value2 = "該当なし"
+    If Trim$(CStr(home.Range("D22").Value2)) = "" Then home.Range("D22").Value2 = "該当なし"
+    If Trim$(CStr(home.Range("D24").Value2)) = "" Then home.Range("D24").Value2 = "ワンストップ"
     Application.Calculate
 End Sub
 
