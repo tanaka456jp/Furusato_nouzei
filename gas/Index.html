@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="ja"><head><base target="_top"><meta charset="UTF-8">
+<style>
+:root {font-family:"Yu Gothic",Meiryo,system-ui,sans-serif;color:#193044;background:#f3f6fa}
+* {box-sizing:border-box} body{margin:0} button,input,select{font:inherit}
+header{background:#133c63;color:#fff;padding:20px max(20px,calc((100vw - 980px)/2))}
+header h1{font-size:22px;margin:2px 0 4px}header p{margin:0;color:#dbeaf7;font-size:13px}
+main{max-width:980px;margin:26px auto;padding:0 18px 30px}
+.panel{background:#fff;border:1px solid #dde5ec;box-shadow:0 4px 20px #183c6310;border-radius:14px;padding:26px}
+.steplist{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin-bottom:20px}
+.stage{height:7px;background:#dce5ec;border-radius:12px}.stage.current{background:#1b73af}.stage.done{background:#38a181}
+.stepwords{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:12px;font-size:11px;color:#647786;text-align:center}
+h2{font-size:22px;margin:2px 0 7px}h3{font-size:17px;margin:22px 0 10px}
+.muted{color:#526779;font-size:14px;line-height:1.6} .small{font-size:12px}
+.screen{display:none}.screen.active{display:block}
+.field-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin:20px 0}
+.field{display:flex;flex-direction:column;gap:7px}
+.field label{font-size:14px;font-weight:650}
+.field input,.field select{height:44px;border:1px solid #aabcca;border-radius:8px;padding:10px 12px;background:#fff;width:100%}
+.field input:focus,.field select:focus{outline:2px solid #539bce;outline-offset:1px}
+.field .hint{color:#647786;font-size:12px;line-height:1.6}
+.info{background:#eef5fb;border-left:3px solid #397daa;padding:13px 16px;font-size:13px;line-height:1.7;border-radius:4px;margin:15px 0}
+.warning{background:#fff6e8;border-left-color:#b87015}
+.checks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}
+.check{display:flex;align-items:flex-start;gap:9px;font-size:14px;padding:11px;border:1px solid #e1e8ee;border-radius:8px}
+.check input{margin-top:4px;width:17px;height:17px;flex:none}
+.actions{display:flex;justify-content:space-between;gap:12px;margin-top:25px}
+button{border-radius:8px;border:1px solid #b7c8d5;background:#fff;color:#143954;padding:11px 20px;cursor:pointer;font-weight:650}
+button.primary{background:#166eab;color:#fff;border-color:#166eab}
+button:disabled{opacity:.6;cursor:not-allowed}button:focus-visible{outline:2px solid #1b73af;outline-offset:2px}
+#flash{margin:12px 0 0;color:#af321d;min-height:20px;font-size:14px}
+.summary{width:100%;border-collapse:collapse;margin:15px 0}
+.summary th,.summary td{padding:10px 9px;border-bottom:1px solid #edf1f4;text-align:left;font-size:14px}
+.summary th{font-weight:550;color:#4e6070;width:55%}.summary td{text-align:right;font-variant-numeric:tabular-nums}
+.report{border:1px solid #dfebf2;border-radius:10px;padding:25px;margin:18px 0}
+.kicker{font-weight:750;letter-spacing:.08em;color:#4e7791;font-size:11px}
+.amount{font-size:34px;font-weight:750;color:#155c91;margin:7px 0 4px}
+.tag{display:inline-block;border-radius:4px;background:#e6f2e8;color:#236039;font-weight:700;font-size:12px;padding:5px 8px}
+.tag.hold{background:#fff0df;color:#a65b0a}
+.report p{line-height:1.6}
+#reportLines{margin:15px 0}.footnote{border-top:1px solid #e3e8ed;margin-top:20px;padding-top:12px;font-size:11px;color:#526779}
+@media(max-width:680px){main{margin:12px auto;padding:0 11px 20px}.panel{padding:17px}.field-grid,.checks{grid-template-columns:1fr}.stepwords{font-size:9px}h2{font-size:19px}.amount{font-size:30px}.actions button{flex:1}header{padding:16px}}
+@media print{
+body{background:white;color:#111}header,#wizard,#flash,.actions,#printButtons,#controls,#guide{display:none!important}
+main{margin:0;padding:0;max-width:none}.panel{border:0;box-shadow:none;padding:0}
+#resultScreen{display:block!important}.report{border:none;padding:0;margin:0}
+.kicker{font-size:10pt}.amount{font-size:26pt;color:#111}.summary th,.summary td{font-size:10pt}
+@page{size:A4;margin:16mm}
+}
+</style></head>
+<body>
+<header><h1>ふるさと納税 限度額シミュレーター</h1>
+<p>質問に答えるだけで計算結果と根拠を表示｜GAS検証版 v0.1.0</p></header>
+<main><div class="panel">
+<div id="wizard">
+<div class="stepwords"><span>基本情報</span><span>所得</span><span>控除</span><span>入力確認</span><span>結果</span></div>
+<div class="steplist" aria-label="進行状況"><div class="stage"></div><div class="stage"></div><div class="stage"></div><div class="stage"></div><div class="stage"></div></div>
+<section class="screen active" id="screen0">
+<h2>STEP 1　基本情報</h2><p class="muted">所得年・所得の種類・申告方式を選択してください。</p>
+<div class="field-grid">
+<div class="field"><label for="year">所得年</label><select id="year"><option value="2026">令和8年（2026年）</option><option value="2025">令和7年（2025年）</option></select></div>
+<div class="field"><label for="incomeType">主な所得の種類</label><select id="incomeType"><option value="salary">給与所得のみ</option><option value="business">事業・不動産所得がある</option><option value="mixed">給与と年金など複数所得</option></select><span class="hint">初期検証版は給与所得のみ金額算定可能。他の所得は確認待ちになります。</span></div>
+<div class="field"><label for="filing">申告方式</label><select id="filing"><option value="one-stop">ワンストップ特例を利用予定</option><option value="return">確定申告を行う予定</option></select></div>
+</div><div class="info">2027年分は税制未承認のため選択できません。2026年分の算定は令和8年12月以降の通常年末調整を前提とします。</div>
+</section>
+<section class="screen" id="screen1">
+<h2>STEP 2　源泉徴収票・所得の入力</h2>
+<p class="muted">給与所得者は源泉徴収票から金額を転記してください。金額はすべて円単位です。</p>
+<div class="field-grid">
+<div class="field"><label for="salaryGross">支払金額（必須）</label><input id="salaryGross" inputmode="numeric" type="number" min="0" step="1" placeholder="7000000"></div>
+<div class="field"><label for="socialInsurance">社会保険料等の金額（必須）</label><input id="socialInsurance" inputmode="numeric" type="number" min="0" step="1" placeholder="1000000"></div>
+<div class="field"><label for="salaryIncomeReference">給与所得控除後の金額（原票の参考値）</label><input id="salaryIncomeReference" inputmode="numeric" type="number" min="0" step="1" placeholder="空欄可"><span class="hint">給与660万円以下の場合は必須。原票から転記してください。</span></div>
+<div class="field"><label for="deductionsReference">所得控除の額の合計額（原票の参考値）</label><input id="deductionsReference" inputmode="numeric" type="number" min="0" step="1" placeholder="空欄可"><span class="hint">入力時は基礎控除＋社会保険料のみの標準ケースと照合します。</span></div>
+</div>
+<h3>オフライン読取結果の取込</h3>
+<p class="muted">既存のローカル読取ツールが出力したJSON/TSVファイルを使えます。源泉徴収票のPDF・画像からの直接OCRは未移植です。</p>
+<div class="field"><label for="file">読取結果ファイル（任意、JSON/TSV）</label><input id="file" type="file" accept=".json,.tsv,.txt"></div>
+<div class="info warning" id="sourceMessage">未確認の源泉徴収票を自動承認しません。氏名・住所・個人番号はこの画面では求めません。</div>
+</section>
+<section class="screen" id="screen2">
+<h2>STEP 3　その他の控除・所得</h2>
+<p class="muted">該当するものをすべて選択してください。初期版では、複雑なケースを誤って算定しないため確認待ちにします。</p>
+<div class="checks" id="exclusionChecks">
+<label class="check"><input type="checkbox" data-key="hasSpouse">配偶者控除・配偶者特別控除がある</label>
+<label class="check"><input type="checkbox" data-key="hasDependents">扶養親族・特定親族がいる</label>
+<label class="check"><input type="checkbox" data-key="hasLifeInsurance">生命保険料控除がある</label>
+<label class="check"><input type="checkbox" data-key="hasEarthquakeInsurance">地震保険料控除がある</label>
+<label class="check"><input type="checkbox" data-key="hasMortgage">住宅ローン控除がある</label>
+<label class="check"><input type="checkbox" data-key="hasOtherIncome">公的年金・事業所得・雑所得などがある</label>
+<label class="check"><input type="checkbox" data-key="hasMedical">医療費控除などの別控除がある</label>
+<label class="check"><input type="checkbox" data-key="hasSplitIncome">株式・土地建物などの申告分離課税所得がある</label>
+<label class="check"><input type="checkbox" data-key="hasIncomeAdjustment">所得金額調整控除がある</label>
+</div>
+<label class="check" style="margin-top:20px;border-color:#9ebacb"><input id="ack" type="checkbox">上記のすべてを確認しました。チェックしていない項目は該当しません。</label>
+</section>
+<section class="screen" id="screen3">
+<h2>STEP 4　入力内容の確認</h2>
+<p class="muted">間違いがあれば「戻る」で修正してください。計算はブラウザからGASへ送信されます。初期版では案件保存しません。</p>
+<table class="summary" id="confirmation"></table>
+<div class="info warning">本版の計算対応範囲は「扶養・保険・住宅ローン控除・追加所得のない給与所得の標準ケース」です。対応範囲外は「HOLD」と表示し、誤った金額を示しません。</div>
+</section>
+<div class="actions" id="controls"><button type="button" id="back" style="visibility:hidden">戻る</button><button type="button" class="primary" id="next">次へ</button></div>
+</div>
+<section class="screen" id="resultScreen" aria-live="polite">
+<div class="report" id="report">
+<div class="kicker">FURUSATO TAX REPORT / 計算根拠書</div>
+<h2>ふるさと納税 限度額計算結果</h2>
+<div id="resultState"></div>
+<div class="amount" id="reportAmount">—</div><p id="reportNote" class="muted"></p>
+<h3>計算根拠</h3><table class="summary" id="reportLines"></table>
+<div id="reasonBlock"></div>
+<div class="footnote" id="footer">本書は税額申告の証明書ではありません。</div>
+</div>
+<div class="actions" id="printButtons"><button type="button" id="edit">入力内容を修正する</button><button type="button" class="primary" id="print">印刷・PDF保存</button></div>
+</section>
+<p id="flash" role="alert"></p>
+<div id="guide" class="muted small">Excel版 v4.18.2 の正式受入とは独立したGAS初期検証版です。入力内容は自動保存しません。</div>
+</div></main>
+<script>
+(function () {
+"use strict";
+var state={step:0,sourceReviewPending:false,sourceInfo:""};
+var steps=Array.prototype.slice.call(document.querySelectorAll(".stage"));
+function byId(id){return document.getElementById(id);}
+function notify(message){byId("flash").textContent=message||"";}
+function fieldValue(id){return byId(id).value.trim();}
+function checked(key){var node=document.querySelector('[data-key="'+key+'"]');return !!(node&&node.checked);}
+function yen(value){return Number(value).toLocaleString("ja-JP")+" 円";}
+function tableRow(table,key,value){var tr=document.createElement("tr"),th=document.createElement("th"),td=document.createElement("td");th.textContent=key;td.textContent=value;tr.appendChild(th);tr.appendChild(td);table.appendChild(tr);}
+function formData(){
+ var obj={year:fieldValue("year"),incomeType:fieldValue("incomeType"),filing:fieldValue("filing"),
+ salaryGross:fieldValue("salaryGross"), socialInsurance:fieldValue("socialInsurance"),
+ salaryIncomeReference:fieldValue("salaryIncomeReference"),
+ deductionsReference:fieldValue("deductionsReference"),
+ acknowledgedExclusions:byId("ack").checked,
+ sourceReviewPending:state.sourceReviewPending};
+ Array.prototype.forEach.call(document.querySelectorAll("[data-key]"),function(node){obj[node.getAttribute("data-key")]=node.checked;});
+ return obj;
+}
+function showStep(n){
+ state.step=n;notify("");
+ for(var i=0;i<4;i++)byId("screen"+i).classList.toggle("active",i===n);
+ byId("resultScreen").classList.toggle("active",n===4);
+ byId("wizard").style.display=n===4?"none":"block";
+ steps.forEach(function(node,i){node.classList.toggle("current",i===n);node.classList.toggle("done",i<n);});
+ byId("back").style.visibility=n===0?"hidden":"visible";
+ byId("next").textContent=n===3?"計算を実行":"次へ";
+ window.scrollTo(0,0);
+}
+function validInput(){
+ var d=formData();
+ if(state.step===1){
+  if(!/^(0|[1-9][0-9]*)$/.test(d.salaryGross)||!/^([0-9]+)$/.test(d.socialInsurance)){
+    notify("支払金額と社会保険料を円単位の整数で入力してください");return false;
+  }
+  if(Number(d.salaryGross)<=6600000 && d.salaryIncomeReference===""){
+    notify("給与660万円以下は源泉徴収票の「給与所得控除後の金額」を入力してください");return false;
+  }
+ }
+ if(state.step===2&&!d.acknowledgedExclusions){notify("該当する控除・所得の有無を確認してください");return false;}
+ return true;
+}
+function buildConfirmation(){
+ var d=formData(),table=byId("confirmation");table.textContent="";
+ tableRow(table,"所得年",d.year+"年");
+ tableRow(table,"所得の種類",byId("incomeType").selectedOptions[0].text);
+ tableRow(table,"申告方式",byId("filing").selectedOptions[0].text);
+ tableRow(table,"給与支払金額",d.salaryGross?yen(d.salaryGross):"未入力");
+ tableRow(table,"社会保険料",d.socialInsurance?yen(d.socialInsurance):"未入力");
+ if(d.salaryIncomeReference)tableRow(table,"原票の給与所得控除後金額",yen(d.salaryIncomeReference));
+ if(d.deductionsReference)tableRow(table,"原票の所得控除合計",yen(d.deductionsReference));
+ var flags=Array.prototype.slice.call(document.querySelectorAll("[data-key]:checked")).map(function(x){return x.parentNode.textContent.trim();});
+ tableRow(table,"その他の所得・控除",flags.length?flags.join("、"):"該当なし");
+ if(d.sourceReviewPending)tableRow(table,"取込文書","要照合（HOLD）");
+}
+function processResult(result){
+ var lines=byId("reportLines");lines.textContent="";byId("reasonBlock").textContent="";
+ if(!result||typeof result!=="object"){notify("計算結果を取得できませんでした");return;}
+ var ok=result.status==="ESTIMATE";
+ byId("resultState").textContent=ok?"計算対象内・暫定試算":"追加確認が必要（HOLD）";
+ byId("resultState").className="tag"+(ok?"":" hold");
+ byId("reportAmount").textContent=ok?yen(result.donationLimitYen):"計算停止";
+ byId("reportNote").textContent=ok?"自己負担2,000円を想定した概算上限（1,000円未満切捨て）":"未検証条件があるため寄附限度額は表示しません。";
+ if(ok){
+  var c=result.calculation;
+  [["所得年",result.year+"年"],["給与支払金額",yen(c.salaryGrossYen)],
+   ["給与所得金額",yen(c.salaryIncomeYen)],["社会保険料等",yen(c.socialInsuranceYen)],
+   ["所得税基礎控除",yen(c.basicIncomeTaxDeductionYen)],
+   ["所得税課税所得",yen(c.incomeTaxTaxableYen)],
+   ["所得税限界税率",(c.marginalIncomeTaxRate*100).toFixed(1)+"%"],
+   ["住民税課税所得",yen(c.residentTaxTaxableYen)],
+   ["住民税所得割・調整控除後",yen(c.residentIncomeLevyYen)],
+   ["住民税特例控除上限（所得割20%）",yen(c.specialCreditCapYen)],
+   ["特例控除割合",(c.denominator*100).toFixed(2)+"%"],
+   ["寄附限度額（概算）",yen(result.donationLimitYen)]]
+   .forEach(function(row){tableRow(lines,row[0],row[1]);});
+ }else{
+  (result.reasons||["対象外です"]).forEach(function(message){
+   var p=document.createElement("p");p.textContent="・"+message;byId("reasonBlock").appendChild(p);
+  });
+ }
+ byId("footer").textContent="試算版 "+String(result.version||"")+"／税制マスタ "+String(result.taxRevision||"")+"／対象所得年 "+String(result.year||"未確定")+"。計算は標準条件の概算です。税務申告・自治体の最終税額を保証しません。";
+ byId("print").disabled=!ok;
+ showStep(4);
+}
+function send(){
+ var d=formData();byId("next").disabled=true;notify("計算中です…");
+ if(typeof google==="undefined"||!google.script||!google.script.run){
+  byId("next").disabled=false;notify("この画面はGAS Webアプリで実行してください。");return;
+ }
+ google.script.run.withSuccessHandler(function(result){byId("next").disabled=false;processResult(result);})
+ .withFailureHandler(function(err){byId("next").disabled=false;notify("計算処理に失敗しました。入力を確認してください。");})
+ .runFurusatoSimulation(d);
+}
+byId("next").addEventListener("click",function(){
+ if(!validInput())return;
+ if(state.step===3){send();return;}
+ if(state.step===2)buildConfirmation();
+ showStep(state.step+1);
+});
+byId("back").addEventListener("click",function(){showStep(Math.max(0,state.step-1));});
+byId("edit").addEventListener("click",function(){showStep(3);});
+byId("print").addEventListener("click",function(){window.print();});
+byId("file").addEventListener("change",function(ev){
+ var file=ev.target.files[0];if(!file)return;
+ if(file.size>1024*1024){notify("1MB以下の読取結果ファイルのみ対応します");return;}
+ if(!/\.(json|tsv|txt)$/i.test(file.name)){notify("JSONまたはTSVを選択してください。PDF・画像OCRは未実装です");return;}
+ var reader=new FileReader();
+ reader.onload=function(){
+  try{
+   var text=String(reader.result||""), data={};
+   if(/\.json$/i.test(file.name)){
+    var obj=JSON.parse(text);
+    if(obj.schema!=="furusato-withholding-extract/v1")throw new Error("読取JSONの形式が異なります");
+    data=Object.assign({},obj.fields);
+    data.YEAR=obj.year;data.STATUS=obj.status;
+   }else{
+    text.split(/\r?\n/).forEach(function(line){if(!line)return;var arr=line.split("\t");if(arr.length===2&&/^[A-Za-z0-9_]+$/.test(arr[0]))data[arr[0]]=arr[1];});
+   }
+   if(Number(data.YEAR)!==2025&&Number(data.YEAR)!==2026)throw new Error("対応する年分を判定できません");
+   if(!data.salary_gross||!data.social_insurance)throw new Error("必須項目がありません");
+   byId("year").value=String(data.YEAR);
+   [["salaryGross","salary_gross"],["salaryIncomeReference","salary_reference"],
+    ["socialInsurance","social_insurance"],["deductionsReference","deductions_reference"]]
+    .forEach(function(pair){if(data[pair[1]]!==undefined)byId(pair[0]).value=String(data[pair[1]]);});
+   var autoFlags=[["hasDependents",["under16_count","special_relative_count","special_relative_deduction_reference"]],
+    ["hasMortgage",["mortgage_possible_credit","mortgage_credit"]],
+    ["hasLifeInsurance",["life_new","life_old","medical_care","annuity_new","annuity_old"]],
+    ["hasEarthquakeInsurance",["earthquake_paid","earthquake_deduction_reference"]],
+    ["hasIncomeAdjustment",["income_adjustment"]]];
+   autoFlags.forEach(function(entry){if(entry[1].some(function(key){return Number(data[key]||0)>0;})){
+    var checkbox=document.querySelector('[data-key="'+entry[0]+'"]');checkbox.checked=true;
+   }});
+   state.sourceReviewPending=data.STATUS==="REQUIRES_REVIEW";
+   byId("ack").checked=false;
+   byId("sourceMessage").textContent=state.sourceReviewPending?"取込完了。ただし原票未照合のためHOLDです。":"数字を仮転記しました。控除・扶養の有無を再確認してください。";
+   notify("");
+  }catch(err){notify("読取結果を取り込めませんでした："+err.message);}
+ };
+ reader.readAsText(file,"UTF-8");
+});
+showStep(0);
+}());
+</script></body></html>
