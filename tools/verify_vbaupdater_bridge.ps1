@@ -113,7 +113,7 @@ try {
                     # phrases. The raw failure log may contain private Windows
                     # paths and must remain inside disposable staging.
                     $report.push_failure_codes = @(
-                        [regex]::Matches($rawText, '(?i)(?:\\[)?(ENC|VBA|WB)\\d{4}|0x800[0-9A-F]{5}', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase) |
+                        [regex]::Matches($rawText, '(?i)\[(?:ENC|VBA|WB)\d{4}\]|0x800[0-9A-F]{5}', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase) |
                         ForEach-Object { $_.Value.ToUpperInvariant().TrimStart('[') } |
                         Select-Object -Unique
                     )
@@ -126,8 +126,8 @@ try {
                         'P01 START','P02 START')
                     $report.push_failure_stages = @($stageTokens | Where-Object { $rawText.Contains($_) })
                     $safe = @()
-                    foreach ($line in @($rawText -split '\\r?\\n' | Where-Object {
-                        $_ -match '(?i)\\[(?:ENC|VBA|WB)\\d{4}\\]|exception|error|fail|round.trip|could not|access denied|unexpected|復元|失敗|差分' } | Select-Object -Last 6)) {
+                    foreach ($line in @($rawText -split '\r?\n' | Where-Object {
+                        $_ -match '(?i)\[(?:ENC|VBA|WB)\d{4}\]|exception|error|fail|round.trip|could not|access denied|unexpected|復元|失敗|差分' } | Select-Object -Last 6)) {
                         $sanitized = [regex]::Replace([string]$line, '(?i)(?:[A-Z]:[\\/]|\\\\)[^\\r\\n]*', '<LOCAL_PATH_REDACTED>')
                         $sanitized = [regex]::Replace($sanitized, '(?i)[A-Z0-9._%+\\-]+@[A-Z0-9.\\-]+\\.[A-Z]{2,}', '<EMAIL_REDACTED>')
                         if ($sanitized.Length -gt 220) { $sanitized = $sanitized.Substring(0,220) }
