@@ -138,7 +138,7 @@ try {
     Assert-Value ([bool]($excel.Run('TaxLawUpdater.TaxLawUpdateForTest'))) $true 'Online approved-year update'
     QA-Stage 'approved-update-done'
     Assert-Value $settings.Range('B4').Value2 2026 'Approved year persisted in memory'
-    Assert-Value $homeSheet.Range('B29').Value2 '2026-11-06-v4.13' 'Revision after update'
+    Assert-Value $homeSheet.Range('B29').Value2 '2026-11-05-bundled' 'Revision after update'
     if (-not ([string]$homeSheet.Range('B30').Value2).StartsWith('適用済')) {
         throw 'Update status was not recorded'
     }

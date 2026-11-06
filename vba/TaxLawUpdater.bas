@@ -5,7 +5,7 @@ Option Explicit
 Private mLastTestFailure As String
 
 Private Const CATALOG_URL As String = "https://raw.githubusercontent.com/tanaka456jp/Furusato_nouzei/main/taxdata/catalog.tsv"
-Private Const BUNDLED_REVISION As String = "2026-11-06-v4.13"
+Private Const BUNDLED_REVISION As String = "2026-11-05-bundled"
 
 ' User-facing command. The test entrypoint executes the very same transaction,
 ' but reports failures as exceptions instead of modal dialogs.

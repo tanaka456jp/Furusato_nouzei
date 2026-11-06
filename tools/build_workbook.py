@@ -148,7 +148,7 @@ def build(source, output):
     home["C4"], home["D4"] = "適用中の所得年", "=" + ref("設定・税率", "B4")
     home["C5"], home["D5"] = "住民税課税年度", "=" + ref(RESIDENT, "B5")
     note(home, 6, '="税制版 "&B29&" ｜ "&B30')
-    home["B29"] = "2026-11-06-v4.13"
+    home["B29"] = "2026-11-05-bundled"
     home["B30"] = "内蔵マスタ"
     home.row_dimensions[29].hidden = True
     home.row_dimensions[30].hidden = True
