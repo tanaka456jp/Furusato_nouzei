@@ -104,6 +104,16 @@ test("none of the unsupported flags may contain malformed values",()=>{
     assert.equal(result.status,"HOLD",key);
   }
 });
+test("source G46 basic deduction must agree with selected income year",()=>{
+  const hold=tax.calculate({...base,sourceBasicReference:630000});
+  assert.equal(hold.status,"HOLD");
+  assert.ok(hold.reasons.some(x=>x.includes("源泉徴収票の基礎控除額")));
+  const pass=tax.calculate({...base,sourceBasicReference:670000});
+  assert.equal(pass.status,"ESTIMATE");
+  assert.equal(pass.donationLimitYen,109000);
+  const lastYear=tax.calculate({...base,year:2025,sourceBasicReference:630000});
+  assert.equal(lastYear.status,"ESTIMATE");
+});
 test("GAS entrypoint does not collect or persist source documents",()=>{
   const code=fs.readFileSync(path.join(root,"Code.gs"),"utf8");
   assert.ok(code.includes("function doGet()"));
