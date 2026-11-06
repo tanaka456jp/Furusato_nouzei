@@ -75,6 +75,8 @@ test("2025 and 2026 masters have nine bands each and are immutable outputs",()=>
   assert.equal(x.length,19);
   assert.equal(x.filter(r=>r[0]===2025).length,9);
   assert.equal(x.filter(r=>r[0]===2026).length,9);
+  assert.deepEqual(x.filter(r=>r[0]===2026).slice(-3).map(r=>r[3]),[290000,150000,0]);
+  assert.deepEqual(x.filter(r=>r[0]===2025).slice(-3).map(r=>r[3]),[290000,150000,0]);
 });
 test("app front end inline script is syntactically valid",()=>{
   const html=fs.readFileSync(path.join(root,"Index.html"),"utf8");
