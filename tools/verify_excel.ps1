@@ -14,6 +14,7 @@ $excel = $null; $book = $null; $savedCase = $null; $homeSheet = $null; $settings
 $passed = $false
 $splitCases = @()
 $failureSummary = ''
+$lastVbaUpdateStage = ''
 $excelVersion = ''
 $sourceSha256 = (Get-FileHash -LiteralPath $Workbook -Algorithm SHA256).Hash
 $startedUtc = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
@@ -650,6 +651,18 @@ try {
     }
     [GC]::Collect()
     [GC]::WaitForPendingFinalizers()
+    # Only sanitized stage identifiers are collected before deleting the
+    # disposable QA directory. Credentials and the workbook are never logged.
+    $traceFile = Join-Path $dir '_furusato_tax_update_qa.trace'
+    if (Test-Path -LiteralPath $traceFile -PathType Leaf) {
+        try {
+            $traceItems = @(Get-Content -LiteralPath $traceFile -ErrorAction Stop)
+            if ($traceItems.Count -gt 0) {
+                $lastVbaUpdateStage = [string]$traceItems[-1]
+                Write-Host ('QA_TAX_UPDATE_LAST_STAGE ' + $lastVbaUpdateStage)
+            }
+        } catch { $lastVbaUpdateStage = 'TRACE_READ_FAILED' }
+    }
     try { Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction Stop }
     catch { Write-Warning ('QA temporary folder cleanup failed: ' + $_.Exception.Message) }
     # Only synthetic test identifiers are recorded. Do not log machine names,
@@ -679,6 +692,7 @@ try {
                 separate_cases = $splitCases
                 failure = $failureSummary
                 last_stage = $script:qaStage
+                last_tax_update_macro_stage = $lastVbaUpdateStage
             }
             $json = $report | ConvertTo-Json -Depth 8
             $encoding = New-Object System.Text.UTF8Encoding($false)
