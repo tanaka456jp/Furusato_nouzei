@@ -101,6 +101,11 @@ async function main(){
    assert.match(await frame.locator('#splitOutput').innerText(),/1,911 円/);
    await page.screenshot({path:path.join(dest,'google-split-exact.png'),fullPage:true});
    results.push({id:'GOOGLE-SPLIT-EXACT-HOLD-RECOVERY',status:'PASS'});
+   await frame.locator('#splitMunicipality').selectOption('designated');
+   await frame.locator('#splitRun').click();
+   await frame.locator('#splitOutput').getByText(/標準指定都市/).waitFor({timeout:30000});
+   assert.match(await frame.locator('#splitOutput').innerText(),/最大寄附額 55,771 円/);
+   results.push({id:'GOOGLE-SPLIT-DESIGNATED-CITY',status:'PASS'});
   }
  }finally{await context.close();if(browser)await browser.close();}
 }

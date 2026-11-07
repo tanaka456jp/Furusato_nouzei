@@ -62,7 +62,7 @@ main{margin:0;padding:0;max-width:none}.panel{border:0;box-shadow:none;padding:0
 </style></head>
 <body>
 <header><h1>ふるさと納税 限度額シミュレーター</h1>
-<p>質問に答えるだけで計算結果と根拠を表示｜GAS検証版 v0.1.9</p></header>
+<p>質問に答えるだけで計算結果と根拠を表示｜GAS検証版 v0.1.10</p></header>
 <main><div class="panel">
 <div class="actions mode-switch" aria-label="入力モード">
 <button type="button" id="salaryMode" aria-pressed="true">給与の入力</button>
@@ -75,6 +75,7 @@ main{margin:0;padding:0;max-width:none}.panel{border:0;box-shadow:none;padding:0
 <div class="field-grid">
 <div class="field"><label for="splitYear">所得年</label><select id="splitYear" name="year"><option>2026</option><option>2025</option></select></div>
 <div class="field"><label for="splitFiling">申告方式</label><select id="splitFiling" name="filing"><option value="return">確定申告</option><option value="one-stop">ワンストップ特例</option></select></div>
+<div class="field"><label for="splitMunicipality">住民税の課税自治体</label><select id="splitMunicipality" name="municipality"><option value="standard">標準市町村（6%・4%）</option><option value="designated">標準指定都市（8%・2%）</option><option value="other">条例差あり・不明</option></select></div>
 <div class="field"><label for="split-ordinary">総合課税</label><input id="split-ordinary" name="ordinary" inputmode="numeric" value="0"></div>
 <div class="field"><label for="split-shortLand">土地建物・短期（一般）</label><input id="split-shortLand" name="shortLand" inputmode="numeric" value="0"></div>
 <div class="field"><label for="split-longLand">土地建物・長期（一般）</label><input id="split-longLand" name="longLand" inputmode="numeric" value="0"></div>
@@ -88,7 +89,7 @@ main{margin:0;padding:0;max-width:none}.panel{border:0;box-shadow:none;padding:0
 <div class="field"><label for="split-donation">検算する寄附額</label><input id="split-donation" name="donation" inputmode="numeric" value="0"></div>
 </div>
 <p class="hint">検算対象を含む寄附金控除を除き、基礎控除を含む控除合計を税目別に入力します。法定人的控除差は基礎控除差5万円を含み、両税目の控除合計の差とは別です。</p>
-<label class="check"><input type="checkbox" id="splitReviewed">標準税率の普通市町村（市町村6%・道府県4%）で、非課税・調整措置、特別控除、損失、住宅・配当等の税額控除、源泉税精算、他の寄附が該当しないことと、入力額を照合しました。</label>
+<label class="check"><input type="checkbox" id="splitReviewed">課税自治体の標準税率を確認し、非課税・調整措置、特別控除、損失、住宅・配当等の税額控除、源泉税精算、他の寄附が該当しないことと、入力額を照合しました。</label>
 <div class="actions"><button type="submit" class="primary" id="splitRun">再計算</button><button type="button" id="splitPrint" hidden>印刷・PDF保存</button></div>
 </form>
 <div id="splitOutput" aria-live="polite"></div>
@@ -348,6 +349,7 @@ function showSplit(result) {
   !amounts.every(Number.isSafeInteger)||!validPair(resident.levy)||!validPair(at.residentAfter)||
   !validRows(national.allocation.rows)||!validRows(resident.allocation.rows)) throw new Error("invalid tax amount");
  splitLine("計算可能・試算　所得年 "+result.year+"／住民税 "+result.residentYear+"年度");
+ splitLine(result.municipality==="designated"?"住民税 標準指定都市（市民税8%・道府県民税2%）":"住民税 標準市町村（市町村民税6%・道府県民税4%）");
  splitLine("最大寄附額 "+yen(result.maximumDonationYen)+"（1円単位、自己負担2,000円以内）");
  splitLine("最大額の千円未満切捨て "+yen(result.roundedMaximumYen)+
   (result.roundedMaximumYen>2000&&result.roundedMaximumYen!==result.donationLimitYen?"（自己負担2,000円超。下の寄附目安を使用）":""));
@@ -375,7 +377,7 @@ splitForm.addEventListener("submit",function(event){
  Array.prototype.forEach.call(splitForm.elements,function(element){
   if(!element.name)return;
   var value=element.value;
-  data[element.name]=element.name==="filing"?value:/^(0|[1-9][0-9]{0,8})$/.test(value)?Number(value):null;
+  data[element.name]=element.name==="filing"||element.name==="municipality"?value:/^(0|[1-9][0-9]{0,8})$/.test(value)?Number(value):null;
  });
  if(typeof google==="undefined" || !google.script || !google.script.run){
   splitError("SAFE-ENV-001","ENVIRONMENT_ERROR","計算サービスを利用できません。","実行環境","GASアプリまたは配布されたローカルプレビューを開いてください。");

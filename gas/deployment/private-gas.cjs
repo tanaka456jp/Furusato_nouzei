@@ -50,16 +50,15 @@ function snapshot(protectedRoot){
   return Object.fromEntries(files.map(p=>[path.resolve(p),fs.existsSync(p)?hash(fs.readFileSync(p)):null]));
 }
 function unchanged(s){for(const [p,h] of Object.entries(s))ensure((fs.existsSync(p)?hash(fs.readFileSync(p)):null)===h,'Protected configuration changed; STOP');}
-function candidateCommit(){
+function attestedCandidate(){
   const git=args=>cp.execFileSync('git',args,{cwd:root,encoding:'utf8',stdio:['ignore','pipe','pipe']});
   const revision=git(['rev-parse','HEAD']).trim();
   const prefix=git(['rev-parse','--show-prefix']).trimEnd();
-  for(const name of policy.sourceFiles){
-    const committed=git(['show',revision+':'+prefix+name]);
-    const local=fs.readFileSync(path.join(root,name),'utf8');
-    ensure(committed.replace(/\r\n/g,'\n')===local.replace(/\r\n/g,'\n'),'Candidate source differs from Git HEAD');
-  }
-  return revision;
+  const working=source();
+  const committed=working.map((file,index)=>({...file,source:git(['show',revision+':'+prefix+policy.sourceFiles[index]])}));
+  const committedDigest=digest(committed);
+  ensure(committedDigest===digest(working),'Candidate source differs from Git HEAD');
+  return {revision,digest:committedDigest};
 }
 
 /**
@@ -155,6 +154,11 @@ async function client(){
 }
 const scriptUrl=id=>'https://script.googleapis.com/v1/projects/'+encodeURIComponent(id);
 const driveUrl=id=>'https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(id);
+async function protectedRemoteDigest(api,id){
+  const content=digest((await api(scriptUrl(id)+'/content')).files);
+  const deployments=await api(scriptUrl(id)+'/deployments');
+  return hash(JSON.stringify({content,deployments}));
+}
 async function sheetCheck(api,id,owner){
   const s=await api(driveUrl(id)+'?fields=id,name,mimeType,ownedByMe,owners(permissionId),trashed,shared,capabilities(canEdit),appProperties');
   ensure(s.id===id&&!s.trashed&&s.mimeType==='application/vnd.google-apps.spreadsheet'&&s.ownedByMe&&s.capabilities?.canEdit&&!s.shared&&s.owners?.length===1&&s.owners[0].permissionId===owner,'Sheet must be private, editable and owned by authenticated user');
@@ -186,19 +190,27 @@ function deploymentCheck(d,id,version){
   ensure(w?.entryPointConfig?.access==='MYSELF'&&w.entryPointConfig.executeAs==='USER_DEPLOYING','Live deployment is NOT private');
   ensure(/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(w.url),'Unexpected web app URL');return w.url;
 }
-async function install({protectedRoot,deploy=false,fresh=false}){
-  preflight();const revision=fresh?candidateCommit():null;
+async function install({protectedRoot,deploy=false,fresh=false,syntheticUpdate=false}){
+  preflight();
+  ensure(!(fresh&&syntheticUpdate)&&(!(fresh||syntheticUpdate)||deploy),'Candidate operation requires --deploy and one candidate mode');
+  const candidate=fresh||syntheticUpdate?attestedCandidate():null;
   const before=snapshot(protectedRoot);const api=await client();fs.mkdirSync(work,{recursive:true});let r;
   const deniedId=json(path.join(protectedRoot,'.clasp.json')).scriptId;
   const lock=path.join(privateDir,'install.lock');const lockFd=fs.openSync(lock,'wx',0o600);
-  const protectedRemote=async()=>({content:digest((await api(scriptUrl(deniedId)+'/content')).files),deployments:hash(JSON.stringify(await api(scriptUrl(deniedId)+'/deployments')))});
   let remoteBefore;
   try{
     if(fresh)ensure(deploy&&!fs.existsSync(receiptFile)&&!fs.existsSync(path.join(work,'.clasp.json'))&&
       !fs.existsSync(path.join(privateDir,'creation-journal.json')),'Fresh acceptance requires an unused private directory and --deploy');
-    remoteBefore=await protectedRemote();
-    if(fs.existsSync(receiptFile))r=json(receiptFile);
-    else{
+    if(fs.existsSync(receiptFile)){
+      r=json(receiptFile);
+      if(syntheticUpdate)ensure(/^[a-f0-9]{40}$/.test(r.sourceCommit||'')&&r.privateVerifiedAt,
+        'Synthetic update requires a previously attested private candidate');
+      else ensure(!r.sourceCommit,'An attested candidate requires explicit --synthetic-update');
+      ensure(configDriftReport(r,protectedRoot).status==='MATCH','Protected configuration changed; STOP');
+    }else ensure(!syntheticUpdate,'Synthetic update requires an existing candidate receipt');
+    remoteBefore=await protectedRemoteDigest(api,deniedId);
+    if(r?.protectedRemoteDigest)ensure(remoteBefore===r.protectedRemoteDigest,'Protected Google source/deployments changed; STOP');
+    if(!r){
       ensure(!fs.existsSync(path.join(work,'.clasp.json')),'Unrecorded clasp project; refusing to overwrite/adopt');
       ensure(!fs.existsSync(path.join(privateDir,'creation-journal.json')),'Incomplete creation; inspect private journal before retry');
       const denied=json(path.join(protectedRoot,'.clasp.json')).scriptId;
@@ -216,24 +228,51 @@ async function install({protectedRoot,deploy=false,fresh=false}){
     await verify(api,r,protectedRoot);const remote=await api(scriptUrl(r.scriptId)+'/content');
     if(r.uploadDigest)ensure(digest(remote.files)===r.uploadDigest,'Remote source drift; manual review required before push');
     else ensure(remote.files.every(f=>f.name==='appsscript'||(f.name==='Code'&&/^\s*function myFunction\(\)\s*\{\s*\}\s*$/.test(f.source))),'New project contains unexpected code; refusing push');
+    if(syntheticUpdate){
+      const previous=await api(scriptUrl(r.scriptId)+'/deployments/'+encodeURIComponent(r.deploymentId));
+      ensure(previous.deploymentId===r.deploymentId&&deploymentCheck(previous,r.scriptId,r.versionNumber)===r.webAppUrl,
+        'Existing candidate deployment failed verification');
+      const frozen=await api(scriptUrl(r.scriptId)+'/content?versionNumber='+r.versionNumber);
+      ensure(digest(frozen.files)===r.uploadDigest,'Existing candidate immutable version differs from receipt');
+      manifestCheck(JSON.parse(frozen.files.find(f=>f.name==='appsscript').source));
+    }
     safeDirectories();for(const f of policy.sourceFiles)fs.copyFileSync(path.join(root,f),path.join(work,f));fs.copyFileSync(path.join(root,'.claspignore'),path.join(work,'.claspignore'));
-    await verify(api,r,protectedRoot);clasp(['push','--force']);const uploaded=await api(scriptUrl(r.scriptId)+'/content');
-    ensure(digest(uploaded.files)===digest(source()),'Uploaded source digest mismatch');manifestCheck(JSON.parse(uploaded.files.find(f=>f.name==='appsscript').source));
+    await verify(api,r,protectedRoot);
+    delete r.sourceCommit;
+    delete r.protectedRemoteDigest;
+    save(receiptFile,r);
+    clasp(['push','--force']);const uploaded=await api(scriptUrl(r.scriptId)+'/content');
+    ensure(digest(uploaded.files)===(candidate?.digest||digest(source())),'Uploaded source digest mismatch');manifestCheck(JSON.parse(uploaded.files.find(f=>f.name==='appsscript').source));
     r.uploadDigest=digest(uploaded.files);
-    if(revision){ensure(candidateCommit()===revision,'Candidate commit changed during upload');r.sourceCommit=revision;}
-    else delete r.sourceCommit;
     save(receiptFile,r);
     if(deploy){
       await verify(api,r,protectedRoot);const version=await api(scriptUrl(r.scriptId)+'/versions','POST',{description:'Furusato synthetic acceptance; release HOLD'});
       const frozen=await api(scriptUrl(r.scriptId)+'/content?versionNumber='+version.versionNumber);
       ensure(digest(frozen.files)===r.uploadDigest,'Immutable version digest mismatch');manifestCheck(JSON.parse(frozen.files.find(f=>f.name==='appsscript').source));
-      clasp(['create-deployment','--versionNumber',String(version.versionNumber),'--description','Furusato PRIVATE synthetic; HOLD']);
-      const list=await api(scriptUrl(r.scriptId)+'/deployments');const matches=(list.deployments||[]).filter(d=>d.deploymentConfig?.versionNumber===version.versionNumber);
-      ensure(matches.length===1,'Deployment not uniquely found');const actual=await api(scriptUrl(r.scriptId)+'/deployments/'+encodeURIComponent(matches[0].deploymentId));
-      r.webAppUrl=deploymentCheck(actual,r.scriptId,version.versionNumber);r.deploymentId=actual.deploymentId;r.versionNumber=version.versionNumber;r.privateVerifiedAt=new Date().toISOString();save(receiptFile,r);
+      let target=r.deploymentId;
+      if(syntheticUpdate){
+        await api(scriptUrl(r.scriptId)+'/deployments/'+encodeURIComponent(target),'PUT',{deploymentConfig:{
+          scriptId:r.scriptId,versionNumber:version.versionNumber,manifestFileName:'appsscript',description:'Furusato PRIVATE synthetic; HOLD'}});
+      }else{
+        clasp(['create-deployment','--versionNumber',String(version.versionNumber),'--description','Furusato PRIVATE synthetic; HOLD']);
+        const list=await api(scriptUrl(r.scriptId)+'/deployments');
+        const matches=(list.deployments||[]).filter(d=>d.deploymentConfig?.versionNumber===version.versionNumber);
+        ensure(matches.length===1,'Deployment not uniquely found');
+        target=matches[0].deploymentId;
+      }
+      const actual=await api(scriptUrl(r.scriptId)+'/deployments/'+encodeURIComponent(target));
+      const url=deploymentCheck(actual,r.scriptId,version.versionNumber);
+      ensure(actual.deploymentId===target&&(!syntheticUpdate||url===r.webAppUrl),'Synthetic deployment identity changed');
+      r.webAppUrl=url;r.deploymentId=actual.deploymentId;r.versionNumber=version.versionNumber;r.privateVerifiedAt=new Date().toISOString();save(receiptFile,r);
     }
-    ensure(JSON.stringify(await protectedRemote())===JSON.stringify(remoteBefore),'Protected Google source/deployments changed during installation; STOP');
-    const evidence={...preflight(),kind:'REAL_GOOGLE_API',sourceDigest:r.uploadDigest,sourceCommit:revision||cp.execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim(),privateDeployment:deploy?'PASS':'HOLD',webUi:'HOLD',ocr:'HOLD',print:'HOLD',protectedConfiguration:'UNCHANGED',protectedGoogleSourceAndDeployments:'UNCHANGED',timestamp:new Date().toISOString()};
+    ensure(await protectedRemoteDigest(api,deniedId)===remoteBefore,'Protected Google source/deployments changed during installation; STOP');
+    unchanged(before);
+    if(candidate){
+      const finalCandidate=attestedCandidate();
+      ensure(finalCandidate.revision===candidate.revision&&finalCandidate.digest===candidate.digest,'Candidate changed during installation');
+      r.sourceCommit=candidate.revision;r.protectedRemoteDigest=remoteBefore;save(receiptFile,r);
+    }
+    const evidence={...preflight(),kind:'REAL_GOOGLE_API',sourceDigest:r.uploadDigest,sourceCommit:candidate?.revision||cp.execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim(),privateDeployment:deploy?'PASS':'HOLD',webUi:'HOLD',ocr:'HOLD',print:'HOLD',protectedConfiguration:'UNCHANGED',protectedGoogleSourceAndDeployments:'UNCHANGED',timestamp:new Date().toISOString()};
     save(path.join(privateDir,'api-evidence.json'),evidence);return evidence;
   }finally{fs.closeSync(lockFd);fs.unlinkSync(lock);unchanged(before);}
 }
@@ -251,7 +290,7 @@ async function main(){
     await client();console.log('EXISTING_AUTH_REUSED_IN_ISOLATION: global authentication unchanged');
   }
   else if(mode==='login'){preflight();fs.mkdirSync(privateDir,{recursive:true});clasp(['login'],privateDir,true);}
-  else if(mode==='install')console.log(JSON.stringify(await install({protectedRoot,deploy:args.includes('--deploy'),fresh:args.includes('--fresh')})));
+  else if(mode==='install')console.log(JSON.stringify(await install({protectedRoot,deploy:args.includes('--deploy'),fresh:args.includes('--fresh'),syntheticUpdate:args.includes('--synthetic-update')})));
   else if(mode==='diagnose'){
     safeDirectories();
     const refIx=args.indexOf('--reference-private');
@@ -275,12 +314,15 @@ async function main(){
   else if(mode==='verify'){
     preflight();const r=json(receiptFile);
     ensure(configDriftReport(r,protectedRoot).status==='MATCH','Protected configuration changed; STOP');
-    if(args.includes('--attest-head'))ensure(r.sourceCommit===candidateCommit(),'Install receipt does not attest current Git HEAD');
+    const candidate=args.includes('--attest-head')?attestedCandidate():null;
+    if(candidate)ensure(r.sourceCommit===candidate.revision&&r.uploadDigest===candidate.digest&&
+      /^[a-f0-9]{64}$/.test(r.protectedRemoteDigest||''),'Install receipt does not attest current Git HEAD and protected resources');
     const api=await client();await verify(api,r,protectedRoot);
     const actualDeployment=await api(scriptUrl(r.scriptId)+'/deployments/'+encodeURIComponent(r.deploymentId));
     ensure(actualDeployment.deploymentId===r.deploymentId&&deploymentCheck(actualDeployment,r.scriptId,r.versionNumber)===r.webAppUrl,'Receipt deployment URL/ID differs from Google');
     const frozen=await api(scriptUrl(r.scriptId)+'/content?versionNumber='+r.versionNumber);
     const head=await api(scriptUrl(r.scriptId)+'/content');
+    if(candidate)ensure(await protectedRemoteDigest(api,r.protectedScriptId)===r.protectedRemoteDigest,'Protected Google source/deployments changed; STOP');
     ensure(digest(head.files)===r.uploadDigest,'Google project HEAD differs from attested source');
     ensure(digest(frozen.files)===r.uploadDigest&&r.uploadDigest===digest(source()),'Deployed source differs from local acceptance candidate');
     manifestCheck(JSON.parse(frozen.files.find(f=>f.name==='appsscript').source));unchanged(r.protectedSnapshot);console.log('REAL_GOOGLE_PRIVATE_DEPLOYMENT_PASS');

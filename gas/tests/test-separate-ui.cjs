@@ -52,8 +52,10 @@ const profiles = [
     await page.goto(source);
     await page.evaluate(() => {
       const run = window.google.script.run;
+      const original = run.runFurusatoSimulation;
       run.runFurusatoSimulation = function (data) {
         const callback = this.onSuccess;
+        run.runFurusatoSimulation = original;
         window.releaseSalary = () => callback(window.FurusatoEngine.calculate(data));
       };
     });
@@ -73,6 +75,20 @@ const profiles = [
     assert.equal(await page.locator("#resultScreen").isVisible(), false);
     evidence.push({name:"stale-salary-response",status:"PASS"});
     await page.locator("#splitMode").click();
+    const edge = require("../../taxdata/separate-tax-local-v1.json").at(-1);
+    for (const [key, value] of Object.entries(edge.input)) {
+      const field = page.locator("#split-"+key);
+      if (await field.count()) await field.fill(String(value));
+    }
+    await page.locator("#splitReviewed").check();
+    await page.locator("#splitMunicipality").selectOption("other");
+    await page.locator("#splitRun").click();
+    await page.locator("#splitOutput").getByText(/SAFE-TAX-019/).waitFor();
+    await page.locator("#splitMunicipality").selectOption("standard");
+    await page.locator("#splitRun").click();
+    await page.locator("#splitOutput").getByText(/430,000.*2,000円超/).waitFor();
+    assert.match(await page.locator("#splitOutput").innerText(), /寄附目安 429,000/);
+    evidence.push({name:"locality-hold-and-infeasible-rounded-amount",status:"PASS"});
     await page.evaluate(() => {
       window.google.script.run.runFurusatoSimulation = function () { this.onSuccess({status:"ESTIMATE", donationLimitYen:99999}); };
     });

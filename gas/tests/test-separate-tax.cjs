@@ -9,10 +9,11 @@ const engine = context.module.exports;
 const cases = require("../../taxdata/separate-tax-cases-v1.json");
 const spec = require("../../taxdata/separate-tax-v1.json");
 const exact = require("../../taxdata/separate-tax-exact-v1.json");
+const local = require("../../taxdata/separate-tax-local-v1.json");
 const copy = value => JSON.parse(JSON.stringify(value));
 
 assert.equal(exact.length, cases.length);
-for (const {id, input, expected} of cases) {
+for (const {id, input, expected, exact:localEdge} of [...cases,...local]) {
   const result = engine.calculate(input);
   assert.equal(result.status, "ESTIMATE", id);
   const {nationalBefore: n, residentBefore: r, atInput: d} = result.calculation;
@@ -27,8 +28,12 @@ for (const {id, input, expected} of cases) {
     ratio: r.ratio, nationalAfter: d.nationalAfter.annual, residentAfter: d.residentAfter[0] + d.residentAfter[1],
     netCost: d.netCost, limit: result.donationLimitYen
   };
+  if (localEdge) {
+    actual.residentBeforeParts = r.levy.map(y => Math.floor(y / 100000) * 100);
+    actual.residentAfterParts = d.residentAfter;
+  }
   assert.deepEqual(copy(actual), expected, id);
-  const edge = exact.find(row => row.id === id);
+  const edge = localEdge || exact.find(row => row.id === id);
   assert.equal(result.maximumDonationYen, edge.maximum, id);
   assert.equal(result.roundedMaximumYen, edge.rounded, id);
   assert.equal(engine.calculate({...input,donation:edge.maximum}).calculation.atInput.netCost, edge.costAtMaximum, id);
@@ -42,6 +47,7 @@ for (const [change, code] of [
   [{noFileStock: 2000000}, "SAFE-TAX-013"],
   [{listedStock: 0}, "SAFE-TAX-014"],
   [{listedDividend: 100000}, "SAFE-TAX-014"],
+  [{municipality: "other"}, "SAFE-TAX-019"],
   [{residentDeductions: 0}, "SAFE-TAX-015"],
   [{nationalDeductions: -1}, "SAFE-TAX-011"],
   [{year: 2027}, "SAFE-TAX-011"],
@@ -55,4 +61,4 @@ for (const [change, code] of [
   assert.ok(blocked.stop.action && blocked.stop.resume && blocked.stop.storage);
 }
 assert.equal(engine.calculate(input).status, "ESTIMATE");
-console.log(`SEPARATE_TAX_PASS ${cases.length} statutory fixtures, ${exact.length} exact-limit boundaries and 10 HOLD/recovery cases`);
+console.log(`SEPARATE_TAX_PASS ${cases.length} original + ${local.length} new statutory cases, each with an exact boundary, and 11 HOLD/recovery cases`);

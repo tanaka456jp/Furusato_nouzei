@@ -1,5 +1,5 @@
 /**
- * Furusato GAS MVP 0.1.9 — pure, deterministic, no SpreadsheetApp dependency.
+ * Furusato GAS MVP 0.1.10 — pure, deterministic, no SpreadsheetApp dependency.
  * Scope: 2025/2026, one salary source, no family/insurance/mortgage/other income.
  * All unsupported cases fail closed. This is a pre-release ESTIMATE, never an assessment.
  * Source: NTA No.1155, No.1199, No.1410, No.2260 (see README).
@@ -7,7 +7,7 @@
  */
 var FurusatoEngine = (function () {
   "use strict";
-  var VERSION = "gas-mvp-0.1.9";
+  var VERSION = "gas-mvp-0.1.10";
   var TAX_REVISION = "2026-11-05-bundled";
   var BASIC = {
     2025: [[1320000,950000],[3360000,880000],[4890000,680000],
@@ -250,7 +250,7 @@ var FurusatoSeparateTax = (function () {
   var maximumIncome = 23500000;
   var gridMaximum = 1100000;
   var inputKeys = ["mode", "year", "filing", "conditions", "nationalDeductions",
-    "residentDeductions", "personalDifference", "donation"].concat(buckets.map(function (b) { return b[0]; }));
+    "residentDeductions", "personalDifference", "donation", "municipality"].concat(buckets.map(function (b) { return b[0]; }));
 
   function hold(code, category, reason, field, action) {
     return {
@@ -289,24 +289,25 @@ var FurusatoSeparateTax = (function () {
     return {allocation: allocation, base: base, reconstruction: reconstruction, annual: base + reconstruction};
   }
 
-  function resident(income, deductions, personalDifference, nationalBasic) {
+  function resident(income, deductions, personalDifference, nationalBasic, cityShares) {
     var allocation = allocate(income, deductions);
     var ordinary = allocation.rows[0].taxable;
     var adjustmentBase = ordinary <= 2000000
       ? Math.min(ordinary, personalDifference)
       : Math.max(50000, personalDifference - (ordinary - 2000000));
-    var levy = [2, 3].map(function (index) {
-      var tax = allocation.rows.reduce(function (total, row, i) {
-        return total + row.taxable * buckets[i][index] / 1000;
-      }, 0);
+    var combinedMilliYen = allocation.rows.reduce(function (total, row, i) {
+      return total + row.taxable * (buckets[i][2] + buckets[i][3]);
+    }, 0);
+    var shares = [cityShares, 5 - cityShares];
+    var levy = shares.map(function (share) {
       // Keep thousandths of one yen until the final assessed tax rounding.
-      return Math.max(0, tax * 1000 - adjustmentBase * (index === 2 ? 30 : 20));
+      return Math.max(0, combinedMilliYen * share / 5 - adjustmentBase * share * 10);
     });
     var adjustedOrdinary = ordinary - personalDifference - Math.max(0, nationalBasic - 480000);
     var ratio = ordinary > 0 && adjustedOrdinary >= 0
       ? 90000 - brackets.find(function (b) { return adjustedOrdinary <= b[0]; })[1] * 1021
       : (income.shortLand > 0 ? 59370 : 74685);
-    return {allocation: allocation, levy: levy, ratio: ratio, adjustedOrdinary: adjustedOrdinary};
+    return {allocation: allocation, levy: levy, shares: shares, ratio: ratio, adjustedOrdinary: adjustedOrdinary};
   }
 
   function donationResult(input, before, local, total, donation) {
@@ -315,7 +316,7 @@ var FurusatoSeparateTax = (function () {
     var basicBaseTenths = Math.max(0, Math.min(donation * 10, total * 3) - 20000);
     var eligibleSpecial = Math.max(0, donation - 2000);
     var localAfter = local.levy.map(function (levy, index) {
-      var share = index === 0 ? 3 : 2;
+      var share = local.shares[index];
       // 5,000,000 units per yen. Apply each jurisdiction's cap before
       // rounding the sum of its basic and special credits up to a yen.
       var special = Math.min(levy * 1000, eligibleSpecial * local.ratio * share * 10);
@@ -341,7 +342,12 @@ var FurusatoSeparateTax = (function () {
       return hold("SAFE-TAX-013", "UNSUPPORTED_TAX_CASE", "標準条件の照合が済んでいないか、未対応条件があります。",
         "適用条件", "所得・控除と適用条件を照合してください。特例が該当するときは個別計算に切り替えてください。");
     }
-    var fields = inputKeys.slice(4);
+    var municipality = input.municipality === undefined ? "standard" : input.municipality;
+    if (municipality !== "standard" && municipality !== "designated") {
+      return hold("SAFE-TAX-019", "UNSUPPORTED_TAX_CASE", "住民税の標準税率を確認できません。",
+        "課税自治体", "課税年度の条例と税率を確認し、超過課税等がある場合は個別に計算してください。");
+    }
+    var fields = inputKeys.slice(4).filter(function (key) { return key !== "municipality"; });
     var invalid = fields.find(function (key) {
       return !Number.isSafeInteger(input[key]) || input[key] < 0 || input[key] > 100000000;
     });
@@ -361,7 +367,7 @@ var FurusatoSeparateTax = (function () {
         "税目別控除・法定人的控除差", "基礎控除を含む税目別の控除合計と法定人的控除差を確認してください。");
     }
     var before = national(input, input.nationalDeductions);
-    var local = resident(input, input.residentDeductions, input.personalDifference, basic);
+    var local = resident(input, input.residentDeductions, input.personalDifference, basic, municipality === "designated" ? 4 : 3);
     function upperFeasible(step) {
       // Relief is nondecreasing, even though net cost is not. If the upper
       // candidate fails, all amounts above 2000 + its relief also fail.
@@ -378,6 +384,7 @@ var FurusatoSeparateTax = (function () {
     return {
       status: "ESTIMATE", version: version, year: input.year, residentYear: input.year + 1,
       donationLimitYen: limit, maximumDonationYen: maximum, roundedMaximumYen: Math.floor(maximum / 1000) * 1000,
+      municipality: municipality,
       calculation: {total: total, nationalBasic: basic, nationalBefore: before,
         residentBefore: local, atInput: donationResult(input, before, local, total, input.donation),
         atLimit: donationResult(input, before, local, total, limit)}

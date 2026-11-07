@@ -103,3 +103,5 @@ runnerの登録・サービス・ラベルは変更しません。Google実試�
 既存の受入デプロイや認証記録に差分があるときは、旧記録を保管し、独立したクリーンなGit worktreeを用意します。旧記録の読取は `diagnose --reference-private <旧非公開フォルダ>` を使用します。TOKEN_REFRESH_COMPATIBLE は比較したコピーに対する差分パターンです。元の記録とのバイト一致や書込元の特定とは別です。
 
 専用認証を用意した空の非公開フォルダで、`node gas/deployment/private-gas.cjs install --fresh --deploy --protected-root ../HousingERP` を実行します。既存の受入記録や途中作成の記録があると停止します。保護対象、ローカルGit HEAD、登録コード、固定バージョン、Webアプリの権限と実行者を確認します。試験の再開は `verify --attest-head` と `node gas/tests/test-real-browser.cjs --live --attest-head --token-auth` を使用します。本人同意が必要な場合は専用プロファイルで `--live --attest-head --authorize` を実行します。
+
+受入候補の改訂は、初回のfreshで作成・認証した合成環境に限り `install --synthetic-update --deploy` を使用します。直前の候補の固定バージョン・登録先・URLを検証してから、新しい固定バージョンへ同じ合成URLを切り替えます。正式環境や旧受入記録は対象外です。HousingERPのリモートソース・デプロイの照合値は非公開で保持し、`verify --attest-head` でも確認します。
