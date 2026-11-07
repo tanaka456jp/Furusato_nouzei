@@ -130,6 +130,48 @@ jobs:
           path: gas/dist/parity/calculation-diagnostic.json
           if-no-files-found: error
           retention-days: 14
+      - name: Compare observed 41 synthetic Excel rows (global pending remains HOLD)
+        if: >-
+          github.event_name == 'push' &&
+          contains(github.event.head_commit.message, '[excel-observed-41]')
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $url = 'https://github.com/tanaka456jp/Furusato_nouzei/releases/download/v4.18.2/Furusato_nouzei_v4.18.2_ReadyToUse.zip'
+          $expected = 'f534882f56461ea23a75474f24e68ad364d557091609c994341c179e9a655f25'
+          $zip = Join-Path $env:RUNNER_TEMP ('FurusatoObserved_'+$env:GITHUB_RUN_ID+'.zip')
+          $folder = Join-Path $env:GITHUB_WORKSPACE 'gas\dist\parity'
+          [void][IO.Directory]::CreateDirectory($folder)
+          $oracle = Join-Path $folder 'oracle-observed.json'
+          $diff = Join-Path $folder 'comparison-observed.json'
+          if ((Test-Path $zip) -or (Test-Path $oracle) -or (Test-Path $diff)) { throw 'Existing scratch file' }
+          try {
+            Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
+            if ((Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant() -cne $expected) {
+              throw 'Official ZIP checksum mismatch'
+            }
+            .\gas\parity\run-excel-oracle.ps1 -ReleaseZip $zip -OutputPath $oracle -CompareObserved
+            if (!(Test-Path $oracle)) { throw 'Missing observed Excel oracle' }
+            node gas/parity/compare-observed.cjs $oracle | Out-File -LiteralPath $diff -Encoding utf8
+            if ($LASTEXITCODE -ne 0) { throw 'Observed comparisons invalid' }
+            $report = Get-Content -LiteralPath $diff -Raw | ConvertFrom-Json
+            if ($report.verdict -cne 'HOLD' -or $report.checked -ne 41) {
+              throw 'Invalid observed comparison boundary'
+            }
+            ('EXCEL_GLOBAL_PENDING_OBSERVED: matched='+$report.matched+
+               '/41; mismatch='+$report.mismatchCount+'; still HOLD') >> $env:GITHUB_STEP_SUMMARY
+          } finally {
+            if (Test-Path $zip) { Remove-Item $zip -Force }
+          }
+      - uses: actions/upload-artifact@v4
+        if: >-
+          always() && github.event_name == 'push' &&
+          contains(github.event.head_commit.message, '[excel-observed-41]')
+        with:
+          name: Furusato-Excel-observed-41-${{ github.run_id }}
+          path: gas/dist/parity/*observed.json
+          if-no-files-found: warn
+          retention-days: 14
       - name: One-shot official Excel v4.18.2 parity (41 synthetic cases)
         if: >-
           github.event_name == 'push' &&
