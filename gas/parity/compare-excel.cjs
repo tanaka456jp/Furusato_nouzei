@@ -25,9 +25,9 @@ function validate(doc,{allowMock=false}={}){
   if(row.status!=="NORMAL"&&row.status!=="HOLD")fail("invalid Excel status");
   if(row.status==="NORMAL"){
    if(!sameInt(row.donationLimitYen))fail("invalid Excel donation limit");
-   if(row.salaryIncomeYen!=null&&!sameInt(row.salaryIncomeYen))fail("invalid salary income");
-   if(row.residentIncomeLevyYen!=null&&!sameInt(row.residentIncomeLevyYen))fail("invalid resident levy");
-  }else if(row.donationLimitYen!==null)fail("HOLD must not contain a limit");
+   if(!sameInt(row.salaryIncomeYen))fail("missing/invalid Excel salary income");
+   if(!sameInt(row.residentIncomeLevyYen))fail("missing/invalid Excel resident levy");
+  }else if(row.donationLimitYen!==null||row.salaryIncomeYen!==null||row.residentIncomeLevyYen!==null)fail("HOLD must not contain financial outputs");
  });
  return true;
 }
