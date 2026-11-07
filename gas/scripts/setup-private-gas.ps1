@@ -9,6 +9,7 @@
 [CmdletBinding()]
 param(
   [switch]$Login,
+  [switch]$Diagnose,
   [switch]$CreateProject,
   [switch]$PushSource,
   [switch]$DeployPrivate,
@@ -17,8 +18,10 @@ param(
 $ErrorActionPreference = 'Stop'
 $entry = Join-Path (Split-Path -Parent $PSScriptRoot) 'deployment/private-gas.cjs'
 if ($Login -and ($CreateProject -or $PushSource -or $DeployPrivate)) { throw 'Run Login separately.' }
+if ($Diagnose -and ($Login -or $CreateProject -or $PushSource -or $DeployPrivate)) { throw 'Run Diagnose separately: read-only mode.' }
 $mode = 'preflight'
 if ($Login) { $mode = 'login' }
+if ($Diagnose) { $mode = 'diagnose' }
 if ($CreateProject -or $PushSource -or $DeployPrivate) { $mode = 'install' }
 $nodeArgs = @($entry, $mode)
 if ($DeployPrivate) { $nodeArgs += '--deploy' }
