@@ -100,6 +100,14 @@ def add_separate_tax(book, home, field, bar, note, progressive):
         home[f"D{row}"] = f'''=IF(B55="計算可能",'{MODEL}'!F{row-79},"")'''
         for col in "BD":
             home[f"{col}{row}"].number_format = "#,##0"
+    # In a two-range detailed report the second print page starts at row 80.
+    # Repeat the selected tax year and BOTH the workbook and tax-master
+    # revisions in the body, so PDF, virtual printers and physical paper agree.
+    home["A80"] = ('=IFERROR("所得年 "&D50&"／住民税 "&(D50+1)&'
+                   '"／版 "&MID(A1,FIND("v4.",A1),8)&CHAR(10)&"税制版 "&B29,'
+                   '"印刷情報の版・所得年を再確認")')
+    home["A80"].alignment = Alignment(wrap_text=True, vertical="center")
+    home.row_dimensions[80].height = 43
     home["B80"] = "寄附前"
     home["D80"] = "寄附後"
     note(home, 79, "外国税の限度額分母が所得合計と一致し、繰越や調整がない案件のみ。その他の税額控除、特殊な住宅・配当、非課税は個別計算。")
