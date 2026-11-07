@@ -1,5 +1,5 @@
 /**
- * Furusato GAS MVP 0.1.5 — pure, deterministic, no SpreadsheetApp dependency.
+ * Furusato GAS MVP 0.1.6 — pure, deterministic, no SpreadsheetApp dependency.
  * Scope: 2025/2026, one salary source, no family/insurance/mortgage/other income.
  * All unsupported cases fail closed. This is a pre-release ESTIMATE, never an assessment.
  * Source: NTA No.1155, No.1199, No.1410, No.2260 (see README).
@@ -7,7 +7,7 @@
  */
 var FurusatoEngine = (function () {
   "use strict";
-  var VERSION = "gas-mvp-0.1.5";
+  var VERSION = "gas-mvp-0.1.6";
   var TAX_REVISION = "2026-11-05-bundled";
   var BASIC = {
     2025: [[1320000,950000],[3360000,880000],[4890000,680000],
@@ -106,6 +106,7 @@ var FurusatoEngine = (function () {
   }
   function calculate(payload) {
     var input = payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {};
+    if (input.mode === "separate") return FurusatoSeparateTax.calculate(input, basic, VERSION);
     var reasons = [];
     var year = Number(input.year);
     if (year !== 2025 && year !== 2026) reasons.push("2025年・2026年以外は税制マスタ未承認です");
@@ -227,3 +228,153 @@ var FurusatoEngine = (function () {
   return {calculate:calculate,statutoryRows:statutoryRows,salaryIncome:salaryIncome,version:VERSION};
 }());
 if (typeof module !== "undefined" && module.exports) module.exports=FurusatoEngine;
+
+// 分離課税の検証版。共通仕様 taxdata/separate-tax-v1.json。
+// 給与ウィザードとは独立した、確定申告用の確認済み金額を受け付ける。
+var FurusatoSeparateTax = (function () {
+  "use strict";
+  var buckets = [
+    ["ordinary", 0, 60, 40],
+    ["shortLand", 30, 54, 36],
+    ["longLand", 15, 30, 20],
+    ["listedDividend", 15, 30, 20],
+    ["generalStock", 15, 30, 20],
+    ["listedStock", 15, 30, 20],
+    ["futures", 15, 30, 20]
+  ];
+  var brackets = [
+    [1950000, 5, 0], [3300000, 10, 97500], [6950000, 20, 427500],
+    [9000000, 23, 636000], [18000000, 33, 1536000],
+    [40000000, 40, 2796000], [Infinity, 45, 4796000]
+  ];
+  var maximumIncome = 23500000;
+  var gridMaximum = 1100000;
+  var inputKeys = ["mode", "year", "filing", "conditions", "nationalDeductions",
+    "residentDeductions", "personalDifference", "donation"].concat(buckets.map(function (b) { return b[0]; }));
+
+  function hold(code, category, reason, field, action) {
+    return {
+      status: "HOLD", donationLimitYen: null, calculation: null,
+      stop: {
+        code: code, category: category, reason: reason, field: field, automatic: false,
+        action: action, resume: "詳細設定の「再計算」",
+        recalculates: "所得控除配分、所得税等、住民税所得割、寄附の負担額を再計算",
+        storage: "画面内の入力を保持。ブラウザを閉じると消えます。",
+        unverified: "所得税等・住民税所得割・寄附目安額"
+      }
+    };
+  }
+
+  function allocate(income, deductions) {
+    var remaining = deductions;
+    var rows = buckets.map(function (bucket) {
+      var amount = income[bucket[0]];
+      var applied = Math.min(remaining, amount);
+      remaining -= applied;
+      return {kind: bucket[0], applied: applied,
+        taxable: Math.floor((amount - applied) / 1000) * 1000};
+    });
+    return {rows: rows, unused: remaining};
+  }
+
+  function national(income, deductions) {
+    var allocation = allocate(income, deductions);
+    var ordinary = allocation.rows[0].taxable;
+    var bracket = brackets.find(function (b) { return ordinary <= b[0]; });
+    var base = ordinary * bracket[1] / 100 - bracket[2];
+    allocation.rows.slice(1).forEach(function (row, i) {
+      base += row.taxable * buckets[i + 1][1] / 100;
+    });
+    var reconstruction = Math.floor(base * 21 / 1000);
+    return {allocation: allocation, base: base, reconstruction: reconstruction, annual: base + reconstruction};
+  }
+
+  function resident(income, deductions, personalDifference, nationalBasic) {
+    var allocation = allocate(income, deductions);
+    var ordinary = allocation.rows[0].taxable;
+    var adjustmentBase = ordinary <= 2000000
+      ? Math.min(ordinary, personalDifference)
+      : Math.max(50000, personalDifference - (ordinary - 2000000));
+    var levy = [2, 3].map(function (index) {
+      var tax = allocation.rows.reduce(function (total, row, i) {
+        return total + row.taxable * buckets[i][index] / 1000;
+      }, 0);
+      // Keep thousandths of one yen until the final assessed tax rounding.
+      return Math.max(0, tax * 1000 - adjustmentBase * (index === 2 ? 30 : 20));
+    });
+    var adjustedOrdinary = ordinary - personalDifference - Math.max(0, nationalBasic - 480000);
+    var ratio = ordinary > 0 && adjustedOrdinary >= 0
+      ? 90000 - brackets.find(function (b) { return adjustedOrdinary <= b[0]; })[1] * 1021
+      : (income.shortLand > 0 ? 59370 : 74685);
+    return {allocation: allocation, levy: levy, ratio: ratio, adjustedOrdinary: adjustedOrdinary};
+  }
+
+  function donationResult(input, before, local, total, donation) {
+    var incomeDeduction = Math.max(0, Math.min(donation, Math.floor(total * 4 / 10)) - 2000);
+    var after = national(input, input.nationalDeductions + incomeDeduction);
+    var basicBaseTenths = Math.max(0, Math.min(donation * 10, total * 3) - 20000);
+    var eligibleSpecial = Math.max(0, donation - 2000);
+    var localAfter = local.levy.map(function (levy, index) {
+      var share = index === 0 ? 3 : 2;
+      // 5,000,000 units per yen. Apply each jurisdiction's cap before
+      // rounding the sum of its basic and special credits up to a yen.
+      var special = Math.min(levy * 1000, eligibleSpecial * local.ratio * share * 10);
+      var basic = basicBaseTenths * share * 10000;
+      var credit = Math.ceil((basic + special) / 5000000);
+      return Math.max(0, Math.floor((levy - credit * 1000) / 100000)) * 100;
+    });
+    var nationalRelief = before.annual - after.annual;
+    var residentRelief = local.levy.reduce(function (sum, levy, index) {
+      return sum + Math.floor(levy / 100000) * 100 - localAfter[index];
+    }, 0);
+    return {donation: donation, incomeDeduction: incomeDeduction, nationalAfter: after,
+      residentAfter: localAfter, nationalRelief: nationalRelief, residentRelief: residentRelief,
+      netCost: donation - nationalRelief - residentRelief};
+  }
+
+  function calculate(input, basicDeduction, version) {
+    if (input.filing !== "return") {
+      return hold("SAFE-TAX-012", "CONFIG_REQUIRED", "申告分離課税は確定申告で試算します。",
+        "申告方式", "「確定申告」を選択してください。");
+    }
+    if (input.conditions !== "reviewed" || Object.keys(input).some(function (key) { return inputKeys.indexOf(key) < 0; })) {
+      return hold("SAFE-TAX-013", "UNSUPPORTED_TAX_CASE", "標準条件の照合が済んでいないか、未対応条件があります。",
+        "適用条件", "所得・控除と適用条件を照合してください。特例が該当するときは個別計算に切り替えてください。");
+    }
+    var fields = inputKeys.slice(4);
+    var invalid = fields.find(function (key) {
+      return !Number.isSafeInteger(input[key]) || input[key] < 0 || input[key] > 100000000;
+    });
+    if ((input.year !== 2025 && input.year !== 2026) || invalid) {
+      return hold("SAFE-TAX-011", "CONFIG_REQUIRED", "対象年または金額を確認してください。",
+        invalid || "所得年", "2025年または2026年を選び、空欄を含む全金額を0以上の整数で入力してください。");
+    }
+    var total = buckets.reduce(function (sum, bucket) { return sum + input[bucket[0]]; }, 0);
+    var basic = basicDeduction(input.year, total);
+    if (total < 1000000 || total > maximumIncome || total === input.ordinary ||
+        (input.listedDividend > 0 && total - input.ordinary > input.listedDividend)) {
+      return hold("SAFE-TAX-014", "UNSUPPORTED_TAX_CASE", "検証範囲外の所得額または所得区分の組合せです。",
+        "各所得額", "合計所得100万〜2,350万円の申告分離案件を入力してください。申告分離配当と他の分離所得の併用は個別確認です。");
+    }
+    if (input.nationalDeductions < basic || input.residentDeductions < 430000 || input.personalDifference < 50000) {
+      return hold("SAFE-TAX-015", "CALCULATION_MISMATCH", "入力した控除額に法定の基礎控除等が含まれていません。",
+        "税目別控除・法定人的控除差", "基礎控除を含む税目別の控除合計と法定人的控除差を確認してください。");
+    }
+    var before = national(input, input.nationalDeductions);
+    var local = resident(input, input.residentDeductions, input.personalDifference, basic);
+    var limit = 0;
+    // Rounding breaks monotonicity. Check every ¥1,000 candidate in the
+    // proven range documented in the common tax audit.
+    for (var amount = 3000; amount <= gridMaximum; amount += 1000) {
+      if (donationResult(input, before, local, total, amount).netCost <= 2000) limit = amount;
+    }
+    return {
+      status: "ESTIMATE", version: version, year: input.year, residentYear: input.year + 1,
+      donationLimitYen: limit,
+      calculation: {total: total, nationalBasic: basic, nationalBefore: before,
+        residentBefore: local, atInput: donationResult(input, before, local, total, input.donation),
+        atLimit: donationResult(input, before, local, total, limit)}
+    };
+  }
+  return {calculate: calculate};
+}());

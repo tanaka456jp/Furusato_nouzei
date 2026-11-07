@@ -31,6 +31,7 @@ jobs:
       - name: Independent engine regression
         run: |
           node gas/tests/test-engine.cjs
+          node gas/tests/test-separate-tax.cjs
           node gas/tests/test-ocr.cjs
           node gas/tests/test-deployment.cjs
           node gas/tests/test-parity.cjs
@@ -98,6 +99,7 @@ jobs:
       - name: Independent engine regression
         run: |
           node gas/tests/test-engine.cjs
+          node gas/tests/test-separate-tax.cjs
           node gas/tests/test-ocr.cjs
           node gas/tests/test-deployment.cjs
           node gas/tests/test-parity.cjs
