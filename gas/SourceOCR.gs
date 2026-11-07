@@ -9,11 +9,13 @@ var FurusatoOcr = (function () {
   var MAX_BYTES=2*1024*1024;
   var EXT={"application/pdf":"pdf","image/png":"png","image/jpeg":"jpg"};
   var RULES=[
-    ["salary_gross",/(?:^|\n)\s*(?:支払金額|給与支払金額)\s*[:：]?\s*([0-9][0-9,]{3,11})\s*(?:円|$)/gm],
-    ["social_insurance",/(?:^|\n)\s*社会保険料等の金額\s*[:：]?\s*([0-9][0-9,]{3,11})\s*(?:円|$)/gm],
-    ["salary_reference",/(?:^|\n)\s*給与所得控除後の金額(?:（調整控除後）)?\s*[:：]?\s*([0-9][0-9,]{3,11})\s*(?:円|$)/gm],
-    ["deductions_reference",/(?:^|\n)\s*所得控除の額の合計額\s*[:：]?\s*([0-9][0-9,]{3,11})\s*(?:円|$)/gm],
-    ["basic_reference",/(?:^|\n)\s*基礎控除の額\s*[:：]?\s*([0-9][0-9,]{3,11})\s*(?:円|$)/gm]
+    // Drive PDF conversion can join a heading and several fields on ONE line.
+    // Require a whitespace boundary and exact label; never approve candidates.
+    ["salary_gross",/(?:^|[\n\t ])\s*(?:支払金額|給与支払金額)\s*[:：]?\s*([0-9][0-9,]{3,11})\s*(?:円|$)/gm],
+    ["social_insurance",/(?:^|[\n\t ])\s*社会保険料等の金額\s*[:：]?\s*([0-9][0-9,]{3,11})\s*(?:円|$)/gm],
+    ["salary_reference",/(?:^|[\n\t ])\s*給与所得控除後の金額(?:（調整控除後）)?\s*[:：]?\s*([0-9][0-9,]{3,11})\s*(?:円|$)/gm],
+    ["deductions_reference",/(?:^|[\n\t ])\s*所得控除の額の合計額\s*[:：]?\s*([0-9][0-9,]{3,11})\s*(?:円|$)/gm],
+    ["basic_reference",/(?:^|[\n\t ])\s*基礎控除の額\s*[:：]?\s*([0-9][0-9,]{3,11})\s*(?:円|$)/gm]
   ];
   function reviewText(text) {
     var normalized=String(text||"").normalize("NFKC").replace(/\r\n?/g,"\n");

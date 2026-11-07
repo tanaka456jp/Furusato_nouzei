@@ -4,7 +4,9 @@
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict'),cp=require('node:child_process');
 const {chromium}=require('playwright');
 const root=path.resolve(__dirname,'..'),live=process.argv.includes('--live'),authorize=process.argv.includes('--authorize');
-const {source,digest}=require('../deployment/private-gas.cjs');
+const {source,digest,accessToken}=require('../deployment/private-gas.cjs');
+const tokenAuth=live&&process.argv.includes('--token-auth');
+const {installOriginAuthorization}=require('../deployment/browser-auth.cjs');
 const dest=path.join(root,live?'.private/furusato/evidence':'dist/acceptance');fs.mkdirSync(dest,{recursive:true});
 const results=[];
 async function main(){
@@ -16,7 +18,12 @@ async function main(){
   cp.execFileSync(process.execPath,[path.join(root,'deployment/private-gas.cjs'),'verify'],{stdio:'pipe'});
   receipt=JSON.parse(fs.readFileSync(path.join(root,'.private/furusato/receipt.json'),'utf8'));
   if(authorize)launch.headless=false;
-  context=await chromium.launchPersistentContext(path.join(root,'.private/furusato/browser-profile'),launch);
+  if(tokenAuth){
+   assert.equal(authorize,false,'Token mode does not automate owner consent');
+   const token=await accessToken();browser=await chromium.launch(launch);context=await browser.newContext();
+   // Bearer is attached ONLY to script.google.com, never third-party requests.
+   await installOriginAuthorization(context,'https://script.google.com',token);
+  }else context=await chromium.launchPersistentContext(path.join(root,'.private/furusato/browser-profile'),launch);
  }else{browser=await chromium.launch(launch);context=await browser.newContext();}
  try{
   const page=await context.newPage();await page.setViewportSize({width:1280,height:900});
@@ -63,13 +70,16 @@ async function main(){
    for(const ext of ['png','pdf']){
     // A zero-candidate OCR response must not inherit earlier manual/PNG values.
     if(await frame.locator('#clearImportedFile').isVisible())await frame.locator('#clearImportedFile').click();
-    await frame.locator('#salaryGross').fill('');await frame.locator('#socialInsurance').fill('');await frame.locator('#year').selectOption('2025');
+    await frame.locator('#salaryGross').fill('');await frame.locator('#socialInsurance').fill('');
+    await frame.locator('#back').click();await frame.locator('#year').selectOption('2025');await frame.locator('#next').click();
     await frame.locator('#ocrFile').setInputFiles(path.join(dest,'synthetic-slip.'+ext));await frame.locator('#ocrConsent').check();await frame.locator('#ocrRun').click();
-    await frame.locator('#ocrResult').filter({hasText:'OCR完了'}).waitFor({timeout:120000});
+    await frame.locator('#ocrResult').filter({hasText:/OCR完了|失敗|不正/}).waitFor({timeout:120000});
+    assert.ok((await frame.locator('#ocrResult').textContent()).startsWith('OCR完了'),'Google OCR '+ext+' failed; inspect private app error and temporary-file status');
     assert.equal(await frame.locator('#salaryGross').inputValue(),'7000000');assert.equal(await frame.locator('#socialInsurance').inputValue(),'1000000');assert.equal(await frame.locator('#year').inputValue(),'2026');
     await frame.locator('#next').click();await frame.locator('#ack').check();await frame.locator('#next').click();await frame.locator('#next').click();
     await frame.locator('#reportAmount').filter({hasText:'計算停止'}).waitFor({timeout:30000});
     const after=await diagnostics();assert.equal(after.temporaryOcrFiles,0);assert.equal(after.hasMore,false);
+    await page.screenshot({path:path.join(dest,'google-ocr-'+ext+'-hold.png'),fullPage:true});
     results.push({id:'GOOGLE-OCR-'+ext.toUpperCase(),status:'PASS',cleanup:'PASS',data:'SYNTHETIC'});
     await frame.locator('#edit').click();await frame.locator('#back').click();await frame.locator('#back').click();
    }

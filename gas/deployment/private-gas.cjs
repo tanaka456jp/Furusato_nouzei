@@ -50,11 +50,14 @@ function snapshot(protectedRoot){
   return Object.fromEntries(files.map(p=>[path.resolve(p),fs.existsSync(p)?hash(fs.readFileSync(p)):null]));
 }
 function unchanged(s){for(const [p,h] of Object.entries(s))ensure((fs.existsSync(p)?hash(fs.readFileSync(p)):null)===h,'Protected configuration changed; STOP');}
-async function client(){
+async function accessToken(){
   ensure(fs.existsSync(authFile),'AUTH_REQUIRED: run setup-private-gas.ps1 -Login; authorize Furusato separately');
   const a=json(authFile),t=a.tokens?.default;ensure(t?.refresh_token&&t.client_id&&t.client_secret,'Isolated clasp credentials are incomplete');
   const r=await fetch('https://oauth2.googleapis.com/token',{method:'POST',body:new URLSearchParams({client_id:t.client_id,client_secret:t.client_secret,refresh_token:t.refresh_token,grant_type:'refresh_token'}),signal:AbortSignal.timeout(30000)});
-  ensure(r.ok,'AUTH_REQUIRED: isolated Google token refresh failed');const token=(await r.json()).access_token;
+  ensure(r.ok,'AUTH_REQUIRED: isolated Google token refresh failed');return (await r.json()).access_token;
+}
+async function client(){
+  const token=await accessToken();
   return async function api(url,method='GET',body){
     ensure(/^https:\/\/(script|www)\.googleapis\.com\//.test(url),'Unexpected API host');
     const response=await fetch(url,{method,headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(30000)});
@@ -157,12 +160,13 @@ async function main(){
   else if(mode==='install')console.log(JSON.stringify(await install({protectedRoot,deploy:args.includes('--deploy')})));
   else if(mode==='verify'){
     preflight();const api=await client(),r=json(receiptFile);await verify(api,r,protectedRoot);
-    deploymentCheck(await api(scriptUrl(r.scriptId)+'/deployments/'+encodeURIComponent(r.deploymentId)),r.scriptId,r.versionNumber);
+    const actualDeployment=await api(scriptUrl(r.scriptId)+'/deployments/'+encodeURIComponent(r.deploymentId));
+    ensure(actualDeployment.deploymentId===r.deploymentId&&deploymentCheck(actualDeployment,r.scriptId,r.versionNumber)===r.webAppUrl,'Receipt deployment URL/ID differs from Google');
     const frozen=await api(scriptUrl(r.scriptId)+'/content?versionNumber='+r.versionNumber);
     ensure(digest(frozen.files)===r.uploadDigest&&r.uploadDigest===digest(source()),'Deployed source differs from local acceptance candidate');
     manifestCheck(JSON.parse(frozen.files.find(f=>f.name==='appsscript').source));console.log('REAL_GOOGLE_PRIVATE_DEPLOYMENT_PASS');
   }
   else throw new Error('Unknown command');
 }
-module.exports={preflight,manifestCheck,source,digest,verify,identityCheck,sheetCheck,deploymentCheck,install,snapshot,unchanged,rejectLinks};
+module.exports={preflight,manifestCheck,source,digest,verify,identityCheck,sheetCheck,deploymentCheck,install,snapshot,unchanged,rejectLinks,accessToken};
 if(require.main===module)main().catch(e=>{console.error(e.message);process.exitCode=1;});

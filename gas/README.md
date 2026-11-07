@@ -52,6 +52,8 @@ $env:FURUSATO_BROWSER_CHANNEL='msedge'
 node gas/tests/test-real-browser.cjs
 # 実Google非公開デプロイ・所有者のWebアプリ認可が済んだ環境だけ
 node gas/tests/test-real-browser.cjs --live --headed
+# 所有者の初回認可後、既存認証によるヘッドレス実Google試験
+node gas/tests/test-real-browser.cjs --live --token-auth
 ```
 
 ローカルプレビューは `dist/Furusato_GAS_LocalPreview.html`。Google未接続と画面表示します。
@@ -59,6 +61,10 @@ node gas/tests/test-real-browser.cjs --live --headed
 `gas-private-acceptance.yml` は導入安全性と実Chromiumを検査し、所有者の指定ブランチへのpushでは
 Furusato専用Windows self-hosted runnerのEdgeで合成データの操作とPDFを試験します。
 CI成功はGoogle認可・デプロイ・実OCRの成功を意味しません。両者の証跡を区別します。
+
+2026-11-07、専用の実Google環境で合成データによる税額、PNG/PDF OCR、HOLD、
+一時文書削除、PDF出力の受入を実施しました。個別ID/URLと実Google画面の原本は非公開です。
+公開可能な結果は [検証記録](deployment/audit/REPORT.md) を参照してください。
 
 ## 参考一次資料
 

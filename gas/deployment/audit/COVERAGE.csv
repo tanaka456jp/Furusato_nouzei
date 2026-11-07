@@ -6,14 +6,14 @@ SETUP-01,Windows PowerShell default,Offline readonly,Windows PowerShell 5 prefli
 GOOGLE-01,Existing Google auth,Reuse without changing original,Isolated copy and token refresh PASS,PASS,private protected-baseline.json (not published)
 GOOGLE-02,Create and register,New private synthetic sheet and bound script,clasp create and five-file upload hash match,PASS,private receipt.json and api-evidence.json (not published)
 GOOGLE-03,Private deployment,Immutable source plus actual entrypoint private,MYSELF USER_DEPLOYING verified from Google API,PASS,private api-evidence.json (not published)
-GOOGLE-04,Authenticated Web UI,Actual app loads for owner,Computer Use stopped because current URL could not be verified,HOLD,Owner page authorization check pending
+GOOGLE-04,Authenticated Web UI,Actual app loads for owner,Owner confirmed app and isolated browser completed actual server workflow,PASS,private browser-evidence.json (not published)
 TAX-01,Supported salary model,7000000 salary 1000000 insurance yields 109000,30 engine cases and real Edge preview agree,PASS,gas/tests/test-engine.cjs;gas/tests/test-real-browser.cjs
 UI-01,Five stages and import errors,Review and unsupported conditions fail closed,12 DOM workflows PASS,PASS,gas/tests/test-browser.cjs
 UI-02,Desktop and 390px result,Readable and no horizontal overflow,Playwright render visually reviewed by implementer and independent reviewer,PASS,synthetic screenshots in CI artifacts
 PRINT-01,Standard report,One A4 page with expected values and footer,PDF text assertions and rendered page reviewed,PASS,gas/tests/assert-print-pdf.py
 PRINT-02,Physical printer and OS print dialog,Actual print acceptance,Not exercised,HOLD,No physical-print evidence
 OCR-01,Adapter safety,Consent MIME always review and cleanup,Mocked Drive tests PASS,PASS,gas/tests/test-ocr.cjs
-OCR-02,Actual Google PNG PDF OCR,Correct candidates HOLD and zero temporary docs,Live harness implemented not executed,HOLD,gas/tests/test-real-browser.cjs --live
-CI-01,Linux and Windows hosted,Regression passes,Awaiting pushed candidate,HOLD,GitHub Actions
-CI-02,Windows self-hosted Edge,Synthetic browser and PDF pass,Runner online candidate execution pending,HOLD,GitHub Actions
+OCR-02,Actual Google PNG PDF OCR,Correct candidates HOLD and zero temporary docs,Real PNG and PDF cases pass after joined-line parser correction,PASS,private browser-evidence.json (not published)
+CI-01,Linux and Windows hosted,Regression passes,4225046 hosted jobs PASS final source rerun tracked in PR,HOLD,GitHub Actions linked from PR 2
+CI-02,Windows self-hosted Edge,Synthetic browser and PDF pass,4225046 self-hosted PASS final source rerun tracked in PR,HOLD,GitHub Actions linked from PR 2
 RELEASE-01,Formal acceptance,Full tax parity and real integration acceptance,Limited scope and real Google UI OCR remain unaccepted,HOLD,Draft PR 2

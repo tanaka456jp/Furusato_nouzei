@@ -14,16 +14,38 @@ Google上の登録ソース、immutable version、実deployment entryPointを読
 HousingERPのGoogle上ソース・デプロイ一覧、ローカル設定、元clasp認証のハッシュは前後一致した。
 業務シートへの読書き、HousingERPへのコード登録・デプロイ変更、GCP/API/OAuth設定変更は行っていない。
 
-登録したアプリソースdigest:
+初回登録したアプリソースdigest:
 `b2ec960d8fa9f938590b8d30180aba5a091e1cb1f83889153deaf6dbe5867146`。
 実行時は開始HEAD上の変更候補だったため、API証跡はHEADとこのdigestを併記している。
 個別Script/Sheet/Deployment ID、URL、認証ファイル、実Google画面は公開しない。
 原本はGit対象外の `.private/furusato/` に保存した。
 
-実Web画面の確認は、Computer UseがWindowsの現在URLを安全に判定できず停止した。
-その後のブラウザ入力は行わず、所有者に専用Webアプリの表示/追加認可を確認依頼した。
-**実Google UI・サーバー税額呼出・PNG/PDF OCR・Google一時文書削除の受入はHOLD**。
-APIでデプロイできたことを機能受入PASSとして扱わない。
+最初のComputer Useによる既存Chrome操作は、Windowsの現在URLを安全に判定できず停止した。
+その後、所有者が専用Webアプリの5ステップ表示を確認し、自動検証の継続を明示した。
+既存ブラウザの認証情報や設定には触れず、専用OAuthと隔離ブラウザの試験コードで機能検証を完了した。
+
+## 実Google機能受入（合成データのみ）
+
+2026-11-07 09:59 JST、実Google Webアプリの7項目がPASS:
+
+- GASサーバー計算: 給与700万円・社保100万円・2026年→109000円。
+- 実結果の印刷ボタン、A4 1ページPDF、期待値/根拠/注意書きの本文検査。
+- 390px幅の結果表示、住宅ローン条件の計算停止。
+- Drive APIへの実接続。
+- 合成PNG/PDFのOCR候補700万円/100万円、年2026、原票未照合HOLD。
+- PNG/PDF各処理後のOCR一時ファイル残数0。
+
+PDF試験で給与候補欠落を再現し、Drive変換が見出しと複数金額項目を同一行へ連結することを、
+新規合成文書の変換・export・削除で確認した。OCRの項目先頭を空白境界にも対応させ、
+重複額拒否・語内部分一致拒否・REQUIRES_REVIEWの回帰を追加し、専用GASへ再登録した。
+最終GASソースdigest:
+`079258437307dd18630a9e5d5c5720db24ea0d68878334ec868025e6e400fe90`。
+税制計算エンジン・OAuth scopeは変更していない。
+
+Bearerはscript.google.comの完全一致originにだけ付与する。Playwrightのcontinueによる
+redirect継承を独立レビューで指摘し、fetch(maxRedirects:0)→fulfillへ修正した。
+合成Bearerで別originへの不配送、redirectへの不継承、失敗時の例外秘匿を実Edgeで検査した。
+実Google証跡は `.private/furusato/evidence/`、匿名公開可能な要約はEVIDENCE.jsonに記録する。
 
 ## 合成試験と修正
 
@@ -47,7 +69,11 @@ APIでデプロイできたことを機能受入PASSとして扱わない。
 |Medium|認証だけで全機能受入PASSになる|認証専用証跡とHOLDを分離|
 |Medium|デプロイ済み版と試験候補の不一致を未検知|immutable versionとlocal digestを再照合|
 |Medium|ステージ済みsymlinkから保護設定へ書込可能|全書込先とdangling linkを事前拒否|
+|High|認証ヘッダーがredirect先へ継承される可能性|自動redirect追随を禁止し合成Bearerの実ブラウザ回帰を追加|
+|Medium|実PDFの項目連結で給与候補欠落|空白境界の厳密ラベル照合へ修正し実Googleで再受入|
 |Low|モバイル最上部タイトル末尾の単独改行|表示/操作支障なしとして保留|
 
-独立レビューは合成/実装範囲でPASS。実Google機能・物理印刷は独立受入していない。
-CIはpush後の確定SHAで別途確認する。範囲表はCOVERAGE.csvを参照。
+独立レビューは合成/実装範囲でPASS。実Google機能は実装担当が合成データで受入したが、
+別担当による実Google再実行と物理印刷は未実施。正式リリースはHOLD。
+先行4225046の全CIはPASS。最終修正のCIはpush後の確定SHAで確認してPRに記録する。
+範囲表はCOVERAGE.csvを参照。

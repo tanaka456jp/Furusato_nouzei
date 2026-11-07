@@ -13,6 +13,17 @@ const ctx={module:{exports:{}},
  DocumentApp:{openById:()=>({getBody:()=>({getText:()=>sample})})}};
 vm.runInNewContext(source,ctx);
 const api=ctx.module.exports;
+// Observed with a real synthetic PDF converted by Google Drive: lines merge.
+const joined=api.reviewText('令和8年分 給与所得の源泉徴収票 支払金額 7,000,000 円\n社会保険料等の金額 1,000,000 円 給与所得控除後の金額 5,200,000 円');
+assert.equal(joined.candidates.salary_gross,7000000);
+assert.equal(joined.candidates.social_insurance,1000000);
+assert.equal(joined.candidates.salary_reference,5200000);
+assert.equal(joined.status,'REQUIRES_REVIEW');
+const duplicate=api.reviewText('令和8年分 給与所得の源泉徴収票 支払金額 7,000,000 円 支払金額 8,000,000 円');
+assert.ok(duplicate.warnings.includes('MULTIPLE_SALARY_GROSS'));
+assert.equal(duplicate.candidates.salary_gross,undefined);
+const substring=api.reviewText('令和8年分 給与所得の源泉徴収票 誤支払金額 7,000,000 円');
+assert.equal(substring.candidates.salary_gross,undefined);
 const pdf=Buffer.from("%PDF-1.7\nsynthetic").toString("base64");
 assert.throws(()=>api.read({mimeType:"application/pdf",base64:pdf}),/同意/);
 assert.throws(()=>api.read({mimeType:"image/png",base64:pdf,consent:true}),/形式/);

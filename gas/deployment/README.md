@@ -28,7 +28,8 @@ node gas/deployment/private-gas.cjs verify --protected-root ../HousingERP
 `scripts/setup-private-gas.ps1` を使います。`-ProtectedRoot` はHousingERPの読取可能なローカルフォルダを指定します。
 GoogleのApps Script API管理アクセスが未許可の場合は、所有者による許可が必要です。
 本ツールは既存GCPプロジェクトのAPI、OAuth設定、共有設定を変更しません。
-既存のグローバル `.clasprc.json` も利用・更新しません。
+claspの既定認証としてグローバル `.clasprc.json` を使わず、元ファイルへ書き込みません。
+明示的な `reuse-auth` 時だけ元認証を読み取り、専用コピーで更新します。
 
 ## 登録先の保護
 
@@ -55,6 +56,8 @@ node gas/tests/test-real-browser.cjs
 # 実Google環境。専用プロファイルで所有者がWebアプリ認可を完了してから再実行する。
 node gas/tests/test-real-browser.cjs --live --authorize
 node gas/tests/test-real-browser.cjs --live --headed
+# 所有者の初回Webアプリ認可済みなら既存OAuthで隔離ブラウザを利用可能。
+node gas/tests/test-real-browser.cjs --live --token-auth
 ```
 
 ローカル試験は実Chromiumで合成給与700万円/社保100万円→109,000円、住宅ローンHOLD、
@@ -64,6 +67,12 @@ PC/モバイル、印刷ボタンとPDF出力を検査します。Googleサー�
 Googleログイン・アプリ認可画面は自動操作しません。`--authorize` は専用画面を最大10分開き、所有者操作を待ちます。認証だけの証跡と機能受入は別ファイルです。
 PDF本文検査にはPythonと `pypdf==6.1.3` が必要です。隔離導入する場合は `python -m pip install --target gas/.qa-python pypdf==6.1.3` を実行します。
 ブラウザPDF出力はプリンタ本体やOS印刷ダイアログの受入ではありません。
+`--token-auth` は専用認証のBearerをscript.google.comだけへ付与します。
+各応答はredirect追随0で取得し、redirect先へ認証を継承しません。元のfetch例外も外へ返しません。
+合成Bearerによるcross-origin redirect・例外秘匿の実ブラウザ回帰をCIで実行します。
+
+実Googleの合成PDF変換では見出し/複数項目が同じ行へ連結されるため、OCRは空白境界と
+厳密な項目名を照合します。重複額・語内部分一致は採用せず、候補は引き続きREQUIRES_REVIEWです。
 
 Windows self-hosted試験は既存のFurusato専用 `furusato-excel` runnerを使用します。
 所有者の指定ブランチへのpush時だけ実行し、Excel COM、HousingERP、既存認証、Google環境には接続しません。
