@@ -8,3 +8,7 @@ dist/
 .private/
 deployment/node_modules/
 .qa-python/
+
+# Synthetic Excel oracle outputs stay local
+parity/results/
+parity/*.oracle.json

@@ -43,6 +43,7 @@ Google Advanced Drive v3と `spreadsheets.currentonly / drive.file / documents` 
 ```powershell
 node gas/tests/test-contract.cjs
 node gas/tests/test-engine.cjs
+node gas/tests/test-parity.cjs
 node gas/tests/test-ocr.cjs
 node gas/tests/test-deployment.cjs
 node gas/tests/test-browser.cjs
@@ -65,6 +66,10 @@ CI成功はGoogle認可・デプロイ・実OCRの成功を意味しません。
 2026-11-07、専用の実Google環境で合成データによる税額、PNG/PDF OCR、HOLD、
 一時文書削除、PDF出力の受入を実施しました。個別ID/URLと実Google画面の原本は非公開です。
 公開可能な結果は [検証記録](deployment/audit/REPORT.md) を参照してください。
+
+## Excel正式版との独立照合（41合成ケース）
+
+[別計算の手順](parity/README.md)に沿って公式ReadyToUse ZIPのハッシュを検証し、Windows Excel COMの別プロセスで再計算した結果のみGASと比較します。モック試験だけではExcel一致を宣言できません。差異・原本不足はHOLD、正式判定もHOLDを維持します。
 
 ## 参考一次資料
 
