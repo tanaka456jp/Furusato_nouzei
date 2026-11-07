@@ -1,5 +1,5 @@
 /**
- * Furusato GAS MVP 0.1.12 — pure, deterministic, no SpreadsheetApp dependency.
+ * Furusato GAS MVP 0.1.13 — pure, deterministic, no SpreadsheetApp dependency.
  * Scope: 2025/2026, one salary source, no family/insurance/mortgage/other income.
  * All unsupported cases fail closed. This is a pre-release ESTIMATE, never an assessment.
  * Source: NTA No.1155, No.1199, No.1410, No.2260 (see README).
@@ -7,7 +7,7 @@
  */
 var FurusatoEngine = (function () {
   "use strict";
-  var VERSION = "gas-mvp-0.1.12";
+  var VERSION = "gas-mvp-0.1.13";
   var TAX_REVISION = "2026-11-05-bundled";
   var BASIC = {
     2025: [[1320000,950000],[3360000,880000],[4890000,680000],
@@ -288,17 +288,18 @@ var FurusatoSeparateTax = (function () {
       base += row.taxable * buckets[i + 1][1] / 100;
     });
     var dividend = Math.min(base, Math.floor(credits.domesticDividend / 10));
-    var housing = Math.min(base - dividend, credits.housingPossible);
-    var afterHousing = base - dividend - housing;
+    var beforeHousing = base - dividend;
+    var housing = Math.min(beforeHousing, credits.housingPossible);
+    var afterHousing = beforeHousing - housing;
     var unused = credits.housingPossible - housing;
     var housingCap = Math.min(97500, Math.floor((ordinary + credits.housingBasisAddition) / 20));
-    var localHousing = Math.min(unused, housingCap);
+    var localHousing = credits.housingYear >= 2026 && beforeHousing === 0 ? 0 : Math.min(unused, housingCap);
     // The supported foreign credit fits wholly in the national income-tax limit.
     // Reconstruction tax is based on the amount before the foreign credit.
     var reconstruction = Math.floor(afterHousing * 21 / 1000);
     var incomeTax = afterHousing - credits.foreignTax;
     return {allocation: allocation, base: base, dividendCredit: dividend, housingCredit: housing,
-      afterHousing: afterHousing, housingUnused: unused, housingCap: housingCap,
+      beforeHousing: beforeHousing, afterHousing: afterHousing, housingUnused: unused, housingCap: housingCap,
       residentHousingCredit: localHousing, foreignCredit: credits.foreignTax,
       incomeTax: incomeTax, reconstruction: reconstruction, annual: incomeTax + reconstruction};
   }
@@ -402,7 +403,7 @@ var FurusatoSeparateTax = (function () {
     }
     if (credits.domesticDividend > input.ordinary ||
         (credits.domesticDividend > 0 && total > 10000000) ||
-        (credits.foreignTax === 0) !== (credits.foreignIncome === 0) || credits.foreignIncome > input.ordinary) {
+        (credits.foreignTax === 0) !== (credits.foreignIncome === 0) || credits.domesticDividend + credits.foreignIncome > input.ordinary) {
       return hold("SAFE-TAX-023", "CONFIG_REQUIRED", "配当控除・外国税額控除の対象所得または税額を確認できません。",
         "配当・外国税額", "対象の国内普通配当、調整国外所得金額、適格外国所得税額を照合してください。");
     }
@@ -410,12 +411,22 @@ var FurusatoSeparateTax = (function () {
     var before = national(input, input.nationalDeductions, credits);
     var end = national(input, input.nationalDeductions +
       Math.max(0, Math.min(gridMaximum, Math.floor(total * 4 / 10)) - 2000), credits);
-    if (hasHousing && end.housingCap < before.housingCap && end.housingUnused > end.housingCap) {
+    if (hasHousing && end.beforeHousing === 0 &&
+        (credits.housingYear < 2026 || before.beforeHousing > 0)) {
+      return hold("SAFE-TAX-025", "UNSUPPORTED_TAX_CASE", "住宅控除前の所得税が0円となる区間の移行条件を確認する必要があります。",
+        "住宅ローン控除・配当控除", "入居年と住宅控除前の所得税額を確認し、担当者に個別計算を依頼してください。");
+    }
+    var noLocalHousing = credits.housingYear >= 2026 && before.beforeHousing === 0;
+    if (hasHousing && !noLocalHousing && end.housingCap < before.housingCap && end.housingUnused > end.housingCap) {
       return hold("SAFE-TAX-021", "UNSUPPORTED_TAX_CASE", "寄附額で変動する住宅ローン控除の住民税上限に達する可能性があります。",
         "住宅ローン控除・住民税移行", "住民税への移行上限が変動する案件は、担当者に個別計算を依頼してください。");
     }
     var requested = national(input, input.nationalDeductions +
       Math.max(0, Math.min(input.donation, Math.floor(total * 4 / 10)) - 2000), credits);
+    if (hasHousing && credits.housingYear < 2026 && requested.beforeHousing === 0) {
+      return hold("SAFE-TAX-025", "UNSUPPORTED_TAX_CASE", "住宅控除前の所得税が0円の経過措置を確認する必要があります。",
+        "住宅ローン控除・配当控除", "入居年と住宅控除前の所得税額を確認し、担当者に個別計算を依頼してください。");
+    }
     if (credits.foreignTax * total > Math.min(end.afterHousing, requested.afterHousing) * credits.foreignIncome) {
       return hold("SAFE-TAX-022", "UNSUPPORTED_TAX_CASE", "外国税額が所得税の控除限度を超える寄附額があり、復興特別所得税・住民税への適用が必要です。",
         "外国税額控除", "国外所得と限度額の明細を確認し、残余額・繰越がある場合は担当者に個別計算を依頼してください。");

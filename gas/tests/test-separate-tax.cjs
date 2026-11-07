@@ -64,7 +64,13 @@ const invalid = [
     housingBalance: 15000000, housingPossible: 105000}, "SAFE-TAX-021"],
   [{ordinary: 1000000, foreignIncome: 400000, foreignTax: 999999}, "SAFE-TAX-022"],
   [{domesticDividend: 1}, "SAFE-TAX-023"],
+  [{ordinary:3000000, listedStock:0, domesticDividend:2000000, foreignIncome:1500000,
+    foreignTax:10000}, "SAFE-TAX-023"],
   [{foreignIncome: null}, "SAFE-TAX-011"],
+  [{year:2026, ordinary:3000000, listedStock:0, nationalDeductions:1500000, residentDeductions:500000,
+    domesticDividend:500000, housingYear:2026, housingBalance:1500000, housingPossible:10500}, "SAFE-TAX-025"],
+  [{year:2026, ordinary:3000000, listedStock:0, nationalDeductions:1500000, residentDeductions:500000,
+    domesticDividend:1000000, housingYear:2025, housingBalance:1500000, housingPossible:10500}, "SAFE-TAX-025"],
   [{ordinary: 2000000, listedStock: 0, residentDeductions: 1900000, domesticDividend: 100000}, "SAFE-TAX-024"]
 ];
 for (const [change, code] of invalid) {

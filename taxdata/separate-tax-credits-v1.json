@@ -1634,6 +1634,214 @@
     }
   },
   {
+    "id": "2026-new-housing-zero-before-credit-standard",
+    "input": {
+      "ordinary": 3000000,
+      "shortLand": 0,
+      "longLand": 0,
+      "listedDividend": 0,
+      "generalStock": 0,
+      "listedStock": 0,
+      "futures": 0,
+      "year": 2026,
+      "nationalDeductions": 1500000,
+      "residentDeductions": 500000,
+      "personalDifference": 50000,
+      "donation": 30000,
+      "filing": "return",
+      "conditions": "reviewed",
+      "mode": "separate",
+      "municipality": "standard",
+      "domesticDividend": 1000000,
+      "housingYear": 2026,
+      "housingBalance": 1500000,
+      "housingPossible": 10500
+    },
+    "expected": {
+      "nationalApplied": [
+        1500000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentApplied": [
+        500000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalTaxable": [
+        1500000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentTaxable": [
+        2500000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalUnused": 0,
+      "residentUnused": 0,
+      "nationalBefore": 0,
+      "residentBefore": 219500,
+      "ratio": 84895,
+      "nationalAfter": 0,
+      "residentAfter": 192800,
+      "netCost": 3300,
+      "limit": 5000,
+      "residentBeforeParts": [
+        131700,
+        87800
+      ],
+      "residentAfterParts": [
+        115700,
+        77100
+      ],
+      "creditBefore": [
+        75000,
+        75000,
+        0,
+        0,
+        75000,
+        0,
+        0
+      ],
+      "creditAfter": [
+        73600,
+        73600,
+        0,
+        0,
+        73600,
+        0,
+        0
+      ]
+    },
+    "exact": {
+      "maximum": 5700,
+      "rounded": 5000,
+      "costAtMaximum": 2000,
+      "costNext": 2001
+    }
+  },
+  {
+    "id": "2026-new-housing-zero-before-credit-designated",
+    "input": {
+      "ordinary": 3000000,
+      "shortLand": 0,
+      "longLand": 0,
+      "listedDividend": 0,
+      "generalStock": 0,
+      "listedStock": 0,
+      "futures": 0,
+      "year": 2026,
+      "nationalDeductions": 1500000,
+      "residentDeductions": 500000,
+      "personalDifference": 50000,
+      "donation": 30000,
+      "filing": "return",
+      "conditions": "reviewed",
+      "mode": "separate",
+      "municipality": "designated",
+      "domesticDividend": 1000000,
+      "housingYear": 2026,
+      "housingBalance": 1500000,
+      "housingPossible": 10500
+    },
+    "expected": {
+      "nationalApplied": [
+        1500000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentApplied": [
+        500000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalTaxable": [
+        1500000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentTaxable": [
+        2500000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalUnused": 0,
+      "residentUnused": 0,
+      "nationalBefore": 0,
+      "residentBefore": 219500,
+      "ratio": 84895,
+      "nationalAfter": 0,
+      "residentAfter": 192800,
+      "netCost": 3300,
+      "limit": 4000,
+      "residentBeforeParts": [
+        175600,
+        43900
+      ],
+      "residentAfterParts": [
+        154300,
+        38500
+      ],
+      "creditBefore": [
+        75000,
+        75000,
+        0,
+        0,
+        75000,
+        0,
+        0
+      ],
+      "creditAfter": [
+        73600,
+        73600,
+        0,
+        0,
+        73600,
+        0,
+        0
+      ]
+    },
+    "exact": {
+      "maximum": 5700,
+      "rounded": 5000,
+      "costAtMaximum": 2000,
+      "costNext": 2001
+    }
+  },
+  {
     "id": "2026-national-boundary-116000",
     "input": {
       "ordinary": 5000000,

@@ -285,7 +285,11 @@ async function install({protectedRoot,deploy=false,fresh=false,syntheticUpdate=f
       const pp=await api(scriptUrl(denied));ensure(pp.scriptId===denied&&pp.parentId,'Cannot resolve protected script and spreadsheet');
       const user=(await api('https://www.googleapis.com/drive/v3/about?fields=user(permissionId,emailAddress)')).user;
       const title=policy.projectPrefix+crypto.randomUUID();
+      // Persist intent before the only request that can create the sheet.
+      // If its response is lost, a later attempt must reconcile this journal.
+      save(path.join(privateDir,'creation-journal.json'),{title,status:'SHEET_CREATE_REQUESTED'});
       const sheet=await api('https://www.googleapis.com/drive/v3/files?fields=id','POST',{name:title,mimeType:'application/vnd.google-apps.spreadsheet',appProperties:{furusatoInstaller:'v1'}});
+      ensure(typeof sheet.id==='string'&&sheet.id.length,'Drive creation result missing; inspect private journal before retry');
       save(path.join(privateDir,'creation-journal.json'),{spreadsheetId:sheet.id,title,status:'SHEET_CREATED_NO_SCRIPT'});
       ensure(sheet.id!==pp.parentId&&sheet.id!==denied,'Protected sheet collision');await sheetCheck(api,sheet.id,user.permissionId);
       // clasp 3.3 --type sheets creates a DIFFERENT container and ignores parentId.
