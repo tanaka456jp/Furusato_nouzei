@@ -4,6 +4,101 @@ Option Explicit
 ' Only isolated tests use this nonmodal diagnostic state.
 Private mLastTestFailure As String
 
+' Fail closed if Excel keeps a cached amount/status while recalculation is pending.
+' Masking is visual (formulas are retained), and print/PDF entrypoints also
+' independently require trusted, completed, automatic calculation.
+Private mResultUnverified As Boolean
+Private mResultMaskBusy As Boolean
+Private mSavedResultFormats As Object
+
+Private Function OutputAreas() As Variant
+    OutputAreas = Array("B8", "D8", "B26", "B55", "B56", "D56", _
+        "B58:D64", "B65", "D65", "B66", "D66", "B68", "D68", _
+        "B69", "D69", "B81:B86", "D81:D86")
+End Function
+
+Private Function OriginalResultFormat(ByVal address As String) As String
+    Select Case address
+        Case "B26", "B55"
+            OriginalResultFormat = "General"
+        Case "D68"
+            OriginalResultFormat = "0.000%"
+        Case Else
+            OriginalResultFormat = "#,##0"
+    End Select
+End Function
+
+Public Sub MaskUnverifiedResults()
+    Dim home As Worksheet, address As Variant, oldEvents As Boolean
+    Dim original As String, problem As String
+    If mResultMaskBusy Then Exit Sub
+    mResultMaskBusy = True
+    mResultUnverified = True
+    oldEvents = Application.EnableEvents
+    On Error GoTo Failed
+    Application.EnableEvents = False
+    Set home = ThisWorkbook.Worksheets("操作画面")
+    If mSavedResultFormats Is Nothing Then Set mSavedResultFormats = CreateObject("Scripting.Dictionary")
+    For Each address In OutputAreas()
+        If Not mSavedResultFormats.Exists(CStr(address)) Then
+            original = CStr(home.Range(CStr(address)).NumberFormat)
+            If original = ";;;" Then original = OriginalResultFormat(CStr(address))
+            mSavedResultFormats.Add CStr(address), original
+        End If
+        home.Range(CStr(address)).NumberFormat = ";;;"
+    Next address
+    home.Range("A9").Value2 = "計算未完了：旧結果を非表示にしました。自動計算に戻して「計算」を実行してください。"
+    Application.EnableEvents = oldEvents
+    mResultMaskBusy = False
+    Exit Sub
+Failed:
+    problem = Err.Description
+    Application.EnableEvents = oldEvents
+    mResultMaskBusy = False
+    Err.Raise vbObjectError + 301, "TaxLawUpdater.MaskUnverifiedResults", problem
+End Sub
+
+Public Sub RevealVerifiedResults()
+    Dim home As Worksheet, address As Variant, oldEvents As Boolean
+    If Not mResultUnverified Or mResultMaskBusy Then Exit Sub
+    ' Manual mode may retain xlPending and old formula caches. Never reveal.
+    If Application.Calculation <> xlCalculationAutomatic Then Exit Sub
+    If Application.CalculationState <> xlDone Then Exit Sub
+    mResultMaskBusy = True
+    oldEvents = Application.EnableEvents
+    On Error GoTo Failed
+    Application.EnableEvents = False
+    Set home = ThisWorkbook.Worksheets("操作画面")
+    For Each address In OutputAreas()
+        If Not mSavedResultFormats Is Nothing Then
+            If mSavedResultFormats.Exists(CStr(address)) Then
+                home.Range(CStr(address)).NumberFormat = mSavedResultFormats(CStr(address))
+            Else
+                home.Range(CStr(address)).NumberFormat = OriginalResultFormat(CStr(address))
+            End If
+        Else
+            home.Range(CStr(address)).NumberFormat = OriginalResultFormat(CStr(address))
+        End If
+    Next address
+    home.Range("A9").Formula = "=B28"
+    mResultUnverified = False
+    Application.EnableEvents = oldEvents
+    mResultMaskBusy = False
+    Exit Sub
+Failed:
+    Application.EnableEvents = oldEvents
+    mResultMaskBusy = False
+    Err.Raise vbObjectError + 302, "TaxLawUpdater.RevealVerifiedResults", _
+        "計算結果の表示を復旧できません。ブックを閉じずに安全確認してください。"
+End Sub
+
+Public Function ResultsAreCurrent() As Boolean
+    ResultsAreCurrent = (Not mResultUnverified) And _
+        Application.Calculation = xlCalculationAutomatic And _
+        Application.CalculationState = xlDone
+End Function
+
+
 Private Const CATALOG_URL As String = "https://raw.githubusercontent.com/tanaka456jp/Furusato_nouzei/main/taxdata/catalog.tsv"
 Private Const BUNDLED_REVISION As String = "2026-11-05-bundled"
 
@@ -476,6 +571,7 @@ Failed:
 End Sub
 
 Public Sub RecalculateCase()
+    MaskUnverifiedResults
     ' Optional blanks are not errors. Only when explicitly recalculating,
     ' normalize the categorical fields to their conventional default values.
     Dim home As Worksheet
@@ -494,6 +590,7 @@ Public Sub RecalculateCase()
         End If
     End If
     Application.Calculate
+    RevealVerifiedResults
 End Sub
 
 Private Sub ResetSeparateInputs(ByVal home As Worksheet)
@@ -509,6 +606,7 @@ Private Sub ResetSeparateInputs(ByVal home As Worksheet)
 End Sub
 
 Public Sub NewCase()
+    MaskUnverifiedResults
     If MsgBox("現在の入力を消去しますか？保存が必要な場合は先に案件保存してください。", _
               vbQuestion + vbYesNo + vbDefaultButton2, "新規入力") <> vbYes Then Exit Sub
     ResetSeparateInputs ThisWorkbook.Worksheets("操作画面")
@@ -529,6 +627,7 @@ Public Sub NewCase()
         .Range("B19:B20").ClearContents
     End With
     Application.Calculate
+    RevealVerifiedResults
 End Sub
 
 ' Save-copy core is shared between the UI and an isolated Windows acceptance test.
@@ -614,6 +713,10 @@ End Sub
 Public Sub ShowDetails()
     Dim screen As Worksheet
     Set screen = ThisWorkbook.Worksheets("操作画面")
+    If Not ResultsAreCurrent() Then
+        MsgBox "計算未完了のため古い計算根拠は表示できません。自動計算に戻して再計算してください。", vbExclamation
+        Exit Sub
+    End If
     If SeparateMode(screen) Then
         Application.Goto screen.Range("A55"), True
         Exit Sub
@@ -635,6 +738,9 @@ Private Function SeparateMode(ByVal screen As Worksheet) As Boolean
 End Function
 
 Private Sub CheckReportAvailable(ByVal screen As Worksheet)
+    If Not ResultsAreCurrent() Then
+        Err.Raise vbObjectError + 310, , "計算未完了です。古い結果は使用できません。自動計算に戻して再計算してください。"
+    End If
     If SeparateMode(screen) Then
         If CStr(screen.Range("B55").Value2) <> "計算可能" Then
             Err.Raise vbObjectError + 111, , CStr(screen.Range("B55").Value2)
@@ -657,6 +763,7 @@ Public Sub PrintDetails()
     Dim problem As String
     On Error GoTo Failed
     Application.Calculate
+    RevealVerifiedResults
     Set screen = ThisWorkbook.Worksheets("操作画面")
     CheckReportAvailable screen
     If SeparateMode(screen) Then
@@ -686,6 +793,7 @@ Public Function ExportDetailsToFile(ByVal destination As String) As Boolean
     Dim screen As Worksheet, previousArea As String, areaChanged As Boolean
     On Error GoTo Failed
     Application.Calculate
+    RevealVerifiedResults
     Set screen = ThisWorkbook.Worksheets("操作画面")
     CheckReportAvailable screen
     Set fso = CreateObject("Scripting.FileSystemObject")
@@ -751,6 +859,7 @@ Public Sub ExportDetails()
     Dim destination As Variant
     On Error GoTo Failed
     Application.Calculate
+    RevealVerifiedResults
     CheckReportAvailable ThisWorkbook.Worksheets("操作画面")
     destination = Application.GetSaveAsFilename(InitialFileName:="Furusato_result.pdf", _
                    FileFilter:="PDF (*.pdf),*.pdf")
