@@ -14,6 +14,14 @@ function runFurusatoSimulation(input) {
 function getFurusatoVersion() {
   return {version:FurusatoEngine.version, status:"REVIEW_ONLY"};
 }
+// Read-only health check for the isolated synthetic acceptance harness.
+// Never return file IDs, document text, account identity or spreadsheet data.
+function getFurusatoPrivateDiagnostics() {
+  var result=Drive.Files.list({q:"trashed = false and name contains 'Furusato_OCR_TEMP_'",
+    spaces:"drive",pageSize:100,fields:"files(name),nextPageToken"});
+  return {version:FurusatoEngine.version,status:"REVIEW_ONLY",driveApi:"PASS",
+    temporaryOcrFiles:(result.files||[]).length,hasMore:!!result.nextPageToken};
+}
 function setupBoundSpreadsheet() {
   var ss=SpreadsheetApp.getActiveSpreadsheet();
   if (!ss) throw new Error("Googleスプレッドシートに紐づくApps Scriptから実行してください");

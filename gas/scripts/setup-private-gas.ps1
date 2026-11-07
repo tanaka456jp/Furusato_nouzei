@@ -1,103 +1,27 @@
 <#
 .SYNOPSIS
-  Conservative installer for the owner's PRIVATE Google Apps Script test project.
+  Isolated Furusato installer. Default: offline read-only preflight.
 .DESCRIPTION
-  The default operation is read-only - no OAuth, API calls or deployment.
-  CreateProject and PushSource are explicit user options and require an existing
-  Google-account authorization performed interactively. This script NEVER
-  creates an internet-accessible web deployment. Confirm script manifest access
-  MYSELF / USER_DEPLOYING in Apps Script before any test deployment.
-.EXAMPLE
-  powershell -ExecutionPolicy Bypass -File .\gas\scripts\setup-private-gas.ps1
-.EXAMPLE
-  powershell -ExecutionPolicy Bypass -File .\gas\scripts\setup-private-gas.ps1 -SpreadsheetId <Google-Sheet-ID> -CreateProject -PushSource
+  Never adopts an existing Script ID or spreadsheet. Creates its own synthetic
+  sheet; verifies HousingERP denylist and live metadata before each push.
+  OAuth and receipt stay in gas/.private/furusato; global clasp auth is untouched.
 #>
 [CmdletBinding()]
 param(
-    [ValidatePattern('^[A-Za-z0-9_-]{20,120}$')]
-    [string]$SpreadsheetId = '',
-    [switch]$CreateProject,
-    [switch]$PushSource,
-    [switch]$OpenProject,
-    [switch]$AllowExistingProject
+  [switch]$Login,
+  [switch]$CreateProject,
+  [switch]$PushSource,
+  [switch]$DeployPrivate,
+  [string]$ProtectedRoot = ''
 )
 $ErrorActionPreference = 'Stop'
-$root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
-$sourceFiles = @('Code.gs', 'Engine.gs', 'SourceOCR.gs', 'Index.html', 'appsscript.json')
-$expected = @('**/**', '!Code.gs', '!Engine.gs', '!Index.html', '!appsscript.json', '!SourceOCR.gs')
-
-foreach ($file in $sourceFiles) {
-    $path = Join-Path $root $file
-    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
-        throw "Required GAS source is missing: $file"
-    }
-}
-$ignoreFile = Join-Path $root '.claspignore'
-if (-not (Test-Path -LiteralPath $ignoreFile -PathType Leaf)) {
-    throw "Missing .claspignore. Deployment is blocked."
-}
-$actual = @(Get-Content -LiteralPath $ignoreFile -Encoding UTF8 | Where-Object { $_.Trim() -ne '' })
-if ($actual.Count -ne $expected.Count) {
-    throw "Unsafe .claspignore: an unexpected file may be uploaded."
-}
-for ($i = 0; $i -lt $expected.Count; $i++) {
-    if ($actual[$i] -cne $expected[$i]) {
-        throw "Unsafe .claspignore pattern in line $($i + 1)."
-    }
-}
-$manifest = Get-Content -LiteralPath (Join-Path $root 'appsscript.json') -Raw -Encoding UTF8 | ConvertFrom-Json
-if ($manifest.webapp.access -cne 'MYSELF' -or $manifest.webapp.executeAs -cne 'USER_DEPLOYING') {
-    throw "The Apps Script manifest is not restricted to MYSELF / USER_DEPLOYING."
-}
-$scopes = @($manifest.oauthScopes)
-if ($scopes.Count -ne 3 -or $scopes[0] -cne 'https://www.googleapis.com/auth/spreadsheets.currentonly' -or $scopes[1] -cne 'https://www.googleapis.com/auth/drive.file' -or $scopes[2] -cne 'https://www.googleapis.com/auth/documents') {
-    throw "Unexpected OAuth scopes in Apps Script manifest."
-}
-if ($manifest.dependencies.enabledAdvancedServices.Count -ne 1 -or $manifest.dependencies.enabledAdvancedServices[0].serviceId -cne 'drive' -or $manifest.dependencies.enabledAdvancedServices[0].version -cne 'v3') { throw 'Advanced Drive v3 must be enabled.' }
-Write-Output 'PREFLIGHT_PASS: GAS source, publish allowlist, private OCR and OAuth scope verified.'
-$performWrite = [bool]($CreateProject -or $PushSource -or $OpenProject)
-if (-not $performWrite) {
-    Write-Output 'READ_ONLY: No Google login, project creation, code upload or deployment attempted.'
-    Write-Output 'For private setup: install Node 20+, run npm install -g @google/clasp, and use -SpreadsheetId ... -CreateProject -PushSource.'
-    return
-}
-if ([string]::IsNullOrWhiteSpace($SpreadsheetId)) {
-    throw 'A target -SpreadsheetId is mandatory for Google operations.'
-}
-$clasp = Get-Command clasp -ErrorAction SilentlyContinue
-if (-not $clasp) {
-    throw 'clasp was not found. Install Node 20+ then npm install -g @google/clasp.'
-}
-$cfg = Join-Path $root '.clasp.json'
-if ((Test-Path -LiteralPath $cfg) -and $CreateProject) {
-    throw 'A .clasp.json is already present; refuse to create another project over it.'
-}
-if (-not (Test-Path -LiteralPath $cfg) -and -not $CreateProject) {
-    throw 'There is no .clasp.json; use -CreateProject first, or work from the original configured directory.'
-}
-if ($PushSource -and -not $CreateProject -and -not $AllowExistingProject) {
-    throw 'Existing Apps Script content may be overwritten. Re-run with -AllowExistingProject only after verifying the script ID.'
-}
-Push-Location $root
-try {
-    if ($CreateProject) {
-        Write-Output 'A Google browser login may be required. Confirm the correct Google account and enable Apps Script API access.'
-        & clasp create-script --title 'Furusato GAS private review' --parentId $SpreadsheetId
-        if ($LASTEXITCODE -ne 0) { throw 'clasp create-script failed. No code was pushed.' }
-        if (-not (Test-Path -LiteralPath $cfg)) { throw 'No .clasp.json after create-script.' }
-        Write-Output 'PROJECT_CREATED: Check the bound spreadsheet and script ID before any deployment.'
-    }
-    if ($PushSource) {
-        & clasp show-file-status
-        if ($LASTEXITCODE -ne 0) { throw 'clasp source review failed.' }
-        & clasp push
-        if ($LASTEXITCODE -ne 0) { throw 'clasp push failed; test project was not accepted.' }
-        Write-Output 'SOURCE_PUSHED: No web app deployed. Confirm self-only permissions manually in Google Apps Script.'
-    }
-    if ($OpenProject) {
-        & clasp open-script
-        if ($LASTEXITCODE -ne 0) { throw 'Could not open the script editor.' }
-    }
-} finally {
-    Pop-Location
-}
+$entry = Join-Path (Split-Path -Parent $PSScriptRoot) 'deployment/private-gas.cjs'
+if ($Login -and ($CreateProject -or $PushSource -or $DeployPrivate)) { throw 'Run Login separately.' }
+$mode = 'preflight'
+if ($Login) { $mode = 'login' }
+if ($CreateProject -or $PushSource -or $DeployPrivate) { $mode = 'install' }
+$nodeArgs = @($entry, $mode)
+if ($DeployPrivate) { $nodeArgs += '--deploy' }
+if ($ProtectedRoot) { $nodeArgs += @('--protected-root', $ProtectedRoot) }
+& node @nodeArgs
+if ($LASTEXITCODE -ne 0) { throw 'Furusato installer stopped. Formal release HOLD.' }
