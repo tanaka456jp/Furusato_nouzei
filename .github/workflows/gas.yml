@@ -35,6 +35,7 @@ jobs:
           node gas/tests/test-ocr.cjs
           node gas/tests/test-deployment.cjs
           node gas/tests/test-config-drift.cjs
+          node gas/tests/test-google-recovery.cjs
           node gas/tests/test-parity.cjs
           node gas/tests/test-observed.cjs
       - name: Workflow and source import simulated browser regression
@@ -104,6 +105,7 @@ jobs:
           node gas/tests/test-ocr.cjs
           node gas/tests/test-deployment.cjs
           node gas/tests/test-config-drift.cjs
+          node gas/tests/test-google-recovery.cjs
           node gas/tests/test-parity.cjs
           node gas/tests/test-observed.cjs
       - name: Workflow and source import simulated browser regression

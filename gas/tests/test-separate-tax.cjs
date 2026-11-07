@@ -10,10 +10,11 @@ const cases = require("../../taxdata/separate-tax-cases-v1.json");
 const spec = require("../../taxdata/separate-tax-v1.json");
 const exact = require("../../taxdata/separate-tax-exact-v1.json");
 const local = require("../../taxdata/separate-tax-local-v1.json");
+const credit = require("../../taxdata/separate-tax-credits-v1.json");
 const copy = value => JSON.parse(JSON.stringify(value));
 
 assert.equal(exact.length, cases.length);
-for (const {id, input, expected, exact:localEdge} of [...cases,...local]) {
+for (const {id, input, expected, exact:localEdge} of [...cases,...local,...credit]) {
   const result = engine.calculate(input);
   assert.equal(result.status, "ESTIMATE", id);
   const {nationalBefore: n, residentBefore: r, atInput: d} = result.calculation;
@@ -24,13 +25,19 @@ for (const {id, input, expected, exact:localEdge} of [...cases,...local]) {
     nationalTaxable: n.allocation.rows.map(row => row.taxable),
     residentTaxable: r.allocation.rows.map(row => row.taxable),
     nationalUnused: n.allocation.unused, residentUnused: r.allocation.unused,
-    nationalBefore: n.annual, residentBefore: r.levy.reduce((s, y) => s + Math.floor(y / 100000) * 100, 0),
+    nationalBefore: n.annual, residentBefore: r.assessed.reduce((s, tax) => s + tax, 0),
     ratio: r.ratio, nationalAfter: d.nationalAfter.annual, residentAfter: d.residentAfter[0] + d.residentAfter[1],
     netCost: d.netCost, limit: result.donationLimitYen
   };
   if (localEdge) {
-    actual.residentBeforeParts = r.levy.map(y => Math.floor(y / 100000) * 100);
+    actual.residentBeforeParts = r.assessed;
     actual.residentAfterParts = d.residentAfter;
+  }
+  if (expected.creditBefore) {
+    const breakdown = tax => [tax.base, tax.dividendCredit, tax.housingCredit, tax.residentHousingCredit,
+      tax.housingCap, tax.incomeTax, tax.reconstruction];
+    actual.creditBefore = breakdown(n);
+    actual.creditAfter = breakdown(d.nationalAfter);
   }
   assert.deepEqual(copy(actual), expected, id);
   const edge = localEdge || exact.find(row => row.id === id);
@@ -40,7 +47,7 @@ for (const {id, input, expected, exact:localEdge} of [...cases,...local]) {
   assert.equal(engine.calculate({...input,donation:edge.maximum+1}).calculation.atInput.netCost, edge.costNext, id);
 }
 const input = cases[0].input;
-for (const [change, code] of [
+const invalid = [
   [{filing: "one-stop"}, "SAFE-TAX-012"],
   [{conditions: "unreviewed"}, "SAFE-TAX-013"],
   [{hasMortgage: true}, "SAFE-TAX-013"],
@@ -51,8 +58,16 @@ for (const [change, code] of [
   [{residentDeductions: 0}, "SAFE-TAX-015"],
   [{nationalDeductions: -1}, "SAFE-TAX-011"],
   [{year: 2027}, "SAFE-TAX-011"],
-  [{donation: 10.5}, "SAFE-TAX-011"]
-]) {
+  [{donation: 10.5}, "SAFE-TAX-011"],
+  [{housingYear: 2025}, "SAFE-TAX-020"],
+  [{year: 2026, ordinary: 2600000, listedStock: 0, nationalDeductions: 1200000, housingYear: 2026,
+    housingBalance: 15000000, housingPossible: 105000}, "SAFE-TAX-021"],
+  [{ordinary: 1000000, foreignIncome: 400000, foreignTax: 999999}, "SAFE-TAX-022"],
+  [{domesticDividend: 1}, "SAFE-TAX-023"],
+  [{foreignIncome: null}, "SAFE-TAX-011"],
+  [{ordinary: 2000000, listedStock: 0, residentDeductions: 1900000, domesticDividend: 100000}, "SAFE-TAX-024"]
+];
+for (const [change, code] of invalid) {
   const blocked = engine.calculate({...input, ...change});
   assert.equal(blocked.status, "HOLD");
   assert.equal(blocked.donationLimitYen, null);
@@ -61,4 +76,4 @@ for (const [change, code] of [
   assert.ok(blocked.stop.action && blocked.stop.resume && blocked.stop.storage);
 }
 assert.equal(engine.calculate(input).status, "ESTIMATE");
-console.log(`SEPARATE_TAX_PASS ${cases.length} original + ${local.length} new statutory cases, each with an exact boundary, and 11 HOLD/recovery cases`);
+console.log(`SEPARATE_TAX_PASS ${cases.length} original + ${local.length} new statutory cases, each with an exact boundary, and ${invalid.length} HOLD/recovery cases, plus ${credit.length} income-tax credit fixtures`);

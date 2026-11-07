@@ -30,6 +30,7 @@ jobs:
       - run: node gas/tests/test-private-files.cjs
       - run: node gas/tests/test-clasp-files.cjs
       - run: node gas/tests/test-separate-tax.cjs
+      - run: node gas/tests/test-google-recovery.cjs
       - run: node gas/tests/test-engine.cjs
       - run: node gas/tests/test-observed.cjs
       - run: node gas/tests/test-ocr.cjs
@@ -77,6 +78,7 @@ jobs:
       - run: node gas/tests/test-config-drift.cjs
       - run: node gas/tests/test-clasp-files.cjs
       - run: node gas/tests/test-separate-tax.cjs
+      - run: node gas/tests/test-google-recovery.cjs
       - run: node gas/tests/test-engine.cjs
       - run: node gas/tests/test-observed.cjs
       - run: node gas/tests/test-ocr.cjs

@@ -1,4 +1,4 @@
-# Furusato_nouzei GAS v0.1.10 — 開発・検証版 / 正式リリースHOLD
+# Furusato_nouzei GAS v0.1.11 — 開発・検証版 / 正式リリースHOLD
 
 Excel正式版v4.18.2とは独立した、Apps Script HTML Serviceの5ステップ試算画面です。
 Draft PR #2を維持し、mainのExcel正式版とHousingERPの本番運用を変更しません。

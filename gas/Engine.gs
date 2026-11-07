@@ -1,5 +1,5 @@
 /**
- * Furusato GAS MVP 0.1.10 — pure, deterministic, no SpreadsheetApp dependency.
+ * Furusato GAS MVP 0.1.11 — pure, deterministic, no SpreadsheetApp dependency.
  * Scope: 2025/2026, one salary source, no family/insurance/mortgage/other income.
  * All unsupported cases fail closed. This is a pre-release ESTIMATE, never an assessment.
  * Source: NTA No.1155, No.1199, No.1410, No.2260 (see README).
@@ -7,7 +7,7 @@
  */
 var FurusatoEngine = (function () {
   "use strict";
-  var VERSION = "gas-mvp-0.1.10";
+  var VERSION = "gas-mvp-0.1.11";
   var TAX_REVISION = "2026-11-05-bundled";
   var BASIC = {
     2025: [[1320000,950000],[3360000,880000],[4890000,680000],
@@ -249,8 +249,10 @@ var FurusatoSeparateTax = (function () {
   ];
   var maximumIncome = 23500000;
   var gridMaximum = 1100000;
+  var creditFields = ["housingYear", "housingBalance", "housingPossible",
+    "domesticDividend", "foreignTax", "foreignIncome"];
   var inputKeys = ["mode", "year", "filing", "conditions", "nationalDeductions",
-    "residentDeductions", "personalDifference", "donation", "municipality"].concat(buckets.map(function (b) { return b[0]; }));
+    "residentDeductions", "personalDifference", "donation", "municipality"].concat(buckets.map(function (b) { return b[0]; })).concat(creditFields);
 
   function hold(code, category, reason, field, action) {
     return {
@@ -277,7 +279,7 @@ var FurusatoSeparateTax = (function () {
     return {rows: rows, unused: remaining};
   }
 
-  function national(income, deductions) {
+  function national(income, deductions, credits) {
     var allocation = allocate(income, deductions);
     var ordinary = allocation.rows[0].taxable;
     var bracket = brackets.find(function (b) { return ordinary <= b[0]; });
@@ -285,8 +287,20 @@ var FurusatoSeparateTax = (function () {
     allocation.rows.slice(1).forEach(function (row, i) {
       base += row.taxable * buckets[i + 1][1] / 100;
     });
-    var reconstruction = Math.floor(base * 21 / 1000);
-    return {allocation: allocation, base: base, reconstruction: reconstruction, annual: base + reconstruction};
+    var dividend = Math.min(base, Math.floor(credits.domesticDividend / 10));
+    var housing = Math.min(base - dividend, credits.housingPossible);
+    var afterHousing = base - dividend - housing;
+    var unused = credits.housingPossible - housing;
+    var housingCap = Math.min(97500, Math.floor((ordinary + credits.housingBasisAddition) / 20));
+    var localHousing = Math.min(unused, housingCap);
+    // The supported foreign credit fits wholly in the national income-tax limit.
+    // Reconstruction tax is based on the amount before the foreign credit.
+    var reconstruction = Math.floor(afterHousing * 21 / 1000);
+    var incomeTax = afterHousing - credits.foreignTax;
+    return {allocation: allocation, base: base, dividendCredit: dividend, housingCredit: housing,
+      afterHousing: afterHousing, housingUnused: unused, housingCap: housingCap,
+      residentHousingCredit: localHousing, foreignCredit: credits.foreignTax,
+      incomeTax: incomeTax, reconstruction: reconstruction, annual: incomeTax + reconstruction};
   }
 
   function resident(income, deductions, personalDifference, nationalBasic, cityShares) {
@@ -310,9 +324,16 @@ var FurusatoSeparateTax = (function () {
     return {allocation: allocation, levy: levy, shares: shares, ratio: ratio, adjustedOrdinary: adjustedOrdinary};
   }
 
-  function donationResult(input, before, local, total, donation) {
+  function assessedLevy(levy, share, nationalTax, credits) {
+    // Resident dividend credit is 2.8% in total, and housing is apportioned
+    // by the standard municipality/prefecture income levy shares.
+    return levy - credits.domesticDividend * 28 * share / 5
+      - nationalTax.residentHousingCredit * 200 * share;
+  }
+
+  function donationResult(input, before, local, total, donation, credits) {
     var incomeDeduction = Math.max(0, Math.min(donation, Math.floor(total * 4 / 10)) - 2000);
-    var after = national(input, input.nationalDeductions + incomeDeduction);
+    var after = national(input, input.nationalDeductions + incomeDeduction, credits);
     var basicBaseTenths = Math.max(0, Math.min(donation * 10, total * 3) - 20000);
     var eligibleSpecial = Math.max(0, donation - 2000);
     var localAfter = local.levy.map(function (levy, index) {
@@ -322,11 +343,11 @@ var FurusatoSeparateTax = (function () {
       var special = Math.min(levy * 1000, eligibleSpecial * local.ratio * share * 10);
       var basic = basicBaseTenths * share * 10000;
       var credit = Math.ceil((basic + special) / 5000000);
-      return Math.max(0, Math.floor((levy - credit * 1000) / 100000)) * 100;
+      return Math.max(0, Math.floor((assessedLevy(levy, share, after, credits) - credit * 1000) / 100000)) * 100;
     });
     var nationalRelief = before.annual - after.annual;
-    var residentRelief = local.levy.reduce(function (sum, levy, index) {
-      return sum + Math.floor(levy / 100000) * 100 - localAfter[index];
+    var residentRelief = local.assessed.reduce(function (sum, tax, index) {
+      return sum + tax - localAfter[index];
     }, 0);
     return {donation: donation, incomeDeduction: incomeDeduction, nationalAfter: after,
       residentAfter: localAfter, nationalRelief: nationalRelief, residentRelief: residentRelief,
@@ -348,8 +369,13 @@ var FurusatoSeparateTax = (function () {
         "課税自治体", "課税年度の条例と税率を確認し、超過課税等がある場合は個別に計算してください。");
     }
     var fields = inputKeys.slice(4).filter(function (key) { return key !== "municipality"; });
+    var credits = {};
+    creditFields.forEach(function (key) {
+      credits[key] = Object.prototype.hasOwnProperty.call(input, key) ? input[key] : 0;
+    });
     var invalid = fields.find(function (key) {
-      return !Number.isSafeInteger(input[key]) || input[key] < 0 || input[key] > 100000000;
+      var value = creditFields.indexOf(key) >= 0 ? credits[key] : input[key];
+      return !Number.isSafeInteger(value) || value < 0 || value > 100000000;
     });
     if ((input.year !== 2025 && input.year !== 2026) || invalid) {
       return hold("SAFE-TAX-011", "CONFIG_REQUIRED", "対象年または金額を確認してください。",
@@ -357,23 +383,57 @@ var FurusatoSeparateTax = (function () {
     }
     var total = buckets.reduce(function (sum, bucket) { return sum + input[bucket[0]]; }, 0);
     var basic = basicDeduction(input.year, total);
-    if (total < 1000000 || total > maximumIncome || total === input.ordinary ||
+    var hasCredits = credits.housingPossible > 0 || credits.domesticDividend > 0 || credits.foreignTax > 0;
+    if (total < 1000000 || total > maximumIncome || (total === input.ordinary && !hasCredits) ||
         (input.listedDividend > 0 && total - input.ordinary > input.listedDividend)) {
       return hold("SAFE-TAX-014", "UNSUPPORTED_TAX_CASE", "検証範囲外の所得額または所得区分の組合せです。",
-        "各所得額", "合計所得100万〜2,350万円の申告分離案件を入力してください。申告分離配当と他の分離所得の併用は個別確認です。");
+        "各所得額", "合計所得100万〜2,350万円の対応する所得区分と税額控除を入力してください。申告分離配当と他の分離所得の併用は個別確認です。");
     }
     if (input.nationalDeductions < basic || input.residentDeductions < 430000 || input.personalDifference < 50000) {
       return hold("SAFE-TAX-015", "CALCULATION_MISMATCH", "入力した控除額に法定の基礎控除等が含まれていません。",
         "税目別控除・法定人的控除差", "基礎控除を含む税目別の控除合計と法定人的控除差を確認してください。");
     }
-    var before = national(input, input.nationalDeductions);
+    var hasHousing = credits.housingYear !== 0 || credits.housingBalance !== 0 || credits.housingPossible !== 0;
+    if (hasHousing && (credits.housingYear < 2022 || credits.housingYear > input.year ||
+        total > 20000000 || credits.housingBalance > 50000000 || credits.housingPossible === 0 ||
+        credits.housingPossible !== Math.floor(credits.housingBalance * 7 / 100000) * 100)) {
+      return hold("SAFE-TAX-020", "CONFIG_REQUIRED", "住宅ローン控除の居住開始年・対象残高・控除可能額を照合できません。",
+        "住宅ローン控除", "適格な2022～2026年入居の通常0.7％分について、適用上限反映済み残高と申告書の控除可能額を入力してください。");
+    }
+    if (credits.domesticDividend > input.ordinary ||
+        (credits.domesticDividend > 0 && total > 10000000) ||
+        (credits.foreignTax === 0) !== (credits.foreignIncome === 0) || credits.foreignIncome > input.ordinary) {
+      return hold("SAFE-TAX-023", "CONFIG_REQUIRED", "配当控除・外国税額控除の対象所得または税額を確認できません。",
+        "配当・外国税額", "対象の国内普通配当、調整国外所得金額、適格外国所得税額を照合してください。");
+    }
+    credits.housingBasisAddition = hasHousing && credits.housingYear < 2026 ? Math.max(0, basic - 480000) : 0;
+    var before = national(input, input.nationalDeductions, credits);
+    var end = national(input, input.nationalDeductions +
+      Math.max(0, Math.min(gridMaximum, Math.floor(total * 4 / 10)) - 2000), credits);
+    if (hasHousing && end.housingCap < before.housingCap && end.housingUnused > end.housingCap) {
+      return hold("SAFE-TAX-021", "UNSUPPORTED_TAX_CASE", "寄附額で変動する住宅ローン控除の住民税上限に達する可能性があります。",
+        "住宅ローン控除・住民税移行", "住民税への移行上限が変動する案件は、担当者に個別計算を依頼してください。");
+    }
+    var requested = national(input, input.nationalDeductions +
+      Math.max(0, Math.min(input.donation, Math.floor(total * 4 / 10)) - 2000), credits);
+    if (credits.foreignTax * total > Math.min(end.afterHousing, requested.afterHousing) * credits.foreignIncome) {
+      return hold("SAFE-TAX-022", "UNSUPPORTED_TAX_CASE", "外国税額が所得税の控除限度を超える寄附額があり、復興特別所得税・住民税への適用が必要です。",
+        "外国税額控除", "国外所得と限度額の明細を確認し、残余額・繰越がある場合は担当者に個別計算を依頼してください。");
+    }
     var local = resident(input, input.residentDeductions, input.personalDifference, basic, municipality === "designated" ? 4 : 3);
+    if (total === input.ordinary && local.adjustedOrdinary < 0) {
+      return hold("SAFE-TAX-024", "UNSUPPORTED_TAX_CASE", "税額控除ありの総合課税のみで、特例割合の判定額が負です。",
+        "住民税課税所得・人的控除差", "控除明細を確認し、担当者に個別計算を依頼してください。");
+    }
+    local.assessed = local.levy.map(function (levy, i) {
+      return Math.max(0, Math.floor(assessedLevy(levy, local.shares[i], before, credits) / 100000)) * 100;
+    });
     function upperFeasible(step) {
       // Relief is nondecreasing, even though net cost is not. If the upper
       // candidate fails, all amounts above 2000 + its relief also fail.
       var upper = gridMaximum;
       while (true) {
-        var cost = donationResult(input, before, local, total, upper).netCost;
+        var cost = donationResult(input, before, local, total, upper, credits).netCost;
         if (cost <= 2000) return upper;
         upper = Math.floor((upper - cost + 2000) / step) * step;
       }
@@ -386,8 +446,8 @@ var FurusatoSeparateTax = (function () {
       donationLimitYen: limit, maximumDonationYen: maximum, roundedMaximumYen: Math.floor(maximum / 1000) * 1000,
       municipality: municipality,
       calculation: {total: total, nationalBasic: basic, nationalBefore: before,
-        residentBefore: local, atInput: donationResult(input, before, local, total, input.donation),
-        atLimit: donationResult(input, before, local, total, limit)}
+        residentBefore: local, atInput: donationResult(input, before, local, total, input.donation, credits),
+        atLimit: donationResult(input, before, local, total, limit, credits)}
     };
   }
   return {calculate: calculate};

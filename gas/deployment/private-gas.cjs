@@ -49,7 +49,7 @@ function snapshot(protectedRoot){
   const files=[path.join(protectedRoot,'.clasp.json'),path.join(protectedRoot,'appsscript.json'),path.join(protectedRoot,'project.json'),path.join(os.homedir(),'.clasprc.json')];
   return Object.fromEntries(files.map(p=>[path.resolve(p),fs.existsSync(p)?hash(fs.readFileSync(p)):null]));
 }
-function unchanged(s){for(const [p,h] of Object.entries(s))ensure((fs.existsSync(p)?hash(fs.readFileSync(p)):null)===h,'Protected configuration changed; STOP');}
+function unchanged(s){for(const [p,h] of Object.entries(s))ensure((fs.existsSync(p)?hash(fs.readFileSync(p)):null)===h,'SAFE-GOOGLE-PROTECTED-CONFIG: 保護対象に差異。診断で原因を確認してください。');}
 function attestedCandidate(){
   const git=args=>cp.execFileSync('git',args,{cwd:root,encoding:'utf8',stdio:['ignore','pipe','pipe']});
   const revision=git(['rev-parse','HEAD']).trim();
@@ -141,20 +141,83 @@ function oauthRefreshPattern(previous,current){
   }catch{return 'UNVERIFIED';}
 }
 
-async function accessToken(){
-  ensure(fs.existsSync(authFile),'AUTH_REQUIRED: run setup-private-gas.ps1 -Login; authorize Furusato separately');
-  const a=json(authFile),t=a.tokens?.default;ensure(t?.refresh_token&&t.client_id&&t.client_secret,'Isolated clasp credentials are incomplete');
-  const r=await fetch('https://oauth2.googleapis.com/token',{method:'POST',body:new URLSearchParams({client_id:t.client_id,client_secret:t.client_secret,refresh_token:t.refresh_token,grant_type:'refresh_token'}),signal:AbortSignal.timeout(30000)});
-  ensure(r.ok,'AUTH_REQUIRED: isolated Google token refresh failed');return (await r.json()).access_token;
+const retryableStatus = new Set([408, 429, 500, 502, 503, 504]);
+
+async function requestGoogle(transport, url, options, retry) {
+  for (let attempt = 0; ; attempt++) {
+    let response;
+    try {
+      response = await transport(url, {...options, signal:AbortSignal.timeout(30000)});
+    } catch (error) {
+      if (retry && attempt === 0) {
+        await new Promise(resolve => setTimeout(resolve, 350));
+        continue;
+      }
+      const code = error?.name === 'TimeoutError' || error?.name === 'AbortError'
+        ? 'SAFE-GOOGLE-TIMEOUT' : 'SAFE-GOOGLE-NETWORK';
+      throw new Error(code + ': 通信を確認し、照合から再開してください。作成・更新の結果が不明な場合は導入記録を確認してください。');
+    }
+    if (retry && attempt === 0 && retryableStatus.has(response.status)) {
+      await new Promise(resolve => setTimeout(resolve, 350));
+      continue;
+    }
+    return response;
+  }
 }
-async function client(){
-  const token=await accessToken();
-  return async function api(url,method='GET',body){
-    ensure(/^https:\/\/(script|www)\.googleapis\.com\//.test(url),'Unexpected API host');
-    const response=await fetch(url,{method,headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(30000)});
-    if(!response.ok){let code='UNKNOWN';try{code=(await response.json()).error?.status||code;}catch{}throw new Error('Google API '+response.status+' '+code+'; no automatic API/security setting changes');}
-    return response.status===204?{}:response.json();
+
+async function refreshToken(t, transport = fetch) {
+  ensure([t?.refresh_token, t?.client_id, t?.client_secret].every(value => typeof value === 'string' && value.length),
+    'SAFE-GOOGLE-AUTH-CONFIG: Furusato専用の認証情報を確認し、必要に応じて setup-private-gas.ps1 -Login を実行してください。');
+  const response = await requestGoogle(transport, 'https://oauth2.googleapis.com/token', {
+    method:'POST', body:new URLSearchParams({client_id:t.client_id,client_secret:t.client_secret,
+      refresh_token:t.refresh_token,grant_type:'refresh_token'})
+  }, true);
+  ensure(response.ok, retryableStatus.has(response.status)
+    ? 'SAFE-GOOGLE-AUTH-TEMPORARY: Googleの稼働状況を確認して再実行してください。'
+    : 'SAFE-GOOGLE-AUTH-REJECTED: Furusato専用の認可を setup-private-gas.ps1 -Login で確認してください。');
+  let token;
+  try { token = (await response.json()).access_token; } catch {}
+  ensure(typeof token === 'string' && token.length && !/[\r\n]/.test(token),
+    'SAFE-GOOGLE-AUTH-RESPONSE: Googleの認証応答を確認し、照合から再実行してください。');
+  return token;
+}
+
+async function accessToken(){
+  ensure(fs.existsSync(authFile),'SAFE-GOOGLE-AUTH-REQUIRED: Furusato専用の setup-private-gas.ps1 -Login を実行してください。');
+  let credentials;
+  try { credentials = json(authFile).tokens?.default; }
+  catch { throw new Error('SAFE-GOOGLE-AUTH-CONFIG: Furusato専用の認証ファイルを確認してください。'); }
+  return refreshToken(credentials);
+}
+
+function googleApi(token, transport = fetch) {
+  return async function api(url, method = 'GET', body) {
+    ensure(/^https:\/\/(script|www)\.googleapis\.com\//.test(url), 'Unexpected API host');
+    const response = await requestGoogle(transport, url, {method,
+      headers:{Authorization:'Bearer '+token, 'Content-Type':'application/json'},
+      body:body === undefined ? undefined : JSON.stringify(body)
+    }, method === 'GET');
+    if (!response.ok) {
+      let reason = 'SAFE-GOOGLE-API: Apps ScriptまたはDriveの実行状態を照合してください。';
+      if (response.status === 401) reason = 'SAFE-GOOGLE-AUTH-EXPIRED: Furusato専用認証を確認し、照合から再実行してください。';
+      if (response.status === 403) {
+        let serviceDisabled = false;
+        try { serviceDisabled = (await response.json()).error?.details?.some(item => item.reason === 'SERVICE_DISABLED'); } catch {}
+        reason = serviceDisabled
+          ? 'SAFE-GOOGLE-SERVICE-DISABLED: 対象GASのDrive APIと専用Googleプロジェクトの設定を確認してください。'
+          : 'SAFE-GOOGLE-PERMISSION: Furusato専用アカウントの権限・スコープを確認してください。';
+      }
+      if (retryableStatus.has(response.status)) reason = 'SAFE-GOOGLE-TEMPORARY: Googleの稼働状況を確認し、照合から再実行してください。';
+      throw new Error(reason);
+    }
+    if (response.status === 204) return {};
+    try { return await response.json(); }
+    catch { throw new Error('SAFE-GOOGLE-API-RESPONSE: 応答形式を確認し、照合から再実行してください。'); }
   };
+}
+
+async function client() {
+  return googleApi(await accessToken());
 }
 const scriptUrl=id=>'https://script.googleapis.com/v1/projects/'+encodeURIComponent(id);
 const driveUrl=id=>'https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(id);
@@ -177,7 +240,7 @@ async function verify(api,r,protectedRoot){
   const protectedProject=await api(scriptUrl(denied));ensure(protectedProject.scriptId===denied,'Protected project lookup failed');
   ensure(protectedProject.parentId&&r.spreadsheetId!==protectedProject.parentId&&r.scriptId!==protectedProject.parentId,'Protected spreadsheet collision');
   const user=(await api('https://www.googleapis.com/drive/v3/about?fields=user(permissionId,emailAddress)')).user;
-  ensure(user.permissionId===r.owner,'Google account changed');await sheetCheck(api,r.spreadsheetId,user.permissionId);
+  ensure(user.permissionId===r.owner,'SAFE-GOOGLE-OWNER: Furusato専用の所有者を確認してください。');await sheetCheck(api,r.spreadsheetId,user.permissionId);
   const p=await api(scriptUrl(r.scriptId));
   const cfg=json(path.join(work,'.clasp.json'));identityCheck(r,p,user,cfg);
   unchanged(r.protectedSnapshot);return p;
@@ -185,14 +248,14 @@ async function verify(api,r,protectedRoot){
 function identityCheck(r,p,user,cfg){
   ensure(r.createdByInstaller===true&&r.schema===policy.schema&&r.title?.startsWith(policy.projectPrefix),'Existing project adoption prohibited');
   ensure(r.scriptId&&r.spreadsheetId&&r.scriptId!==r.protectedScriptId&&r.spreadsheetId!==r.protectedScriptId,'Protected ID collision');
-  ensure(p.scriptId===r.scriptId&&p.parentId===r.spreadsheetId&&p.title===r.title&&p.creator?.email===user.emailAddress&&user.permissionId===r.owner,'Script ID, parent, title, owner or creator mismatch');
-  ensure(cfg.scriptId===r.scriptId&&(!cfg.rootDir||cfg.rootDir==='.')&&(!cfg.parentId||cfg.parentId===r.spreadsheetId),'Local clasp target mismatch');
+  ensure(p.scriptId===r.scriptId&&p.parentId===r.spreadsheetId&&p.title===r.title&&p.creator?.email===user.emailAddress&&user.permissionId===r.owner,'SAFE-GOOGLE-TARGET: 導入記録とスクリプト・スプレッドシート・所有者を照合してください。');
+  ensure(cfg.scriptId===r.scriptId&&(!cfg.rootDir||cfg.rootDir==='.')&&(!cfg.parentId||cfg.parentId===r.spreadsheetId),'SAFE-GOOGLE-CLASP-TARGET: Furusato専用のclasp設定を導入記録と照合してください。');
 }
 function deploymentCheck(d,id,version){
-  ensure(d.deploymentConfig?.scriptId===id&&d.deploymentConfig?.versionNumber===version,'Deployment target/version mismatch');
+  ensure(d.deploymentConfig?.scriptId===id&&d.deploymentConfig?.versionNumber===version,'SAFE-GOOGLE-VERSION: 導入記録と固定デプロイ版を照合してください。');
   ensure(d.entryPoints?.length===1&&d.entryPoints[0].entryPointType==='WEB_APP','Expected exactly one web app');
   const w=d.entryPoints[0].webApp;
-  ensure(w?.entryPointConfig?.access==='MYSELF'&&w.entryPointConfig.executeAs==='USER_DEPLOYING','Live deployment is NOT private');
+  ensure(w?.entryPointConfig?.access==='MYSELF'&&w.entryPointConfig.executeAs==='USER_DEPLOYING','SAFE-GOOGLE-PRIVATE: MYSELF / USER_DEPLOYING を確認してください。');
   ensure(/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(w.url),'Unexpected web app URL');return w.url;
 }
 async function install({protectedRoot,deploy=false,fresh=false,syntheticUpdate=false}){
@@ -211,7 +274,7 @@ async function install({protectedRoot,deploy=false,fresh=false,syntheticUpdate=f
       if(syntheticUpdate)ensure(hasProtectedAttestation(r),
         'Synthetic update requires a previously attested candidate with a protected remote baseline');
       else ensure(!r.sourceCommit,'An attested candidate requires explicit --synthetic-update');
-      ensure(configDriftReport(r,protectedRoot).status==='MATCH','Protected configuration changed; STOP');
+      ensure(configDriftReport(r,protectedRoot).status==='MATCH','SAFE-GOOGLE-PROTECTED-CONFIG: 保護対象に差異。診断で原因を確認してください。');
     }else ensure(!syntheticUpdate,'Synthetic update requires an existing candidate receipt');
     remoteBefore=await protectedRemoteDigest(api,deniedId);
     if(r?.protectedRemoteDigest)ensure(remoteBefore===r.protectedRemoteDigest,'Protected Google source/deployments changed; STOP');
@@ -318,7 +381,7 @@ async function main(){
   }
   else if(mode==='verify'){
     preflight();const r=json(receiptFile);
-    ensure(configDriftReport(r,protectedRoot).status==='MATCH','Protected configuration changed; STOP');
+    ensure(configDriftReport(r,protectedRoot).status==='MATCH','SAFE-GOOGLE-PROTECTED-CONFIG: 保護対象に差異。診断で原因を確認してください。');
     const candidate=args.includes('--attest-head')?attestedCandidate():null;
     if(candidate)ensure(hasProtectedAttestation(r)&&r.uploadDigest===candidate.digest,
       'Install receipt does not attest the Git HEAD source and protected resources');
@@ -346,5 +409,5 @@ async function main(){
   }
   else throw new Error('Unknown command');
 }
-module.exports={preflight,manifestCheck,source,digest,verify,identityCheck,sheetCheck,deploymentCheck,install,snapshot,unchanged,configDriftReport,oauthRefreshPattern,hasProtectedAttestation,rejectLinks,accessToken};
+module.exports={preflight,manifestCheck,source,digest,verify,identityCheck,sheetCheck,deploymentCheck,install,snapshot,unchanged,configDriftReport,oauthRefreshPattern,hasProtectedAttestation,rejectLinks,accessToken,refreshToken,googleApi};
 if(require.main===module)main().catch(e=>{console.error(e.message);process.exitCode=1;});

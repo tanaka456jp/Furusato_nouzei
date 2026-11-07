@@ -62,14 +62,14 @@ main{margin:0;padding:0;max-width:none}.panel{border:0;box-shadow:none;padding:0
 </style></head>
 <body>
 <header><h1>ふるさと納税 限度額シミュレーター</h1>
-<p>質問に答えるだけで計算結果と根拠を表示｜GAS検証版 v0.1.10</p></header>
+<p>質問に答えるだけで計算結果と根拠を表示｜GAS検証版 v0.1.11</p></header>
 <main><div class="panel">
 <div class="actions mode-switch" aria-label="入力モード">
 <button type="button" id="salaryMode" aria-pressed="true">給与の入力</button>
-<button type="button" id="splitMode" aria-pressed="false">詳細設定・申告分離課税</button>
+<button type="button" id="splitMode" aria-pressed="false">詳細設定・分離課税と税額控除</button>
 </div>
 <section id="splitScreen" hidden>
-<h2>詳細設定・申告分離課税</h2>
+<h2>詳細設定・分離課税と税額控除</h2>
 <p>総所得金額は給与所得控除後等の所得です。分離所得は所得控除前・経費差引後で入力します。該当なしは0。源泉分離課税、申告不要の所得、NISAは除きます。</p>
 <form id="splitForm" novalidate>
 <div class="field-grid">
@@ -89,7 +89,18 @@ main{margin:0;padding:0;max-width:none}.panel{border:0;box-shadow:none;padding:0
 <div class="field"><label for="split-donation">検算する寄附額</label><input id="split-donation" name="donation" inputmode="numeric" value="0"></div>
 </div>
 <p class="hint">検算対象を含む寄附金控除を除き、基礎控除を含む控除合計を税目別に入力します。法定人的控除差は基礎控除差5万円を含み、両税目の控除合計の差とは別です。</p>
-<label class="check"><input type="checkbox" id="splitReviewed">課税自治体の標準税率を確認し、非課税・調整措置、特別控除、損失、住宅・配当等の税額控除、源泉税精算、他の寄附が該当しないことと、入力額を照合しました。</label>
+<details><summary>税額控除（該当なしは0）</summary>
+<p>住宅は通常0.7％。入居年・住宅区分・適格性・残高上限を申告書で照合してください。外国税は繰越なしで限度額の分母が所得合計と一致する場合です。</p>
+<div class="field-grid">
+<div class="field"><label for="split-housingYear">住宅の居住開始年</label><input id="split-housingYear" name="housingYear" inputmode="numeric" value="0"></div>
+<div class="field"><label for="split-housingBalance">適用上限反映済みの住宅ローン残高</label><input id="split-housingBalance" name="housingBalance" inputmode="numeric" value="0"></div>
+<div class="field"><label for="split-housingPossible">住宅ローン控除可能額</label><input id="split-housingPossible" name="housingPossible" inputmode="numeric" value="0"></div>
+<div class="field"><label for="split-domesticDividend">対象国内普通配当（総合課税の内数）</label><input id="split-domesticDividend" name="domesticDividend" inputmode="numeric" value="0"></div>
+<div class="field"><label for="split-foreignTax">適格外国所得税額</label><input id="split-foreignTax" name="foreignTax" inputmode="numeric" value="0"></div>
+<div class="field"><label for="split-foreignIncome">調整国外所得金額（総合課税の内数）</label><input id="split-foreignIncome" name="foreignIncome" inputmode="numeric" value="0"></div>
+</div>
+</details>
+<label class="check"><input type="checkbox" id="splitReviewed">課税自治体の標準税率を確認し、非課税・調整措置、特別控除、損失、未対応の税額控除、源泉税精算、他の寄附が該当しないことと、入力額を照合しました。</label>
 <div class="actions"><button type="submit" class="primary" id="splitRun">再計算</button><button type="button" id="splitPrint" hidden>印刷・PDF保存</button></div>
 </form>
 <div id="splitOutput" aria-live="polite"></div>
@@ -356,8 +367,14 @@ function showSplit(result) {
  splitLine("寄附目安 "+yen(result.donationLimitYen)+"（千円刻み、自己負担2,000円以内の試算）");
  splitLine("入力した寄附 "+yen(at.donation)+"の自己負担 "+yen(at.netCost));
  splitLine("寄附前後の所得税等 "+yen(calc.nationalBefore.annual)+" → "+yen(at.nationalAfter.annual)+"（源泉徴収精算前）");
- var localBefore=calc.residentBefore.levy.reduce(function(sum,n){return sum+Math.floor(n/100000)*100;},0);
+ var localBefore=calc.residentBefore.assessed.reduce(function(sum,n){return sum+n;},0);
  splitLine("寄附前後の住民税所得割 "+yen(localBefore)+" → "+yen(at.residentAfter[0]+at.residentAfter[1]));
+ var beforeTax=calc.nationalBefore, afterTax=at.nationalAfter;
+ if(beforeTax.housingCredit||beforeTax.residentHousingCredit||beforeTax.dividendCredit||beforeTax.foreignCredit){
+  splitLine("所得税 "+yen(beforeTax.incomeTax)+" → "+yen(afterTax.incomeTax)+"／復興特別所得税 "+yen(beforeTax.reconstruction)+" → "+yen(afterTax.reconstruction));
+  splitLine("住宅ローン控除：所得税 "+yen(beforeTax.housingCredit)+" → "+yen(afterTax.housingCredit)+"／住民税移行 "+yen(beforeTax.residentHousingCredit)+" → "+yen(afterTax.residentHousingCredit));
+  splitLine("所得税の配当控除 "+yen(beforeTax.dividendCredit)+" → "+yen(afterTax.dividendCredit)+"／外国税額控除 "+yen(afterTax.foreignCredit));
+ }
  splitLine("住民税特例控除割合 "+(calc.residentBefore.ratio/1000)+"%。確定申告を行う場合、ワンストップ特例は無効です。");
  var table=document.createElement("table");table.className="summary";
  var labels=["総合課税","土地建物・短期（一般）","土地建物・長期（一般）","上場配当等（申告分離）","一般株式等の譲渡","上場株式等の譲渡","先物取引の雑所得等"];
