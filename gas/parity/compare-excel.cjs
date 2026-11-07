@@ -23,12 +23,26 @@ function validate(doc,{allowMock=false}={}){
   for(const k of ["year","salaryGross","socialInsurance","filing"])
    if(row[k]!==original[k])fail("case input mismatch "+row.id+" "+k);
   if(row.status!=="NORMAL"&&row.status!=="HOLD")fail("invalid Excel status");
+  if(doc.source==="OFFICIAL_RELEASE"){
+   if(typeof row.statusText!=="string"||!row.statusText.trim())
+    fail("missing Excel calculation status");
+   if((row.status==="NORMAL")!==(row.statusText==="正常"))
+    fail("Excel status and statusText disagree: "+row.id);
+  }
   if(row.status==="NORMAL"){
    if(!sameInt(row.donationLimitYen))fail("invalid Excel donation limit");
    if(!sameInt(row.salaryIncomeYen))fail("missing/invalid Excel salary income");
    if(!sameInt(row.residentIncomeLevyYen))fail("missing/invalid Excel resident levy");
   }else if(row.donationLimitYen!==null||row.salaryIncomeYen!==null||row.residentIncomeLevyYen!==null)fail("HOLD must not contain financial outputs");
  });
+ if(doc.source==="OFFICIAL_RELEASE"){
+  const good2025=doc.results.filter(row=>row.year===2025&&row.status==="NORMAL").length;
+  const good2026=doc.results.filter(row=>row.year===2026&&row.status==="NORMAL").length;
+  if(good2025<5||good2026<5)fail("insufficient independently computed NORMAL cases");
+  const anchor=doc.results.find(row=>row.id==="Y2026_G7000000");
+  if(!anchor||anchor.status!=="NORMAL"||anchor.donationLimitYen!==109000)
+   fail("2026 official Excel 7m anchor mismatch");
+ }
  return true;
 }
 function compare(doc,engine,{allowMock=false}={}){
@@ -53,7 +67,10 @@ function compare(doc,engine,{allowMock=false}={}){
  }
  return {schema:"furusato-parity-report/v1",release:"HOLD",
   verification:doc.source==="OFFICIAL_RELEASE"?"EXCEL_COM_V4_18_2":"MOCK_CONTRACT_ONLY",
-  checked:cases.length,matched,mismatchCount:mismatches.length,mismatches,
+  checked:cases.length,matched,
+  excelNormalCount:doc.results.filter(r=>r.status==="NORMAL").length,
+  excelHoldCount:doc.results.filter(r=>r.status==="HOLD").length,
+  mismatchCount:mismatches.length,mismatches,
   verdict:doc.source==="OFFICIAL_RELEASE"&&mismatches.length===0?"COVERED_CASES_MATCH":"HOLD",
   fullTaxAcceptance:false,realCustomerData:false};
 }

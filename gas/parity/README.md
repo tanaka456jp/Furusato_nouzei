@@ -27,3 +27,9 @@ labeled COVERED_CASES_MATCH, but full tax parity and formal release remain
 HOLD. Never delete boundary cases or broaden tolerances just to pass.
 Do not use personal information. Physical printing, family/insurance/mortgage,
 pensions, business, split tax, and municipality-specific taxes are not covered.
+
+The in-memory Windows Excel oracle also synchronizes the hidden 設定・税率!B4
+with 操作画面!B4 (the signed release normally does this via its tax-update
+macro), verifies the active master year, requires at least five NORMAL
+results per year, and checks the 2026 7-million-yen 109,000-yen anchor.
+A workbook returning HOLD for every case is not a passing oracle.

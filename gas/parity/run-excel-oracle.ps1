@@ -36,7 +36,7 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 $workdir=Join-Path $env:TEMP ('FurusatoParityIsolated_'+[guid]::NewGuid().ToString('N'))
 [void][System.IO.Directory]::CreateDirectory($workdir)
 $workbookPath=Join-Path $workdir 'Furusato_nouzei.xlsm'
-$excel=$null;$book=$null;$sheet=$null;$results=@()
+$excel=$null;$book=$null;$sheet=$null;$settings=$null;$results=@()
 try {
  $archive=[System.IO.Compression.ZipFile]::OpenRead($zipPath)
  try{
@@ -58,9 +58,15 @@ try {
  $excel.AutomationSecurity=3
  $book=$excel.Workbooks.Open($workbookPath,0,$true)
  $sheet=$book.Worksheets.Item($sheetName)
+ # Excel v4.18.2's approved-year update macro normally synchronizes HOME B4
+ # with the hidden tax-master year. Macros are disabled in this audit, so the
+ # in-memory copy MUST synchronize both fields explicitly.
+ $settingsName=-join @([char]0x8A2D,[char]0x5B9A,[char]0x30FB,[char]0x7A0E,[char]0x7387)
+ $settings=$book.Worksheets.Item($settingsName)
  foreach($case in $cases){
   if($case.year -ne 2025 -and $case.year -ne 2026){throw 'Invalid year'}
   if($case.filing -cne 'one-stop'){throw 'Invalid filing'}
+  $settings.Range('B4').Value2=[int]$case.year
   $sheet.Range('B4').Value2=[string]$case.year
   $sheet.Range('B11').Value2=[string]$case.year
   $sheet.Range('B12').Value2=[double]$case.salaryGross
@@ -74,6 +80,10 @@ try {
   }
   if([int]$excel.CalculationState -ne 0){throw 'Excel calculation timeout'}
   $state=[string]$sheet.Range('B28').Value2
+  $activeYear=$sheet.Range('D4').Value2
+  if([string]$activeYear -cne [string]$case.year){
+   throw ('Approved tax master year mismatch: '+$case.id)
+  }
   if($state -ceq $normal){
    $amount=$sheet.Range('B8').Value2
    $salary=$sheet.Range('B13').Value2
@@ -86,12 +96,12 @@ try {
    }
    $results += [pscustomobject]@{id=$case.id;year=[int]$case.year;
     salaryGross=[long]$case.salaryGross;socialInsurance=[long]$case.socialInsurance;
-    filing='one-stop';status='NORMAL';donationLimitYen=[long]$amount;
+    filing='one-stop';status='NORMAL';statusText=$state;donationLimitYen=[long]$amount;
     salaryIncomeYen=[long]$salary;residentIncomeLevyYen=[long]$levy}
   }else{
    $results += [pscustomobject]@{id=$case.id;year=[int]$case.year;
     salaryGross=[long]$case.salaryGross;socialInsurance=[long]$case.socialInsurance;
-    filing='one-stop';status='HOLD';donationLimitYen=$null;
+    filing='one-stop';status='HOLD';statusText=$state;donationLimitYen=$null;
     salaryIncomeYen=$null;residentIncomeLevyYen=$null}
   }
  }
@@ -105,6 +115,7 @@ try {
  if($null -ne $book){try{$book.Close($false)}catch{}}
  if($null -ne $excel){try{$excel.Quit()}catch{}}
  if($null -ne $sheet){[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($sheet)}
+ if($null -ne $settings){[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($settings)}
  if($null -ne $book){[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($book)}
  if($null -ne $excel){[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($excel)}
  [GC]::Collect();[GC]::WaitForPendingFinalizers()
