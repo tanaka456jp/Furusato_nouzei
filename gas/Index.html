@@ -172,6 +172,7 @@ main{margin:0;padding:0;max-width:none}.panel{border:0;box-shadow:none;padding:0
 <script>
 (function () {
 "use strict";
+var salaryRevision=0;
 var state={step:0,sourceStatus:"",sourceYear:null,sourceBasicReference:null,sourceIndicators:{}};
 var steps=Array.prototype.slice.call(document.querySelectorAll(".stage"));
 function byId(id){return document.getElementById(id);}
@@ -194,7 +195,9 @@ function formData(){
  Array.prototype.forEach.call(document.querySelectorAll("[data-key]"),function(node){obj[node.getAttribute("data-key")]=node.checked;});
  return obj;
 }
+function invalidateSalary(){salaryRevision++;byId("next").disabled=false;}
 function showStep(n){
+ invalidateSalary();
  state.step=n;notify("");
  for(var i=0;i<4;i++)byId("screen"+i).classList.toggle("active",i===n);
  byId("resultScreen").classList.toggle("active",n===4);
@@ -268,12 +271,12 @@ function processResult(result){
  showStep(4);
 }
 function send(){
- var d=formData();byId("next").disabled=true;notify("計算中です…");
+ var d=formData(),revision=++salaryRevision;byId("next").disabled=true;notify("計算中です…");
  if(typeof google==="undefined"||!google.script||!google.script.run){
   byId("next").disabled=false;notify("この画面はGAS Webアプリで実行してください。");return;
  }
- google.script.run.withSuccessHandler(function(result){byId("next").disabled=false;processResult(result);})
- .withFailureHandler(function(err){byId("next").disabled=false;notify("計算処理に失敗しました。入力を確認してください。");})
+ google.script.run.withSuccessHandler(function(result){if(revision!==salaryRevision)return;byId("next").disabled=false;processResult(result);})
+ .withFailureHandler(function(err){if(revision!==salaryRevision)return;byId("next").disabled=false;notify("計算処理に失敗しました。入力を確認してください。");})
  .runFurusatoSimulation(d);
 }
 byId("next").addEventListener("click",function(){
@@ -288,9 +291,12 @@ byId("print").addEventListener("click",function(){window.print();});
 
 
 var splitForm=byId("splitForm"), splitOutput=byId("splitOutput");
-var splitMode=false, splitRevision=0;
+var splitRevision=0;
+byId("wizard").addEventListener("input",invalidateSalary);
+byId("wizard").addEventListener("change",invalidateSalary);
 function selectMode(advanced) {
- splitMode=advanced;
+ invalidateSalary();
+ notify("");
  document.querySelector("main").classList.toggle("separate-mode",advanced);
  byId("splitScreen").hidden=!advanced;
  byId("splitMode").setAttribute("aria-pressed",String(advanced));

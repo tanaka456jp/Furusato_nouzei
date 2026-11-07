@@ -39,6 +39,7 @@ jobs:
       - run: npx --prefix gas playwright install --with-deps chromium
       - run: node gas/tests/test-browser-auth.cjs
       - run: node gas/tests/test-real-browser.cjs
+      - run: node gas/tests/test-separate-ui.cjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -86,6 +87,8 @@ jobs:
           node gas/tests/test-browser-auth.cjs
           if ($LASTEXITCODE -ne 0) { throw 'Origin authorization boundary regression failed' }
           node gas/tests/test-real-browser.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node gas/tests/test-separate-ui.cjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
