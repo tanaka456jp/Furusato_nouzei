@@ -61,12 +61,20 @@
         foreach ($case in @(@('D44','ワンストップ','SAFE-TAX-012'),@('D49','特例あり','SAFE-TAX-013'),@('D45',0,'SAFE-TAX-015'))) {
             $cell = $screen.Range($case[0])
             $previous = $cell.Value2
-            if ($case[1] -is [int]) { $cell.Value2 = [double]$case[1] } else { $cell.Value2 = $case[1] }
+            if ($case[1] -is [int]) {
+                $cell.Value2 = [double]$case[1]
+            } else {
+                $cell.Value2 = [string]$case[1]
+            }
             $Excel.Calculate()
             if ([string]$screen.Range('B55').Value2 -notlike ($case[2]+'*') -or [string]$screen.Range('B56').Value2 -ne '') {
                 throw "Safety stop failed: $($case[2])"
             }
-            $cell.Value2 = $previous
+            if ($previous -is [double]) {
+                $cell.Value2 = [double]$previous
+            } else {
+                $cell.Value2 = [string]$previous
+            }
             $Excel.Calculate()
             if ([string]$screen.Range('B55').Value2 -ne '計算可能' -or $null -eq $screen.Range('B56').Value2) {
                 throw "Recovery failed: $($case[2])"
