@@ -119,8 +119,9 @@
         # Second print page starts at row 80. Verify its computed revision
         # and tax year in actual Excel before exporting the synthetic PDF.
         $pageTwo = [string]$screen.Range('A80').Value2
+        $selectedYear = [string][int]([double]$screen.Range('D50').Value2)
         if ($pageTwo -notlike '*所得年*' -or
-            $pageTwo -notlike '*2026*' -or
+            $pageTwo -notlike ('*' + $selectedYear + '*') -or
             $pageTwo -notlike '*v4.18.17*' -or
             $pageTwo -notlike '*税制版*') {
             throw ('Second-page year/version header not calculated: ' + $pageTwo)
