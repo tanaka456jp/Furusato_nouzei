@@ -606,9 +606,9 @@ Private Sub ResetSeparateInputs(ByVal home As Worksheet)
 End Sub
 
 Public Sub NewCase()
-    MaskUnverifiedResults
     If MsgBox("現在の入力を消去しますか？保存が必要な場合は先に案件保存してください。", _
               vbQuestion + vbYesNo + vbDefaultButton2, "新規入力") <> vbYes Then Exit Sub
+    MaskUnverifiedResults
     ResetSeparateInputs ThisWorkbook.Worksheets("操作画面")
     With ThisWorkbook.Worksheets("操作画面")
         .Range("B11:B12,B15:B16,B19:B25,B33:B36,D11:D23").ClearContents
