@@ -7,13 +7,17 @@
     $exactPath = Join-Path (Split-Path $FixturePath) 'separate-tax-exact-v1.json'
     $edges = Get-Content -LiteralPath $exactPath -Raw -Encoding UTF8 | ConvertFrom-Json
     if ($edges.Count -ne $fixtures.Count) { throw 'Expected an exact limit fixture per split case' }
+    $localPath = Join-Path (Split-Path $FixturePath) 'separate-tax-local-v1.json'
+    $localFixtures = Get-Content -LiteralPath $localPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ($localFixtures.Count -ne 7) { throw 'Expected seven new municipality and rounding fixtures' }
     $results = [System.Collections.Generic.List[object]]::new()
     try {
         $screen.Range('B44').Value2 = '申告分離'
         $screen.Range('D44').Value2 = '確定申告'
         $screen.Range('D49').Value2 = '照合済'
-        foreach ($fixture in $fixtures) {
+        foreach ($fixture in ($fixtures + $localFixtures)) {
             $inputCase = $fixture.input
+            $screen.Range('D51').Value2 = [string]$(if ($inputCase.municipality -eq 'designated') { '標準指定都市' } else { '標準市町村' })
             $row = 45
             foreach ($kind in @('ordinary','shortLand','longLand','listedDividend','generalStock','listedStock','futures')) {
                 $screen.Range("B$row").Value2 = [double]$inputCase.$kind
@@ -44,6 +48,10 @@
                 netCost = $model.Range('S27').Value2
                 limit = $screen.Range('B56').Value2
             }
+            if ($fixture.exact) {
+                $actual.residentBeforeParts = @('B8','B9' | ForEach-Object { [math]::Floor($model.Range($_).Value2 / 100000) * 100 })
+                $actual.residentAfterParts = @('O27','P27' | ForEach-Object { $model.Range($_).Value2 })
+            }
             foreach ($key in $actual.Keys) {
                 $got = ConvertTo-Json -Compress -InputObject $actual[$key]
                 $expected = ConvertTo-Json -Compress -InputObject $fixture.expected.$key
@@ -59,7 +67,7 @@
                 }
             }
             if ([string]$screen.Range('B8').Value2 -ne '') { throw 'Normal amount visible in split mode' }
-            $edge = $edges | Where-Object id -eq $fixture.id
+            $edge = if ($fixture.exact) { $fixture.exact } else { $edges | Where-Object id -eq $fixture.id }
             $exact = [ordered]@{
                 maximum = $screen.Range('B69').Value2
                 rounded = $screen.Range('D69').Value2
@@ -73,7 +81,7 @@
             }
             $results.Add([ordered]@{id=$fixture.id; input=$inputCase; expected=$fixture.expected; observed=$actual; exact_expected=$edge; exact_observed=$exact; differences=0; verdict='PASS'; calculationState=0})
         }
-        foreach ($case in @(@('D44','ワンストップ','SAFE-TAX-012'),@('D49','特例あり','SAFE-TAX-013'),@('D45',0,'SAFE-TAX-015'))) {
+        foreach ($case in @(@('D44','ワンストップ','SAFE-TAX-012'),@('D49','特例あり','SAFE-TAX-013'),@('D45',0,'SAFE-TAX-015'),@('D51','条例差・不明','SAFE-TAX-019'))) {
             $cell = $screen.Range($case[0])
             $previous = $cell.Value2
             if ($case[1] -is [int]) {
@@ -109,6 +117,7 @@
         $screen.Range('D44').Value2 = '確定申告'
         $screen.Range('D49').Value2 = '未確認'
         $screen.Range('D50').Value2 = 2026.0
+        $screen.Range('D51').Value2 = '標準市町村'
         [void]$screen.Range('B45:B51,D45:D48').ClearContents()
         $Excel.Calculate()
     }

@@ -38,7 +38,7 @@ def annual(taxable):
     return tax + tax * 21 // 1000
 
 
-def oracle(case, exact=False):
+def oracle(case, exact=False, jurisdiction=False):
     incomes = [case[k] for k in KINDS]
     total = sum(incomes)
     year = case["year"]
@@ -61,8 +61,11 @@ def oracle(case, exact=False):
     adjustment_base = min(gap, ordinary) if ordinary <= 2000000 else max(50000, gap - ordinary + 2000000)
     gross = Fraction(ordinary, 10) + Fraction(short * 9, 100) + Fraction(sum(other), 20)
     levy = gross - Fraction(adjustment_base, 20)
-    jurisdictions = [levy * Fraction(3, 5), levy * Fraction(2, 5)]
-    base_resident = sum(math.floor(t / 100) * 100 for t in jurisdictions)
+    city_fraction = Fraction(4, 5) if case.get("municipality") == "designated" else Fraction(3, 5)
+    shares = (city_fraction, 1 - city_fraction)
+    jurisdictions = [levy * share for share in shares]
+    base_parts = [math.floor(t / 100) * 100 for t in jurisdictions]
+    base_resident = sum(base_parts)
     base_income = annual(n_taxable)
     discriminator = ordinary - gap - max(0, basic - 480000)
     if ordinary > 0 and discriminator >= 0:
@@ -75,15 +78,16 @@ def oracle(case, exact=False):
         after = annual(allocate(incomes, national + applied)[1])
         basic_credit = max(Fraction(0), min(Fraction(donation), Fraction(3 * total, 10)) - 2000) / 10
         special = Fraction(max(0, donation - 2000) * ratio, 100000)
-        local_after = 0
-        for current, share in zip(jurisdictions, (Fraction(3, 5), Fraction(2, 5))):
+        parts = []
+        for current, share in zip(jurisdictions, shares):
             credit = math.ceil(basic_credit * share + min(special * share, current / 5))
-            local_after += max(0, math.floor((current - credit) / 100) * 100)
-        return after, local_after, donation - (base_income - after) - (base_resident - local_after)
+            parts.append(max(0, math.floor((current - credit) / 100) * 100))
+        local_after = sum(parts)
+        return after, local_after, donation - (base_income - after) - (base_resident - local_after), parts
 
     # Wider than the product search bound; catches erroneous truncation.
     limit = max((d for d in range(3000, 1250001, 1000) if evaluate(d)[2] <= 2000), default=0)
-    after_income, after_resident, net_cost = evaluate(case["donation"])
+    after_income, after_resident, net_cost, after_parts = evaluate(case["donation"])
     if exact:
         # Search high-to-low in 1000-yen blocks. At the upper endpoint the
         # total relief is at least that of every amount in the block.
@@ -97,10 +101,13 @@ def oracle(case, exact=False):
                 if cost <= 2000:
                     return dict(maximum=donation, rounded=donation // 1000 * 1000,
                                 costAtMaximum=cost, costNext=evaluate(donation + 1)[2])
-    return dict(nationalApplied=n_used, residentApplied=r_used, nationalTaxable=n_taxable,
+    result = dict(nationalApplied=n_used, residentApplied=r_used, nationalTaxable=n_taxable,
                 residentTaxable=r_taxable, nationalUnused=n_unused, residentUnused=r_unused,
                 nationalBefore=base_income, residentBefore=base_resident, ratio=ratio,
                 nationalAfter=after_income, residentAfter=after_resident, netCost=net_cost, limit=limit)
+    if jurisdiction:
+        result.update(residentBeforeParts=base_parts, residentAfterParts=after_parts)
+    return result
 
 
 def cases():
@@ -134,6 +141,19 @@ def cases():
         yield one(year, "credit-ceiling-after", 0, 1000000, 1000000, 55559)
 
 
+def locality_cases(existing):
+    by_id = {item["id"]: item["input"] for item in existing}
+    for year in (2025, 2026):
+        for name in ("required-1", "short-stock-futures", "ratio-exact-zero"):
+            source_id = f"{year}-{name}"
+            values = dict(by_id[source_id], municipality="designated")
+            yield f"{source_id}-designated", values
+    values = dict(by_id["2026-required-1"], municipality="standard",
+                  ordinary=19529655, listedStock=1697956, nationalDeductions=1102014,
+                  residentDeductions=912014, donation=430000)
+    yield "2026-rounded-is-infeasible", values
+
+
 if __name__ == "__main__":
     generated = list(cases())
     # Direct hand-derived anchors for ordinary-first and independent
@@ -153,4 +173,17 @@ if __name__ == "__main__":
         exact_path.write_text(json.dumps(exact_results, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     else:
         assert json.loads(exact_path.read_text(encoding="utf-8")) == exact_results
-    print(f"{len(generated)} statutory synthetic fixtures verified by Fraction/sliced-bracket oracle")
+    local_path = FIXTURES.with_name("separate-tax-local-v1.json")
+    local_results = [
+        dict(id=id_, input=values, expected=oracle(values, jurisdiction=True), exact=oracle(values, exact=True))
+        for id_, values in locality_cases(generated)
+    ]
+    assert local_results[0]["expected"]["residentBeforeParts"] == [160000, 40000]
+    assert local_results[-1]["exact"]["rounded"] == 430000
+    assert local_results[-1]["expected"]["netCost"] > 2000
+    assert local_results[-1]["expected"]["limit"] == 429000
+    if "--write" in sys.argv:
+        local_path.write_text(json.dumps(local_results, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    else:
+        assert json.loads(local_path.read_text(encoding="utf-8")) == local_results
+    print(f"{len(generated)} existing and {len(local_results)} new statutory fixtures verified by Fraction/sliced-bracket oracle")

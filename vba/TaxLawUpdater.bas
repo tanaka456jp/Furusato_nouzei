@@ -504,6 +504,7 @@ Private Sub ResetSeparateInputs(ByVal home As Worksheet)
     home.Range("D44").Value2 = "確定申告"
     home.Range("D49").Value2 = "未確認"
     home.Range("D50").Value2 = 2026
+    home.Range("D51").Value2 = "標準市町村"
 End Sub
 
 Public Sub NewCase()
