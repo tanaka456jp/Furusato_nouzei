@@ -121,7 +121,7 @@ def build(source, output):
         home.add_data_validation(validation)
         validation.add(home[cell])
 
-    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.18.5 分離課税検証版")
+    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.18.6 分離課税検証版")
     bar(extra, 1, "追加所得・分離課税（所得年内で事前試算）")
     extra.merge_cells("A3:D3")
     extra["A3"] = "翌年度の住民税通知書は参照せず、所得年内の収入・経費・控除と法定税率表から計算します。"
@@ -648,13 +648,13 @@ def build(source, output):
         detail.row_dimensions[row].height = 28
     note(detail, 15, "申告分離課税では所得税の実際の減税額・住民税を寄附額ごとに再計算し、自己負担2,000円以内の最大額を探索します。")
     detail["A16"] = "分離課税（課税所得）"
-    detail["B16"] = f'=IF(N({ref(ADVANCED,"B24")})>0,{ref(SPLIT_ALLOC,"B3")},"")'
+    detail["B16"] = f'=IF(AND({ref(HOME,"B28")}="正常",N({ref(ADVANCED,"B24")})>0),{ref(SPLIT_ALLOC,"B3")},"")'
     detail["C16"] = "総合課税の税率だけでは分離課税部分の減税額を算定できません。"
     detail["A17"] = "寄附金控除前：総合課税の課税所得"
-    detail["B17"] = f'=IF(N({ref(ADVANCED,"B24")})>0,{ref(SPLIT_ALLOC,"B2")},"")'
+    detail["B17"] = f'=IF(AND({ref(HOME,"B28")}="正常",N({ref(ADVANCED,"B24")})>0),{ref(SPLIT_ALLOC,"B2")},"")'
     detail["C17"] = "所得控除を差し引いた後。寄附金控除は総合課税から先に適用。"
     detail["A18"] = "最終寄附目安で分離課税に配分した控除"
-    detail["B18"] = f'=IF(N({ref(ADVANCED,"B24")})>0,MAX(0,MIN({ref(RESIDENT,"B26")},{ref(SPLIT_ALLOC,"B8")})-2000-{ref(SPLIT_ALLOC,"B2")}),"")'
+    detail["B18"] = f'=IF(AND({ref(HOME,"B28")}="正常",N({ref(ADVANCED,"B24")})>0),MAX(0,MIN({ref(RESIDENT,"B26")},{ref(SPLIT_ALLOC,"B8")})-2000-{ref(SPLIT_ALLOC,"B2")}),"")'
     detail["C18"] = "所得税の寄附金控除のうち総合課税から引ききれない部分。"
     for row in range(16,19):
         detail[f"B{row}"].number_format = '#,##0'

@@ -256,6 +256,9 @@ try {
     Assert-Value $residentSheet.Range('B16').Value2 ($regularLevy+50000) 'Split tax included in resident income levy'
     Assert-Value $residentSheet.Range('B19').Value2 ($regularLimit+10000) 'Split special credit ceiling'
     if ([string]$homeSheet.Range('B28').Value2 -notlike 'SAFE-TAX-016*') { throw 'Legacy input escaped HOLD: Ordinary listed shares declared split case' }
+    foreach ($cell in 'B16','B17','B18') {
+        Assert-Value ([string]$book.Worksheets.Item('計算根拠').Range($cell).Value2) '' "Legacy split breakdown $cell suppressed during HOLD"
+    }
     Assert-Value ([string]$homeSheet.Range('B8').Value2) '' 'Legacy split input must hide donation amount'
     $extraSheet.Range('B24').Value2 = 500000.0
     $excel.Run('TaxLawUpdater.RecalculateCase')

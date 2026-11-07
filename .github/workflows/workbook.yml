@@ -299,7 +299,7 @@ jobs:
         if: success()
         uses: actions/checkout@v4
         with:
-          ref: 17147b0b3ba06fb8f23b1fa9b459c7d7b8030ab2
+          ref: 1c181e055b433c4efa62700d0aaa0348f0bfe875
           path: _gas_reference_v4183
           persist-credentials: false
       - name: Compare 41 synthetic cases in actual Excel vs pinned GAS engine
@@ -335,7 +335,7 @@ jobs:
               $report.excelCalculationDoneCount -ne 41 -or
               $report.excelCalculationPendingCount -ne 0 -or
               $report.actualExcelCOM -ne $true) {
-            throw ('Excel v4.18.3 vs GAS numerical discrepancy: '+$json)
+            throw ('Excel vs GAS numerical discrepancy: '+$json)
           }
           $diag = Get-Content -LiteralPath $evidence -Raw -Encoding UTF8 | ConvertFrom-Json
           if (-not $diag.calculationDiagnostics -or
@@ -344,7 +344,7 @@ jobs:
           }
           ('Excel calculation flag diagnostic: '+$diag.calculationDiagnostics.stateVerdict+
              '; initialForceFullCalculation='+$diag.calculationDiagnostics.initialForceFullCalculation) >> $env:GITHUB_STEP_SUMMARY
-          ('Excel v4.18.3 vs pinned GAS: '+$report.matched+'/41 all 3 amounts match; '+
+          (('Excel '+$report.excelRevision+' vs pinned GAS: ')+$report.matched+'/41 all 3 amounts match; '+
              $report.excelCalculationPendingCount+' xlPending; release=HOLD') >> $env:GITHUB_STEP_SUMMARY
       - name: Upload verified review XLSM
         if: success()

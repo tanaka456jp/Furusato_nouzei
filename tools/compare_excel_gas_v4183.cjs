@@ -5,7 +5,7 @@
  */
 const fs = require("node:fs");
 const path = require("node:path");
-const PINNED_GAS_SHA = "17147b0b3ba06fb8f23b1fa9b459c7d7b8030ab2";
+const PINNED_GAS_SHA = "1c181e055b433c4efa62700d0aaa0348f0bfe875";
 const ORIGINAL_SOURCE = "EXCEL_COM_V4_18_3_REVIEW";
 const SCHEMA = "furusato-excel-gas-v4183/v1";
 function reject(message) { throw new Error("EXCEL_GAS_41_INVALID: " + message); }

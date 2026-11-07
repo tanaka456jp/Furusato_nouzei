@@ -2,7 +2,8 @@
     param($Excel, $Book, [string]$FixturePath, [string]$PdfPath)
     $screen = $Book.Worksheets.Item('操作画面')
     $model = $Book.Worksheets.Item('分離課税詳細計算')
-    $fixtures = @(Get-Content -LiteralPath $FixturePath -Raw -Encoding UTF8 | ConvertFrom-Json)
+    $fixtures = Get-Content -LiteralPath $FixturePath -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ($fixtures.Count -ne 42) { throw 'Expected 42 independent split fixtures' }
     $results = [System.Collections.Generic.List[object]]::new()
     try {
         $screen.Range('B44').Value2 = '申告分離'
