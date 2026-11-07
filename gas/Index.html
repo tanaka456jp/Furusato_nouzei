@@ -43,7 +43,7 @@ button:disabled{opacity:.6;cursor:not-allowed}button:focus-visible{outline:2px s
 @media print{
 html,body{background:white;color:#111}header,#wizard,#flash,.actions,#printButtons,#controls,#guide{display:none!important}
 main{margin:0;padding:0;max-width:none}.panel{border:0;box-shadow:none;padding:0}
-#resultScreen{display:block!important}.report{border:none;padding:0;margin:0}
+#resultScreen.active{display:block!important}.report{border:none;padding:0;margin:0}
 .kicker{font-size:10pt}.amount{font-size:26pt;color:#111}.summary th,.summary td{font-size:10pt;padding:6px 8px}
 .summary{margin:10px 0}h3{margin:14px 0 8px}.footnote{break-inside:avoid}
 @page{size:A4;margin:16mm}
@@ -62,7 +62,7 @@ main{margin:0;padding:0;max-width:none}.panel{border:0;box-shadow:none;padding:0
 </style></head>
 <body>
 <header><h1>ふるさと納税 限度額シミュレーター</h1>
-<p>質問に答えるだけで計算結果と根拠を表示｜GAS検証版 v0.1.6</p></header>
+<p>質問に答えるだけで計算結果と根拠を表示｜GAS検証版 v0.1.7</p></header>
 <main><div class="panel">
 <div class="actions mode-switch" aria-label="入力モード">
 <button type="button" id="salaryMode" aria-pressed="true">給与の入力</button>
@@ -70,7 +70,7 @@ main{margin:0;padding:0;max-width:none}.panel{border:0;box-shadow:none;padding:0
 </div>
 <section id="splitScreen" hidden>
 <h2>詳細設定・申告分離課税</h2>
-<p>所得控除前・経費差引後の金額を円単位で入力します。該当なしは0。源泉分離課税、申告不要の所得、NISAは除きます。</p>
+<p>総所得金額は給与所得控除後等の所得です。分離所得は所得控除前・経費差引後で入力します。該当なしは0。源泉分離課税、申告不要の所得、NISAは除きます。</p>
 <form id="splitForm" novalidate>
 <div class="field-grid">
 <div class="field"><label for="splitYear">所得年</label><select id="splitYear" name="year"><option>2026</option><option>2025</option></select></div>
@@ -82,12 +82,12 @@ main{margin:0;padding:0;max-width:none}.panel{border:0;box-shadow:none;padding:0
 <div class="field"><label for="split-generalStock">一般株式等の譲渡</label><input id="split-generalStock" name="generalStock" inputmode="numeric" value="0"></div>
 <div class="field"><label for="split-listedStock">上場株式等の譲渡</label><input id="split-listedStock" name="listedStock" inputmode="numeric" value="0"></div>
 <div class="field"><label for="split-futures">先物取引の雑所得等</label><input id="split-futures" name="futures" inputmode="numeric" value="0"></div>
-<div class="field"><label for="split-nationalDeductions">所得税の所得控除合計</label><input id="split-nationalDeductions" name="nationalDeductions" inputmode="numeric" placeholder="円"></div>
+<div class="field"><label for="split-nationalDeductions">所得税の控除合計（寄附前）</label><input id="split-nationalDeductions" name="nationalDeductions" inputmode="numeric" placeholder="円"></div>
 <div class="field"><label for="split-residentDeductions">住民税の所得控除合計</label><input id="split-residentDeductions" name="residentDeductions" inputmode="numeric" placeholder="円"></div>
 <div class="field"><label for="split-personalDifference">法定人的控除差の合計</label><input id="split-personalDifference" name="personalDifference" inputmode="numeric" placeholder="円"></div>
 <div class="field"><label for="split-donation">検算する寄附額</label><input id="split-donation" name="donation" inputmode="numeric" value="0"></div>
 </div>
-<p class="hint">基礎控除を含む控除合計を税目別に入力します。法定人的控除差は基礎控除差5万円を含み、両税目の控除合計の差とは別です。</p>
+<p class="hint">検算対象を含む寄附金控除を除き、基礎控除を含む控除合計を税目別に入力します。法定人的控除差は基礎控除差5万円を含み、両税目の控除合計の差とは別です。</p>
 <label class="check"><input type="checkbox" id="splitReviewed">標準税率の普通市町村（市町村6%・道府県4%）で、非課税・調整措置、特別控除、損失、住宅・配当等の税額控除、源泉税精算、他の寄附が該当しないことと、入力額を照合しました。</label>
 <div class="actions"><button type="submit" class="primary" id="splitRun">再計算</button><button type="button" id="splitPrint" hidden>印刷・PDF保存</button></div>
 </form>
@@ -330,6 +330,7 @@ function showSplit(result) {
  }
  if(result.status==="HOLD"){
   var stop=result.stop;
+  if (!stop || !["code","category","reason","field","action","resume","recalculates","storage","unverified"].every(function(key){return typeof stop[key]==="string";})) throw new Error("invalid safety stop");
   splitLine(stop.code+" / "+stop.category+"　"+stop.reason);
   splitLine("原因項目 "+stop.field+"。自動復旧なし。");
   splitLine(stop.action+" 再開は"+stop.resume+"。"+stop.recalculates+"します。");
@@ -337,6 +338,7 @@ function showSplit(result) {
   return;
  }
  var calc=result.calculation, at=calc.atInput;
+ if (![result.donationLimitYen,at.donation,at.netCost,calc.nationalBefore.annual,at.nationalAfter.annual].every(Number.isSafeInteger)) throw new Error("invalid tax amount");
  splitLine("計算可能・試算　所得年 "+result.year+"／住民税 "+result.residentYear+"年度");
  splitLine("寄附目安 "+yen(result.donationLimitYen)+"（千円刻み、自己負担2,000円以内の試算）");
  splitLine("入力した寄附 "+yen(at.donation)+"の自己負担 "+yen(at.netCost));
@@ -375,7 +377,8 @@ splitForm.addEventListener("submit",function(event){
   google.script.run.withSuccessHandler(function(result){
    if(revision!==splitRevision)return;
    byId("splitRun").disabled=false;
-   showSplit(result);
+   try { showSplit(result); }
+   catch (error) { splitError("SAFE-TAX-017","CALCULATION_MISMATCH","計算応答の形式が不正です。","計算結果","再計算しても解消しない場合は担当者に確認してください。"); }
   }).withFailureHandler(function(error){
    if(revision!==splitRevision)return;
    if(attempt===0 && /temporarily unavailable|temporary failure|timeout/i.test(String(error&&error.message))){

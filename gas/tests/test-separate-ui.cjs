@@ -34,6 +34,11 @@ const profiles = [
       await page.locator("#splitRun").click();
       await page.locator("#splitOutput").getByText(/寄附目安 55,000/).waitFor();
       assert.match(await page.locator("#splitOutput").innerText(), /1,911/);
+      await page.emulateMedia({media:"print"});
+      assert.equal(await page.locator("#splitForm").isVisible(), false);
+      assert.equal(await page.locator("#resultScreen").isVisible(), false);
+      assert.equal(await page.locator("#splitOutput").isVisible(), true);
+      await page.emulateMedia({media:"screen"});
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false, profile.name);
       await page.screenshot({path:path.join(out,profile.name+".png"),fullPage:true});
       await page.locator("#split-listedStock").fill("4000000");
@@ -66,9 +71,27 @@ const profiles = [
     await page.evaluate(() => window.releaseSalary());
     assert.equal(await page.locator("#resultScreen").isVisible(), false);
     evidence.push({name:"stale-salary-response",status:"PASS"});
+    await page.locator("#splitMode").click();
+    await page.evaluate(() => {
+      window.google.script.run.runFurusatoSimulation = function () { this.onSuccess({status:"ESTIMATE", donationLimitYen:99999}); };
+    });
+    await page.locator("#splitRun").click();
+    await page.locator("#splitOutput").getByText(/SAFE-TAX-017/).waitFor();
+    assert.equal(await page.locator("#splitPrint").isVisible(),false);
+    await page.evaluate(() => {
+      window.splitAttempts = 0;
+      window.google.script.run.runFurusatoSimulation = function () {
+        window.splitAttempts++;
+        this.onFailure(new Error("temporary failure"));
+      };
+    });
+    await page.locator("#splitRun").click();
+    await page.locator("#splitOutput").getByText(/SAFE-ENV-003/).waitFor();
+    assert.equal(await page.evaluate(() => window.splitAttempts),2);
+    evidence.push({name:"malformed-response-and-bounded-retry",status:"PASS"});
   } finally {
     await browser.close();
   }
   fs.writeFileSync(path.join(out,"evidence.json"),JSON.stringify(evidence,null,2)+"\n");
-  console.log("SEPARATE_UI_PASS 3 synthetic viewport profiles, HOLD recovery, stale-response rejection");
+  console.log("SEPARATE_UI_PASS 3 synthetic viewport and print profiles, HOLD recovery, response validation, bounded retry");
 })().catch(error => {console.error(error.message);process.exitCode=1;});
