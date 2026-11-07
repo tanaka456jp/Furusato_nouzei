@@ -40,7 +40,7 @@ assert.equal(matched.releaseVerdict,"HOLD");
 assert.equal(matched.actualExcelCOM,false,"mock fixture cannot prove real Excel");
 assert.equal(matched.excelCalculationPendingCount,41);
 assert.throws(()=>compare(fixture(),cases,fakeEngine()),/untrusted source/);
-const duplicated=fixture();duplicated.results[0].id=duplicated.results[1].id;
+const duplicated=fixture();duplicated.results[1].id=duplicated.results[0].id;
 assert.throws(()=>compare(duplicated,cases,fakeEngine(),{allowMock:true}),/repeated case/);
 const missing=fixture();missing.results.pop();
 assert.throws(()=>compare(missing,cases,fakeEngine(),{allowMock:true}),/exactly 41/);
