@@ -215,7 +215,7 @@ jobs:
       group: furusato-excel-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     # Bound the two full COM acceptance passes, including exact split limits and staged VBA.
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - name: Build, install and run real Excel acceptance
@@ -299,7 +299,7 @@ jobs:
         if: success()
         uses: actions/checkout@v4
         with:
-          ref: d5a54cef2dd3266a916ef45ba01421e530ab6b65
+          ref: e264038e820c0613373ae4b3c34c7b3d3e7750ae
           path: _gas_reference_v4183
           persist-credentials: false
       - name: Compare 41 synthetic cases in actual Excel vs pinned GAS engine

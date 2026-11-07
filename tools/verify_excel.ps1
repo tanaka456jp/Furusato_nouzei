@@ -577,8 +577,8 @@ try {
     QA-Stage 'statutory-split-cases-start'
     . (Join-Path $PSScriptRoot 'test_separate_excel.ps1')
     $splitCases = @(Test-SeparateTaxCases -Excel $excel -Book $book -FixturePath (Join-Path $PSScriptRoot '../taxdata/separate-tax-cases-v1.json') -PdfPath (Join-Path $dir 'split-result.pdf'))
-    if ($splitCases.Count -ne 49) { throw 'Split evidence is incomplete' }
-    QA-Stage 'statutory-split-49-exact-pass'
+    if ($splitCases.Count -ne 68) { throw 'Split evidence is incomplete' }
+    QA-Stage 'statutory-split-68-exact-pass'
     QA-Stage 'statutory-split-pdf-and-safety-recovery-pass'
     QA-Stage 'all-acceptance-checks-pass'
     $passed = $true

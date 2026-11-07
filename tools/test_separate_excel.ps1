@@ -10,18 +10,26 @@
     $localPath = Join-Path (Split-Path $FixturePath) 'separate-tax-local-v1.json'
     $localFixtures = Get-Content -LiteralPath $localPath -Raw -Encoding UTF8 | ConvertFrom-Json
     if ($localFixtures.Count -ne 7) { throw 'Expected seven new municipality and rounding fixtures' }
+    $creditPath = Join-Path (Split-Path $FixturePath) 'separate-tax-credits-v1.json'
+    $creditFixtures = Get-Content -LiteralPath $creditPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ($creditFixtures.Count -ne 19) { throw 'Expected 19 independently verified tax credit fixtures' }
     $results = [System.Collections.Generic.List[object]]::new()
     try {
         $screen.Range('B44').Value2 = '申告分離'
         $screen.Range('D44').Value2 = '確定申告'
         $screen.Range('D49').Value2 = '照合済'
-        foreach ($fixture in ($fixtures + $localFixtures)) {
+        foreach ($fixture in ($fixtures + $localFixtures + $creditFixtures)) {
             $inputCase = $fixture.input
             $screen.Range('D51').Value2 = [string]$(if ($inputCase.municipality -eq 'designated') { '標準指定都市' } else { '標準市町村' })
             $row = 45
             foreach ($kind in @('ordinary','shortLand','longLand','listedDividend','generalStock','listedStock','futures')) {
                 $screen.Range("B$row").Value2 = [double]$inputCase.$kind
                 $row++
+            }
+            $creditRow = 72
+            foreach ($credit in @('housingYear','housingBalance','housingPossible','domesticDividend','foreignTax','foreignIncome')) {
+                $screen.Range("D$creditRow").Value2 = [double]$inputCase.PSObject.Properties[$credit].Value
+                $creditRow++
             }
             $screen.Range('D45').Value2 = [double]$inputCase.nationalDeductions
             $screen.Range('D46').Value2 = [double]$inputCase.residentDeductions
@@ -49,8 +57,13 @@
                 limit = $screen.Range('B56').Value2
             }
             if ($fixture.exact) {
-                $actual.residentBeforeParts = @('B8','B9' | ForEach-Object { [math]::Floor($model.Range($_).Value2 / 100000) * 100 })
+                $actual.residentBeforeParts = @('E10','E11' | ForEach-Object { $model.Range($_).Value2 })
                 $actual.residentAfterParts = @('O27','P27' | ForEach-Object { $model.Range($_).Value2 })
+            }
+            if ($fixture.expected.creditBefore) {
+                foreach ($pair in @(@('creditBefore','E'),@('creditAfter','F'))) {
+                    $actual[$pair[0]] = @(9,6,4,5,8,2,3 | ForEach-Object { $model.Range(($pair[1] + $_)).Value2 })
+                }
             }
             foreach ($key in $actual.Keys) {
                 $got = ConvertTo-Json -Compress -InputObject $actual[$key]
@@ -81,7 +94,7 @@
             }
             $results.Add([ordered]@{id=$fixture.id; input=$inputCase; expected=$fixture.expected; observed=$actual; exact_expected=$edge; exact_observed=$exact; differences=0; verdict='PASS'; calculationState=0})
         }
-        foreach ($case in @(@('D44','ワンストップ','SAFE-TAX-012'),@('D49','特例あり','SAFE-TAX-013'),@('D45',0,'SAFE-TAX-015'),@('D51','条例差・不明','SAFE-TAX-019'))) {
+        foreach ($case in @(@('D44','ワンストップ','SAFE-TAX-012'),@('D49','特例あり','SAFE-TAX-013'),@('D45',0,'SAFE-TAX-015'),@('D51','条例差・不明','SAFE-TAX-019'),@('D72',2027,'SAFE-TAX-020'),@('D75',10000000,'SAFE-TAX-023'),@('D77',100000,'SAFE-TAX-023'))) {
             $cell = $screen.Range($case[0])
             $previous = $cell.Value2
             if ($case[1] -is [int]) {
@@ -119,6 +132,7 @@
         $screen.Range('D50').Value2 = 2026.0
         $screen.Range('D51').Value2 = '標準市町村'
         [void]$screen.Range('B45:B51,D45:D48').ClearContents()
+        $screen.Range('D72:D77').Value2 = 0.0
         $Excel.Calculate()
     }
 }

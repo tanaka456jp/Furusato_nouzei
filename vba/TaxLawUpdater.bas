@@ -505,6 +505,7 @@ Private Sub ResetSeparateInputs(ByVal home As Worksheet)
     home.Range("D49").Value2 = "未確認"
     home.Range("D50").Value2 = 2026
     home.Range("D51").Value2 = "標準市町村"
+    If CStr(home.Range("A71").Value2) = "詳細設定 | 税額控除（該当なしは0）" Then home.Range("D72:D77").Value2 = 0
 End Sub
 
 Public Sub NewCase()

@@ -28,14 +28,14 @@ def allocate(incomes, deduction):
     return used, taxable, deduction
 
 
-def annual(taxable):
+def income_tax(taxable):
     ordinary, short, *flat = taxable
     tax = short * 3 // 10 + sum(flat) * 15 // 100
     lower = 0
     for upper, rate in BANDS:
         tax += max(0, min(ordinary, upper) - lower) * rate // 100
         lower = upper
-    return tax + tax * 21 // 1000
+    return tax
 
 
 def oracle(case, exact=False, jurisdiction=False):
@@ -64,9 +64,30 @@ def oracle(case, exact=False, jurisdiction=False):
     city_fraction = Fraction(4, 5) if case.get("municipality") == "designated" else Fraction(3, 5)
     shares = (city_fraction, 1 - city_fraction)
     jurisdictions = [levy * share for share in shares]
-    base_parts = [math.floor(t / 100) * 100 for t in jurisdictions]
+    dividend = case.get("domesticDividend", 0)
+    housing = case.get("housingPossible", 0)
+    foreign = case.get("foreignTax", 0)
+    housing_legacy = 2022 <= case.get("housingYear", 0) <= 2025
+
+    def credit_tax(taxable):
+        tax = income_tax(taxable)
+        dividend_used = min(tax, dividend // 10)
+        balance = tax - dividend_used
+        housing_used = min(balance, housing)
+        balance -= housing_used
+        cap_basis = taxable[0] + (max(0, basic - 480000) if housing_legacy else 0)
+        housing_cap = min(97500, cap_basis // 20)
+        local_housing = min(housing - housing_used, housing_cap)
+        surtax = balance * 21 // 1000
+        return [tax, dividend_used, housing_used, local_housing, housing_cap, balance - foreign, surtax]
+
+    def local_net(current, share, housing_transfer, donation_credit=0):
+        return max(0, math.floor((current - (Fraction(7 * dividend, 250) + housing_transfer) * share - donation_credit) / 100) * 100)
+
+    base_detail = credit_tax(n_taxable)
+    base_parts = [local_net(t, share, base_detail[3]) for t, share in zip(jurisdictions, shares)]
     base_resident = sum(base_parts)
-    base_income = annual(n_taxable)
+    base_income = sum(base_detail[-2:])
     discriminator = ordinary - gap - max(0, basic - 480000)
     if ordinary > 0 and discriminator >= 0:
         ratio = next(r for (upper, _), r in zip(BANDS, RATIO) if discriminator <= upper)
@@ -75,19 +96,20 @@ def oracle(case, exact=False, jurisdiction=False):
 
     def evaluate(donation):
         applied = max(0, min(donation, total * 2 // 5) - 2000)
-        after = annual(allocate(incomes, national + applied)[1])
+        detail = credit_tax(allocate(incomes, national + applied)[1])
+        after = sum(detail[-2:])
         basic_credit = max(Fraction(0), min(Fraction(donation), Fraction(3 * total, 10)) - 2000) / 10
         special = Fraction(max(0, donation - 2000) * ratio, 100000)
         parts = []
         for current, share in zip(jurisdictions, shares):
             credit = math.ceil(basic_credit * share + min(special * share, current / 5))
-            parts.append(max(0, math.floor((current - credit) / 100) * 100))
+            parts.append(local_net(current, share, detail[3], credit))
         local_after = sum(parts)
-        return after, local_after, donation - (base_income - after) - (base_resident - local_after), parts
+        return after, local_after, donation - (base_income - after) - (base_resident - local_after), parts, detail
 
     # Wider than the product search bound; catches erroneous truncation.
     limit = max((d for d in range(3000, 1250001, 1000) if evaluate(d)[2] <= 2000), default=0)
-    after_income, after_resident, net_cost, after_parts = evaluate(case["donation"])
+    after_income, after_resident, net_cost, after_parts, after_detail = evaluate(case["donation"])
     if exact:
         # Search high-to-low in 1000-yen blocks. At the upper endpoint the
         # total relief is at least that of every amount in the block.
@@ -107,6 +129,8 @@ def oracle(case, exact=False, jurisdiction=False):
                 nationalAfter=after_income, residentAfter=after_resident, netCost=net_cost, limit=limit)
     if jurisdiction:
         result.update(residentBeforeParts=base_parts, residentAfterParts=after_parts)
+    if any((dividend, housing, foreign)):
+        result.update(creditBefore=base_detail, creditAfter=after_detail)
     return result
 
 
@@ -154,6 +178,35 @@ def locality_cases(existing):
     yield "2026-rounded-is-infeasible", values
 
 
+def credit_cases():
+    def one(year, name, **changes):
+        values = dict.fromkeys(KINDS, 0)
+        values.update(ordinary=5000000, year=year, nationalDeductions=1000000,
+                      residentDeductions=850000, personalDifference=50000, donation=52000,
+                      filing="return", conditions="reviewed", mode="separate")
+        values.update(changes)
+        return dict(id=f"{year}-{name}", input=values,
+                    expected=oracle(values, jurisdiction=True), exact=oracle(values, exact=True))
+
+    for year in (2025, 2026):
+        yield one(year, "mortgage-fully-national", housingYear=2024, housingBalance=20000000, housingPossible=140000)
+        yield one(year, "mortgage-transfer", housingYear=2024, ordinary=4000000, nationalDeductions=1100000, housingBalance=32000000, housingPossible=224000)
+        yield one(year, "mortgage-cap", housingYear=2024, ordinary=4000000, nationalDeductions=1100000, housingBalance=50000000, housingPossible=350000)
+        yield one(year, "domestic-dividend", domesticDividend=375019, municipality="designated")
+        yield one(year, "foreign-in-national", foreignIncome=500000, foreignTax=8000)
+        yield one(year, "all-credits-with-stock", housingYear=2024, housingBalance=28571429, housingPossible=200000,
+                  domesticDividend=250000, foreignIncome=1000000, foreignTax=10000, listedStock=1000000)
+        yield one(year, "mortgage-zero-national-boundary", housingYear=2024, housingBalance=49928572, housingPossible=349500,
+                  donation=117001)
+    for occupied in (2025, 2026):
+        yield one(2026, f"cap-basis-occupancy-{occupied}", ordinary=3800000, nationalDeductions=1040000,
+                  donation=902000, housingYear=occupied, housingBalance=21000000, housingPossible=147000)
+    # A one-yen donation crosses a national ¥1,000 taxable-income boundary.
+    for donation in (116000, 116001, 117001):
+        yield one(2026, f"national-boundary-{donation}", housingYear=2025, housingBalance=49928572,
+                  housingPossible=349500, donation=donation)
+
+
 if __name__ == "__main__":
     generated = list(cases())
     # Direct hand-derived anchors for ordinary-first and independent
@@ -187,3 +240,19 @@ if __name__ == "__main__":
     else:
         assert json.loads(local_path.read_text(encoding="utf-8")) == local_results
     print(f"{len(generated)} existing and {len(local_results)} new statutory fixtures verified by Fraction/sliced-bracket oracle")
+
+    credit_path = FIXTURES.with_name("separate-tax-credits-v1.json")
+    credit_results = list(credit_cases())
+    # Hand-derived national tax at ¥4,000,000 = ¥372,500, less ¥140,000
+    # mortgage, and ¥4,882 reconstruction tax (2.1%, truncated).
+    assert credit_results[0]["expected"]["creditBefore"] == [372500, 0, 140000, 0, 97500, 232500, 4882]
+    assert credit_results[2]["expected"]["creditBefore"][3] == 97500
+    assert credit_results[2]["expected"]["creditAfter"][3] == 97500
+    assert credit_results[2]["exact"]["maximum"] > 2000
+    assert [row["expected"]["creditAfter"][4] for row in credit_results[-5:-3]] == [97500, 93000]
+    assert [row["expected"]["creditAfter"][-2] for row in credit_results[-3:]] == [200, 0, 0]
+    if "--write" in sys.argv:
+        credit_path.write_text(json.dumps(credit_results, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    else:
+        assert json.loads(credit_path.read_text(encoding="utf-8")) == credit_results
+    print(f"{len(credit_results)} income-tax credit fixtures with independent exact donation boundaries")
