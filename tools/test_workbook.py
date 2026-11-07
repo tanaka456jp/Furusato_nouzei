@@ -20,6 +20,14 @@ class WorkbookTest(unittest.TestCase):
         cls.baseline = load_workbook(cls.source)
         cls.book = load_workbook(cls.target)
 
+    def test_first_open_full_recalculation_without_permanent_force_flag(self):
+        # A full initial calculation is still requested. Avoid permanent
+        # forced-full calculation because this suppresses smart dependency
+        # recalculation in Excel and can leave global xlPending.
+        self.assertEqual(self.book.calculation.calcMode, "auto")
+        self.assertTrue(self.book.calculation.fullCalcOnLoad)
+        self.assertFalse(self.book.calculation.forceFullCalc)
+
     def test_single_visible_home(self):
         self.assertEqual(self.book.active.title, HOME)
         self.assertEqual([s.title for s in self.book if s.sheet_state == "visible"], [HOME])

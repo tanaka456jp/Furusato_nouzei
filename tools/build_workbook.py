@@ -659,7 +659,11 @@ def build(source, output):
         sheet.sheet_state = "visible" if sheet == home else "veryHidden"
         sheet.sheet_view.tabSelected = sheet == home
     book.active = 0
-    book.calculation = CalcProperties(calcMode="auto", fullCalcOnLoad=True, forceFullCalc=True)
+    # Retain a complete first-open calculation while allowing Excel to use
+    # smart dependency recalculation thereafter. This is isolated to the
+    # v4.18.3 review; compare its xlPending state in a freshly owned Excel
+    # process before claiming the calculation-state defect resolved.
+    book.calculation = CalcProperties(calcMode="auto", fullCalcOnLoad=True, forceFullCalc=False)
     output.parent.mkdir(parents=True, exist_ok=True)
     book.save(output)
 

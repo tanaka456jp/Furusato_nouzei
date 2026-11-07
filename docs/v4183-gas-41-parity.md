@@ -28,3 +28,18 @@ failed dynamic reversal, or any Excel/GAS mismatch fails the CI.
 
 Compare the Workbook checks excel job and the two synthetic-only evidence
 files excel_gas_41_observations.json and excel_gas_41_comparison.json.
+
+## 2026-11-07 Excel再計算フラグの隔離検証
+
+旧検証版は `xl/workbook.xml` の `forceFullCalc=1` を保持しており、
+PC①で読み取り専用のExcelメモリ上だけ無効化した場合も
+`CalculationState=2` のままだった。
+Microsoftの仕様上、強制再計算モードはExcelセッション終了まで影響する
+可能性があるため、その結果だけで根本原因の否定・確定はできない。
+
+今回の検証ブランチでは、初回読込時の全数式計算要求
+`fullCalcOnLoad=True` を維持したまま、毎回全数式を強制再計算する
+`forceFullCalc` だけを `False` に変更した。
+新規Excelインスタンスで既存52件・新規13境界件・GAS比較41件・
+VBAUpdater隔離書戻しを再検証し、`xlPending` 状態変化をJSONに記録する。
+正式リリース・GASデプロイはHOLDを維持。
