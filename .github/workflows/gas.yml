@@ -1,0 +1,118 @@
+name: GAS workflow regression
+on:
+  pull_request:
+    paths:
+      - 'gas/**'
+      - '.github/workflows/gas.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'gas/**'
+      - '.github/workflows/gas.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gas-engine:
+    name: Node static and independent tax-model smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated browser DOM test dependency
+        run: npm install --no-save --ignore-scripts --no-audit --no-fund jsdom@26.1.0
+      - name: Verify source-reader/GAS field and clasp publish contracts
+        run: node gas/tests/test-contract.cjs
+      - name: Independent engine regression
+        run: |
+          node gas/tests/test-engine.cjs
+          node gas/tests/test-separate-tax.cjs
+          node gas/tests/test-ocr.cjs
+          node gas/tests/test-deployment.cjs
+          node gas/tests/test-config-drift.cjs
+          node gas/tests/test-parity.cjs
+          node gas/tests/test-observed.cjs
+      - name: Workflow and source import simulated browser regression
+        run: node gas/tests/test-browser.cjs
+      - name: Build local standalone review preview
+        run: node gas/scripts/build-preview.cjs
+      - name: Verify preview with simulated browser
+        run: node gas/tests/test-preview.cjs
+      - name: Upload offline local preview (no Google deployment)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Furusato_GAS_Offline_Preview_${{ github.run_id }}
+          path: gas/dist/Furusato_GAS_LocalPreview.html
+          if-no-files-found: error
+          retention-days: 14
+      - name: Package audited GAS source files for private test deployment
+        shell: bash
+        run: |
+          cd gas
+          zip -q dist/Furusato_GAS_DeploySources.zip Code.gs Engine.gs SourceOCR.gs Index.html appsscript.json .claspignore
+          unzip -Z1 dist/Furusato_GAS_DeploySources.zip | LC_ALL=C sort > dist/actual-files.txt
+          printf '%s\n' .claspignore Code.gs Engine.gs SourceOCR.gs Index.html appsscript.json | LC_ALL=C sort > dist/expected-files.txt
+          diff -u dist/expected-files.txt dist/actual-files.txt
+      - name: Upload audited private-deployment source kit (not deployed)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Furusato_GAS_DeploySources_${{ github.run_id }}
+          path: gas/dist/Furusato_GAS_DeploySources.zip
+          if-no-files-found: error
+          retention-days: 14
+      - name: Package Windows private setup kit (not deployed)
+        shell: bash
+        run: |
+          cd gas
+          zip -q dist/Furusato_GAS_Windows_Private_Setup.zip Code.gs Engine.gs SourceOCR.gs Index.html appsscript.json .claspignore .gitignore README.md scripts/setup-private-gas.ps1 deployment/private-gas.cjs deployment/policy.json deployment/README.md package.json package-lock.json
+          unzip -Z1 dist/Furusato_GAS_Windows_Private_Setup.zip | LC_ALL=C sort > dist/setup-actual-files.txt
+          printf '%s\n' .claspignore .gitignore Code.gs Engine.gs SourceOCR.gs Index.html README.md appsscript.json scripts/setup-private-gas.ps1 deployment/private-gas.cjs deployment/policy.json deployment/README.md package.json package-lock.json | LC_ALL=C sort > dist/setup-expected-files.txt
+          diff -u dist/setup-expected-files.txt dist/setup-actual-files.txt
+      - name: Upload Windows private GAS setup (no OAuth tokens)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Furusato_GAS_Windows_Private_Setup_${{ github.run_id }}
+          path: gas/dist/Furusato_GAS_Windows_Private_Setup.zip
+          if-no-files-found: error
+          retention-days: 14
+      - name: Explicit validation boundary
+        run: |
+          echo "GAS JavaScript regression: PASS if previous step passed." >> "$GITHUB_STEP_SUMMARY"
+          echo "Not a GAS deployment, Google account auth test, PDF OCR, or full Excel parity acceptance." >> "$GITHUB_STEP_SUMMARY"
+  gas-windows:
+    name: Windows Node portability smoke
+    runs-on: windows-2022
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated browser DOM test dependency
+        run: npm install --no-save --ignore-scripts --no-audit --no-fund jsdom@26.1.0
+      - name: Verify source-reader/GAS field and clasp publish contracts
+        run: node gas/tests/test-contract.cjs
+      - name: Independent engine regression
+        run: |
+          node gas/tests/test-engine.cjs
+          node gas/tests/test-separate-tax.cjs
+          node gas/tests/test-ocr.cjs
+          node gas/tests/test-deployment.cjs
+          node gas/tests/test-config-drift.cjs
+          node gas/tests/test-parity.cjs
+          node gas/tests/test-observed.cjs
+      - name: Workflow and source import simulated browser regression
+        run: node gas/tests/test-browser.cjs
+      - name: Official Excel parity script preflight (no Excel or Google)
+        shell: powershell
+        run: .\gas\parity\run-excel-oracle.ps1 -PreflightOnly
+      - name: Readonly Windows GAS installation preflight
+        shell: powershell
+        run: |
+          .\gas\scripts\setup-private-gas.ps1
+

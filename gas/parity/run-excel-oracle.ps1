@@ -1,0 +1,240 @@
+<#
+Run official v4.18.2 Excel COM comparisons using synthetic cases only.
+A new Excel instance is created; macros/events disabled; no Google access.
+#>
+[CmdletBinding()]
+param([string]$ReleaseZip='', [string]$OutputPath='', [switch]$PreflightOnly, [switch]$DiagnosticOnly, [switch]$CompareObserved)
+$ErrorActionPreference='Stop'
+$expectedZipSha='f534882f56461ea23a75474f24e68ad364d557091609c994341c179e9a655f25'
+$caseFile=Join-Path $PSScriptRoot 'cases.cjs'
+$comparison=Join-Path $PSScriptRoot 'compare-excel.cjs'
+if(-not (Test-Path -LiteralPath $caseFile -PathType Leaf)){throw 'Synthetic cases file missing'}
+if(-not (Test-Path -LiteralPath $comparison -PathType Leaf)){throw 'Comparison program missing'}
+$node=Get-Command node -ErrorAction SilentlyContinue
+if(-not $node){throw 'Node 22+ required'}
+$raw=& $node.Source $caseFile --ndjson
+if($LASTEXITCODE -ne 0){throw 'Could not generate synthetic cases'}
+$cases=@(foreach($line in $raw){ConvertFrom-Json -InputObject ([string]$line)})
+if($cases.Count -ne 41){throw 'Synthetic case count mismatch'}
+$unique=@($cases | ForEach-Object {$_.id} | Select-Object -Unique)
+if($unique.Count -ne $cases.Count){throw 'Duplicate case IDs'}
+if($PreflightOnly){
+ Write-Output ('EXCEL_PARITY_PREFLIGHT_PASS: synthetic cases='+$cases.Count+'; no Excel or Google accessed')
+ return
+}
+if([string]::IsNullOrWhiteSpace($ReleaseZip)){throw 'Official -ReleaseZip is required'}
+$zipPath=(Resolve-Path -LiteralPath $ReleaseZip).Path
+if((Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne $expectedZipSha){
+ throw 'Official ReadyToUse ZIP SHA-256 mismatch: STOP'
+}
+if(-not $OutputPath){$OutputPath=Join-Path $env:TEMP ('FurusatoParity_'+[guid]::NewGuid().ToString('N')+'.json')}
+$outputFull=[System.IO.Path]::GetFullPath($OutputPath)
+if(Test-Path -LiteralPath $outputFull){throw 'Output already exists; refusing overwrite'}
+$parent=Split-Path -Parent $outputFull
+if(-not (Test-Path -LiteralPath $parent -PathType Container)){throw 'Output parent folder missing'}
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$workdir=Join-Path $env:TEMP ('FurusatoParityIsolated_'+[guid]::NewGuid().ToString('N'))
+[void][System.IO.Directory]::CreateDirectory($workdir)
+$workbookPath=Join-Path $workdir 'Furusato_nouzei.xlsm'
+$excel=$null;$book=$null;$sheet=$null;$settings=$null;$results=@();$ownsExcel=$false
+try {
+ $archive=[System.IO.Compression.ZipFile]::OpenRead($zipPath)
+ try{
+  $entries=@($archive.Entries | Where-Object {$_.Name -ceq 'Furusato_nouzei.xlsm'})
+  if($entries.Count -ne 1){throw 'Expected one official XLSM entry in ZIP'}
+  $read=$entries[0].Open();$write=[System.IO.File]::Create($workbookPath)
+  try{$read.CopyTo($write)}finally{$write.Dispose();$read.Dispose()}
+ }finally{$archive.Dispose()}
+ $bookHash=(Get-FileHash -LiteralPath $workbookPath -Algorithm SHA256).Hash.ToLowerInvariant()
+ # Excel sheet and option strings encoded in Unicode for PowerShell 5.1.
+ $sheetName=-join @([char]0x64CD,[char]0x4F5C,[char]0x753B,[char]0x9762)
+ $normal=-join @([char]0x6B63,[char]0x5E38)
+ $oneStop=-join @([char]0x30EF,[char]0x30F3,[char]0x30B9,[char]0x30C8,[char]0x30C3,[char]0x30D7)
+ # Require a freshly created Excel COM instance; never modify an
+ # already-running Excel process owned by the user.
+ $existingPids=@(Get-Process -Name EXCEL -ErrorAction SilentlyContinue | ForEach-Object {[uint32]$_.Id})
+ Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class FurusatoExcelPid {
+  [DllImport("user32.dll")]
+  public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
+}
+'@
+ $excel=New-Object -ComObject Excel.Application
+ [uint32]$createdPid=0
+ [void][FurusatoExcelPid]::GetWindowThreadProcessId([IntPtr]$excel.Hwnd,[ref]$createdPid)
+ if($createdPid -eq 0 -or $existingPids -contains $createdPid){
+  throw 'Excel COM returned an existing/unidentified process. No workbook changes allowed.'
+ }
+ $ownsExcel=$true
+ $excel.Visible=$false
+ $excel.DisplayAlerts=$false
+ $excel.EnableEvents=$false
+ $excel.AskToUpdateLinks=$false
+ $excel.AutomationSecurity=3
+ $book=$excel.Workbooks.Open($workbookPath,0,$true)
+ $sheet=$book.Worksheets.Item($sheetName)
+ # Excel v4.18.2's approved-year update macro normally synchronizes HOME B4
+ # with the hidden tax-master year. Macros are disabled in this audit, so the
+ # in-memory copy MUST synchronize both fields explicitly.
+ $settingsName=-join @([char]0x8A2D,[char]0x5B9A,[char]0x30FB,[char]0x7A0E,[char]0x7387)
+ $settings=$book.Worksheets.Item($settingsName)
+ # Batch input changes with Excel in manual mode. This affects only the
+ # newly created COM instance, never any pre-existing Excel process.
+ $excel.Calculation=-4135
+ # Start with a known review anchor. No mocked results are used.
+ $anchor=@($cases | Where-Object { $_.id -eq 'Y2026_G7000000' })
+ if($anchor.Count -ne 1){throw 'Missing 2026 Excel anchor'}
+ $ordered=@($anchor)+@($cases | Where-Object { $_.id -ne 'Y2026_G7000000' })
+ if($DiagnosticOnly) {
+  # Input ABA (7m / 5m / 7m) probes a live calculation, not a cached result.
+  # All outputs remain unapproved regardless of whether the values respond.
+  $probeInputs=@(
+    [pscustomobject]@{id='A';gross=7000000},
+    [pscustomobject]@{id='B';gross=5000000},
+    [pscustomobject]@{id='A2';gross=7000000}
+  )
+  $probes=@()
+  foreach($probe in $probeInputs){
+   $settings.Range('B4').Value2=2026
+   $sheet.Range('B4').Value2='2026'
+   $sheet.Range('B11').Value2='2026'
+   $sheet.Range('B12').Value2=[double]$probe.gross
+   $sheet.Range('B15').Value2=[double]0
+   $sheet.Range('B16').Value2=[double]1000000
+   $sheet.Range('D24').Value2=$oneStop
+   $before=[int]$excel.CalculationState
+   $clock=[Diagnostics.Stopwatch]::StartNew()
+   $excel.Calculate()
+   $callMs=$clock.ElapsedMilliseconds
+   $states=@()
+   for($i=0;$i -lt 6;$i++){
+    $current=[int]$excel.CalculationState
+    $states+= $current
+    if($current -eq 0){break}
+    Start-Sleep -Milliseconds 200
+   }
+   $after=[int]$excel.CalculationState
+   $amount=[string]$sheet.Range('B8').Value2
+   $salary=[string]$sheet.Range('B13').Value2
+   $status=[string]$sheet.Range('B28').Value2
+   $activeYear=[string]$sheet.Range('D4').Value2
+   Write-Output ('EXCEL_ABA_PROBE '+$probe.id+
+      ' gross='+$probe.gross+'; stateBefore='+$before+
+      '; stateAfter='+$after+'; calcMs='+$callMs+
+      '; status='+$status+'; displayedLimit='+$amount+
+      '; salaryIncome='+$salary)
+   $probes+= [pscustomobject]@{
+    probeId=$probe.id;grossYen=[long]$probe.gross;calculationBefore=$before
+    calculationAfter=$after;calculateCallMilliseconds=$callMs
+    stateSamples=@($states);statusText=$status
+    year=$activeYear;donationLimitYen=$amount;salaryIncomeYen=$salary
+   }
+  }
+  $changed= $probes[0].donationLimitYen -cne $probes[1].donationLimitYen
+  $reversed= $probes[0].donationLimitYen -ceq $probes[2].donationLimitYen
+  $salaryChanged= $probes[0].salaryIncomeYen -cne $probes[1].salaryIncomeYen
+  $diag=[ordered]@{
+   schema='furusato-excel-calculation-diagnostic/v2'
+   release='HOLD';eligibleForParity=$false
+   verifiedZipSha256=$expectedZipSha;excelWorkbookSha256=$bookHash
+   excelVersion=[string]$excel.Version;macrosDisabled=$true
+   workbookReadOnly=[bool]$book.ReadOnly
+   ownedExcelPid=[uint32]$createdPid
+   dynamicAmountChanged=[bool]$changed
+   dynamicSalaryChanged=[bool]$salaryChanged
+   anchorRestored=[bool]$reversed
+   probes=@($probes)
+  }
+  [IO.File]::WriteAllText($outputFull,(ConvertTo-Json -InputObject $diag -Depth 8),
+      ([System.Text.UTF8Encoding]::new($false)))
+  Write-Output ('EXCEL_ABA_DIAG_COMPLETE: amountChanged='+$changed+
+    '; salaryChanged='+$salaryChanged+'; anchorRestored='+$reversed+'; acceptance=HOLD')
+  return
+ }
+ $index=0
+ foreach($case in $ordered){
+  $index++
+  Write-Output ('EXCEL_CASE_START '+$index+'/'+$cases.Count+': '+$case.id)
+  if($case.year -ne 2025 -and $case.year -ne 2026){throw 'Invalid year'}
+  if($case.filing -cne 'one-stop'){throw 'Invalid filing'}
+  $settings.Range('B4').Value2=[int]$case.year
+  $sheet.Range('B4').Value2=[string]$case.year
+  $sheet.Range('B11').Value2=[string]$case.year
+  $sheet.Range('B12').Value2=[double]$case.salaryGross
+  $sheet.Range('B15').Value2=[double]0
+  $sheet.Range('B16').Value2=[double]$case.socialInsurance
+  $sheet.Range('D24').Value2=$oneStop
+  $timer=[Diagnostics.Stopwatch]::StartNew()
+  # Excel's normal dependency-aware calculation; full dependency rebuild
+  # repeated on each iteration can remain pending for several minutes.
+  $excel.Calculate()
+  if(-not $CompareObserved){
+   $ticks=0
+   while([int]$excel.CalculationState -ne 0 -and $ticks -lt 1800){
+    Start-Sleep -Milliseconds 100;$ticks++
+   }
+  }
+  $calcState=[int]$excel.CalculationState
+  $timer.Stop()
+  if($calcState -eq 1 -or (-not $CompareObserved -and $calcState -ne 0)){
+   throw ('Excel calculation incomplete '+$case.id+'; state='+$calcState)
+  }
+  # Global xlPending=2 is diagnostic-only and cannot authorize tax parity.
+  Write-Output ('EXCEL_CASE_CALCULATED '+$case.id+': '+$timer.ElapsedMilliseconds+' ms')
+  $state=[string]$sheet.Range('B28').Value2
+  Write-Output ('EXCEL_CASE_STATUS '+$case.id+': '+$state)
+  $activeYear=$sheet.Range('D4').Value2
+  if([string]$activeYear -cne [string]$case.year){
+   throw ('Approved tax master year mismatch: '+$case.id)
+  }
+  if($state -ceq $normal){
+   $amount=$sheet.Range('B8').Value2
+   $salary=$sheet.Range('B13').Value2
+   $levy=$sheet.Range('D8').Value2
+   if($case.id -ceq 'Y2026_G7000000' -and $amount -ne 109000){
+    throw 'Official Excel 2026 reference anchor mismatch (109000 expected)'
+   }
+   foreach($n in @($amount,$salary,$levy)){
+    if($null -eq $n -or -not ($n -is [double] -or $n -is [int] -or $n -is [long]) -or
+      $n -lt 0 -or $n -gt 1000000000000 -or $n -ne [Math]::Truncate($n)){
+     throw ('Invalid Excel numeric output for '+$case.id)
+    }
+   }
+   $results += [pscustomobject]@{id=$case.id;year=[int]$case.year;
+    salaryGross=[long]$case.salaryGross;socialInsurance=[long]$case.socialInsurance;
+    filing='one-stop';status='NORMAL';statusText=$state;calcState=$calcState;donationLimitYen=[long]$amount;
+    salaryIncomeYen=[long]$salary;residentIncomeLevyYen=[long]$levy}
+  }else{
+   $results += [pscustomobject]@{id=$case.id;year=[int]$case.year;
+    salaryGross=[long]$case.salaryGross;socialInsurance=[long]$case.socialInsurance;
+    filing='one-stop';status='HOLD';statusText=$state;calcState=$calcState;donationLimitYen=$null;
+    salaryIncomeYen=$null;residentIncomeLevyYen=$null}
+  }
+ }
+ if($results.Count -ne $cases.Count){throw 'Incomplete Excel oracle'}
+ $sourceType=if($CompareObserved){'OBSERVED_GLOBAL_PENDING'}else{'OFFICIAL_RELEASE'}
+ $oracle=[ordered]@{schema='furusato-excel-oracle/v1';source=$sourceType;
+  releaseTag='v4.18.2';releaseZipSha256=$expectedZipSha;
+  excelWorkbookSha256=$bookHash;calculationProvider='EXCEL_COM';macrosDisabled=$true;results=@($results)}
+ $json=ConvertTo-Json -InputObject $oracle -Depth 8
+ [System.IO.File]::WriteAllText($outputFull,$json,([System.Text.UTF8Encoding]::new($false)))
+}finally{
+ if($null -ne $book){try{$book.Close($false)}catch{}}
+ if($ownsExcel -and $null -ne $excel){try{$excel.Quit()}catch{}}
+ if($null -ne $sheet){[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($sheet)}
+ if($null -ne $settings){[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($settings)}
+ if($null -ne $book){[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($book)}
+ if($null -ne $excel){[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($excel)}
+ [GC]::Collect();[GC]::WaitForPendingFinalizers()
+ if(Test-Path -LiteralPath $workdir){Remove-Item -LiteralPath $workdir -Recurse -Force}
+}
+Write-Output ('EXCEL_ORACLE_CREATED: '+$outputFull+' (synthetic only)')
+if($CompareObserved){
+ Write-Output 'EXCEL_OBSERVED_ONLY: 41 synthetic rows recorded; global calculation state may be pending; formal HOLD'
+ return
+}
+& $node.Source $comparison --oracle $outputFull
+if($LASTEXITCODE -ne 0){throw 'EXCEL_PARITY_HOLD: mismatches or invalid oracle; tax engine unchanged'}
+Write-Output 'COVERED_CASES_MATCH only; full acceptance remains HOLD'

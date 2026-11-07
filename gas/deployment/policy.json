@@ -1,0 +1,10 @@
+{
+  "schema": "furusato-private-install/v1",
+  "installerRevision": 3,
+  "projectPrefix": "Furusato_PRIVATE_SYNTHETIC_",
+  "access": "MYSELF",
+  "executeAs": "USER_DEPLOYING",
+  "release": "HOLD",
+  "sourceFiles": ["Code.gs", "Engine.gs", "SourceOCR.gs", "Index.html", "appsscript.json"],
+  "claspVersion": "3.3.0"
+}
