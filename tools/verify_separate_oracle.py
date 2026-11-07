@@ -38,7 +38,7 @@ def annual(taxable):
     return tax + tax * 21 // 1000
 
 
-def oracle(case):
+def oracle(case, exact=False):
     incomes = [case[k] for k in KINDS]
     total = sum(incomes)
     year = case["year"]
@@ -84,6 +84,19 @@ def oracle(case):
     # Wider than the product search bound; catches erroneous truncation.
     limit = max((d for d in range(3000, 1250001, 1000) if evaluate(d)[2] <= 2000), default=0)
     after_income, after_resident, net_cost = evaluate(case["donation"])
+    if exact:
+        # Search high-to-low in 1000-yen blocks. At the upper endpoint the
+        # total relief is at least that of every amount in the block.
+        for high in range(1250000, 1999, -1000):
+            low = max(2000, high - 999)
+            high_cost = evaluate(high)[2]
+            if high - high_cost + 2000 < low:
+                continue
+            for donation in range(high, low - 1, -1):
+                cost = evaluate(donation)[2]
+                if cost <= 2000:
+                    return dict(maximum=donation, rounded=donation // 1000 * 1000,
+                                costAtMaximum=cost, costNext=evaluate(donation + 1)[2])
     return dict(nationalApplied=n_used, residentApplied=r_used, nationalTaxable=n_taxable,
                 residentTaxable=r_taxable, nationalUnused=n_unused, residentUnused=r_unused,
                 nationalBefore=base_income, residentBefore=base_resident, ratio=ratio,
@@ -134,4 +147,10 @@ if __name__ == "__main__":
         FIXTURES.write_text(json.dumps(generated, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     else:
         assert json.loads(FIXTURES.read_text(encoding="utf-8")) == generated
+    exact_path = FIXTURES.with_name("separate-tax-exact-v1.json")
+    exact_results = [dict(id=item["id"], **oracle(item["input"], exact=True)) for item in generated]
+    if "--write" in sys.argv:
+        exact_path.write_text(json.dumps(exact_results, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    else:
+        assert json.loads(exact_path.read_text(encoding="utf-8")) == exact_results
     print(f"{len(generated)} statutory synthetic fixtures verified by Fraction/sliced-bracket oracle")

@@ -10,7 +10,7 @@ param(
   [Parameter(Mandatory=$true)][string]$OutputPath
 )
 $ErrorActionPreference='Stop'
-$expectedCommit='1c181e055b433c4efa62700d0aaa0348f0bfe875'
+$expectedCommit='1cb3455e26526448677efe141d8e69d1f0ac2fe6'
 $workbookPath=(Resolve-Path -LiteralPath $Workbook).Path
 $gasPath=(Resolve-Path -LiteralPath $GasCheckout).Path
 $node=Get-Command node -ErrorAction Stop
@@ -73,12 +73,12 @@ public static class FurusatoExcelParityPidV4183 {
   if(-not $book.ReadOnly){throw 'Accepted XLSM must open read-only'}
   $screenSheet=$book.Worksheets.Item('操作画面')
   $master=$book.Worksheets.Item('設定・税率')
-  if([string]$screenSheet.Range('A1').Value2 -notmatch 'v4\.18\.[3-7]'){
+  if([string]$screenSheet.Range('A1').Value2 -notmatch 'v4\.18\.[3-8]'){
     throw 'Workbook is not an approved v4.18.3/4 review build'
   }
   # Manual mode is applied only to this newly-owned Excel instance.
   $excel.Calculation=-4135
-  $excelRevision = [regex]::Match([string]$screenSheet.Range('A1').Value2, 'v4\.18\.[3-7]').Value + '-review'
+  $excelRevision = [regex]::Match([string]$screenSheet.Range('A1').Value2, 'v4\.18\.[3-8]').Value + '-review'
   $sequence=@($anchor7[0],$anchor5[0],$anchor7[0]) + @($cases)
   $counter=0
   foreach($case in $sequence){

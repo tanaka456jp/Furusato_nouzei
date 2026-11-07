@@ -10,6 +10,9 @@ MODEL = "分離課税詳細計算"
 FIRST = 16
 CANDIDATE = 27
 GRID_FIRST = 28
+# At most 1100 + 7 national threshold changes and 5802 local ¥100
+# changes over the search range, plus the initial and final candidates.
+EXACT_STEPS = 7000
 
 
 def add_separate_tax(book, home, field, bar, note, progressive):
@@ -66,7 +69,12 @@ def add_separate_tax(book, home, field, bar, note, progressive):
     home["B68"] = '=IF(B55="計算可能",D50&"／"&(D50+1),"")'
     home["C68"] = "住民税特例控除割合"
     home["D68"] = f"""=IF('{MODEL}'!B2="計算可能",'{MODEL}'!B6/100000,"")"""
-    for row in list(range(56, 67)) + [68]:
+    home["A69"] = "最大寄附額（1円単位）"
+    home["B69"] = f'=IFERROR(\'{MODEL}\'!B15,"")'
+    home["C69"] = "最大額の千円未満切捨て"
+    home["D69"] = '=IF(ISNUMBER(B69),INT(B69/1000)*1000,"")'
+    note(home, 70, '=IF(B55<>"計算可能","",IF(NOT(ISNUMBER(B69)),"SAFE-TAX-018 最大額の検証が停止しました。担当者に確認してください。",IF(AND(D69>2000,D69<>B56),"千円未満切捨て額の自己負担は2,000円超です。千円単位で寄附する場合は上の寄附目安を使ってください。","")))')
+    for row in list(range(56, 67)) + [68, 69]:
         home.row_dimensions[row].height = 25
         for col in "ABCD":
             cell = home[f"{col}{row}"]
@@ -110,6 +118,12 @@ def add_separate_tax(book, home, field, bar, note, progressive):
     model["B12"] = f'=MAX(T{GRID_FIRST}:T{grid_last})'
     model["B13"] = f'=MAX(0,{home_ref}D45-SUM(B{FIRST}:B{last}))'
     model["B14"] = f'=MAX(0,{home_ref}D46-SUM(B{FIRST}:B{last}))'
+    exact_last = GRID_FIRST + EXACT_STEPS - 1
+    bounds = f"U{GRID_FIRST}:U{exact_last}"
+    model["B15"] = (
+        f'=IF(B2<>"計算可能","",IF(OR(COUNT({bounds})<{EXACT_STEPS},U{exact_last}=Z{exact_last}),'
+        f'INDEX({bounds},COUNT({bounds})),NA()))'
+    )
     for index, bucket in enumerate(buckets):
         row = FIRST + index
         model[f"A{row}"] = bucket[0]
@@ -126,8 +140,13 @@ def add_separate_tax(book, home, field, bar, note, progressive):
                                  "基本控除対象（0.1円単位）", "市控除", "県控除", "市税", "県税",
                                  "国税軽減", "住民税軽減", "自己負担", "採用額"), 1):
         model.cell(26, col, label)
-    for row in range(CANDIDATE, grid_last + 1):
-        model[f"A{row}"] = f"={home_ref}D48" if row == CANDIDATE else 3000 + (row - GRID_FIRST) * SPEC["gridStep"]
+    for row in [23, 24, *range(CANDIDATE, grid_last + 1)]:
+        if row in (23, 24):
+            model[f"A{row}"] = "=N(B15)" if row == 23 else "=N(B15)+1"
+        elif row == CANDIDATE:
+            model[f"A{row}"] = f"={home_ref}D48"
+        else:
+            model[f"A{row}"] = 3000 + (row - GRID_FIRST) * SPEC["gridStep"]
         model[f"B{row}"] = f"=MAX(0,MIN(A{row},INT($B$3*4/10))-2000)"
         for index, bucket in enumerate(buckets):
             src = FIRST + index
@@ -146,4 +165,31 @@ def add_separate_tax(book, home, field, bar, note, progressive):
         model[f"R{row}"] = f"=$B$10-O{row}-P{row}"
         model[f"S{row}"] = f"=A{row}-Q{row}-R{row}"
         model[f"T{row}"] = f'=IF(AND($B$2="計算可能",S{row}<=2000),A{row},0)'
+
+    # Each row evaluates the upper bound with native Excel formulas. The
+    # next row drops only amounts proven infeasible by nondecreasing relief.
+    for row in range(GRID_FIRST, exact_last + 1):
+        prior = row - 1
+        if row == GRID_FIRST:
+            model[f"U{row}"] = f'=IF($B$2="計算可能",{SPEC["gridMaximum"]},"")'
+        else:
+            model[f"U{row}"] = f'=IF(OR(U{prior}="",U{prior}=Z{prior}),"",Z{prior})'
+        guard = f'IF(U{row}="","",'
+        model[f"V{row}"] = f'={guard}MAX(0,MIN(U{row},INT($B$3*4/10))-2000))'
+        taxable = []
+        for index in range(len(buckets)):
+            source = FIRST + index
+            prev = f"SUM($B${FIRST}:$B${source-1})" if index else "0"
+            taxable.append(f"INT(MAX(0,$B${source}-MAX(0,{home_ref}$D$45+V{row}-{prev}))/1000)*1000")
+        base = progressive(f"({taxable[0]})") + "+" + "+".join(
+            f"{taxable[i]}*{buckets[i][2]}/100" for i in range(1, len(buckets))
+        )
+        model[f"W{row}"] = f"={guard}{base})"
+        basic = f"MAX(0,MIN(U{row}*10,$B$3*3)-20000)"
+        for column, levy_row, share in (("X", 8, 3), ("Y", 9, 2)):
+            levy = f"$B${levy_row}"
+            credit = (f"ROUNDUP(({basic}*{share * 10000}+"
+                      f"MIN({levy}*1000,MAX(0,U{row}-2000)*$B$6*{share * 10}))/5000000,0)")
+            model[f"{column}{row}"] = f"={guard}MAX(0,INT(({levy}-{credit}*1000)/100000))*100)"
+        model[f"Z{row}"] = f"={guard}MIN(U{row},2000+$B$7-W{row}-INT(W{row}*21/1000)+$B$10-X{row}-Y{row}))"
     return MODEL

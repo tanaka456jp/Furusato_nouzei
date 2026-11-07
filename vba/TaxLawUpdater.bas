@@ -651,7 +651,7 @@ Public Sub PrintDetails()
     CheckReportAvailable screen
     If SeparateMode(screen) Then
         previousArea = screen.PageSetup.PrintArea
-        screen.PageSetup.PrintArea = "$A$55:$D$68"
+        screen.PageSetup.PrintArea = "$A$55:$D$70"
         areaChanged = True
         screen.PrintPreview
         screen.PageSetup.PrintArea = previousArea
@@ -699,7 +699,7 @@ Public Function ExportDetailsToFile(ByVal destination As String) As Boolean
     End If
     If SeparateMode(screen) Then
         previousArea = screen.PageSetup.PrintArea
-        screen.PageSetup.PrintArea = "$A$55:$D$68"
+        screen.PageSetup.PrintArea = "$A$55:$D$70"
         areaChanged = True
         screen.ExportAsFixedFormat Type:=xlTypePDF, Filename:=temporary
         screen.PageSetup.PrintArea = previousArea

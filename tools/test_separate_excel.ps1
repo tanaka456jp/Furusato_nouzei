@@ -4,6 +4,9 @@
     $model = $Book.Worksheets.Item('分離課税詳細計算')
     $fixtures = Get-Content -LiteralPath $FixturePath -Raw -Encoding UTF8 | ConvertFrom-Json
     if ($fixtures.Count -ne 42) { throw 'Expected 42 independent split fixtures' }
+    $exactPath = Join-Path (Split-Path $FixturePath) 'separate-tax-exact-v1.json'
+    $edges = Get-Content -LiteralPath $exactPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ($edges.Count -ne $fixtures.Count) { throw 'Expected an exact limit fixture per split case' }
     $results = [System.Collections.Generic.List[object]]::new()
     try {
         $screen.Range('B44').Value2 = '申告分離'
@@ -56,7 +59,19 @@
                 }
             }
             if ([string]$screen.Range('B8').Value2 -ne '') { throw 'Normal amount visible in split mode' }
-            $results.Add([ordered]@{id=$fixture.id; input=$inputCase; expected=$fixture.expected; observed=$actual; differences=0; verdict='PASS'; calculationState=0})
+            $edge = $edges | Where-Object id -eq $fixture.id
+            $exact = [ordered]@{
+                maximum = $screen.Range('B69').Value2
+                rounded = $screen.Range('D69').Value2
+                costAtMaximum = $model.Range('S23').Value2
+                costNext = $model.Range('S24').Value2
+            }
+            foreach ($key in $exact.Keys) {
+                if ($null -eq $exact[$key] -or [double]$exact[$key] -ne [double]$edge.$key) {
+                    throw "Exact split mismatch $($fixture.id) $key observed=$($exact[$key]) expected=$($edge.$key)"
+                }
+            }
+            $results.Add([ordered]@{id=$fixture.id; input=$inputCase; expected=$fixture.expected; observed=$actual; exact_expected=$edge; exact_observed=$exact; differences=0; verdict='PASS'; calculationState=0})
         }
         foreach ($case in @(@('D44','ワンストップ','SAFE-TAX-012'),@('D49','特例あり','SAFE-TAX-013'),@('D45',0,'SAFE-TAX-015'))) {
             $cell = $screen.Range($case[0])
@@ -67,7 +82,7 @@
                 $cell.Value2 = [string]$case[1]
             }
             $Excel.Calculate()
-            if ([string]$screen.Range('B55').Value2 -notlike ($case[2]+'*') -or [string]$screen.Range('B56').Value2 -ne '') {
+            if ([string]$screen.Range('B55').Value2 -notlike ($case[2]+'*') -or [string]$screen.Range('B56').Value2 -ne '' -or [string]$screen.Range('B69').Value2 -ne '') {
                 throw "Safety stop failed: $($case[2])"
             }
             if ($previous -is [double]) {
