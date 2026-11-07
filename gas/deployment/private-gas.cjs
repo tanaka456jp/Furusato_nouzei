@@ -16,7 +16,7 @@ function rejectLinks(paths){
 function safeDirectories(){
   rejectLinks([root,path.join(root,'.private'),privateDir,work,authFile,receiptFile,
     ...['.clasp.json','.claspignore',...policy.sourceFiles].map(f=>path.join(work,f)),
-    ...['creation-journal.json','api-evidence.json','install.lock'].map(f=>path.join(privateDir,f)),
+    ...['creation-journal.json','api-evidence.json','api-verify-evidence.json','install.lock'].map(f=>path.join(privateDir,f)),
     ...policy.sourceFiles.map(f=>path.join(root,f))]);
 }
 function source(){return policy.sourceFiles.map(name=>({name:name.replace(/\.(gs|html|json)$/,''),
@@ -59,6 +59,10 @@ function attestedCandidate(){
   const committedDigest=digest(committed);
   ensure(committedDigest===digest(working),'Candidate source differs from Git HEAD');
   return {revision,digest:committedDigest};
+}
+function hasProtectedAttestation(receipt){
+  return /^[a-f0-9]{40}$/.test(receipt.sourceCommit||'')&&
+    /^[a-f0-9]{64}$/.test(receipt.protectedRemoteDigest||'')&&!!receipt.privateVerifiedAt;
 }
 
 /**
@@ -203,8 +207,8 @@ async function install({protectedRoot,deploy=false,fresh=false,syntheticUpdate=f
       !fs.existsSync(path.join(privateDir,'creation-journal.json')),'Fresh acceptance requires an unused private directory and --deploy');
     if(fs.existsSync(receiptFile)){
       r=json(receiptFile);
-      if(syntheticUpdate)ensure(/^[a-f0-9]{40}$/.test(r.sourceCommit||'')&&r.privateVerifiedAt,
-        'Synthetic update requires a previously attested private candidate');
+      if(syntheticUpdate)ensure(hasProtectedAttestation(r),
+        'Synthetic update requires a previously attested candidate with a protected remote baseline');
       else ensure(!r.sourceCommit,'An attested candidate requires explicit --synthetic-update');
       ensure(configDriftReport(r,protectedRoot).status==='MATCH','Protected configuration changed; STOP');
     }else ensure(!syntheticUpdate,'Synthetic update requires an existing candidate receipt');
@@ -315,8 +319,8 @@ async function main(){
     preflight();const r=json(receiptFile);
     ensure(configDriftReport(r,protectedRoot).status==='MATCH','Protected configuration changed; STOP');
     const candidate=args.includes('--attest-head')?attestedCandidate():null;
-    if(candidate)ensure(r.sourceCommit===candidate.revision&&r.uploadDigest===candidate.digest&&
-      /^[a-f0-9]{64}$/.test(r.protectedRemoteDigest||''),'Install receipt does not attest current Git HEAD and protected resources');
+    if(candidate)ensure(hasProtectedAttestation(r)&&r.uploadDigest===candidate.digest,
+      'Install receipt does not attest the Git HEAD source and protected resources');
     const api=await client();await verify(api,r,protectedRoot);
     const actualDeployment=await api(scriptUrl(r.scriptId)+'/deployments/'+encodeURIComponent(r.deploymentId));
     ensure(actualDeployment.deploymentId===r.deploymentId&&deploymentCheck(actualDeployment,r.scriptId,r.versionNumber)===r.webAppUrl,'Receipt deployment URL/ID differs from Google');
@@ -325,9 +329,21 @@ async function main(){
     if(candidate)ensure(await protectedRemoteDigest(api,r.protectedScriptId)===r.protectedRemoteDigest,'Protected Google source/deployments changed; STOP');
     ensure(digest(head.files)===r.uploadDigest,'Google project HEAD differs from attested source');
     ensure(digest(frozen.files)===r.uploadDigest&&r.uploadDigest===digest(source()),'Deployed source differs from local acceptance candidate');
-    manifestCheck(JSON.parse(frozen.files.find(f=>f.name==='appsscript').source));unchanged(r.protectedSnapshot);console.log('REAL_GOOGLE_PRIVATE_DEPLOYMENT_PASS');
+    manifestCheck(JSON.parse(frozen.files.find(f=>f.name==='appsscript').source));unchanged(r.protectedSnapshot);
+    if(candidate){
+      const current=attestedCandidate();
+      ensure(current.revision===candidate.revision&&current.digest===candidate.digest,'Candidate changed during verification');
+      const evidence={status:'PASS',kind:'REAL_GOOGLE_API_VERIFY',release:'HOLD',
+        installerRevision:policy.installerRevision,sourceCommit:candidate.revision,installedCommit:r.sourceCommit,
+        sourceDigest:candidate.digest,gitHead:'MATCH',projectHead:'MATCH',immutableVersion:'MATCH',
+        access:'MYSELF',executeAs:'USER_DEPLOYING',protectedConfiguration:'UNCHANGED',
+        protectedGoogleSourceAndDeployments:'UNCHANGED',timestamp:new Date().toISOString()};
+      save(path.join(privateDir,'api-verify-evidence.json'),evidence);
+      console.log(JSON.stringify(evidence));
+    }
+    console.log('REAL_GOOGLE_PRIVATE_DEPLOYMENT_PASS');
   }
   else throw new Error('Unknown command');
 }
-module.exports={preflight,manifestCheck,source,digest,verify,identityCheck,sheetCheck,deploymentCheck,install,snapshot,unchanged,configDriftReport,oauthRefreshPattern,rejectLinks,accessToken};
+module.exports={preflight,manifestCheck,source,digest,verify,identityCheck,sheetCheck,deploymentCheck,install,snapshot,unchanged,configDriftReport,oauthRefreshPattern,hasProtectedAttestation,rejectLinks,accessToken};
 if(require.main===module)main().catch(e=>{console.error(e.message);process.exitCode=1;});

@@ -35,6 +35,10 @@ try {
   refreshed.tokens.default.refresh_token='different';
   assert.equal(g.oauthRefreshPattern(oldToken,refreshed),'UNVERIFIED');
   count+=2;
+  const partial={sourceCommit:'1'.repeat(40),privateVerifiedAt:'2026-11-07T01:00:00Z'};
+  assert.equal(g.hasProtectedAttestation(partial),false);
+  assert.equal(g.hasProtectedAttestation({...partial,protectedRemoteDigest:'b'.repeat(64)}),true);
+  count+=2;
 
   fs.writeFileSync(auth,'ROTATED_SYNTHETIC_OAUTH_TOKEN');
   const rotated=diagnose(receipt(old));
