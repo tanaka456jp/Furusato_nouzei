@@ -97,3 +97,9 @@ Windows self-hosted試験は既存のFurusato専用 `furusato-excel` runnerを�
 runnerの登録・サービス・ラベルは変更しません。Google実試験は手元の専用認証を使います。
 
 公式仕様: [clasp](https://github.com/google/clasp)、[Web manifest](https://developers.google.com/apps-script/manifest/web-app-api-executable)、[Deployment API](https://developers.google.com/apps-script/api/reference/rest/v1/projects.deployments)。
+
+### 新しい合成受入プロジェクト
+
+既存の受入デプロイや認証記録に差分があるときは、旧記録を保管し、独立したクリーンなGit worktreeを用意します。旧記録の読取は `diagnose --reference-private <旧非公開フォルダ>` を使用します。TOKEN_REFRESH_COMPATIBLE は比較したコピーに対する差分パターンです。元の記録とのバイト一致や書込元の特定とは別です。
+
+専用認証を用意した空の非公開フォルダで、`node gas/deployment/private-gas.cjs install --fresh --deploy --protected-root ../HousingERP` を実行します。既存の受入記録や途中作成の記録があると停止します。保護対象、ローカルGit HEAD、登録コード、固定バージョン、Webアプリの権限と実行者を確認します。試験の再開は `verify --attest-head` と `node gas/tests/test-real-browser.cjs --live --attest-head --token-auth` を使用します。本人同意が必要な場合は専用プロファイルで `--live --attest-head --authorize` を実行します。

@@ -33,6 +33,7 @@ const profiles = [
       await page.locator("#splitFiling").selectOption("return");
       await page.locator("#splitRun").click();
       await page.locator("#splitOutput").getByText(/寄附目安 55,000/).waitFor();
+      assert.match(await page.locator("#splitOutput").innerText(), /最大寄附額 55,771/);
       assert.match(await page.locator("#splitOutput").innerText(), /1,911/);
       await page.emulateMedia({media:"print"});
       assert.equal(await page.locator("#splitForm").isVisible(), false);

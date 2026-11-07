@@ -27,6 +27,15 @@ try {
   files.forEach((p,i)=>assert.deepEqual(fs.readFileSync(p),before[i]));
   count++;
 
+  const oldToken={tokens:{default:{client_id:'client',refresh_token:'refresh',access_token:'old',expiry_date:100}}};
+  const refreshed=structuredClone(oldToken);
+  refreshed.tokens.default.access_token='new';
+  refreshed.tokens.default.expiry_date=200;
+  assert.equal(g.oauthRefreshPattern(oldToken,refreshed),'TOKEN_REFRESH_COMPATIBLE');
+  refreshed.tokens.default.refresh_token='different';
+  assert.equal(g.oauthRefreshPattern(oldToken,refreshed),'UNVERIFIED');
+  count+=2;
+
   fs.writeFileSync(auth,'ROTATED_SYNTHETIC_OAUTH_TOKEN');
   const rotated=diagnose(receipt(old));
   assert.equal(rotated.status,'HOLD');

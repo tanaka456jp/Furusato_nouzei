@@ -1,5 +1,5 @@
 /**
- * Furusato GAS MVP 0.1.8 — pure, deterministic, no SpreadsheetApp dependency.
+ * Furusato GAS MVP 0.1.9 — pure, deterministic, no SpreadsheetApp dependency.
  * Scope: 2025/2026, one salary source, no family/insurance/mortgage/other income.
  * All unsupported cases fail closed. This is a pre-release ESTIMATE, never an assessment.
  * Source: NTA No.1155, No.1199, No.1410, No.2260 (see README).
@@ -7,7 +7,7 @@
  */
 var FurusatoEngine = (function () {
   "use strict";
-  var VERSION = "gas-mvp-0.1.8";
+  var VERSION = "gas-mvp-0.1.9";
   var TAX_REVISION = "2026-11-05-bundled";
   var BASIC = {
     2025: [[1320000,950000],[3360000,880000],[4890000,680000],
@@ -362,15 +362,22 @@ var FurusatoSeparateTax = (function () {
     }
     var before = national(input, input.nationalDeductions);
     var local = resident(input, input.residentDeductions, input.personalDifference, basic);
-    var limit = 0;
-    // Rounding breaks monotonicity. Check every ¥1,000 candidate in the
-    // proven range documented in the common tax audit.
-    for (var amount = 3000; amount <= gridMaximum; amount += 1000) {
-      if (donationResult(input, before, local, total, amount).netCost <= 2000) limit = amount;
+    function upperFeasible(step) {
+      // Relief is nondecreasing, even though net cost is not. If the upper
+      // candidate fails, all amounts above 2000 + its relief also fail.
+      var upper = gridMaximum;
+      while (true) {
+        var cost = donationResult(input, before, local, total, upper).netCost;
+        if (cost <= 2000) return upper;
+        upper = Math.floor((upper - cost + 2000) / step) * step;
+      }
     }
+    var maximum = upperFeasible(1);
+    var safeThousands = upperFeasible(1000);
+    var limit = safeThousands > 2000 ? safeThousands : 0;
     return {
       status: "ESTIMATE", version: version, year: input.year, residentYear: input.year + 1,
-      donationLimitYen: limit,
+      donationLimitYen: limit, maximumDonationYen: maximum, roundedMaximumYen: Math.floor(maximum / 1000) * 1000,
       calculation: {total: total, nationalBasic: basic, nationalBefore: before,
         residentBefore: local, atInput: donationResult(input, before, local, total, input.donation),
         atLimit: donationResult(input, before, local, total, limit)}

@@ -13,9 +13,11 @@ param(
   [switch]$CreateProject,
   [switch]$PushSource,
   [switch]$DeployPrivate,
+  [switch]$Fresh,
   [string]$ProtectedRoot = ''
 )
 $ErrorActionPreference = 'Stop'
+if ($Fresh -and -not $DeployPrivate) { throw 'Fresh requires DeployPrivate and an unused isolated worktree.' }
 $entry = Join-Path (Split-Path -Parent $PSScriptRoot) 'deployment/private-gas.cjs'
 if ($Login -and ($CreateProject -or $PushSource -or $DeployPrivate)) { throw 'Run Login separately.' }
 if ($Diagnose -and ($Login -or $CreateProject -or $PushSource -or $DeployPrivate)) { throw 'Run Diagnose separately: read-only mode.' }
@@ -25,6 +27,7 @@ if ($Diagnose) { $mode = 'diagnose' }
 if ($CreateProject -or $PushSource -or $DeployPrivate) { $mode = 'install' }
 $nodeArgs = @($entry, $mode)
 if ($DeployPrivate) { $nodeArgs += '--deploy' }
+if ($Fresh) { $nodeArgs += '--fresh' }
 if ($ProtectedRoot) { $nodeArgs += @('--protected-root', $ProtectedRoot) }
 & node @nodeArgs
 if ($LASTEXITCODE -ne 0) { throw 'Furusato installer stopped. Formal release HOLD.' }

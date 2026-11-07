@@ -50,6 +50,17 @@ function snapshot(protectedRoot){
   return Object.fromEntries(files.map(p=>[path.resolve(p),fs.existsSync(p)?hash(fs.readFileSync(p)):null]));
 }
 function unchanged(s){for(const [p,h] of Object.entries(s))ensure((fs.existsSync(p)?hash(fs.readFileSync(p)):null)===h,'Protected configuration changed; STOP');}
+function candidateCommit(){
+  const git=args=>cp.execFileSync('git',args,{cwd:root,encoding:'utf8',stdio:['ignore','pipe','pipe']});
+  const revision=git(['rev-parse','HEAD']).trim();
+  const prefix=git(['rev-parse','--show-prefix']).trimEnd();
+  for(const name of policy.sourceFiles){
+    const committed=git(['show',revision+':'+prefix+name]);
+    const local=fs.readFileSync(path.join(root,name),'utf8');
+    ensure(committed.replace(/\r\n/g,'\n')===local.replace(/\r\n/g,'\n'),'Candidate source differs from Git HEAD');
+  }
+  return revision;
+}
 
 /**
  * Diagnose a previously captured install snapshot without credentials, network,
@@ -76,18 +87,18 @@ function configDriftReport(receipt,protectedRoot,globalAuthPath=path.join(os.hom
       (recorded[item.file]===null||/^[a-f0-9]{64}$/.test(recorded[item.file]))),
     'Protected snapshot does not match expected files; manual review required');
   const checks=items.map(({name,file})=>{
-    let state,actual=null;
+    let state,actual=null,modifiedUtc=null;
     try{
       const stat=fs.lstatSync(file);
       if(stat.isSymbolicLink())state='BLOCKED_LINK';
       else if(!stat.isFile())state='NOT_REGULAR_FILE';
-      else actual=hash(fs.readFileSync(file));
+      else { actual=hash(fs.readFileSync(file));modifiedUtc=stat.mtime.toISOString(); }
     }catch(e){
       if(e.code!=='ENOENT')state='UNREADABLE';
     }
     if(!state)state=recorded[file]===actual?'UNCHANGED':
       actual===null?'MISSING':recorded[file]===null?'APPEARED':'CHANGED';
-    return {name,state};
+    return {name,state,...(state==='CHANGED'?{modifiedUtc}:{})};
   });
   const match=checks.every(c=>c.state==='UNCHANGED');
   return {
@@ -97,6 +108,34 @@ function configDriftReport(receipt,protectedRoot,globalAuthPath=path.join(os.hom
       'Only the 4 local protected files match the recorded snapshot. Formal release remains HOLD.':
       'Change cause is unverified. Do not overwrite the snapshot, refresh its hashes, push, or deploy until the owner reviews the changed file(s).'
   };
+}
+
+function oauthRefreshPattern(previous,current){
+  const canonical=value=>Array.isArray(value)?value.map(canonical):
+    value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().map(key=>[key,canonical(value[key])])):value;
+  const equal=(a,b)=>JSON.stringify(canonical(a))===JSON.stringify(canonical(b));
+  try {
+    for(const x of [previous,current]){
+      if(!x?.tokens?.default?.refresh_token||!x.tokens.default.client_id||
+        !x.tokens.default.access_token||!Number.isSafeInteger(x.tokens.default.expiry_date))return 'UNVERIFIED';
+    }
+    const a=structuredClone(previous),b=structuredClone(current);
+    const left=a.tokens.default,right=b.tokens.default;
+    if(left.expiry_date>=right.expiry_date||left.access_token===right.access_token)return 'UNVERIFIED';
+    if(left.id_token!==right.id_token){
+      const stableClaims=token=>{
+        const parts=token?.split('.');
+        if(parts?.length!==3)throw new Error('invalid token shape');
+        const claims=JSON.parse(Buffer.from(parts[1],'base64url').toString('utf8'));
+        if(!claims.sub||!claims.iss||!claims.aud||!Number.isSafeInteger(claims.exp)||!Number.isSafeInteger(claims.iat))throw new Error('claims absent');
+        for(const key of ['exp','iat','at_hash'])delete claims[key];
+        return claims;
+      };
+      if(!equal(stableClaims(left.id_token),stableClaims(right.id_token)))return 'UNVERIFIED';
+    }
+    for(const t of [left,right])for(const key of ['expiry_date','access_token','id_token'])delete t[key];
+    return equal(a,b)?'TOKEN_REFRESH_COMPATIBLE':'UNVERIFIED';
+  }catch{return 'UNVERIFIED';}
 }
 
 async function accessToken(){
@@ -147,13 +186,16 @@ function deploymentCheck(d,id,version){
   ensure(w?.entryPointConfig?.access==='MYSELF'&&w.entryPointConfig.executeAs==='USER_DEPLOYING','Live deployment is NOT private');
   ensure(/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(w.url),'Unexpected web app URL');return w.url;
 }
-async function install({protectedRoot,deploy=false}){
-  preflight();const before=snapshot(protectedRoot);const api=await client();fs.mkdirSync(work,{recursive:true});let r;
+async function install({protectedRoot,deploy=false,fresh=false}){
+  preflight();const revision=fresh?candidateCommit():null;
+  const before=snapshot(protectedRoot);const api=await client();fs.mkdirSync(work,{recursive:true});let r;
   const deniedId=json(path.join(protectedRoot,'.clasp.json')).scriptId;
   const lock=path.join(privateDir,'install.lock');const lockFd=fs.openSync(lock,'wx',0o600);
   const protectedRemote=async()=>({content:digest((await api(scriptUrl(deniedId)+'/content')).files),deployments:hash(JSON.stringify(await api(scriptUrl(deniedId)+'/deployments')))});
   let remoteBefore;
   try{
+    if(fresh)ensure(deploy&&!fs.existsSync(receiptFile)&&!fs.existsSync(path.join(work,'.clasp.json'))&&
+      !fs.existsSync(path.join(privateDir,'creation-journal.json')),'Fresh acceptance requires an unused private directory and --deploy');
     remoteBefore=await protectedRemote();
     if(fs.existsSync(receiptFile))r=json(receiptFile);
     else{
@@ -177,7 +219,10 @@ async function install({protectedRoot,deploy=false}){
     safeDirectories();for(const f of policy.sourceFiles)fs.copyFileSync(path.join(root,f),path.join(work,f));fs.copyFileSync(path.join(root,'.claspignore'),path.join(work,'.claspignore'));
     await verify(api,r,protectedRoot);clasp(['push','--force']);const uploaded=await api(scriptUrl(r.scriptId)+'/content');
     ensure(digest(uploaded.files)===digest(source()),'Uploaded source digest mismatch');manifestCheck(JSON.parse(uploaded.files.find(f=>f.name==='appsscript').source));
-    r.uploadDigest=digest(uploaded.files);save(receiptFile,r);
+    r.uploadDigest=digest(uploaded.files);
+    if(revision){ensure(candidateCommit()===revision,'Candidate commit changed during upload');r.sourceCommit=revision;}
+    else delete r.sourceCommit;
+    save(receiptFile,r);
     if(deploy){
       await verify(api,r,protectedRoot);const version=await api(scriptUrl(r.scriptId)+'/versions','POST',{description:'Furusato synthetic acceptance; release HOLD'});
       const frozen=await api(scriptUrl(r.scriptId)+'/content?versionNumber='+version.versionNumber);
@@ -188,7 +233,7 @@ async function install({protectedRoot,deploy=false}){
       r.webAppUrl=deploymentCheck(actual,r.scriptId,version.versionNumber);r.deploymentId=actual.deploymentId;r.versionNumber=version.versionNumber;r.privateVerifiedAt=new Date().toISOString();save(receiptFile,r);
     }
     ensure(JSON.stringify(await protectedRemote())===JSON.stringify(remoteBefore),'Protected Google source/deployments changed during installation; STOP');
-    const evidence={...preflight(),kind:'REAL_GOOGLE_API',sourceDigest:r.uploadDigest,sourceCommit:cp.execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim(),privateDeployment:deploy?'PASS':'HOLD',webUi:'HOLD',ocr:'HOLD',print:'HOLD',protectedConfiguration:'UNCHANGED',protectedGoogleSourceAndDeployments:'UNCHANGED',timestamp:new Date().toISOString()};
+    const evidence={...preflight(),kind:'REAL_GOOGLE_API',sourceDigest:r.uploadDigest,sourceCommit:revision||cp.execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim(),privateDeployment:deploy?'PASS':'HOLD',webUi:'HOLD',ocr:'HOLD',print:'HOLD',protectedConfiguration:'UNCHANGED',protectedGoogleSourceAndDeployments:'UNCHANGED',timestamp:new Date().toISOString()};
     save(path.join(privateDir,'api-evidence.json'),evidence);return evidence;
   }finally{fs.closeSync(lockFd);fs.unlinkSync(lock);unchanged(before);}
 }
@@ -206,25 +251,41 @@ async function main(){
     await client();console.log('EXISTING_AUTH_REUSED_IN_ISOLATION: global authentication unchanged');
   }
   else if(mode==='login'){preflight();fs.mkdirSync(privateDir,{recursive:true});clasp(['login'],privateDir,true);}
-  else if(mode==='install')console.log(JSON.stringify(await install({protectedRoot,deploy:args.includes('--deploy')})));
+  else if(mode==='install')console.log(JSON.stringify(await install({protectedRoot,deploy:args.includes('--deploy'),fresh:args.includes('--fresh')})));
   else if(mode==='diagnose'){
     safeDirectories();
-    ensure(fs.existsSync(receiptFile),'Private install receipt absent; offline diagnosis HOLD');
+    const refIx=args.indexOf('--reference-private');
+    const refDir=refIx<0?privateDir:path.resolve(args[refIx+1]);
+    const referenceReceipt=path.join(refDir,'receipt.json'),referenceAuth=path.join(refDir,'auth.json');
+    const global=path.join(os.homedir(),'.clasprc.json');
+    rejectLinks([refDir,path.dirname(refDir),referenceReceipt,referenceAuth,global]);
+    ensure(fs.existsSync(referenceReceipt),'Private install receipt absent; offline diagnosis HOLD');
     let receipt;
-    try{receipt=json(receiptFile);}catch{throw new Error('Private install receipt unreadable; offline diagnosis HOLD');}
+    try{receipt=json(referenceReceipt);}catch{throw new Error('Private install receipt unreadable; offline diagnosis HOLD');}
     const report=configDriftReport(receipt,protectedRoot);
+    if(report.checks.find(c=>c.name==='global-clasp-auth').state==='CHANGED'){
+      try{
+        report.oauth={pattern:oauthRefreshPattern(json(referenceAuth),json(global)),
+          historicalByteMatch:hash(fs.readFileSync(referenceAuth))===receipt.protectedSnapshot[global],writer:'UNVERIFIED'};
+      }catch{report.oauth={pattern:'UNVERIFIED',historicalByteMatch:false,writer:'UNVERIFIED'};}
+    }
     console.log(JSON.stringify(report));
     if(report.status!=='MATCH')process.exitCode=2;
   }
   else if(mode==='verify'){
-    preflight();const api=await client(),r=json(receiptFile);await verify(api,r,protectedRoot);
+    preflight();const r=json(receiptFile);
+    ensure(configDriftReport(r,protectedRoot).status==='MATCH','Protected configuration changed; STOP');
+    if(args.includes('--attest-head'))ensure(r.sourceCommit===candidateCommit(),'Install receipt does not attest current Git HEAD');
+    const api=await client();await verify(api,r,protectedRoot);
     const actualDeployment=await api(scriptUrl(r.scriptId)+'/deployments/'+encodeURIComponent(r.deploymentId));
     ensure(actualDeployment.deploymentId===r.deploymentId&&deploymentCheck(actualDeployment,r.scriptId,r.versionNumber)===r.webAppUrl,'Receipt deployment URL/ID differs from Google');
     const frozen=await api(scriptUrl(r.scriptId)+'/content?versionNumber='+r.versionNumber);
+    const head=await api(scriptUrl(r.scriptId)+'/content');
+    ensure(digest(head.files)===r.uploadDigest,'Google project HEAD differs from attested source');
     ensure(digest(frozen.files)===r.uploadDigest&&r.uploadDigest===digest(source()),'Deployed source differs from local acceptance candidate');
-    manifestCheck(JSON.parse(frozen.files.find(f=>f.name==='appsscript').source));console.log('REAL_GOOGLE_PRIVATE_DEPLOYMENT_PASS');
+    manifestCheck(JSON.parse(frozen.files.find(f=>f.name==='appsscript').source));unchanged(r.protectedSnapshot);console.log('REAL_GOOGLE_PRIVATE_DEPLOYMENT_PASS');
   }
   else throw new Error('Unknown command');
 }
-module.exports={preflight,manifestCheck,source,digest,verify,identityCheck,sheetCheck,deploymentCheck,install,snapshot,unchanged,configDriftReport,rejectLinks,accessToken};
+module.exports={preflight,manifestCheck,source,digest,verify,identityCheck,sheetCheck,deploymentCheck,install,snapshot,unchanged,configDriftReport,oauthRefreshPattern,rejectLinks,accessToken};
 if(require.main===module)main().catch(e=>{console.error(e.message);process.exitCode=1;});

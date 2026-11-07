@@ -15,7 +15,8 @@ async function main(){
  if(process.env.FURUSATO_BROWSER_CHANNEL)launch.channel=process.env.FURUSATO_BROWSER_CHANNEL;
  let receipt;
  if(live){
-  cp.execFileSync(process.execPath,[path.join(root,'deployment/private-gas.cjs'),'verify'],{stdio:'pipe'});
+  cp.execFileSync(process.execPath,[path.join(root,'deployment/private-gas.cjs'),'verify',
+   ...(process.argv.includes('--attest-head')?['--attest-head']:[])],{stdio:'pipe'});
   receipt=JSON.parse(fs.readFileSync(path.join(root,'.private/furusato/receipt.json'),'utf8'));
   if(authorize)launch.headless=false;
   if(tokenAuth){
@@ -63,11 +64,13 @@ async function main(){
    const diagnostics=()=>frame.evaluate(()=>new Promise((resolve,reject)=>google.script.run.withSuccessHandler(resolve).withFailureHandler(()=>reject(new Error('Google runtime diagnostics failed'))).getFurusatoPrivateDiagnostics()));
    const before=await diagnostics();assert.equal(before.driveApi,'PASS');assert.equal(before.temporaryOcrFiles,0);assert.equal(before.hasMore,false);
    results.push({id:'GOOGLE-DRIVE-API',status:'PASS'});
-   // Generate BOTH genuine PNG/PDF synthetic fixtures using local font rendering.
+   // Generate genuine PNG/JPEG/PDF synthetic fixtures using local font rendering.
    const fixture=await context.newPage();await fixture.setViewportSize({width:1100,height:900});
    await fixture.setContent('<meta charset="utf-8"><style>body{font:32px sans-serif;line-height:2;white-space:pre-wrap}</style>合成データ・試験専用\n令和8年分 給与所得の源泉徴収票\n支払金額 7,000,000 円\n社会保険料等の金額 1,000,000 円\n給与所得控除後の金額 5,200,000 円');
-   await fixture.screenshot({path:path.join(dest,'synthetic-slip.png'),fullPage:true});await fixture.pdf({path:path.join(dest,'synthetic-slip.pdf'),format:'A4'});await fixture.close();
-   for(const ext of ['png','pdf']){
+   await fixture.screenshot({path:path.join(dest,'synthetic-slip.png'),fullPage:true});
+   await fixture.screenshot({path:path.join(dest,'synthetic-slip.jpeg'),fullPage:true,quality:95});
+   await fixture.pdf({path:path.join(dest,'synthetic-slip.pdf'),format:'A4'});await fixture.close();
+   for(const ext of ['png','pdf','jpeg']){
     // A zero-candidate OCR response must not inherit earlier manual/PNG values.
     if(await frame.locator('#clearImportedFile').isVisible())await frame.locator('#clearImportedFile').click();
     await frame.locator('#salaryGross').fill('');await frame.locator('#socialInsurance').fill('');
@@ -83,6 +86,21 @@ async function main(){
     results.push({id:'GOOGLE-OCR-'+ext.toUpperCase(),status:'PASS',cleanup:'PASS',data:'SYNTHETIC'});
     await frame.locator('#edit').click();await frame.locator('#back').click();await frame.locator('#back').click();
    }
+   await frame.locator('#splitMode').click();
+   for(const [field,value] of Object.entries({listedStock:'5000000',nationalDeductions:'1000000',
+      residentDeductions:'1000000',personalDifference:'50000',donation:'30000'}))
+     await frame.locator('#split-'+field).fill(value);
+   await frame.locator('#splitReviewed').check();
+   await frame.locator('#splitFiling').selectOption('one-stop');
+   await frame.locator('#splitRun').click();
+   await frame.locator('#splitOutput').getByText(/SAFE-TAX-012/).waitFor({timeout:30000});
+   assert.equal(await frame.locator('#splitPrint').isVisible(),false);
+   await frame.locator('#splitFiling').selectOption('return');
+   await frame.locator('#splitRun').click();
+   await frame.locator('#splitOutput').getByText(/最大寄附額 55,771 円/).waitFor({timeout:30000});
+   assert.match(await frame.locator('#splitOutput').innerText(),/1,911 円/);
+   await page.screenshot({path:path.join(dest,'google-split-exact.png'),fullPage:true});
+   results.push({id:'GOOGLE-SPLIT-EXACT-HOLD-RECOVERY',status:'PASS'});
   }
  }finally{await context.close();if(browser)await browser.close();}
 }

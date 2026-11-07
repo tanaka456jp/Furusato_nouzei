@@ -8,8 +8,10 @@ vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../Engine.gs"), "utf8")
 const engine = context.module.exports;
 const cases = require("../../taxdata/separate-tax-cases-v1.json");
 const spec = require("../../taxdata/separate-tax-v1.json");
+const exact = require("../../taxdata/separate-tax-exact-v1.json");
 const copy = value => JSON.parse(JSON.stringify(value));
 
+assert.equal(exact.length, cases.length);
 for (const {id, input, expected} of cases) {
   const result = engine.calculate(input);
   assert.equal(result.status, "ESTIMATE", id);
@@ -26,6 +28,11 @@ for (const {id, input, expected} of cases) {
     netCost: d.netCost, limit: result.donationLimitYen
   };
   assert.deepEqual(copy(actual), expected, id);
+  const edge = exact.find(row => row.id === id);
+  assert.equal(result.maximumDonationYen, edge.maximum, id);
+  assert.equal(result.roundedMaximumYen, edge.rounded, id);
+  assert.equal(engine.calculate({...input,donation:edge.maximum}).calculation.atInput.netCost, edge.costAtMaximum, id);
+  assert.equal(engine.calculate({...input,donation:edge.maximum+1}).calculation.atInput.netCost, edge.costNext, id);
 }
 const input = cases[0].input;
 for (const [change, code] of [
@@ -48,4 +55,4 @@ for (const [change, code] of [
   assert.ok(blocked.stop.action && blocked.stop.resume && blocked.stop.storage);
 }
 assert.equal(engine.calculate(input).status, "ESTIMATE");
-console.log(`SEPARATE_TAX_PASS ${cases.length} statutory fixtures and 10 HOLD/recovery cases`);
+console.log(`SEPARATE_TAX_PASS ${cases.length} statutory fixtures, ${exact.length} exact-limit boundaries and 10 HOLD/recovery cases`);

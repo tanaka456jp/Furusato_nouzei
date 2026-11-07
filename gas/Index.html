@@ -62,7 +62,7 @@ main{margin:0;padding:0;max-width:none}.panel{border:0;box-shadow:none;padding:0
 </style></head>
 <body>
 <header><h1>ふるさと納税 限度額シミュレーター</h1>
-<p>質問に答えるだけで計算結果と根拠を表示｜GAS検証版 v0.1.8</p></header>
+<p>質問に答えるだけで計算結果と根拠を表示｜GAS検証版 v0.1.9</p></header>
 <main><div class="panel">
 <div class="actions mode-switch" aria-label="入力モード">
 <button type="button" id="salaryMode" aria-pressed="true">給与の入力</button>
@@ -338,7 +338,7 @@ function showSplit(result) {
   return;
  }
  var calc=result.calculation, at=calc.atInput, national=calc.nationalBefore, resident=calc.residentBefore;
- var amounts=[result.donationLimitYen,at.donation,at.netCost,national.annual,at.nationalAfter.annual,
+ var amounts=[result.donationLimitYen,result.maximumDonationYen,result.roundedMaximumYen,at.donation,at.netCost,national.annual,at.nationalAfter.annual,
   resident.ratio,national.allocation.unused,resident.allocation.unused];
  var validPair=function(pair){return Array.isArray(pair)&&pair.length===2&&pair.every(Number.isSafeInteger);};
  var validRows=function(rows){return Array.isArray(rows)&&rows.length===7&&rows.every(function(row){
@@ -348,6 +348,9 @@ function showSplit(result) {
   !amounts.every(Number.isSafeInteger)||!validPair(resident.levy)||!validPair(at.residentAfter)||
   !validRows(national.allocation.rows)||!validRows(resident.allocation.rows)) throw new Error("invalid tax amount");
  splitLine("計算可能・試算　所得年 "+result.year+"／住民税 "+result.residentYear+"年度");
+ splitLine("最大寄附額 "+yen(result.maximumDonationYen)+"（1円単位、自己負担2,000円以内）");
+ splitLine("最大額の千円未満切捨て "+yen(result.roundedMaximumYen)+
+  (result.roundedMaximumYen>2000&&result.roundedMaximumYen!==result.donationLimitYen?"（自己負担2,000円超。下の寄附目安を使用）":""));
  splitLine("寄附目安 "+yen(result.donationLimitYen)+"（千円刻み、自己負担2,000円以内の試算）");
  splitLine("入力した寄附 "+yen(at.donation)+"の自己負担 "+yen(at.netCost));
  splitLine("寄附前後の所得税等 "+yen(calc.nationalBefore.annual)+" → "+yen(at.nationalAfter.annual)+"（源泉徴収精算前）");
