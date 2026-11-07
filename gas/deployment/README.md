@@ -46,6 +46,24 @@ claspの既定認証としてグローバル `.clasprc.json` を使わず、元�
 ローカル作成記録は秘密鍵による署名ではなく、意図的に改ざんされていない信頼済み作業環境を前提とします。
 IDやURL、認証、プロファイル、実Google画面をGitHub/CI Artifactsへ追加しないでください。
 
+## 設定ハッシュ不一致の安全診断（オフライン・読取専用）
+
+Google API・clasp・Drive・HousingERPへ一切書き込まず、過去の導入記録に保存された4ファイルのSHA-256と現在の内容を照合できます。
+
+```powershell
+powershell -NoProfile -File gas/scripts/setup-private-gas.ps1 -Diagnose -ProtectedRoot ../HousingERP
+# 同じ操作をNodeから直接実行する場合
+node gas/deployment/private-gas.cjs diagnose --protected-root ../HousingERP
+```
+
+- 出力の `housing-clasp` / `housing-appsscript` / `housing-project` はHousingERPの設定3ファイル、`global-clasp-auth` は共通の `.clasprc.json` です。
+- `UNCHANGED` は保存時と一致、`CHANGED` は内容が変化、`MISSING` / `APPEARED` は存在状態の変化、`BLOCKED_LINK` はシンボリックリンク・ジャンクションによる危険な参照です。
+- 不一致時は `status: HOLD` と終了コード2を返します。**一致しても正式リリースはHOLD**であり、実Google試験に合格した意味ではありません。
+- 認証本文・トークン・ユーザー名・ID・ハッシュ・絶対パスは出力しません。診断モードは過去ハッシュの再採用、承認、認証更新、push、デプロイ、削除を実行しません。
+- 共通clasp認証だけの `CHANGED` は、トークンの自動更新を含む複数の可能性があります。**保存記録に旧本文がないため、原因を確定できません。**所有者が更新履歴・用途を確認してから、独立した合成専用環境の認証・デプロイ照合と実Google試験を実施してください。
+- `receipt.json` やハッシュを編集して検査を通すことは禁止です。対象の設定が変更された理由が未確認なら自動再試行しません。
+- 実行には専用の非公開 `gas/.private/furusato/receipt.json` と対象のHousingERPフォルダが必要です。GitHub Actions上では認証情報を入れずに合成テスト `node gas/tests/test-config-drift.cjs` のみ実行します。
+
 ## 試験の区別
 
 ```powershell
