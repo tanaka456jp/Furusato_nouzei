@@ -33,8 +33,8 @@ class WorkbookTest(unittest.TestCase):
         home = self.book[HOME]
         formula = str(home["A80"].value)
         self.assertTrue(formula.startswith("=IFERROR("))
-        for token in ("D50", "B29", "A1", "CHAR(10)", "FIND(\\"v4.\\",A1)"):
-            self.assertIn(token.replace("\\", ""), formula)
+        for token in ("D50", "B29", "A1", "CHAR(10)", 'FIND("v4.",A1)'):
+            self.assertIn(token, formula)
         self.assertTrue(home["A80"].alignment.wrap_text)
         self.assertGreaterEqual(home.row_dimensions[80].height, 40)
         # Detailed tax-credit page is emitted from the same area as A80.
