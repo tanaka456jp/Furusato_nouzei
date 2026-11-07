@@ -214,8 +214,8 @@ jobs:
     concurrency:
       group: furusato-excel-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
-    # Stalled COM must fail closed; the runner terminates job-owned Excel.
-    timeout-minutes: 8
+    # Bound the two full COM acceptance passes, including exact split limits and staged VBA.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - name: Build, install and run real Excel acceptance
@@ -299,7 +299,7 @@ jobs:
         if: success()
         uses: actions/checkout@v4
         with:
-          ref: 6fbc116242a83f31223439e7c3f4bc1bd6ddbc92
+          ref: d5a54cef2dd3266a916ef45ba01421e530ab6b65
           path: _gas_reference_v4183
           persist-credentials: false
       - name: Compare 41 synthetic cases in actual Excel vs pinned GAS engine
