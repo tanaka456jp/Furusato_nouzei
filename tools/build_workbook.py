@@ -121,7 +121,7 @@ def build(source, output):
         home.add_data_validation(validation)
         validation.add(home[cell])
 
-    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.18.10 分離課税検証版")
+    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.18.11 分離課税検証版")
     bar(extra, 1, "追加所得・分離課税（所得年内で事前試算）")
     extra.merge_cells("A3:D3")
     extra["A3"] = "翌年度の住民税通知書は参照せず、所得年内の収入・経費・控除と法定税率表から計算します。"
@@ -255,9 +255,12 @@ def build(source, output):
     home["C5"], home["D5"] = "住民税課税年度", "=" + ref(RESIDENT, "B5")
     note(home, 6, '="税制版 "&B29&" ｜ "&B30')
     home["B29"] = "2026-11-05-bundled"
-    home["A7"] = "詳細設定・申告分離課税へ"
-    home["A7"].hyperlink = Hyperlink(ref="A7", location="'操作画面'!A42")
-    home["A7"].style = "Hyperlink"
+    home.merge_cells("A2:D2")
+    home["A2"] = "詳細設定・申告分離課税へ"
+    home["A2"].hyperlink = Hyperlink(ref="A2", location="'操作画面'!A42")
+    home["A2"].style = "Hyperlink"
+    home["A2"].alignment = Alignment(vertical="center")
+    home.row_dimensions[2].height = 25
     home["B30"] = "内蔵マスタ"
     home.row_dimensions[29].hidden = True
     home.row_dimensions[30].hidden = True

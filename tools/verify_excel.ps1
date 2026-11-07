@@ -68,6 +68,18 @@ try {
     # This is a renamed test COPY, so bind its buttons to the test workbook.
     $excel.Run('TaxLawUpdater.BindButtons')
     Assert-MacroAction ([string]$homeSheet.Buttons().Item('btnTaxLawUpdate').OnAction) 'FurusatoQA.xlsm!TaxLawUpdater.TaxLawUpdate' 'Main case macro ownership'
+    $splitLink = $homeSheet.Range('A2')
+    Assert-Value $splitLink.Hyperlinks.Count 1 'Split settings link available at A2'
+    Assert-Value ([string]$splitLink.Hyperlinks.Item(1).SubAddress) "'操作画面'!A42" 'Split settings link target'
+    $linkBottom = [double]$splitLink.Top + [double]$splitLink.Height
+    $controls = $homeSheet.Buttons()
+    for ($i=1; $i -le $controls.Count; $i++) {
+        $control = $controls.Item($i)
+        if ([double]$control.Top -lt $linkBottom -and ([double]$control.Top + [double]$control.Height) -gt [double]$splitLink.Top) {
+            throw 'Installed form control obscures the split settings link'
+        }
+    }
+    QA-Stage 'split-settings-link-unobstructed'
     QA-Stage 'initial-recalculate-start'
     $excel.Run('TaxLawUpdater.RecalculateCase')
     QA-Stage 'initial-recalculate-done'
