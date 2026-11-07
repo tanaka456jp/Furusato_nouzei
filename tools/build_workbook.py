@@ -10,6 +10,8 @@ from openpyxl.formatting.rule import FormulaRule
 from openpyxl.worksheet.page import PageMargins
 from openpyxl.worksheet.datavalidation import DataValidation
 from rebuild_xlsx import reconstruct
+from separate_tax_sheet import add_separate_tax
+from openpyxl.worksheet.hyperlink import Hyperlink
 
 ROOT = Path(__file__).resolve().parents[1]
 HOME = "操作画面"
@@ -119,7 +121,7 @@ def build(source, output):
         home.add_data_validation(validation)
         validation.add(home[cell])
 
-    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.18.3 修正検証版")
+    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.18.4 分離課税検証版")
     bar(extra, 1, "追加所得・分離課税（所得年内で事前試算）")
     extra.merge_cells("A3:D3")
     extra["A3"] = "翌年度の住民税通知書は参照せず、所得年内の収入・経費・控除と法定税率表から計算します。"
@@ -228,7 +230,7 @@ def build(source, output):
     extra["A23"].alignment = Alignment(wrap_text=True)
     extra.row_dimensions[23].height = 34
     extra.merge_cells("A31:D31")
-    extra["A31"] = "分離課税のB24は所得控除後の課税所得です。特別控除・繰越損失・軽減税率等はB33「あり」で安全停止します。"
+    extra["A31"] = "B24は旧入力です。分離課税は操作画面の詳細設定で控除前の所得と税目別控除を入力してください。"
     extra["A31"].alignment = Alignment(wrap_text=True)
     extra.row_dimensions[31].height = 36
     extra.row_dimensions[32].height = 42
@@ -253,6 +255,9 @@ def build(source, output):
     home["C5"], home["D5"] = "住民税課税年度", "=" + ref(RESIDENT, "B5")
     note(home, 6, '="税制版 "&B29&" ｜ "&B30')
     home["B29"] = "2026-11-05-bundled"
+    home["A7"] = "詳細設定・申告分離課税へ"
+    home["A7"].hyperlink = Hyperlink(ref="A7", location="'操作画面'!A42")
+    home["A7"].style = "Hyperlink"
     home["B30"] = "内蔵マスタ"
     home.row_dimensions[29].hidden = True
     home.row_dimensions[30].hidden = True
@@ -317,7 +322,7 @@ def build(source, output):
     field("D22", "本人の控除区分", "該当なし", ("該当なし", "寡婦", "ひとり親（母）", "ひとり親（父）", "勤労学生"))
     field("D23", "16歳未満の扶養（人数）", maximum=30)
     field("D24", "申告方式", "ワンストップ", ("ワンストップ", "確定申告"))
-    note(home, 27, "公的年金・事業所得・雑所得・通常の申告分離課税は追加所得から入力できます。申告不要の上場株式・特例譲渡・繰越損失は区別してください。住宅ローン控除は通常欄です。")
+    note(home, 27, "公的年金・事業所得・雑所得は追加所得欄へ。申告分離課税は上の「詳細設定・申告分離課税へ」から入力してください。")
     home.row_dimensions[27].height = 42
     note(home, 31, "対象外の手動判定は不要。原票の所得控除を優先し、入力内容に応じて計算可否を自動判定します。")
     bar(home, 32, "住宅ローン控除（通常処理・源泉徴収票から転記）")
@@ -564,7 +569,11 @@ def build(source, output):
         f'MAX(0,N({candidate})-2000)*'
         f'IF(D24="ワンストップ",1,MAX(0,1-N({rate})*1.021))'
     )
+    add_separate_tax(book, home, field, bar, note, income_tax_progressive)
     status = [
+        ('B44<>"給与・通常"', "詳細設定の55行目以降で状態と試算額を確認してください。"),
+        (f'OR({ref(ADVANCED,"B24")}<>"",{ref(ADVANCED,"B36")}<>"")',
+         "SAFE-TAX-016 要確認。旧・控除後の分離課税入力です。詳細設定で控除前の所得と税目別控除を入力し、再計算してください。"),
         ('OR(IFERROR(1*B4,0)<>D4,IFERROR(1*B11,0)<>D4)', "警告：源泉徴収票と適用中の所得年を一致させてください"),
         ('OR(COUNT(B12:B18)<>7,AND(B25<>"あり",B25<>"なし"),'
          'AND(D24<>"ワンストップ",D24<>"確定申告"),'
@@ -653,7 +662,7 @@ def build(source, output):
         detail.merge_cells(start_row=row,start_column=3,end_row=row,end_column=4)
         detail[f"C{row}"].alignment = Alignment(wrap_text=True)
         detail.row_dimensions[row].height = 32
-    note(detail, 19, "分離課税所得B24は他の所得控除適用後の課税所得。源泉所得税額ではなく寄附前後の所得税額の差を用います。")
+    note(detail, 19, "分離課税の新規試算は操作画面の詳細設定に表示します。")
     detail.print_area = "A1:D19"
     for sheet in book:
         sheet.sheet_state = "visible" if sheet == home else "veryHidden"

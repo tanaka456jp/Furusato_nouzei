@@ -12,6 +12,7 @@ $copy = Join-Path $dir 'FurusatoQA.xlsm'
 [IO.File]::Copy($Workbook, $copy)
 $excel = $null; $book = $null; $savedCase = $null; $homeSheet = $null; $settings = $null; $checks = $null; $detail = $null
 $passed = $false
+$splitCases = @()
 $failureSummary = ''
 $excelVersion = ''
 $sourceSha256 = (Get-FileHash -LiteralPath $Workbook -Algorithm SHA256).Hash
@@ -254,16 +255,19 @@ try {
     Assert-Value $extraSheet.Range('B27').Value2 50000 'Listed shares resident tax 1m'
     Assert-Value $residentSheet.Range('B16').Value2 ($regularLevy+50000) 'Split tax included in resident income levy'
     Assert-Value $residentSheet.Range('B19').Value2 ($regularLimit+10000) 'Split special credit ceiling'
-    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Ordinary listed shares declared split case'
+    if ([string]$homeSheet.Range('B28').Value2 -notlike 'SAFE-TAX-016*') { throw 'Legacy input escaped HOLD: Ordinary listed shares declared split case' }
+    Assert-Value ([string]$homeSheet.Range('B8').Value2) '' 'Legacy split input must hide donation amount'
     $extraSheet.Range('B24').Value2 = 500000.0
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value $extraSheet.Range('B27').Value2 25000 'Screenshot listed shares 500k resident levy'
     Assert-Value $residentSheet.Range('B16').Value2 ($regularLevy+25000) 'Screenshot total resident levy'
-    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Screenshot mixed salary plus stocks'
+    if ([string]$homeSheet.Range('B28').Value2 -notlike 'SAFE-TAX-016*') { throw 'Legacy input escaped HOLD: Screenshot mixed salary plus stocks' }
+    Assert-Value ([string]$homeSheet.Range('B8').Value2) '' 'Legacy split input must hide donation amount'
     $extraSheet.Range('B25').Value2 = '土地建物短期'
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value $extraSheet.Range('B27').Value2 45000 'Standard short land resident levy'
-    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Standard short land tax case'
+    if ([string]$homeSheet.Range('B28').Value2 -notlike 'SAFE-TAX-016*') { throw 'Legacy input escaped HOLD: Standard short land tax case' }
+    Assert-Value ([string]$homeSheet.Range('B8').Value2) '' 'Legacy split input must hide donation amount'
     $extraSheet.Range('B33').Value2 = 'あり'
     $excel.Run('TaxLawUpdater.RecalculateCase')
     if ([string]$homeSheet.Range('B28').Value2 -eq '正常') {
@@ -291,7 +295,8 @@ try {
     $extraSheet.Range('B36').Value2 = 20000000.0
     $homeSheet.Range('B33:B36').ClearContents()
     $excel.Run('TaxLawUpdater.RecalculateCase')
-    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Ordinary plus split supported'
+    if ([string]$homeSheet.Range('B28').Value2 -notlike 'SAFE-TAX-016*') { throw 'Legacy input escaped HOLD: Ordinary plus split supported' }
+    Assert-Value ([string]$homeSheet.Range('B8').Value2) '' 'Legacy split input must hide donation amount'
     Assert-Value $allocation.Range('B2').Value2 100000 'Ordinary taxable income before donation'
     Assert-Value $allocation.Range('B3').Value2 20000000 'Split taxable income before donation'
     Assert-Value $allocation.Range('F50').Value2 198000 '200k donation deduction'
@@ -307,8 +312,8 @@ try {
     if ($candidate -lt 2000 -or $candidate -ge 300000) {
         throw "Donation ceiling is outside validated synthetic range: $candidate"
     }
-    Assert-Value $homeSheet.Range('B8').Value2 $candidate 'Donation ceiling uses the split solver'
-    Assert-Value $homeSheet.Range('B26').Value2 '計算可能' 'Mixed case was automatically accepted'
+    Assert-Value ([string]$homeSheet.Range('B8').Value2) '' 'Legacy split solver must not publish a donation limit'
+    Assert-Value $homeSheet.Range('B26').Value2 '追加確認' 'Legacy mixed case requires migration'
     $sourceExtra.Range('B14').ClearContents()
     $extraSheet.Range('B24:B25').ClearContents()
     $extraSheet.Range('B25').Value2 = 'なし'
@@ -554,6 +559,11 @@ try {
     $excel.Run('TaxLawUpdater.BindButtons')
     Assert-MacroAction ([string]$homeSheet.Buttons().Item('btnTaxLawUpdate').OnAction) 'FurusatoQA.xlsm!TaxLawUpdater.TaxLawUpdate' 'Reloaded case macro ownership'
     if (-not $detail.PageSetup.PrintArea) { throw 'Calculation details lack print area' }
+    QA-Stage 'statutory-split-cases-start'
+    . (Join-Path $PSScriptRoot 'test_separate_excel.ps1')
+    $splitCases = @(Test-SeparateTaxCases -Excel $excel -Book $book -FixturePath (Join-Path $PSScriptRoot '../taxdata/separate-tax-cases-v1.json'))
+    if ($splitCases.Count -ne 42) { throw 'Split evidence is incomplete' }
+    QA-Stage 'statutory-split-42-pass'
     QA-Stage 'all-acceptance-checks-pass'
     $passed = $true
     Write-Output 'PASS: Windows Excel 52 fixtures; 2025/2026 amounts; approved/rejected updates; persisted fault rollback; backup; VBA PDF/hidden UI/no-overwrite; isolated no-overwrite case-save; save/reopen; button wiring.'
@@ -606,10 +616,11 @@ try {
                     'physical printing', 'three desktop display conditions',
                     'product signature and production deployment'
                 )
+                separate_cases = $splitCases
                 failure = $failureSummary
                 last_stage = $script:qaStage
             }
-            $json = $report | ConvertTo-Json -Depth 4
+            $json = $report | ConvertTo-Json -Depth 8
             $encoding = New-Object System.Text.UTF8Encoding($false)
             [IO.File]::WriteAllText($EvidencePath, $json, $encoding)
         } catch {

@@ -73,8 +73,8 @@ public static class FurusatoExcelParityPidV4183 {
   if(-not $book.ReadOnly){throw 'Accepted XLSM must open read-only'}
   $screenSheet=$book.Worksheets.Item('操作画面')
   $master=$book.Worksheets.Item('設定・税率')
-  if([string]$screenSheet.Range('A1').Value2 -notmatch 'v4\.18\.3'){
-    throw 'Workbook is not v4.18.3 review build'
+  if([string]$screenSheet.Range('A1').Value2 -notmatch 'v4\.18\.[34]'){
+    throw 'Workbook is not an approved v4.18.3/4 review build'
   }
   # Manual mode is applied only to this newly-owned Excel instance.
   $excel.Calculation=-4135
