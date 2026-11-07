@@ -90,3 +90,14 @@ to distinguish live Excel recalculation from an unchanged cached value.
 It records both salary income and donation estimates at each point,
 compares the first/last anchor, and **still reports HOLD**. A successful
 ABA response is evidence of dynamic updates, not full Excel parity.
+
+
+### 41-case Excel observed difference report (NOT formal parity)
+
+Owner push marker `[excel-observed-41]` runs all 41 synthetic cases in a
+fresh Excel COM instance using the official ZIP. It records the observed
+salary/levy/donation values even where application `CalculationState=2`
+remains pending. These observations are compared against GAS, and the
+result is **always HOLD**, even if there are no numerical differences.
+The report and the input-only JSON contain no personal data and are
+uploaded as separate artifacts. Never call this complete Excel parity.

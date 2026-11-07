@@ -29,6 +29,7 @@ jobs:
       - run: node gas/tests/test-private-files.cjs
       - run: node gas/tests/test-clasp-files.cjs
       - run: node gas/tests/test-engine.cjs
+      - run: node gas/tests/test-observed.cjs
       - run: node gas/tests/test-ocr.cjs
       - run: node gas/tests/test-contract.cjs
       - run: node gas/tests/test-browser.cjs
@@ -72,6 +73,7 @@ jobs:
       - run: node gas/tests/test-deployment.cjs
       - run: node gas/tests/test-clasp-files.cjs
       - run: node gas/tests/test-engine.cjs
+      - run: node gas/tests/test-observed.cjs
       - run: node gas/tests/test-ocr.cjs
       - run: node gas/tests/test-browser.cjs
       - run: node gas/scripts/build-preview.cjs

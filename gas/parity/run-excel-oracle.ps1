@@ -3,7 +3,7 @@ Run official v4.18.2 Excel COM comparisons using synthetic cases only.
 A new Excel instance is created; macros/events disabled; no Google access.
 #>
 [CmdletBinding()]
-param([string]$ReleaseZip='', [string]$OutputPath='', [switch]$PreflightOnly, [switch]$DiagnosticOnly)
+param([string]$ReleaseZip='', [string]$OutputPath='', [switch]$PreflightOnly, [switch]$DiagnosticOnly, [switch]$CompareObserved)
 $ErrorActionPreference='Stop'
 $expectedZipSha='f534882f56461ea23a75474f24e68ad364d557091609c994341c179e9a655f25'
 $caseFile=Join-Path $PSScriptRoot 'cases.cjs'
@@ -170,14 +170,18 @@ public static class FurusatoExcelPid {
   # Excel's normal dependency-aware calculation; full dependency rebuild
   # repeated on each iteration can remain pending for several minutes.
   $excel.Calculate()
-  $ticks=0
-  while([int]$excel.CalculationState -ne 0 -and $ticks -lt 1800){
-   Start-Sleep -Milliseconds 100;$ticks++
+  if(-not $CompareObserved){
+   $ticks=0
+   while([int]$excel.CalculationState -ne 0 -and $ticks -lt 1800){
+    Start-Sleep -Milliseconds 100;$ticks++
+   }
   }
+  $calcState=[int]$excel.CalculationState
   $timer.Stop()
-  if([int]$excel.CalculationState -ne 0){
-   throw ('Excel calculation timeout '+$case.id+' after '+$timer.ElapsedMilliseconds+' ms')
+  if($calcState -eq 1 -or (-not $CompareObserved -and $calcState -ne 0)){
+   throw ('Excel calculation incomplete '+$case.id+'; state='+$calcState)
   }
+  # Global xlPending=2 is diagnostic-only and cannot authorize tax parity.
   Write-Output ('EXCEL_CASE_CALCULATED '+$case.id+': '+$timer.ElapsedMilliseconds+' ms')
   $state=[string]$sheet.Range('B28').Value2
   Write-Output ('EXCEL_CASE_STATUS '+$case.id+': '+$state)
@@ -200,17 +204,18 @@ public static class FurusatoExcelPid {
    }
    $results += [pscustomobject]@{id=$case.id;year=[int]$case.year;
     salaryGross=[long]$case.salaryGross;socialInsurance=[long]$case.socialInsurance;
-    filing='one-stop';status='NORMAL';statusText=$state;donationLimitYen=[long]$amount;
+    filing='one-stop';status='NORMAL';statusText=$state;calcState=$calcState;donationLimitYen=[long]$amount;
     salaryIncomeYen=[long]$salary;residentIncomeLevyYen=[long]$levy}
   }else{
    $results += [pscustomobject]@{id=$case.id;year=[int]$case.year;
     salaryGross=[long]$case.salaryGross;socialInsurance=[long]$case.socialInsurance;
-    filing='one-stop';status='HOLD';statusText=$state;donationLimitYen=$null;
+    filing='one-stop';status='HOLD';statusText=$state;calcState=$calcState;donationLimitYen=$null;
     salaryIncomeYen=$null;residentIncomeLevyYen=$null}
   }
  }
  if($results.Count -ne $cases.Count){throw 'Incomplete Excel oracle'}
- $oracle=[ordered]@{schema='furusato-excel-oracle/v1';source='OFFICIAL_RELEASE';
+ $sourceType=if($CompareObserved){'OBSERVED_GLOBAL_PENDING'}else{'OFFICIAL_RELEASE'}
+ $oracle=[ordered]@{schema='furusato-excel-oracle/v1';source=$sourceType;
   releaseTag='v4.18.2';releaseZipSha256=$expectedZipSha;
   excelWorkbookSha256=$bookHash;calculationProvider='EXCEL_COM';macrosDisabled=$true;results=@($results)}
  $json=ConvertTo-Json -InputObject $oracle -Depth 8
@@ -226,6 +231,10 @@ public static class FurusatoExcelPid {
  if(Test-Path -LiteralPath $workdir){Remove-Item -LiteralPath $workdir -Recurse -Force}
 }
 Write-Output ('EXCEL_ORACLE_CREATED: '+$outputFull+' (synthetic only)')
+if($CompareObserved){
+ Write-Output 'EXCEL_OBSERVED_ONLY: 41 synthetic rows recorded; global calculation state may be pending; formal HOLD'
+ return
+}
 & $node.Source $comparison --oracle $outputFull
 if($LASTEXITCODE -ne 0){throw 'EXCEL_PARITY_HOLD: mismatches or invalid oracle; tax engine unchanged'}
 Write-Output 'COVERED_CASES_MATCH only; full acceptance remains HOLD'

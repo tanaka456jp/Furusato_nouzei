@@ -34,6 +34,7 @@ jobs:
           node gas/tests/test-ocr.cjs
           node gas/tests/test-deployment.cjs
           node gas/tests/test-parity.cjs
+          node gas/tests/test-observed.cjs
       - name: Workflow and source import simulated browser regression
         run: node gas/tests/test-browser.cjs
       - name: Build local standalone review preview
@@ -100,6 +101,7 @@ jobs:
           node gas/tests/test-ocr.cjs
           node gas/tests/test-deployment.cjs
           node gas/tests/test-parity.cjs
+          node gas/tests/test-observed.cjs
       - name: Workflow and source import simulated browser regression
         run: node gas/tests/test-browser.cjs
       - name: Official Excel parity script preflight (no Excel or Google)
