@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
   Live numerical observations from an isolated, already-accepted v4.18.3 XLSM.
   A separate pinned GAS engine checks the results. Customer files are never used.
