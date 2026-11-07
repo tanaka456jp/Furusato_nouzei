@@ -4,6 +4,22 @@ Option Explicit
 ' Only isolated tests use this nonmodal diagnostic state.
 Private mLastTestFailure As String
 
+' Isolated QA only: record coarse stages, never taxpayer data, IDs, URLs or tokens.
+' The forensic trace is kept beside the disposable test workbook and is not
+' produced by the normal TaxLawUpdate user command.
+Private Sub RecordTestUpdateStage(ByVal stage As String)
+    Dim fileNumber As Integer
+    If Len(ThisWorkbook.Path) = 0 Then Exit Sub
+    On Error Resume Next
+    fileNumber = FreeFile
+    Open ThisWorkbook.Path & Application.PathSeparator & _
+        "_furusato_tax_update_qa.trace" For Append As #fileNumber
+    Print #fileNumber, stage
+    Close #fileNumber
+    On Error GoTo 0
+End Sub
+
+
 ' Fail closed if Excel keeps a cached amount/status while recalculation is pending.
 ' Masking is visual (formulas are retained), and print/PDF entrypoints also
 ' independently require trusted, completed, automatic calculation.
@@ -130,7 +146,9 @@ Private Function ApplyApprovedYear(ByVal noDialogs As Boolean) As Boolean
     If selectedYear <> "2025" And selectedYear <> "2026" Then
         Err.Raise vbObjectError + 101, , "この版に収録された承認対象年は2025年と2026年です。"
     End If
+    If noDialogs Then RecordTestUpdateStage "catalog-start"
     CheckCatalog selectedYear
+    If noDialogs Then RecordTestUpdateStage "catalog-pass"
     If book.ReadOnly Or Len(book.Path) = 0 Then
         Err.Raise vbObjectError + 102, , "書き込み可能なローカルのブックを開いてください。"
     End If
@@ -138,8 +156,10 @@ Private Function ApplyApprovedYear(ByVal noDialogs As Boolean) As Boolean
     oldYear = settings.Range("B4").Value2
     oldRevision = home.Range("B29").Value2
     oldStatus = home.Range("B30").Value2
+    If noDialogs Then RecordTestUpdateStage "backup-start"
     backup = UniqueBackupPath(book)
     book.SaveCopyAs backup
+    If noDialogs Then RecordTestUpdateStage "backup-pass"
     If Len(Dir$(backup, vbNormal)) = 0 Then
         Err.Raise vbObjectError + 114, , "更新前のバックアップが作成されませんでした。"
     End If
@@ -147,6 +167,7 @@ Private Function ApplyApprovedYear(ByVal noDialogs As Boolean) As Boolean
         Err.Raise vbObjectError + 115, , "更新前のバックアップが空です。"
     End If
     changed = True
+    If noDialogs Then RecordTestUpdateStage "year-apply-start"
     settings.Range("B4").Value2 = CLng(selectedYear)
     book.Worksheets("自動回帰テスト").Calculate
     book.Worksheets("整合性チェック").Calculate
@@ -156,10 +177,14 @@ Private Function ApplyApprovedYear(ByVal noDialogs As Boolean) As Boolean
     If Application.CountIf(book.Worksheets("整合性チェック").Range("B4:B12"), "OK") <> 9 Then
         Err.Raise vbObjectError + 104, , "内蔵税制マスタに不整合があります。"
     End If
+    If noDialogs Then RecordTestUpdateStage "regression-pass"
     home.Range("B29").Value2 = BUNDLED_REVISION
     home.Range("B30").Value2 = "適用済 " & Format$(Now, "yyyy/mm/dd hh:nn")
+    If noDialogs Then RecordTestUpdateStage "calculate-start"
     Application.Calculate
+    If noDialogs Then RecordTestUpdateStage "calculate-pass"
     book.Save
+    If noDialogs Then RecordTestUpdateStage "saved-pass"
     ApplyApprovedYear = True
     If Not noDialogs Then
         MsgBox selectedYear & "年分の承認済み税制を適用しました。" & vbCrLf & _
