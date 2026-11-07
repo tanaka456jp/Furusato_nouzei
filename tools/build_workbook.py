@@ -10,6 +10,8 @@ from openpyxl.formatting.rule import FormulaRule
 from openpyxl.worksheet.page import PageMargins
 from openpyxl.worksheet.datavalidation import DataValidation
 from rebuild_xlsx import reconstruct
+from separate_tax_sheet import add_separate_tax
+from openpyxl.worksheet.hyperlink import Hyperlink
 
 ROOT = Path(__file__).resolve().parents[1]
 HOME = "操作画面"
@@ -119,7 +121,7 @@ def build(source, output):
         home.add_data_validation(validation)
         validation.add(home[cell])
 
-    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.18.2 正式版")
+    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.18.11 分離課税検証版")
     bar(extra, 1, "追加所得・分離課税（所得年内で事前試算）")
     extra.merge_cells("A3:D3")
     extra["A3"] = "翌年度の住民税通知書は参照せず、所得年内の収入・経費・控除と法定税率表から計算します。"
@@ -228,7 +230,7 @@ def build(source, output):
     extra["A23"].alignment = Alignment(wrap_text=True)
     extra.row_dimensions[23].height = 34
     extra.merge_cells("A31:D31")
-    extra["A31"] = "分離課税のB24は所得控除後の課税所得です。特別控除・繰越損失・軽減税率等はB33「あり」で安全停止します。"
+    extra["A31"] = "B24は旧入力です。分離課税は操作画面の詳細設定で控除前の所得と税目別控除を入力してください。"
     extra["A31"].alignment = Alignment(wrap_text=True)
     extra.row_dimensions[31].height = 36
     extra.row_dimensions[32].height = 42
@@ -253,6 +255,12 @@ def build(source, output):
     home["C5"], home["D5"] = "住民税課税年度", "=" + ref(RESIDENT, "B5")
     note(home, 6, '="税制版 "&B29&" ｜ "&B30')
     home["B29"] = "2026-11-05-bundled"
+    home.merge_cells("A2:D2")
+    home["A2"] = "詳細設定・申告分離課税へ"
+    home["A2"].hyperlink = Hyperlink(ref="A2", location="'操作画面'!A42")
+    home["A2"].style = "Hyperlink"
+    home["A2"].alignment = Alignment(vertical="center")
+    home.row_dimensions[2].height = 25
     home["B30"] = "内蔵マスタ"
     home.row_dimensions[29].hidden = True
     home.row_dimensions[30].hidden = True
@@ -317,7 +325,7 @@ def build(source, output):
     field("D22", "本人の控除区分", "該当なし", ("該当なし", "寡婦", "ひとり親（母）", "ひとり親（父）", "勤労学生"))
     field("D23", "16歳未満の扶養（人数）", maximum=30)
     field("D24", "申告方式", "ワンストップ", ("ワンストップ", "確定申告"))
-    note(home, 27, "公的年金・事業所得・雑所得・通常の申告分離課税は追加所得から入力できます。申告不要の上場株式・特例譲渡・繰越損失は区別してください。住宅ローン控除は通常欄です。")
+    note(home, 27, "公的年金・事業所得・雑所得は追加所得欄へ。申告分離課税は上の「詳細設定・申告分離課税へ」から入力してください。")
     home.row_dimensions[27].height = 42
     note(home, 31, "対象外の手動判定は不要。原票の所得控除を優先し、入力内容に応じて計算可否を自動判定します。")
     bar(home, 32, "住宅ローン控除（通常処理・源泉徴収票から転記）")
@@ -362,7 +370,13 @@ def build(source, output):
         "B13": (f'=IF(ISNUMBER({ref(ADVANCED,"B15")}),{ref(ADVANCED,"B15")},IF(B12="","",MAX(0,'
                  'IF(B12<6600000,'
                  'IF(B12<=IF(D4=2025,1900000,2200000),'
-                 'MAX(0,B12-IF(D4=2025,650000,740000)),'
+                 # Income Tax Act / Special Measures Act 2026 NTA No.1410 note (2).
+                 # 2026 salary 2,191,000..2,199,999: fixed income rather than
+                 # gross minus the ordinary 740,000-yen minimum deduction.
+                 'IF(AND(D4=2026,B12<2200000),'
+                 'IF(B12<741000,0,IF(B12<2191000,B12-740000,'
+                 'IF(B12<2193000,1451000,IF(B12<2196000,1453000,1456000)))),'
+                 'MAX(0,B12-IF(D4=2025,650000,740000))),'
                  'ROUNDDOWN(B12/4000,0)*4000*'
                  'IF(B12<=3600000,0.7,0.8)-IF(B12<=3600000,80000,440000)),'
                  f'{ref(INPUT,"B34")})-'
@@ -558,7 +572,11 @@ def build(source, output):
         f'MAX(0,N({candidate})-2000)*'
         f'IF(D24="ワンストップ",1,MAX(0,1-N({rate})*1.021))'
     )
+    add_separate_tax(book, home, field, bar, note, income_tax_progressive)
     status = [
+        ('B44<>"給与・通常"', "詳細設定の55行目以降で状態と試算額を確認してください。"),
+        (f'OR({ref(ADVANCED,"B24")}<>"",{ref(ADVANCED,"B36")}<>"")',
+         "SAFE-TAX-016 要確認。旧・控除後の分離課税入力です。詳細設定で控除前の所得と税目別控除を入力し、再計算してください。"),
         ('OR(IFERROR(1*B4,0)<>D4,IFERROR(1*B11,0)<>D4)', "警告：源泉徴収票と適用中の所得年を一致させてください"),
         ('OR(COUNT(B12:B18)<>7,AND(B25<>"あり",B25<>"なし"),'
          'AND(D24<>"ワンストップ",D24<>"確定申告"),'
@@ -633,13 +651,13 @@ def build(source, output):
         detail.row_dimensions[row].height = 28
     note(detail, 15, "申告分離課税では所得税の実際の減税額・住民税を寄附額ごとに再計算し、自己負担2,000円以内の最大額を探索します。")
     detail["A16"] = "分離課税（課税所得）"
-    detail["B16"] = f'=IF(N({ref(ADVANCED,"B24")})>0,{ref(SPLIT_ALLOC,"B3")},"")'
+    detail["B16"] = f'=IF(AND({ref(HOME,"B28")}="正常",N({ref(ADVANCED,"B24")})>0),{ref(SPLIT_ALLOC,"B3")},"")'
     detail["C16"] = "総合課税の税率だけでは分離課税部分の減税額を算定できません。"
     detail["A17"] = "寄附金控除前：総合課税の課税所得"
-    detail["B17"] = f'=IF(N({ref(ADVANCED,"B24")})>0,{ref(SPLIT_ALLOC,"B2")},"")'
+    detail["B17"] = f'=IF(AND({ref(HOME,"B28")}="正常",N({ref(ADVANCED,"B24")})>0),{ref(SPLIT_ALLOC,"B2")},"")'
     detail["C17"] = "所得控除を差し引いた後。寄附金控除は総合課税から先に適用。"
     detail["A18"] = "最終寄附目安で分離課税に配分した控除"
-    detail["B18"] = f'=IF(N({ref(ADVANCED,"B24")})>0,MAX(0,MIN({ref(RESIDENT,"B26")},{ref(SPLIT_ALLOC,"B8")})-2000-{ref(SPLIT_ALLOC,"B2")}),"")'
+    detail["B18"] = f'=IF(AND({ref(HOME,"B28")}="正常",N({ref(ADVANCED,"B24")})>0),MAX(0,MIN({ref(RESIDENT,"B26")},{ref(SPLIT_ALLOC,"B8")})-2000-{ref(SPLIT_ALLOC,"B2")}),"")'
     detail["C18"] = "所得税の寄附金控除のうち総合課税から引ききれない部分。"
     for row in range(16,19):
         detail[f"B{row}"].number_format = '#,##0'
@@ -647,13 +665,17 @@ def build(source, output):
         detail.merge_cells(start_row=row,start_column=3,end_row=row,end_column=4)
         detail[f"C{row}"].alignment = Alignment(wrap_text=True)
         detail.row_dimensions[row].height = 32
-    note(detail, 19, "分離課税所得B24は他の所得控除適用後の課税所得。源泉所得税額ではなく寄附前後の所得税額の差を用います。")
+    note(detail, 19, "分離課税の新規試算は操作画面の詳細設定に表示します。")
     detail.print_area = "A1:D19"
     for sheet in book:
         sheet.sheet_state = "visible" if sheet == home else "veryHidden"
         sheet.sheet_view.tabSelected = sheet == home
     book.active = 0
-    book.calculation = CalcProperties(calcMode="auto", fullCalcOnLoad=True, forceFullCalc=True)
+    # Retain a complete first-open calculation while allowing Excel to use
+    # smart dependency recalculation thereafter. This is isolated to the
+    # v4.18.3 review; compare its xlPending state in a freshly owned Excel
+    # process before claiming the calculation-state defect resolved.
+    book.calculation = CalcProperties(calcMode="auto", fullCalcOnLoad=True, forceFullCalc=False)
     output.parent.mkdir(parents=True, exist_ok=True)
     book.save(output)
 

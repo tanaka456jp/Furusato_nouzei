@@ -1,0 +1,69 @@
+{
+  "id": "JP-SPLIT-2025-2026-V1",
+  "maximumIncome": 23500000,
+  "gridMaximum": 1100000,
+  "gridStep": 1000,
+  "buckets": [
+    [
+      "ordinary",
+      "総合課税"
+    ],
+    [
+      "shortLand",
+      "土地建物・短期（一般）",
+      30,
+      54,
+      36,
+      59370
+    ],
+    [
+      "longLand",
+      "土地建物・長期（一般）",
+      15,
+      30,
+      20,
+      74685
+    ],
+    [
+      "listedDividend",
+      "上場配当等（申告分離）",
+      15,
+      30,
+      20,
+      74685
+    ],
+    [
+      "generalStock",
+      "一般株式等の譲渡",
+      15,
+      30,
+      20,
+      74685
+    ],
+    [
+      "listedStock",
+      "上場株式等の譲渡",
+      15,
+      30,
+      20,
+      74685
+    ],
+    [
+      "futures",
+      "先物取引の雑所得等",
+      15,
+      30,
+      20,
+      74685
+    ]
+  ],
+  "sources": {
+    "incomeAct": "https://laws.e-gov.go.jp/law/340AC0000000033",
+    "specialAct": "https://laws.e-gov.go.jp/law/332AC0000000026",
+    "deductionOrder": "https://www.nta.go.jp/law/tsutatsu/kobetsu/shotoku/sochiho/710826/sanrin/sanjyou/soti31/02.htm",
+    "residentAct": "https://laws.e-gov.go.jp/law/325AC0000000226",
+    "residentOrder": "https://switch-www.ins.city.morioka.iwate.jp/kurashi/zeikin/kojinshiminkenminzei/1049907.html",
+    "residentRounding": "https://www.city.matsudo.chiba.jp/kurashi/zeikin_top/kojiin/shikenminzei/kihu.html",
+    "nationalRounding": "https://laws.e-gov.go.jp/law/337AC0000000066"
+  }
+}
