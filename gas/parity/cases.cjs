@@ -10,5 +10,8 @@ function casesFor(year,amounts){
   socialInsurance:gross>=3000000?1000000:100000,filing:"one-stop"}));
 }
 const cases=[...casesFor(2025,amounts2025),...casesFor(2026,amounts2026)];
-if(require.main===module)process.stdout.write(JSON.stringify(cases));
+if(require.main===module){
+ if(process.argv.includes("--ndjson"))cases.forEach(x=>process.stdout.write(JSON.stringify(x)+"\n"));
+ else process.stdout.write(JSON.stringify(cases));
+}
 module.exports=cases;

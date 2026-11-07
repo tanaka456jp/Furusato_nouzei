@@ -12,9 +12,9 @@ if(-not (Test-Path -LiteralPath $caseFile -PathType Leaf)){throw 'Synthetic case
 if(-not (Test-Path -LiteralPath $comparison -PathType Leaf)){throw 'Comparison program missing'}
 $node=Get-Command node -ErrorAction SilentlyContinue
 if(-not $node){throw 'Node 22+ required'}
-$raw=& $node.Source $caseFile
+$raw=& $node.Source $caseFile --ndjson
 if($LASTEXITCODE -ne 0){throw 'Could not generate synthetic cases'}
-$cases=@($raw | ConvertFrom-Json)
+$cases=@(foreach($line in $raw){ConvertFrom-Json -InputObject ([string]$line)})
 if($cases.Count -ne 41){throw 'Synthetic case count mismatch'}
 $unique=@($cases | ForEach-Object {$_.id} | Select-Object -Unique)
 if($unique.Count -ne $cases.Count){throw 'Duplicate case IDs'}
