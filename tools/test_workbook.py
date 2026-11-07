@@ -29,6 +29,18 @@ class WorkbookTest(unittest.TestCase):
         self.assertTrue(self.book.calculation.fullCalcOnLoad)
         self.assertFalse(self.book.calculation.forceFullCalc)
 
+    def test_second_print_page_repeats_year_and_both_versions(self):
+        home = self.book[HOME]
+        formula = str(home["A80"].value)
+        self.assertTrue(formula.startswith("=IFERROR("))
+        for token in ("D50", "B29", "A1", "CHAR(10)", "FIND(\\"v4.\\",A1)"):
+            self.assertIn(token.replace("\\", ""), formula)
+        self.assertTrue(home["A80"].alignment.wrap_text)
+        self.assertGreaterEqual(home.row_dimensions[80].height, 40)
+        # Detailed tax-credit page is emitted from the same area as A80.
+        source = (ROOT / "vba" / "TaxLawUpdater.bas").read_text(encoding="utf-8-sig")
+        self.assertIn('DetailsPrintArea = DetailsPrintArea & ",$A$80:$D$86"', source)
+
     def test_single_visible_home(self):
         self.assertEqual(self.book.active.title, HOME)
         self.assertEqual([s.title for s in self.book if s.sheet_state == "visible"], [HOME])
