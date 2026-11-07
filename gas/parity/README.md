@@ -72,3 +72,13 @@ standard dependency-aware Calculate method after batching the inputs,
 and tests the known 2026 7m/1m 109,000-yen reference first. The
 CalculationState must still reach xlDone for each case; otherwise the
 run fails with HOLD. No simulation or cached value is substituted.
+
+
+### First-case calculation diagnosis
+
+An owner-authored push containing `[excel-calc-diagnostic]` runs one
+synthetic 2026 / 7-million-yen case using an isolated Excel COM process.
+The JSON evidence captures numeric Excel CalculationState values (0=done,
+1=calculating, 2=pending), COM calculation-call time and a few state samples.
+It is **not** an Excel-parity oracle: `release=HOLD` and
+`eligibleForParity=false` even when an observed number appears plausible.

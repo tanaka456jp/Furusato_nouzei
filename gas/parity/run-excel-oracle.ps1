@@ -3,7 +3,7 @@ Run official v4.18.2 Excel COM comparisons using synthetic cases only.
 A new Excel instance is created; macros/events disabled; no Google access.
 #>
 [CmdletBinding()]
-param([string]$ReleaseZip='', [string]$OutputPath='', [switch]$PreflightOnly)
+param([string]$ReleaseZip='', [string]$OutputPath='', [switch]$PreflightOnly, [switch]$DiagnosticOnly)
 $ErrorActionPreference='Stop'
 $expectedZipSha='f534882f56461ea23a75474f24e68ad364d557091609c994341c179e9a655f25'
 $caseFile=Join-Path $PSScriptRoot 'cases.cjs'
@@ -87,6 +87,55 @@ public static class FurusatoExcelPid {
  $anchor=@($cases | Where-Object { $_.id -eq 'Y2026_G7000000' })
  if($anchor.Count -ne 1){throw 'Missing 2026 Excel anchor'}
  $ordered=@($anchor)+@($cases | Where-Object { $_.id -ne 'Y2026_G7000000' })
+ if($DiagnosticOnly) {
+  $case=$anchor[0]
+  $settings.Range('B4').Value2=[int]$case.year
+  $sheet.Range('B4').Value2=[string]$case.year
+  $sheet.Range('B11').Value2=[string]$case.year
+  $sheet.Range('B12').Value2=[double]$case.salaryGross
+  $sheet.Range('B15').Value2=[double]0
+  $sheet.Range('B16').Value2=[double]$case.socialInsurance
+  $sheet.Range('D24').Value2=$oneStop
+  $before=[int]$excel.CalculationState
+  Write-Output ('EXCEL_DIAG_START: state='+$before+'; case='+$case.id)
+  $clock=[Diagnostics.Stopwatch]::StartNew()
+  $excel.Calculate()
+  $callMs=$clock.ElapsedMilliseconds
+  $sample=@()
+  for($i=0;$i -lt 12;$i++){
+   $code=[int]$excel.CalculationState
+   $sample+= $code
+   if($code -eq 0){break}
+   Start-Sleep -Milliseconds 500
+  }
+  $after=[int]$excel.CalculationState
+  $status=[string]$sheet.Range('B28').Value2
+  $amount=$sheet.Range('B8').Value2
+  $masterYear=[string]$sheet.Range('D4').Value2
+  $diag=[ordered]@{
+   schema='furusato-excel-calculation-diagnostic/v1'
+   release='HOLD'
+   caseId=$case.id
+   verifiedZipSha256=$expectedZipSha
+   excelWorkbookSha256=$bookHash
+   excelVersion=[string]$excel.Version
+   workbookReadOnly=[bool]$book.ReadOnly
+   macrosDisabled=$true
+   ownedExcelPid=[uint32]$createdPid
+   calculationBefore=$before
+   calculateCallMilliseconds=$callMs
+   calculationStates=@($sample)
+   calculationAfter=$after
+   masterYear=$masterYear
+   sourceStatus=$status
+   observedDonationYen=([string]$amount)
+   eligibleForParity=$false
+  }
+  $outputJson=ConvertTo-Json -InputObject $diag -Depth 6
+  [System.IO.File]::WriteAllText($outputFull,$outputJson,([System.Text.UTF8Encoding]::new($false)))
+  Write-Output ('EXCEL_DIAG_RESULT: callMs='+$callMs+'; state='+$after+'; status='+$status+'; acceptance=HOLD')
+  return
+ }
  $index=0
  foreach($case in $ordered){
   $index++

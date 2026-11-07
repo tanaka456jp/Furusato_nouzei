@@ -57,4 +57,10 @@ assert.ok(script.includes("$excel.Calculation=-4135"),"Manual batch calculation 
 assert.ok(script.includes("$excel.Calculate()"),"Excel must actually calculate formulas");
 assert.ok(script.includes("Y2026_G7000000"),"2026 reference anchor required");
 assert.ok(script.includes("EXCEL_CASE_CALCULATED"),"Per-case timing evidence required");
-console.log("PARITY CONTRACT PASS (41 mock rows, provenance, batching and mismatch HOLD). Real Excel result separate.");
+const diagnosticScript=fs.readFileSync(path.join(__dirname,"..","parity","run-excel-oracle.ps1"),"utf8");
+assert.ok(diagnosticScript.includes("[switch]$DiagnosticOnly"),"diagnostic flag required");
+assert.ok(diagnosticScript.includes("eligibleForParity=$false"),"diagnostics never count as parity");
+assert.ok(diagnosticScript.includes("calculationStates=@($sample)"),"must capture Excel calculation states");
+const workflow=fs.readFileSync(path.join(__dirname,"..","..",".github","workflows","gas-private-acceptance.yml"),"utf8");
+assert.ok(workflow.includes("[excel-calc-diagnostic]"),"owner-only diagnostic workflow absent");
+console.log("PARITY CONTRACT PASS (41 mock rows, provenance, batching, diagnostic HOLD). Real Excel result separate.");
