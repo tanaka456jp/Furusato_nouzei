@@ -242,7 +242,7 @@ jobs:
           $reviewed = Join-Path $work 'review/Furusato_nouzei.xlsm'
           # The fail-closed UI gate runs BEFORE the tax-master network update.
           # A blocked external catalog must not conceal stale-result failures.
-          & .\\tools\\verify_stale_ui.ps1 -Workbook $reviewed
+          & .\tools\verify_stale_ui.ps1 -Workbook $reviewed
           if (-not $?) { throw 'Manual calculation stale-result gate failed' }
           'STALE_RESULTS_REAL_EXCEL_PASS (isolated synthetic).' >> $env:GITHUB_STEP_SUMMARY
           $evidence = Join-Path $work 'excel_acceptance.json'
