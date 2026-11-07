@@ -209,7 +209,10 @@ async function main(){
   else if(mode==='install')console.log(JSON.stringify(await install({protectedRoot,deploy:args.includes('--deploy')})));
   else if(mode==='diagnose'){
     safeDirectories();
-    const report=configDriftReport(json(receiptFile),protectedRoot);
+    ensure(fs.existsSync(receiptFile),'Private install receipt absent; offline diagnosis HOLD');
+    let receipt;
+    try{receipt=json(receiptFile);}catch{throw new Error('Private install receipt unreadable; offline diagnosis HOLD');}
+    const report=configDriftReport(receipt,protectedRoot);
     console.log(JSON.stringify(report));
     if(report.status!=='MATCH')process.exitCode=2;
   }
