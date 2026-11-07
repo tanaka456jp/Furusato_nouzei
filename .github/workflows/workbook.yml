@@ -299,7 +299,7 @@ jobs:
         if: success()
         uses: actions/checkout@v4
         with:
-          ref: 907d60160062311857f2248cc00664796b94706f
+          ref: 347aae5756b90c05a10b2ffe6123b0ce09e3fc01
           path: _gas_reference_v4183
           persist-credentials: false
       - name: Compare 41 synthetic cases in actual Excel vs pinned GAS engine

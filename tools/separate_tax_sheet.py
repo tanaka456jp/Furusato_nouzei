@@ -121,6 +121,10 @@ def add_separate_tax(book, home, field, bar, note, progressive):
     def housing_unused(gross):
         return f"MAX(0,$D$4-MAX(0,{gross}-$D$5))"
 
+    def housing_transfer(gross, ordinary):
+        return (f"IF(AND({home_ref}$D$72>=2026,{gross}<=$D$5),0,"
+                f"MIN({housing_unused(gross)},{housing_cap(ordinary)}))")
+
     def after_housing(gross):
         return f"MAX(0,{gross}-$D$5-$D$4)"
 
@@ -138,13 +142,14 @@ def add_separate_tax(book, home, field, bar, note, progressive):
     model["D4"] = f"={home_ref}D74"
     model["D5"] = f"=INT({credit_dividend}/10)"
     model["D6"] = f"={home_ref}D76"
-    model["D7"] = f"=MIN({housing_unused(gross_before)},{housing_cap(f'E{FIRST}')})"
+    model["D7"] = f"={housing_transfer(gross_before, f'E{FIRST}')}"
     model["D8"] = f"={housing_cap(f'C{grid_last}')}"
     model["D9"] = f"={housing_unused(f'J{grid_last}')}"
     model["D10"] = f"=MIN({after_housing(f'J{grid_last}')},{after_housing(f'J{CANDIDATE}')})"
     model["D11"] = f"=AND(OR({home_ref}D72<>0,{home_ref}D73<>0,D4<>0),OR({home_ref}D72<2022,{home_ref}D72>{home_ref}D50,B3>20000000,D4=0,{home_ref}D73>50000000,D4<>INT({home_ref}D73*7/100000)*100))"
-    model["D12"] = f"=OR({home_ref}D75>{home_ref}B45,AND({home_ref}D75>0,B3>10000000),(D6=0)<>({home_ref}D77=0),{home_ref}D77>{home_ref}B45)"
-    model["D13"] = f"=AND(D4>0,D8<{housing_cap(f'E{FIRST}')},D9>D8)"
+    model["D12"] = f"=OR({home_ref}D75>{home_ref}B45,AND({home_ref}D75>0,B3>10000000),(D6=0)<>({home_ref}D77=0),SUM({home_ref}D75,{home_ref}D77)>{home_ref}B45)"
+    model["D13"] = f"=AND(D4>0,NOT(AND({home_ref}D72>=2026,{gross_before}<=D5)),D8<{housing_cap(f'E{FIRST}')},D9>D8)"
+    model["C15"] = f"=AND(D4>0,OR(AND(J{grid_last}<=D5,OR({home_ref}D72<2026,{gross_before}>D5)),AND({home_ref}D72<2026,J{CANDIDATE}<=D5)))"
     model["D14"] = f"=D6*B3>D10*{home_ref}D77"
     model["D15"] = f"=AND(B3={home_ref}B45,G{FIRST}-{home_ref}D47-MAX(0,B4-480000)<0)"
     for col, gross, ordinary, transfer in (
@@ -179,10 +184,11 @@ def add_separate_tax(book, home, field, bar, note, progressive):
         '"SAFE-TAX-015 安全停止。基礎控除を含む税目別控除・法定人的控除差を照合。",'
         'IF(D11,"SAFE-TAX-020 住宅の入居年・適用上限反映済み残高・控除可能額を照合。",'
         'IF(D12,"SAFE-TAX-023 配当の対象区分・調整国外所得・外国所得税額を照合。",'
+        'IF(C15,"SAFE-TAX-025 住宅控除前の所得税が0円となる移行条件を個別確認。",'
         'IF(D13,"SAFE-TAX-021 住宅控除の住民税上限が寄附で変動。担当者が個別に計算。",'
         'IF(D14,"SAFE-TAX-022 外国税が所得税の限度を超過。残余・繰越は個別計算。",'
         'IF(D15,"SAFE-TAX-024 総合課税のみで特例割合の判定額が負。控除明細を個別確認。",'
-        '"計算可能"))))))))))))),"SAFE-TAX-011 要確認。入力エラーを修正して再計算。")'
+        '"計算可能")))))))))))))),"SAFE-TAX-011 要確認。入力エラーを修正して再計算。")'
     )
     model["B6"] = f'=IF(AND(G{FIRST}>0,G{FIRST}-{home_ref}D47-MAX(0,B4-480000)>=0),90000-1021*LOOKUP(G{FIRST}-{home_ref}D47-MAX(0,B4-480000),{{0,1950001,3300001,6950001,9000001,18000001,40000001}},{{5,10,20,23,33,40,45}}),IF(B{FIRST+1}>0,59370,74685))'
     model["B7"] = f"={national_annual(gross_before)}"
@@ -232,7 +238,7 @@ def add_separate_tax(book, home, field, bar, note, progressive):
         model[f"J{row}"] = f'={progressive(f"C{row}")}+' + "+".join(
             f"{get_column_letter(3 + i)}{row}*{bucket[2]}/100" for i, bucket in enumerate(buckets) if i)
         model[f"K{row}"] = f"={national_annual(f'J{row}')}"
-        model[f"AC{row}"] = f"=MIN({housing_unused(f'J{row}')},{housing_cap(f'C{row}')})"
+        model[f"AC{row}"] = f"={housing_transfer(f'J{row}', f'C{row}')}"
         model[f"L{row}"] = f"=MAX(0,MIN(A{row}*10,$B$3*3)-20000)"
         model[f"M{row}"] = f"=ROUNDUP((L{row}*$B$5*10000+MIN($B$8*1000,MAX(0,A{row}-2000)*$B$6*$B$5*10))/5000000,0)"
         model[f"N{row}"] = f"=ROUNDUP((L{row}*(5-$B$5)*10000+MIN($B$9*1000,MAX(0,A{row}-2000)*$B$6*(5-$B$5)*10))/5000000,0)"
@@ -263,7 +269,7 @@ def add_separate_tax(book, home, field, bar, note, progressive):
             f"{taxable[i]}*{buckets[i][2]}/100" for i in range(1, len(buckets))
         )
         model[f"W{row}"] = f"={guard}{base})"
-        model[f"AB{row}"] = f"={guard}MIN({housing_unused(f'W{row}')},{housing_cap(f'AA{row}')}))"
+        model[f"AB{row}"] = f"={guard}{housing_transfer(f'W{row}', f'AA{row}')})"
         basic = f"MAX(0,MIN(U{row}*10,$B$3*3)-20000)"
         for column, levy_row, share in (("X", 8, "$B$5"), ("Y", 9, "(5-$B$5)")):
             levy = f"$B${levy_row}"

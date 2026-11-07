@@ -12,7 +12,7 @@
     if ($localFixtures.Count -ne 7) { throw 'Expected seven new municipality and rounding fixtures' }
     $creditPath = Join-Path (Split-Path $FixturePath) 'separate-tax-credits-v1.json'
     $creditFixtures = Get-Content -LiteralPath $creditPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    if ($creditFixtures.Count -ne 19) { throw 'Expected 19 independently verified tax credit fixtures' }
+    if ($creditFixtures.Count -ne 21) { throw 'Expected 21 independently verified tax credit fixtures' }
     $results = [System.Collections.Generic.List[object]]::new()
     try {
         $screen.Range('B44').Value2 = '申告分離'

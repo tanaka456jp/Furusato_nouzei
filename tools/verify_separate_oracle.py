@@ -77,7 +77,7 @@ def oracle(case, exact=False, jurisdiction=False):
         balance -= housing_used
         cap_basis = taxable[0] + (max(0, basic - 480000) if housing_legacy else 0)
         housing_cap = min(97500, cap_basis // 20)
-        local_housing = min(housing - housing_used, housing_cap)
+        local_housing = min(housing - housing_used, housing_cap) if housing_legacy or tax > dividend_used else 0
         surtax = balance * 21 // 1000
         return [tax, dividend_used, housing_used, local_housing, housing_cap, balance - foreign, surtax]
 
@@ -201,6 +201,11 @@ def credit_cases():
     for occupied in (2025, 2026):
         yield one(2026, f"cap-basis-occupancy-{occupied}", ordinary=3800000, nationalDeductions=1040000,
                   donation=902000, housingYear=occupied, housingBalance=21000000, housingPossible=147000)
+    for locality in ("standard", "designated"):
+        yield one(2026, f"new-housing-zero-before-credit-{locality}", municipality=locality,
+                  ordinary=3000000, nationalDeductions=1500000, residentDeductions=500000,
+                  domesticDividend=1000000, housingYear=2026, housingBalance=1500000,
+                  housingPossible=10500, donation=30000)
     # A one-yen donation crosses a national ¥1,000 taxable-income boundary.
     for donation in (116000, 116001, 117001):
         yield one(2026, f"national-boundary-{donation}", housingYear=2025, housingBalance=49928572,
@@ -249,7 +254,8 @@ if __name__ == "__main__":
     assert credit_results[2]["expected"]["creditBefore"][3] == 97500
     assert credit_results[2]["expected"]["creditAfter"][3] == 97500
     assert credit_results[2]["exact"]["maximum"] > 2000
-    assert [row["expected"]["creditAfter"][4] for row in credit_results[-5:-3]] == [97500, 93000]
+    assert [row["expected"]["creditAfter"][4] for row in credit_results[-7:-5]] == [97500, 93000]
+    assert [row["expected"]["creditBefore"][3] for row in credit_results[-5:-3]] == [0, 0]
     assert [row["expected"]["creditAfter"][-2] for row in credit_results[-3:]] == [200, 0, 0]
     if "--write" in sys.argv:
         credit_path.write_text(json.dumps(credit_results, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
