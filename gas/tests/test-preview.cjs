@@ -27,7 +27,7 @@ const w=dom.window,el=id=>w.document.getElementById(id),next=()=>el("next").clic
   await new Promise(resolve=>w.setTimeout(resolve,50));
   assert.equal(el("reportAmount").textContent,"109,000 円");
   assert.equal(el("print").disabled,false);
-  assert.ok(el("footer").textContent.includes("gas-mvp-0.1.7"));
+  assert.ok(el("footer").textContent.includes("gas-mvp-0.1.8"));
   console.log("PASS: local HTML preview computes standard 109,000 JPY without Google APIs");
  } catch(e){console.error(e.stack);process.exitCode=1;}
  finally{dom.window.close();}

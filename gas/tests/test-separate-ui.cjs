@@ -79,6 +79,19 @@ const profiles = [
     await page.locator("#splitOutput").getByText(/SAFE-TAX-017/).waitFor();
     assert.equal(await page.locator("#splitPrint").isVisible(),false);
     await page.evaluate(() => {
+      const run = window.google.script.run;
+      const input = {mode:"separate",year:2025,filing:"return",conditions:"reviewed",ordinary:0,shortLand:0,longLand:0,
+        listedDividend:0,generalStock:0,listedStock:5000000,futures:0,nationalDeductions:1000000,
+        residentDeductions:1000000,personalDifference:50000,donation:30000};
+      const malformed = window.FurusatoEngine.calculate(input);
+      malformed.calculation.atInput.residentAfter.pop();
+      run.runFurusatoSimulation = function () { this.onSuccess(malformed); };
+    });
+    await page.locator("#splitRun").click();
+    await page.locator("#splitOutput").getByText(/SAFE-TAX-017/).waitFor();
+    assert.doesNotMatch(await page.locator("#splitOutput").innerText(), /NaN|55,000/);
+    assert.equal(await page.locator("#splitPrint").isVisible(),false);
+    await page.evaluate(() => {
       window.splitAttempts = 0;
       window.google.script.run.runFurusatoSimulation = function () {
         window.splitAttempts++;

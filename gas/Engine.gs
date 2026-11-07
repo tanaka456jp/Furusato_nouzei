@@ -1,5 +1,5 @@
 /**
- * Furusato GAS MVP 0.1.7 — pure, deterministic, no SpreadsheetApp dependency.
+ * Furusato GAS MVP 0.1.8 — pure, deterministic, no SpreadsheetApp dependency.
  * Scope: 2025/2026, one salary source, no family/insurance/mortgage/other income.
  * All unsupported cases fail closed. This is a pre-release ESTIMATE, never an assessment.
  * Source: NTA No.1155, No.1199, No.1410, No.2260 (see README).
@@ -7,7 +7,7 @@
  */
 var FurusatoEngine = (function () {
   "use strict";
-  var VERSION = "gas-mvp-0.1.7";
+  var VERSION = "gas-mvp-0.1.8";
   var TAX_REVISION = "2026-11-05-bundled";
   var BASIC = {
     2025: [[1320000,950000],[3360000,880000],[4890000,680000],
