@@ -119,7 +119,7 @@ def build(source, output):
         home.add_data_validation(validation)
         validation.add(home[cell])
 
-    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.18.2 正式版")
+    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.18.3 修正検証版")
     bar(extra, 1, "追加所得・分離課税（所得年内で事前試算）")
     extra.merge_cells("A3:D3")
     extra["A3"] = "翌年度の住民税通知書は参照せず、所得年内の収入・経費・控除と法定税率表から計算します。"
@@ -362,7 +362,13 @@ def build(source, output):
         "B13": (f'=IF(ISNUMBER({ref(ADVANCED,"B15")}),{ref(ADVANCED,"B15")},IF(B12="","",MAX(0,'
                  'IF(B12<6600000,'
                  'IF(B12<=IF(D4=2025,1900000,2200000),'
-                 'MAX(0,B12-IF(D4=2025,650000,740000)),'
+                 # Income Tax Act / Special Measures Act 2026 NTA No.1410 note (2).
+                 # 2026 salary 2,191,000..2,199,999: fixed income rather than
+                 # gross minus the ordinary 740,000-yen minimum deduction.
+                 'IF(AND(D4=2026,B12<2200000),'
+                 'IF(B12<741000,0,IF(B12<2191000,B12-740000,'
+                 'IF(B12<2193000,1451000,IF(B12<2196000,1453000,1456000)))),'
+                 'MAX(0,B12-IF(D4=2025,650000,740000))),'
                  'ROUNDDOWN(B12/4000,0)*4000*'
                  'IF(B12<=3600000,0.7,0.8)-IF(B12<=3600000,80000,440000)),'
                  f'{ref(INPUT,"B34")})-'

@@ -182,12 +182,39 @@ class WorkbookTest(unittest.TestCase):
         self.assertIn("'源泉徴収票入力'!B34", home["B13"].value)
         self.assertIn("ROUNDDOWN(B12/4000,0)*4000", home["B13"].value)
         self.assertIn("IF(D4=2025,650000,740000)", home["B13"].value)
+        self.assertIn("IF(AND(D4=2026,B12<2200000)", home["B13"].value)
+        self.assertIn("IF(B12<2191000,B12-740000", home["B13"].value)
+        self.assertIn("IF(B12<2193000,1451000", home["B13"].value)
+        self.assertIn("IF(B12<2196000,1453000,1456000)", home["B13"].value)
+        self.assertIn("MAX(0,B12-IF(D4=2025,650000,740000))", home["B13"].value)
         self.assertIn("'例外・分離課税'!B13", home["B13"].value)
         self.assertIn("'ふるさと納税限度額計算'!F24", home["B17"].value)
         self.assertIn("'ふるさと納税限度額計算'!F25", home["B18"].value)
         self.assertEqual(home["D24"].value, "ワンストップ")
         self.assertIsNone(home["D25"].value)
         self.assertNotIn('D25<>"確認済"', home["B28"].value)
+
+    def test_2026_national_tax_salary_special_formula_boundaries(self):
+        """Regress NTA No.1410 note (2) without altering 2025 or 2.2m+."""
+        formula = self.book[HOME]["B13"].value
+        expected = {
+            690999: 0, 691000: 0, 740999: 0, 741000: 1000,
+            2190999: 1450999, 2191000: 1451000, 2192999: 1451000,
+            2193000: 1453000, 2195999: 1453000,
+            2196000: 1456000, 2199999: 1456000,
+            2200000: 1460000, 2200001: 1460000,
+        }
+        # The known 2026 bands and values must occur in the generated
+        # Excel expression. Real Excel COM asserts each result separately.
+        for bound in (741000, 2191000, 2193000, 2196000, 2200000):
+            self.assertIn(f"B12<{bound}", formula)
+        for value in (1451000, 1453000, 1456000):
+            self.assertIn(str(value), formula)
+        self.assertEqual(expected[2192999], 1451000)
+        self.assertEqual(expected[2195999], 1453000)
+        self.assertEqual(expected[2199999], 1456000)
+        self.assertIn("IF(D4=2025,1900000,2200000)", formula)
+        self.assertIn("v4.18.3 修正検証版", self.book[HOME]["A1"].value)
 
     def test_no_customer_values_in_main_inputs(self):
         home = self.book[HOME]

@@ -145,6 +145,28 @@ try {
             $homeSheet.Range('B12').Value2 = 5000000
             $excel.Run('TaxLawUpdater.RecalculateCase')
             Assert-Value $homeSheet.Range('B13').Value2 3560000 '2026 salary table example'
+            # Primary source: NTA No.1410, special 2026 income bands.
+            # Exercise the real Excel B13 formula on the disposable copy,
+            # including both sides of each statutory boundary.
+            $specialSalary2026 = @(
+                @{ Gross=690999; Expected=0 }, @{ Gross=691000; Expected=0 },
+                @{ Gross=740999; Expected=0 }, @{ Gross=741000; Expected=1000 },
+                @{ Gross=2190999; Expected=1450999 },
+                @{ Gross=2191000; Expected=1451000 },
+                @{ Gross=2192999; Expected=1451000 },
+                @{ Gross=2193000; Expected=1453000 },
+                @{ Gross=2195999; Expected=1453000 },
+                @{ Gross=2196000; Expected=1456000 },
+                @{ Gross=2199999; Expected=1456000 },
+                @{ Gross=2200000; Expected=1460000 },
+                @{ Gross=2200001; Expected=1460000 }
+            )
+            foreach($sample in $specialSalary2026) {
+                $homeSheet.Range('B12').Value2 = [double]$sample.Gross
+                $excel.Run('TaxLawUpdater.RecalculateCase')
+                Assert-Value $homeSheet.Range('B13').Value2 $sample.Expected ('NTA 2026 salary '+ $sample.Gross)
+            }
+            QA-Stage 'nta-2026-salary-boundaries-pass'
             $homeSheet.Range('B12').Value2 = 7000000
             $excel.Run('TaxLawUpdater.RecalculateCase')
         }
