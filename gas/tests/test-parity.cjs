@@ -49,4 +49,10 @@ assert.deepEqual(compare(income,fake,{allowMock:true}).mismatches[0].fields,["sa
 const status=fixture();status.results[0].status="HOLD";status.results[0].donationLimitYen=null;
 status.results[0].salaryIncomeYen=null;status.results[0].residentIncomeLevyYen=null;
 assert.deepEqual(compare(status,fake,{allowMock:true}).mismatches[0].fields,["status"]);
-console.log("PARITY CONTRACT PASS (41 mock rows, provenance and mismatches fail closed). Real Excel NOT tested.");
+const fs=require("node:fs"),path=require("node:path");
+const script=fs.readFileSync(path.join(__dirname,"..","parity","run-excel-oracle.ps1"),"utf8");
+assert.equal((script.match(/CalculateFullRebuild\(\)/g)||[]).length,1);
+assert.ok(script.includes("$excel.Calculation=-4135"),"Excel manual calculation batching required");
+assert.ok(script.includes("if($index -eq 1)"),"Full rebuild must be first case only");
+assert.ok(script.includes("EXCEL_CASE_CALCULATED"),"Per-case timing evidence required");
+console.log("PARITY CONTRACT PASS (41 mock rows, provenance, batching and mismatch HOLD). Real Excel result separate.");

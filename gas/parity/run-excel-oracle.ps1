@@ -80,7 +80,13 @@ public static class FurusatoExcelPid {
  # in-memory copy MUST synchronize both fields explicitly.
  $settingsName=-join @([char]0x8A2D,[char]0x5B9A,[char]0x30FB,[char]0x7A0E,[char]0x7387)
  $settings=$book.Worksheets.Item($settingsName)
+ # Batch input changes with Excel in manual mode. This affects only the
+ # newly created COM instance, never any pre-existing Excel process.
+ $excel.Calculation=-4135
+ $index=0
  foreach($case in $cases){
+  $index++
+  Write-Output ('EXCEL_CASE_START '+$index+'/'+$cases.Count+': '+$case.id)
   if($case.year -ne 2025 -and $case.year -ne 2026){throw 'Invalid year'}
   if($case.filing -cne 'one-stop'){throw 'Invalid filing'}
   $settings.Range('B4').Value2=[int]$case.year
@@ -90,12 +96,17 @@ public static class FurusatoExcelPid {
   $sheet.Range('B15').Value2=[double]0
   $sheet.Range('B16').Value2=[double]$case.socialInsurance
   $sheet.Range('D24').Value2=$oneStop
-  $excel.CalculateFullRebuild()
+  $timer=[Diagnostics.Stopwatch]::StartNew()
+  if($index -eq 1){$excel.CalculateFullRebuild()}else{$excel.Calculate()}
   $ticks=0
-  while([int]$excel.CalculationState -ne 0 -and $ticks -lt 300){
+  while([int]$excel.CalculationState -ne 0 -and $ticks -lt 1800){
    Start-Sleep -Milliseconds 100;$ticks++
   }
-  if([int]$excel.CalculationState -ne 0){throw 'Excel calculation timeout'}
+  $timer.Stop()
+  if([int]$excel.CalculationState -ne 0){
+   throw ('Excel calculation timeout '+$case.id+' after '+$timer.ElapsedMilliseconds+' ms')
+  }
+  Write-Output ('EXCEL_CASE_CALCULATED '+$case.id+': '+$timer.ElapsedMilliseconds+' ms')
   $state=[string]$sheet.Range('B28').Value2
   $activeYear=$sheet.Range('D4').Value2
   if([string]$activeYear -cne [string]$case.year){

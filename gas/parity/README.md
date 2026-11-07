@@ -51,3 +51,13 @@ The artifact contains synthetic test results only (14-day retention).
 HousingERP, the formal Excel release, Google credentials, and real
 customer data must not be accessed or modified. A mismatch, missing
 source, or too few NORMAL Excel cases means HOLD, not success.
+
+
+### Live Excel performance and timeout
+
+Only the first case calls CalculateFullRebuild. Subsequent cases use
+Calculate after the input batch has been assigned in a separate Excel
+instance with automatic recalculation disabled. Each synthetic case logs
+EXCEL_CASE_START and EXCEL_CASE_CALCULATED with elapsed time; any
+non-completing case remains HOLD after a bounded timeout. This preserves
+full Excel calculation while avoiding repeated dependency rebuilding.
