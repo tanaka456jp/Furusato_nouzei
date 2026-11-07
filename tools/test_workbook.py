@@ -29,6 +29,19 @@ class WorkbookTest(unittest.TestCase):
         self.assertTrue(self.book.calculation.fullCalcOnLoad)
         self.assertFalse(self.book.calculation.forceFullCalc)
 
+    def test_stale_result_vba_guards(self):
+        source = (ROOT / "vba" / "TaxLawUpdater.bas").read_text(encoding="utf-8-sig")
+        setup = (ROOT / "tools" / "setup.ps1").read_text(encoding="utf-8-sig")
+        for token in ("Public Sub MaskUnverifiedResults()", "Public Sub RevealVerifiedResults()",
+                      "Public Function ResultsAreCurrent() As Boolean",
+                      "Private Sub CheckReportAvailable", "If Not ResultsAreCurrent() Then",
+                      'NumberFormat = ";;;"'):
+            self.assertIn(token, source)
+        for token in ("Private Sub Workbook_SheetChange",
+                      "TaxLawUpdater.MaskUnverifiedResults",
+                      "TaxLawUpdater.RevealVerifiedResults"):
+            self.assertIn(token, setup)
+
     def test_second_print_page_repeats_year_and_both_versions(self):
         home = self.book[HOME]
         formula = str(home["A80"].value)
