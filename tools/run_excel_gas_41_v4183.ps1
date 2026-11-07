@@ -142,6 +142,73 @@ public static class FurusatoExcelParityPidV4183 {
     throw 'Excel ABA dynamic recalculation proof failed'
   }
   if($observed.Count -ne 41){throw 'Missing Excel comparison cases'}
+  # Diagnostic only: 'forceFullCalc' is stored as 1 in the generated XLSM.
+  # In this read-only, owned Excel COM instance, disable it in memory
+  # after the evidence cases are collected. Never save the workbook.
+  $calcDiagnostic=[ordered]@{
+    schema='furusato-excel-calc-state-diagnostic/v1'
+    baselinePendingCount=@($observed | Where-Object {$_.calcState -eq 2}).Count
+    initialForceFullCalculation=$null
+    initialFullCalculationOnLoad=$null
+    initialCalculationState=[int]$excel.CalculationState
+    forceFullCalculationAfterDisable=$null
+    calculationStateAfterDisableAndCalculate=$null
+    transitions=@()
+    stateVerdict='NOT_TESTED'
+    readOnly=$true;persistedToWorkbook=$false
+  }
+  try {
+    $calcDiagnostic.initialForceFullCalculation=[bool]$book.ForceFullCalculation
+    $calcDiagnostic.initialFullCalculationOnLoad=[bool]$book.FullCalculationOnLoad
+    $book.ForceFullCalculation=$false
+    $calcDiagnostic.forceFullCalculationAfterDisable=[bool]$book.ForceFullCalculation
+    $excel.Calculate()
+    $calcDiagnostic.calculationStateAfterDisableAndCalculate=[int]$excel.CalculationState
+    $calcTransitions=@()
+    foreach($gross in @(7000000,5000000,7000000)){
+      $master.Range('B4').Value2=2026
+      $screenSheet.Range('B4').Value2='2026'
+      $screenSheet.Range('B11').Value2='2026'
+      $screenSheet.Range('B12').Value2=[double]$gross
+      $screenSheet.Range('B15').Value2=[double]0
+      $screenSheet.Range('B16').Value2=[double]1000000
+      $screenSheet.Range('D24').Value2='ワンストップ'
+      $excel.Calculate()
+      $cState=[int]$excel.CalculationState
+      $incomeVal=$screenSheet.Range('B13').Value2
+      $limitVal=$screenSheet.Range('B8').Value2
+      $calcTransitions+= [pscustomobject]@{
+        salaryGrossYen=[long]$gross;calculationState=$cState
+        salaryIncomeYen=if($null -eq $incomeVal){$null}else{[long]$incomeVal}
+        donationLimitYen=if($null -eq $limitVal){$null}else{[long]$limitVal}
+        statusText=[string]$screenSheet.Range('B28').Value2
+      }
+    }
+    $calcDiagnostic.transitions=@($calcTransitions)
+    $anchorGood=($calcTransitions[0].salaryIncomeYen -eq 5200000) -and
+      ($calcTransitions[1].salaryIncomeYen -eq 3560000) -and
+      ($calcTransitions[2].salaryIncomeYen -eq 5200000) -and
+      ($calcTransitions[0].donationLimitYen -eq 109000) -and
+      ($calcTransitions[1].donationLimitYen -eq 51000) -and
+      ($calcTransitions[2].donationLimitYen -eq 109000) -and
+      (@($calcTransitions | Where-Object {$_.statusText -cne '正常'}).Count -eq 0)
+    if(-not $anchorGood){
+      $calcDiagnostic.stateVerdict='DYNAMIC_VALUES_UNVERIFIED'
+    } elseif(@($calcTransitions | Where-Object {$_.calculationState -ne 0}).Count -eq 0) {
+      $calcDiagnostic.stateVerdict='XL_DONE_AFTER_DISABLE_FORCE_FULL'
+    } else {
+      $calcDiagnostic.stateVerdict='PENDING_REMAINS_AFTER_DISABLE_FORCE_FULL'
+    }
+  }
+  catch {
+    $calcDiagnostic.stateVerdict='DIAGNOSTIC_ERROR'
+    $calcDiagnostic.errorMessage=[string]$_.Exception.Message
+  }
+  Write-Output ('EXCEL_CALC_STATE_DIAG: forceFullInitial='+
+    $calcDiagnostic.initialForceFullCalculation+'; stateBefore='+
+    $calcDiagnostic.initialCalculationState+'; afterDisable='+
+    $calcDiagnostic.calculationStateAfterDisableAndCalculate+'; verdict='+
+    $calcDiagnostic.stateVerdict+'; release=HOLD')
   $evidence=[ordered]@{
     schema='furusato-excel-gas-v4183/v1'
     source='EXCEL_COM_V4_18_3_REVIEW'
@@ -151,6 +218,7 @@ public static class FurusatoExcelParityPidV4183 {
     gasEngineSha256=$engineSha
     macrosDisabled=$true;readOnly=$true
     dynamicABA=$true;existingExcelPidsProtected=$true
+    calculationDiagnostics=$calcDiagnostic
     releaseVerdict='HOLD'
     results=@($observed)
   }

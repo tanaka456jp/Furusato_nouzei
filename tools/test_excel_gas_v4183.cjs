@@ -62,4 +62,14 @@ const noAba=fixture();noAba.dynamicABA=false;
 assert.throws(()=>compare(noAba,cases,fakeEngine(),{allowMock:true}),/untrusted source/);
 const bogusSource=fixture();bogusSource.source="EXCEL_COM_V4_18_3_REVIEW";
 assert.throws(()=>compare(bogusSource,cases,fakeEngine(),{allowMock:true}),/untrusted source/);
+// A read-only COM diagnostic may be attached only after the 41 approved
+// numerical observations; it must not alter comparison acceptance.
+const fs=require("node:fs"),path=require("node:path");
+const psSource=fs.readFileSync(path.join(__dirname,"run_excel_gas_41_v4183.ps1"),"utf8");
+assert.ok(psSource.includes("ForceFullCalculation=$false"),"Excel full-calc flag must be probed in memory");
+assert.ok(psSource.includes("persistedToWorkbook=$false"),"Diagnostic cannot persist");
+assert.ok(psSource.indexOf("if($observed.Count -ne 41)") < psSource.indexOf("$book.ForceFullCalculation=$false"),
+ "41 cases must be observed before changing calculation settings");
+assert.ok(psSource.includes("XL_DONE_AFTER_DISABLE_FORCE_FULL"),"Require an explicit result");
+assert.ok(psSource.includes("PENDING_REMAINS_AFTER_DISABLE_FORCE_FULL"),"Pending must remain distinguishable");
 console.log("v4.18.3/GAS PARITY CONTRACT PASS; MOCK is not real Excel; final release HOLD");
