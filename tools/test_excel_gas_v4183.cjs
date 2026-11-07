@@ -24,9 +24,21 @@ function fixture(source="MOCK"){
  return {schema:SCHEMA,source,gasCommitSha:PINNED_GAS_SHA,
   workbookSha256:"e".repeat(64),gasEngineSha256:"f".repeat(64),
   readOnly:true,macrosDisabled:true,dynamicABA:true,officialExcelSource:false,
+  calculationDiagnostics: {
+    schema:"furusato-excel-calc-state-diagnostic/v1",
+    baselinePendingCount:0,initialForceFullCalculation:false,
+    forceFullCalculationAfterDisable:false,initialCalculationState:0,
+    calculationStateAfterDisableAndCalculate:0,
+    persistedToWorkbook:false,readOnly:true,stateVerdict:"XL_DONE_AFTER_DISABLE_FORCE_FULL",
+    transitions:[
+      {salaryGrossYen:7000000,calculationState:0,salaryIncomeYen:5200000,donationLimitYen:109000,statusText:"正常"},
+      {salaryGrossYen:5000000,calculationState:0,salaryIncomeYen:3560000,donationLimitYen:51000,statusText:"正常"},
+      {salaryGrossYen:7000000,calculationState:0,salaryIncomeYen:5200000,donationLimitYen:109000,statusText:"正常"}
+    ]
+  },
   results:cases.map(v=>{
    const e=fakeEngine().calculate(v);
-   return {...v,status:"NORMAL",statusText:"正常",calcState:2,
+   return {...v,status:"NORMAL",statusText:"正常",calcState:0,
     donationLimitYen:e.donationLimitYen,
     salaryIncomeYen:e.calculation.salaryIncomeYen,
     residentIncomeLevyYen:e.calculation.residentIncomeLevyYen};
@@ -38,7 +50,9 @@ assert.equal(matched.matched,41);
 assert.equal(matched.numericVerdict,"MATCH_41_OF_41");
 assert.equal(matched.releaseVerdict,"HOLD");
 assert.equal(matched.actualExcelCOM,false,"mock fixture cannot prove real Excel");
-assert.equal(matched.excelCalculationPendingCount,41);
+assert.equal(matched.excelCalculationPendingCount,0);
+assert.equal(matched.excelCalculationDoneCount,41);
+assert.equal(matched.calculationStateVerdict,"DONE_41_OF_41");
 assert.throws(()=>compare(fixture(),cases,fakeEngine()),/untrusted source/);
 const duplicated=fixture();duplicated.results[1].id=duplicated.results[0].id;
 assert.throws(()=>compare(duplicated,cases,fakeEngine(),{allowMock:true}),/repeated case/);
@@ -47,7 +61,15 @@ assert.throws(()=>compare(missing,cases,fakeEngine(),{allowMock:true}),/exactly 
 const tampered=fixture();tampered.results[0].socialInsurance++;
 assert.throws(()=>compare(tampered,cases,fakeEngine(),{allowMock:true}),/input changed/);
 const pending=fixture();pending.results[0].calcState=1;
-assert.throws(()=>compare(pending,cases,fakeEngine(),{allowMock:true}),/still running/);
+assert.throws(()=>compare(pending,cases,fakeEngine(),{allowMock:true}),/not xlDone/);
+const oldPending=fixture();oldPending.results[0].calcState=2;
+assert.throws(()=>compare(oldPending,cases,fakeEngine(),{allowMock:true}),/not xlDone/);
+const oldForce=fixture();oldForce.calculationDiagnostics.initialForceFullCalculation=true;
+assert.throws(()=>compare(oldForce,cases,fakeEngine(),{allowMock:true}),/verified xlDone/);
+const missingCalcEvidence=fixture();delete missingCalcEvidence.calculationDiagnostics;
+assert.throws(()=>compare(missingCalcEvidence,cases,fakeEngine(),{allowMock:true}),/verified xlDone/);
+const changedAnchor=fixture();changedAnchor.calculationDiagnostics.transitions[1].donationLimitYen=50000;
+assert.throws(()=>compare(changedAnchor,cases,fakeEngine(),{allowMock:true}),/dynamic Excel anchor/);
 const wrongBand=fixture();wrongBand.results.find(r=>r.id==="Y2026_G2192999").salaryIncomeYen++;
 assert.throws(()=>compare(wrongBand,cases,fakeEngine(),{allowMock:true}),/violates 2026 NTA/);
 const mismatch=fixture();mismatch.results[0].residentIncomeLevyYen++;

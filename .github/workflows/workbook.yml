@@ -329,6 +329,9 @@ jobs:
           if ($report.releaseVerdict -cne 'HOLD' -or
               $report.numericVerdict -cne 'MATCH_41_OF_41' -or
               $report.matched -ne 41 -or $report.mismatchCount -ne 0 -or
+              $report.calculationStateVerdict -cne 'DONE_41_OF_41' -or
+              $report.excelCalculationDoneCount -ne 41 -or
+              $report.excelCalculationPendingCount -ne 0 -or
               $report.actualExcelCOM -ne $true) {
             throw ('Excel v4.18.3 vs GAS numerical discrepancy: '+$json)
           }

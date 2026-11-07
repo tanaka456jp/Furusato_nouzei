@@ -43,3 +43,17 @@ Microsoftの仕様上、強制再計算モードはExcelセッション終了ま
 新規Excelインスタンスで既存52件・新規13境界件・GAS比較41件・
 VBAUpdater隔離書戻しを再検証し、`xlPending` 状態変化をJSONに記録する。
 正式リリース・GASデプロイはHOLDを維持。
+
+
+## 実機診断確定：xlPending解消後の再発防止ゲート
+
+[PC① Run #42341133971](https://github.com/tanaka456jp/Furusato_nouzei/actions/runs/42341133971)で、`forceFullCalc=False`を**生成時点から適用**したブックは、
+41件すべて`CalculationState=0（xlDone）`となり、
+GASと41/41件（給与所得・住民税所得割・寄附目安）一致した。
+従来の`forceFullCalc=True`ブックでは41/41件`xlPending`。
+メモリ上の切替だけでは残ったため、Excelの新しいプロセスで開く必要があった。
+
+今後のExcel×GAS数値比較CIは、**41件すべてxlDoneでなければ失敗**し、
+`ForceFullCalculation=True`、診断証跡欠落、700万→500万→700万の
+再計算復帰失敗も検出する。全数値一致でも全税制・物理印刷は未受入のため
+正式リリースはHOLDを維持する。

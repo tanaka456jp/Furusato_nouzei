@@ -19,6 +19,32 @@ function compare(observation, cases, gasEngine, opts = {}) {
       observation.macrosDisabled !== true || observation.readOnly !== true ||
       observation.dynamicABA !== true || observation.officialExcelSource !== false)
     reject("untrusted source, revision, hash or Excel isolation");
+  // A numeric match is insufficient unless the same freshly-owned Excel COM
+  // instance proves xlDone for all cases AND both reversible salary anchors.
+  const diag=observation.calculationDiagnostics;
+  if (!diag || diag.schema!=="furusato-excel-calc-state-diagnostic/v1" ||
+      diag.initialForceFullCalculation!==false ||
+      diag.forceFullCalculationAfterDisable!==false ||
+      diag.initialCalculationState!==0 ||
+      diag.calculationStateAfterDisableAndCalculate!==0 ||
+      diag.baselinePendingCount!==0 ||
+      diag.persistedToWorkbook!==false ||
+      diag.readOnly!==true ||
+      diag.stateVerdict!=="XL_DONE_AFTER_DISABLE_FORCE_FULL" ||
+      !Array.isArray(diag.transitions) || diag.transitions.length!==3)
+    reject("verified xlDone calculation-state diagnostics required");
+  const anchors=[
+    {gross:7000000,income:5200000,donation:109000},
+    {gross:5000000,income:3560000,donation:51000},
+    {gross:7000000,income:5200000,donation:109000}
+  ];
+  for(let i=0;i<3;i++){
+    const v=diag.transitions[i],a=anchors[i];
+    if(!v || v.calculationState!==0 || v.salaryGrossYen!==a.gross ||
+       v.salaryIncomeYen!==a.income || v.donationLimitYen!==a.donation ||
+       v.statusText!=="正常")
+      reject("dynamic Excel anchor must be fully recalculated");
+  }
   if (!Array.isArray(cases) || cases.length !== 41 ||
       !Array.isArray(observation.results) || observation.results.length !== 41)
     reject("exactly 41 cases must be represented");
@@ -40,9 +66,8 @@ function compare(observation, cases, gasEngine, opts = {}) {
     for (const key of ["id", "year", "salaryGross", "socialInsurance", "filing"])
       if (row[key] !== input[key]) reject("Excel input changed: " + row.id + "/" + key);
     if (row.status !== "NORMAL" || row.statusText !== "正常") reject("Excel HOLD or invalid status: " + row.id);
-    if (row.calcState === 2) pending++;
-    else if (row.calcState === 0) done++;
-    else reject("Excel calculation is still running or state is untrusted: " + row.id);
+    if (row.calcState !== 0) reject("Excel not xlDone: " + row.id);
+    done++;
     for (const key of ["donationLimitYen", "salaryIncomeYen", "residentIncomeLevyYen"])
       if (!safeInt(row[key])) reject("invalid Excel numeric output: " + row.id + "/" + key);
     if (nta2026.has(row.id) && row.salaryIncomeYen !== nta2026.get(row.id))
@@ -75,6 +100,7 @@ function compare(observation, cases, gasEngine, opts = {}) {
   if (!anchor || anchor.donationLimitYen !== 109000) reject("2026 7m anchor must be 109000");
   if (normal2025 < 5 || normal2026 < 5 || salaryValues.size < 8)
     reject("insufficient independent responsive Excel cases");
+  if (done !== 41 || pending !== 0) reject("incomplete whole-workbook calculation");
   const allNumericMatch = matched === 41 && differences.length === 0;
   return {
     schema: "furusato-excel-gas-41-comparison/v1",
@@ -82,6 +108,7 @@ function compare(observation, cases, gasEngine, opts = {}) {
     workbookSha256: observation.workbookSha256, gasEngineSha256: observation.gasEngineSha256,
     actualExcelCOM: !opts.allowMock, checked: 41, matched, mismatchCount: differences.length,
     excelCalculationDoneCount: done, excelCalculationPendingCount: pending,
+    calculationStateVerdict: "DONE_41_OF_41",
     observedSalary2026SpecialBands: 3, allNumericMatch, differences,
     numericVerdict: allNumericMatch ? "MATCH_41_OF_41" : "MISMATCH",
     // Even all 41 match, remaining tax situations and printing are unverified.
