@@ -50,6 +50,55 @@ function snapshot(protectedRoot){
   return Object.fromEntries(files.map(p=>[path.resolve(p),fs.existsSync(p)?hash(fs.readFileSync(p)):null]));
 }
 function unchanged(s){for(const [p,h] of Object.entries(s))ensure((fs.existsSync(p)?hash(fs.readFileSync(p)):null)===h,'Protected configuration changed; STOP');}
+
+/**
+ * Diagnose a previously captured install snapshot without credentials, network,
+ * Google API calls, writes, secret values, hashes or local absolute paths.
+ * A changed global clasp file may be ordinary token rotation, but the original
+ * snapshot only has a hash: the cause cannot be inferred or auto-approved.
+ */
+function configDriftReport(receipt,protectedRoot,globalAuthPath=path.join(os.homedir(),'.clasprc.json')){
+  ensure(receipt?.schema===policy.schema&&receipt.createdByInstaller===true,
+    'Missing/invalid private install receipt; manual review required');
+  ensure(protectedRoot&&path.resolve(protectedRoot)!==root&&
+    !path.resolve(protectedRoot).startsWith(privateDir+path.sep),
+    'Invalid protected root');
+  const items=[
+    ['housing-clasp',path.join(protectedRoot,'.clasp.json')],
+    ['housing-appsscript',path.join(protectedRoot,'appsscript.json')],
+    ['housing-project',path.join(protectedRoot,'project.json')],
+    ['global-clasp-auth',globalAuthPath]
+  ].map(([name,p])=>({name,file:path.resolve(p)}));
+  const recorded=receipt.protectedSnapshot;
+  ensure(recorded&&typeof recorded==='object'&&!Array.isArray(recorded)&&
+    Object.keys(recorded).length===items.length&&
+    items.every(item=>Object.hasOwn(recorded,item.file)&&
+      (recorded[item.file]===null||/^[a-f0-9]{64}$/.test(recorded[item.file]))),
+    'Protected snapshot does not match expected files; manual review required');
+  const checks=items.map(({name,file})=>{
+    let state,actual=null;
+    try{
+      const stat=fs.lstatSync(file);
+      if(stat.isSymbolicLink())state='BLOCKED_LINK';
+      else if(!stat.isFile())state='NOT_REGULAR_FILE';
+      else actual=hash(fs.readFileSync(file));
+    }catch(e){
+      if(e.code!=='ENOENT')state='UNREADABLE';
+    }
+    if(!state)state=recorded[file]===actual?'UNCHANGED':
+      actual===null?'MISSING':recorded[file]===null?'APPEARED':'CHANGED';
+    return {name,state};
+  });
+  const match=checks.every(c=>c.state==='UNCHANGED');
+  return {
+    kind:'LOCAL_READONLY_CONFIG_DRIFT',status:match?'MATCH':'HOLD',release:'HOLD',
+    checks,
+    guidance:match?
+      'Only the 4 local protected files match the recorded snapshot. Formal release remains HOLD.':
+      'Change cause is unverified. Do not overwrite the snapshot, refresh its hashes, push, or deploy until the owner reviews the changed file(s).'
+  };
+}
+
 async function accessToken(){
   ensure(fs.existsSync(authFile),'AUTH_REQUIRED: run setup-private-gas.ps1 -Login; authorize Furusato separately');
   const a=json(authFile),t=a.tokens?.default;ensure(t?.refresh_token&&t.client_id&&t.client_secret,'Isolated clasp credentials are incomplete');
@@ -158,6 +207,12 @@ async function main(){
   }
   else if(mode==='login'){preflight();fs.mkdirSync(privateDir,{recursive:true});clasp(['login'],privateDir,true);}
   else if(mode==='install')console.log(JSON.stringify(await install({protectedRoot,deploy:args.includes('--deploy')})));
+  else if(mode==='diagnose'){
+    safeDirectories();
+    const report=configDriftReport(json(receiptFile),protectedRoot);
+    console.log(JSON.stringify(report));
+    if(report.status!=='MATCH')process.exitCode=2;
+  }
   else if(mode==='verify'){
     preflight();const api=await client(),r=json(receiptFile);await verify(api,r,protectedRoot);
     const actualDeployment=await api(scriptUrl(r.scriptId)+'/deployments/'+encodeURIComponent(r.deploymentId));
@@ -168,5 +223,5 @@ async function main(){
   }
   else throw new Error('Unknown command');
 }
-module.exports={preflight,manifestCheck,source,digest,verify,identityCheck,sheetCheck,deploymentCheck,install,snapshot,unchanged,rejectLinks,accessToken};
+module.exports={preflight,manifestCheck,source,digest,verify,identityCheck,sheetCheck,deploymentCheck,install,snapshot,unchanged,configDriftReport,rejectLinks,accessToken};
 if(require.main===module)main().catch(e=>{console.error(e.message);process.exitCode=1;});
