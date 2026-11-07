@@ -394,6 +394,48 @@ try {
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Mortgage case reset'
     QA-Stage 'mortgage-regressions-pass'
+    # FAIL-14: Excel manual mode with pending formula caches must never leave
+    # the old donation amount or a false "計算可能" visible to the operator.
+    # Only a freshly owned synthetic workbook and this Excel COM instance
+    # are changed; no global Excel options or other processes are touched.
+    QA-Stage 'stale-result-manual-calculation-start'
+    $originalCalculation = [int]$excel.Calculation
+    $originalMortgage = $homeSheet.Range('B34').Value2
+    try {
+        $excel.EnableEvents = $true
+        $excel.Calculation = -4135 # xlCalculationManual
+        $homeSheet.Range('B34').Value2 = 300000.0
+        if ([string]$homeSheet.Range('B8').Text -ne '') {
+            throw 'Old donation amount remains visibly exposed while calculation is manual'
+        }
+        if ([string]$homeSheet.Range('B26').Text -eq '計算可能') {
+            throw 'Stale "計算可能" status remains visible while calculation is manual'
+        }
+        if ([string]$homeSheet.Range('A9').Text -notlike '*計算未完了*') {
+            throw 'Visible recalculation hold message was not shown'
+        }
+        $blockedPdf = Join-Path $dir 'must-not-export-stale.pdf'
+        if ([bool]$excel.Run('TaxLawUpdater.TryExportDetailsToFileForTest', $blockedPdf)) {
+            throw 'Stale result was allowed to export as PDF'
+        }
+        if (Test-Path -LiteralPath $blockedPdf) {
+            throw 'Stale result created an unsafe PDF file'
+        }
+    } finally {
+        if ($null -eq $originalMortgage -or [string]$originalMortgage -eq '') {
+            $homeSheet.Range('B34').ClearContents()
+        } else {
+            $homeSheet.Range('B34').Value2 = $originalMortgage
+        }
+        $excel.Calculation = -4105 # xlCalculationAutomatic
+        $excel.Run('TaxLawUpdater.RecalculateCase')
+        $excel.EnableEvents = $false
+    }
+    Assert-Value ([string]$homeSheet.Range('B26').Text) '計算可能' 'Status restored after automatic calculation'
+    Assert-Value $homeSheet.Range('B8').Value2 109000 'Amount restored after automatic calculation'
+    Assert-Value ([string]$homeSheet.Range('B8').Text) '109,000' 'Actual visible amount restored after automatic calculation'
+    QA-Stage 'stale-result-manual-calculation-pass'
+
     # Exercise the actual GitHub-approved update transaction, not only recalculation.
     # The test runs on an isolated copy; no customer workbook is touched.
     QA-Stage 'approved-update-start'
@@ -525,47 +567,6 @@ try {
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value $homeSheet.Range('B8').Value2 109000 'Amount before reopen'
 
-    # FAIL-14: Excel manual mode with pending formula caches must never leave
-    # the old donation amount or a false "計算可能" visible to the operator.
-    # Only a freshly owned synthetic workbook and this Excel COM instance
-    # are changed; no global Excel options or other processes are touched.
-    QA-Stage 'stale-result-manual-calculation-start'
-    $originalCalculation = [int]$excel.Calculation
-    $originalMortgage = $homeSheet.Range('B34').Value2
-    try {
-        $excel.EnableEvents = $true
-        $excel.Calculation = -4135 # xlCalculationManual
-        $homeSheet.Range('B34').Value2 = 300000.0
-        if ([string]$homeSheet.Range('B8').Text -ne '') {
-            throw 'Old donation amount remains visibly exposed while calculation is manual'
-        }
-        if ([string]$homeSheet.Range('B26').Text -eq '計算可能') {
-            throw 'Stale "計算可能" status remains visible while calculation is manual'
-        }
-        if ([string]$homeSheet.Range('A9').Text -notlike '*計算未完了*') {
-            throw 'Visible recalculation hold message was not shown'
-        }
-        $blockedPdf = Join-Path $dir 'must-not-export-stale.pdf'
-        if ([bool]$excel.Run('TaxLawUpdater.TryExportDetailsToFileForTest', $blockedPdf)) {
-            throw 'Stale result was allowed to export as PDF'
-        }
-        if (Test-Path -LiteralPath $blockedPdf) {
-            throw 'Stale result created an unsafe PDF file'
-        }
-    } finally {
-        if ($null -eq $originalMortgage -or [string]$originalMortgage -eq '') {
-            $homeSheet.Range('B34').ClearContents()
-        } else {
-            $homeSheet.Range('B34').Value2 = $originalMortgage
-        }
-        $excel.Calculation = -4105 # xlCalculationAutomatic
-        $excel.Run('TaxLawUpdater.RecalculateCase')
-        $excel.EnableEvents = $false
-    }
-    Assert-Value ([string]$homeSheet.Range('B26').Text) '計算可能' 'Status restored after automatic calculation'
-    Assert-Value $homeSheet.Range('B8').Value2 109000 'Amount restored after automatic calculation'
-    Assert-Value ([string]$homeSheet.Range('B8').Text) '109,000' 'Actual visible amount restored after automatic calculation'
-    QA-Stage 'stale-result-manual-calculation-pass'
 
     $book.Save()
 
