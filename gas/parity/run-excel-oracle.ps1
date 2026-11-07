@@ -36,7 +36,7 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 $workdir=Join-Path $env:TEMP ('FurusatoParityIsolated_'+[guid]::NewGuid().ToString('N'))
 [void][System.IO.Directory]::CreateDirectory($workdir)
 $workbookPath=Join-Path $workdir 'Furusato_nouzei.xlsm'
-$excel=$null;$book=$null;$sheet=$null;$settings=$null;$results=@()
+$excel=$null;$book=$null;$sheet=$null;$settings=$null;$results=@();$ownsExcel=$false
 try {
  $archive=[System.IO.Compression.ZipFile]::OpenRead($zipPath)
  try{
@@ -50,7 +50,24 @@ try {
  $sheetName=-join @([char]0x64CD,[char]0x4F5C,[char]0x753B,[char]0x9762)
  $normal=-join @([char]0x6B63,[char]0x5E38)
  $oneStop=-join @([char]0x30EF,[char]0x30F3,[char]0x30B9,[char]0x30C8,[char]0x30C3,[char]0x30D7)
+ # Require a freshly created Excel COM instance; never modify an
+ # already-running Excel process owned by the user.
+ $existingPids=@(Get-Process -Name EXCEL -ErrorAction SilentlyContinue | ForEach-Object {[uint32]$_.Id})
+ Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class FurusatoExcelPid {
+  [DllImport("user32.dll")]
+  public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
+}
+'@
  $excel=New-Object -ComObject Excel.Application
+ [uint32]$createdPid=0
+ [void][FurusatoExcelPid]::GetWindowThreadProcessId([IntPtr]$excel.Hwnd,[ref]$createdPid)
+ if($createdPid -eq 0 -or $existingPids -contains $createdPid){
+  throw 'Excel COM returned an existing/unidentified process. No workbook changes allowed.'
+ }
+ $ownsExcel=$true
  $excel.Visible=$false
  $excel.DisplayAlerts=$false
  $excel.EnableEvents=$false
@@ -113,7 +130,7 @@ try {
  [System.IO.File]::WriteAllText($outputFull,$json,([System.Text.UTF8Encoding]::new($false)))
 }finally{
  if($null -ne $book){try{$book.Close($false)}catch{}}
- if($null -ne $excel){try{$excel.Quit()}catch{}}
+ if($ownsExcel -and $null -ne $excel){try{$excel.Quit()}catch{}}
  if($null -ne $sheet){[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($sheet)}
  if($null -ne $settings){[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($settings)}
  if($null -ne $book){[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($book)}

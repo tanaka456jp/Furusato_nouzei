@@ -55,7 +55,7 @@ jobs:
     concurrency:
       group: furusato-excel-device
       cancel-in-progress: false
-    timeout-minutes: 15
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
         with:
@@ -87,6 +87,39 @@ jobs:
         with:
           name: GAS-Windows-device-synthetic-${{ github.run_id }}
           path: gas/dist/acceptance/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: One-shot official Excel v4.18.2 parity (41 synthetic cases)
+        if: >-
+          github.event_name == 'push' &&
+          contains(github.event.head_commit.message, '[excel-parity-41]')
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $source = 'https://github.com/tanaka456jp/Furusato_nouzei/releases/download/v4.18.2/Furusato_nouzei_v4.18.2_ReadyToUse.zip'
+          $expected = 'f534882f56461ea23a75474f24e68ad364d557091609c994341c179e9a655f25'
+          $download = Join-Path $env:RUNNER_TEMP ('FurusatoOfficial_'+$env:GITHUB_RUN_ID+'.zip')
+          if (Test-Path -LiteralPath $download) { throw 'Scratch ZIP already exists' }
+          $dir = Join-Path $env:GITHUB_WORKSPACE 'gas\dist\parity'
+          [void][System.IO.Directory]::CreateDirectory($dir)
+          $report = Join-Path $dir 'synthetic-oracle.json'
+          if (Test-Path -LiteralPath $report) { throw 'Oracle report already exists' }
+          try {
+            Invoke-WebRequest -Uri $source -OutFile $download -UseBasicParsing
+            $hash = (Get-FileHash -LiteralPath $download -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($hash -cne $expected) { throw 'Official ZIP hash mismatch. Excel was not started.' }
+            .\gas\parity\run-excel-oracle.ps1 -ReleaseZip $download -OutputPath $report
+            'EXCEL_41_CASE_PARITY_RESULT: covered synthetic cases only; release HOLD.' >> $env:GITHUB_STEP_SUMMARY
+          } finally {
+            if (Test-Path -LiteralPath $download) { Remove-Item -LiteralPath $download -Force }
+          }
+      - uses: actions/upload-artifact@v4
+        if: >-
+          always() && github.event_name == 'push' &&
+          contains(github.event.head_commit.message, '[excel-parity-41]')
+        with:
+          name: Furusato-Excel-v4.18.2-parity-${{ github.run_id }}
+          path: gas/dist/parity/synthetic-oracle.json
           if-no-files-found: warn
           retention-days: 14
       - name: Acceptance boundary

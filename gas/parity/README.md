@@ -33,3 +33,21 @@ with 操作画面!B4 (the signed release normally does this via its tax-update
 macro), verifies the active master year, requires at least five NORMAL
 results per year, and checks the 2026 7-million-yen 109,000-yen anchor.
 A workbook returning HOLD for every case is not a passing oracle.
+
+
+### Owner-only Windows device execution
+
+An explicit [excel-parity-41] marker on a trusted owner push to
+feature/gas-workflow-20261106 triggers a one-shot 41-case Excel audit.
+The self-hosted workflow verifies the official ReadyToUse release
+SHA-256 before Excel starts. It downloads only the public release ZIP,
+uses a unique temporary folder and a new Excel COM PID, leaves
+previously-running Excel processes untouched, and deletes the downloaded
+ZIP after completion. Subsequent ordinary commits do not repeat it.
+Only owner-authored trusted push workflows run on the private Windows
+device; untrusted pull requests never do.
+
+The artifact contains synthetic test results only (14-day retention).
+HousingERP, the formal Excel release, Google credentials, and real
+customer data must not be accessed or modified. A mismatch, missing
+source, or too few NORMAL Excel cases means HOLD, not success.
