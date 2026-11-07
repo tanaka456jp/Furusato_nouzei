@@ -36,6 +36,7 @@ jobs:
           python tools/qa_contract.py workbook/baseline.xlsx
           python tools/report_formula_wiring.py
           python tools/test_workbook.py
+          node tools/test_excel_gas_v4183.cjs
           python tools/build_workbook.py Furusato_nouzei_audit.xlsx
           python tools/audit_tax_tables.py workbook/baseline.xlsx Furusato_nouzei_audit.xlsx
           python tools/audit_statutory_tables.py workbook/baseline.xlsx
@@ -101,6 +102,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'PDF filter contract mismatch' }
           python tools/test_workbook.py
           if ($LASTEXITCODE -ne 0) { throw 'Workbook static regression failed' }
+          node tools/test_excel_gas_v4183.cjs
+          if ($LASTEXITCODE -ne 0) { throw '41-case parity comparator contract failed' }
           python tools/audit_statutory_tables.py workbook/baseline.xlsx
           if ($LASTEXITCODE -ne 0) { throw 'Baseline statutory reference audit failed' }
           python tools/build_workbook.py statutory_review.xlsx
@@ -279,6 +282,47 @@ jobs:
         shell: powershell
         run: |
           "FAIL: VBAUpdater sandbox project-push is a mandatory acceptance gate. Product distribution is HOLD. Original workbook remains preserved. See staged push evidence." >> $env:GITHUB_STEP_SUMMARY
+      - name: Checkout exact pinned GAS PR #2 tax engine (read-only)
+        if: success()
+        uses: actions/checkout@v4
+        with:
+          ref: 17147b0b3ba06fb8f23b1fa9b459c7d7b8030ab2
+          path: _gas_reference_v4183
+          persist-credentials: false
+      - name: Compare 41 synthetic cases in actual Excel vs pinned GAS engine
+        if: success()
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $work = Join-Path $env:RUNNER_TEMP ('furusato-' + $env:GITHUB_RUN_ID + '-' + $env:GITHUB_RUN_ATTEMPT)
+          $book = Join-Path $work 'review/Furusato_nouzei.xlsm'
+          $acceptance = Get-Content -LiteralPath (Join-Path $work 'excel_acceptance.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+          $actual = (Get-FileHash -LiteralPath $book -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($acceptance.status -ne 'PASS' -or
+              $acceptance.workbook_sha256.ToLowerInvariant() -cne $actual) {
+            throw 'Previously accepted workbook does not match the workbook in parity test'
+          }
+          $reference = Join-Path $env:GITHUB_WORKSPACE '_gas_reference_v4183'
+          $evidence = Join-Path $work 'excel_gas_41_observations.json'
+          $comparison = Join-Path $work 'excel_gas_41_comparison.json'
+          if ((Test-Path -LiteralPath $evidence) -or (Test-Path -LiteralPath $comparison)) {
+            throw 'Synthetic parity outputs already exist'
+          }
+          & .\tools\run_excel_gas_41_v4183.ps1 -Workbook $book -GasCheckout $reference -OutputPath $evidence
+          $jsonLines = @(& node .\tools\compare_excel_gas_v4183.cjs $evidence $reference 2>&1)
+          $exitCode = $LASTEXITCODE
+          $json = [string]::Join([Environment]::NewLine,[string[]]$jsonLines)
+          [IO.File]::WriteAllText($comparison,$json,([System.Text.UTF8Encoding]::new($false)))
+          if ($exitCode -ne 0) { throw ('41-case comparator failed: '+$json) }
+          $report = $json | ConvertFrom-Json
+          if ($report.releaseVerdict -cne 'HOLD' -or
+              $report.numericVerdict -cne 'MATCH_41_OF_41' -or
+              $report.matched -ne 41 -or $report.mismatchCount -ne 0 -or
+              $report.actualExcelCOM -ne $true) {
+            throw ('Excel v4.18.3 vs GAS numerical discrepancy: '+$json)
+          }
+          ('Excel v4.18.3 vs pinned GAS: '+$report.matched+'/41 all 3 amounts match; '+
+             $report.excelCalculationPendingCount+' xlPending; release=HOLD') >> $env:GITHUB_STEP_SUMMARY
       - name: Upload verified review XLSM
         if: success()
         uses: actions/upload-artifact@v4
@@ -290,6 +334,8 @@ jobs:
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/vbaupdater_bridge.json
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/vbaupdater_push.json
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/vbaupdater_excel_acceptance.json
+            ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/excel_gas_41_observations.json
+            ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/excel_gas_41_comparison.json
           if-no-files-found: error
           retention-days: 14
       - name: Upload setup diagnostics
@@ -303,6 +349,8 @@ jobs:
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/excel_acceptance.json
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/excel_open_probe.json
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/vbaupdater_bridge.json
+            ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/excel_gas_41_observations.json
+            ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/excel_gas_41_comparison.json
           if-no-files-found: ignore
           retention-days: 7
       - name: Clean temporary acceptance data
