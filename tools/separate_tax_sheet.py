@@ -149,7 +149,7 @@ def add_separate_tax(book, home, field, bar, note, progressive):
     model["D15"] = f"=AND(B3={home_ref}B45,G{FIRST}-{home_ref}D47-MAX(0,B4-480000)<0)"
     for col, gross, ordinary, transfer in (
         ("E", gross_before, f"E{FIRST}", "$D$7"),
-        ("F", f"J{CANDIDATE}", f"C{CANDIDATE}", f"AA{CANDIDATE}"),
+        ("F", f"J{CANDIDATE}", f"C{CANDIDATE}", f"AC{CANDIDATE}"),
     ):
         model[f"{col}2"] = f"={after_housing(gross)}-$D$6"
         model[f"{col}3"] = f"=INT({after_housing(gross)}*21/1000)"
@@ -232,12 +232,12 @@ def add_separate_tax(book, home, field, bar, note, progressive):
         model[f"J{row}"] = f'={progressive(f"C{row}")}+' + "+".join(
             f"{get_column_letter(3 + i)}{row}*{bucket[2]}/100" for i, bucket in enumerate(buckets) if i)
         model[f"K{row}"] = f"={national_annual(f'J{row}')}"
-        model[f"AA{row}"] = f"=MIN({housing_unused(f'J{row}')},{housing_cap(f'C{row}')})"
+        model[f"AC{row}"] = f"=MIN({housing_unused(f'J{row}')},{housing_cap(f'C{row}')})"
         model[f"L{row}"] = f"=MAX(0,MIN(A{row}*10,$B$3*3)-20000)"
         model[f"M{row}"] = f"=ROUNDUP((L{row}*$B$5*10000+MIN($B$8*1000,MAX(0,A{row}-2000)*$B$6*$B$5*10))/5000000,0)"
         model[f"N{row}"] = f"=ROUNDUP((L{row}*(5-$B$5)*10000+MIN($B$9*1000,MAX(0,A{row}-2000)*$B$6*(5-$B$5)*10))/5000000,0)"
-        model[f"O{row}"] = f"={local_tax('$B$8', '$B$5', f'AA{row}', f'M{row}')}"
-        model[f"P{row}"] = f"={local_tax('$B$9', '(5-$B$5)', f'AA{row}', f'N{row}')}"
+        model[f"O{row}"] = f"={local_tax('$B$8', '$B$5', f'AC{row}', f'M{row}')}"
+        model[f"P{row}"] = f"={local_tax('$B$9', '(5-$B$5)', f'AC{row}', f'N{row}')}"
         model[f"Q{row}"] = f"=$B$7-K{row}"
         model[f"R{row}"] = f"=$B$10-O{row}-P{row}"
         model[f"S{row}"] = f"=A{row}-Q{row}-R{row}"

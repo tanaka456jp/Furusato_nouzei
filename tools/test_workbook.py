@@ -223,7 +223,7 @@ class WorkbookTest(unittest.TestCase):
         self.assertEqual(expected[2195999], 1453000)
         self.assertEqual(expected[2199999], 1456000)
         self.assertIn("IF(D4=2025,1900000,2200000)", formula)
-        self.assertIn("v4.18.13 分離課税検証版", self.book[HOME]["A1"].value)
+        self.assertIn("v4.18.14 分離課税検証版", self.book[HOME]["A1"].value)
         self.assertEqual(self.book[HOME]["A2"].hyperlink.location, "'操作画面'!A42")
         self.assertIsNone(self.book[HOME]["A7"].hyperlink)
 
@@ -254,6 +254,15 @@ class WorkbookTest(unittest.TestCase):
         self.assertNotIn('Range("B26").Value2 = ', source)
         self.assertNotIn('B19:B26',source)
         self.assertNotIn('Range("B4").Value2 = "通常"',source)
+
+    def test_tax_credit_grid_and_exact_search_have_separate_inputs(self):
+        model = self.book["分離課税詳細計算"]
+        self.assertIn("AC28*200", model["O28"].value)
+        self.assertIn("AC28*200", model["P28"].value)
+        self.assertIn("MIN(MAX(0", model["AC28"].value)
+        self.assertIn("AA28", model["W28"].value)
+        self.assertIn("AB28*200", model["X28"].value)
+        self.assertIn("AB28*200", model["Y28"].value)
 
     def test_generated_formulas_have_valid_excel_parentheses(self):
         # Excel rejects a workbook when an overlong/malformed nested status
