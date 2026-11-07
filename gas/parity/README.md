@@ -82,3 +82,11 @@ The JSON evidence captures numeric Excel CalculationState values (0=done,
 1=calculating, 2=pending), COM calculation-call time and a few state samples.
 It is **not** an Excel-parity oracle: `release=HOLD` and
 `eligibleForParity=false` even when an observed number appears plausible.
+
+
+A follow-up diagnostic uses an **ABA input test** (2026, salary
+7,000,000 → 5,000,000 → 7,000,000 yen, social insurance 1,000,000 yen)
+to distinguish live Excel recalculation from an unchanged cached value.
+It records both salary income and donation estimates at each point,
+compares the first/last anchor, and **still reports HOLD**. A successful
+ABA response is evidence of dynamic updates, not full Excel parity.

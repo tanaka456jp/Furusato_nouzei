@@ -88,52 +88,69 @@ public static class FurusatoExcelPid {
  if($anchor.Count -ne 1){throw 'Missing 2026 Excel anchor'}
  $ordered=@($anchor)+@($cases | Where-Object { $_.id -ne 'Y2026_G7000000' })
  if($DiagnosticOnly) {
-  $case=$anchor[0]
-  $settings.Range('B4').Value2=[int]$case.year
-  $sheet.Range('B4').Value2=[string]$case.year
-  $sheet.Range('B11').Value2=[string]$case.year
-  $sheet.Range('B12').Value2=[double]$case.salaryGross
-  $sheet.Range('B15').Value2=[double]0
-  $sheet.Range('B16').Value2=[double]$case.socialInsurance
-  $sheet.Range('D24').Value2=$oneStop
-  $before=[int]$excel.CalculationState
-  Write-Output ('EXCEL_DIAG_START: state='+$before+'; case='+$case.id)
-  $clock=[Diagnostics.Stopwatch]::StartNew()
-  $excel.Calculate()
-  $callMs=$clock.ElapsedMilliseconds
-  $sample=@()
-  for($i=0;$i -lt 12;$i++){
-   $code=[int]$excel.CalculationState
-   $sample+= $code
-   if($code -eq 0){break}
-   Start-Sleep -Milliseconds 500
+  # Input ABA (7m / 5m / 7m) probes a live calculation, not a cached result.
+  # All outputs remain unapproved regardless of whether the values respond.
+  $probeInputs=@(
+    [pscustomobject]@{id='A';gross=7000000},
+    [pscustomobject]@{id='B';gross=5000000},
+    [pscustomobject]@{id='A2';gross=7000000}
+  )
+  $probes=@()
+  foreach($probe in $probeInputs){
+   $settings.Range('B4').Value2=2026
+   $sheet.Range('B4').Value2='2026'
+   $sheet.Range('B11').Value2='2026'
+   $sheet.Range('B12').Value2=[double]$probe.gross
+   $sheet.Range('B15').Value2=[double]0
+   $sheet.Range('B16').Value2=[double]1000000
+   $sheet.Range('D24').Value2=$oneStop
+   $before=[int]$excel.CalculationState
+   $clock=[Diagnostics.Stopwatch]::StartNew()
+   $excel.Calculate()
+   $callMs=$clock.ElapsedMilliseconds
+   $states=@()
+   for($i=0;$i -lt 6;$i++){
+    $current=[int]$excel.CalculationState
+    $states+= $current
+    if($current -eq 0){break}
+    Start-Sleep -Milliseconds 200
+   }
+   $after=[int]$excel.CalculationState
+   $amount=[string]$sheet.Range('B8').Value2
+   $salary=[string]$sheet.Range('B13').Value2
+   $status=[string]$sheet.Range('B28').Value2
+   $activeYear=[string]$sheet.Range('D4').Value2
+   Write-Output ('EXCEL_ABA_PROBE '+$probe.id+
+      ' gross='+$probe.gross+'; stateBefore='+$before+
+      '; stateAfter='+$after+'; calcMs='+$callMs+
+      '; status='+$status+'; displayedLimit='+$amount+
+      '; salaryIncome='+$salary)
+   $probes+= [pscustomobject]@{
+    probeId=$probe.id;grossYen=[long]$probe.gross;calculationBefore=$before
+    calculationAfter=$after;calculateCallMilliseconds=$callMs
+    stateSamples=@($states);statusText=$status
+    year=$activeYear;donationLimitYen=$amount;salaryIncomeYen=$salary
+   }
   }
-  $after=[int]$excel.CalculationState
-  $status=[string]$sheet.Range('B28').Value2
-  $amount=$sheet.Range('B8').Value2
-  $masterYear=[string]$sheet.Range('D4').Value2
+  $changed= $probes[0].donationLimitYen -cne $probes[1].donationLimitYen
+  $reversed= $probes[0].donationLimitYen -ceq $probes[2].donationLimitYen
+  $salaryChanged= $probes[0].salaryIncomeYen -cne $probes[1].salaryIncomeYen
   $diag=[ordered]@{
-   schema='furusato-excel-calculation-diagnostic/v1'
-   release='HOLD'
-   caseId=$case.id
-   verifiedZipSha256=$expectedZipSha
-   excelWorkbookSha256=$bookHash
-   excelVersion=[string]$excel.Version
+   schema='furusato-excel-calculation-diagnostic/v2'
+   release='HOLD';eligibleForParity=$false
+   verifiedZipSha256=$expectedZipSha;excelWorkbookSha256=$bookHash
+   excelVersion=[string]$excel.Version;macrosDisabled=$true
    workbookReadOnly=[bool]$book.ReadOnly
-   macrosDisabled=$true
    ownedExcelPid=[uint32]$createdPid
-   calculationBefore=$before
-   calculateCallMilliseconds=$callMs
-   calculationStates=@($sample)
-   calculationAfter=$after
-   masterYear=$masterYear
-   sourceStatus=$status
-   observedDonationYen=([string]$amount)
-   eligibleForParity=$false
+   dynamicAmountChanged=[bool]$changed
+   dynamicSalaryChanged=[bool]$salaryChanged
+   anchorRestored=[bool]$reversed
+   probes=@($probes)
   }
-  $outputJson=ConvertTo-Json -InputObject $diag -Depth 6
-  [System.IO.File]::WriteAllText($outputFull,$outputJson,([System.Text.UTF8Encoding]::new($false)))
-  Write-Output ('EXCEL_DIAG_RESULT: callMs='+$callMs+'; state='+$after+'; status='+$status+'; acceptance=HOLD')
+  [IO.File]::WriteAllText($outputFull,(ConvertTo-Json -InputObject $diag -Depth 8),
+      ([System.Text.UTF8Encoding]::new($false)))
+  Write-Output ('EXCEL_ABA_DIAG_COMPLETE: amountChanged='+$changed+
+    '; salaryChanged='+$salaryChanged+'; anchorRestored='+$reversed+'; acceptance=HOLD')
   return
  }
  $index=0

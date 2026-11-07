@@ -60,7 +60,9 @@ assert.ok(script.includes("EXCEL_CASE_CALCULATED"),"Per-case timing evidence req
 const diagnosticScript=fs.readFileSync(path.join(__dirname,"..","parity","run-excel-oracle.ps1"),"utf8");
 assert.ok(diagnosticScript.includes("[switch]$DiagnosticOnly"),"diagnostic flag required");
 assert.ok(diagnosticScript.includes("eligibleForParity=$false"),"diagnostics never count as parity");
-assert.ok(diagnosticScript.includes("calculationStates=@($sample)"),"must capture Excel calculation states");
+assert.ok(diagnosticScript.includes("stateSamples=@($states)"),"must capture Excel calculation states");
+assert.ok(diagnosticScript.includes("dynamicAmountChanged"),"ABA must detect amount response");
+assert.ok(diagnosticScript.includes("anchorRestored"),"ABA must check original anchor restored");
 const workflow=fs.readFileSync(path.join(__dirname,"..","..",".github","workflows","gas-private-acceptance.yml"),"utf8");
 assert.ok(workflow.includes("[excel-calc-diagnostic]"),"owner-only diagnostic workflow absent");
 console.log("PARITY CONTRACT PASS (41 mock rows, provenance, batching, diagnostic HOLD). Real Excel result separate.");
