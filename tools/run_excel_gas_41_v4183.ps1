@@ -43,7 +43,7 @@ if(-not (Test-Path -LiteralPath (Split-Path $out -Parent) -PathType Container)){
 }
 $workbookSha=(Get-FileHash -LiteralPath $workbookPath -Algorithm SHA256).Hash.ToLowerInvariant()
 $engineSha=(Get-FileHash -LiteralPath $enginePath -Algorithm SHA256).Hash.ToLowerInvariant()
-$excel=$null;$book=$null;$home=$null;$master=$null;$ownsExcel=$false
+$excel=$null;$book=$null;$screenSheet=$null;$master=$null;$ownsExcel=$false
 $observed=@();$probes=@()
 try {
   # Never attach to, modify or terminate an already-running Excel session.
@@ -71,9 +71,9 @@ public static class FurusatoExcelParityPidV4183 {
   $excel.AutomationSecurity=3
   $book=$excel.Workbooks.Open($workbookPath,0,$true)
   if(-not $book.ReadOnly){throw 'Accepted XLSM must open read-only'}
-  $home=$book.Worksheets.Item('操作画面')
+  $screenSheet=$book.Worksheets.Item('操作画面')
   $master=$book.Worksheets.Item('設定・税率')
-  if([string]$home.Range('A1').Value2 -notmatch 'v4\.18\.3'){
+  if([string]$screenSheet.Range('A1').Value2 -notmatch 'v4\.18\.3'){
     throw 'Workbook is not v4.18.3 review build'
   }
   # Manual mode is applied only to this newly-owned Excel instance.
@@ -85,12 +85,12 @@ public static class FurusatoExcelParityPidV4183 {
     if($case.year -ne 2025 -and $case.year -ne 2026){throw 'Unexpected test year'}
     if($case.filing -cne 'one-stop'){throw 'Unsupported filing mode in reference cases'}
     $master.Range('B4').Value2=[int]$case.year
-    $home.Range('B4').Value2=[string]$case.year
-    $home.Range('B11').Value2=[string]$case.year
-    $home.Range('B12').Value2=[double]$case.salaryGross
-    $home.Range('B15').Value2=[double]0
-    $home.Range('B16').Value2=[double]$case.socialInsurance
-    $home.Range('D24').Value2='ワンストップ'
+    $screenSheet.Range('B4').Value2=[string]$case.year
+    $screenSheet.Range('B11').Value2=[string]$case.year
+    $screenSheet.Range('B12').Value2=[double]$case.salaryGross
+    $screenSheet.Range('B15').Value2=[double]0
+    $screenSheet.Range('B16').Value2=[double]$case.socialInsurance
+    $screenSheet.Range('D24').Value2='ワンストップ'
     $excel.Calculate()
     $state=[int]$excel.CalculationState
     for($attempt=0;$attempt -lt 12 -and $state -eq 1;$attempt++){
@@ -100,15 +100,15 @@ public static class FurusatoExcelParityPidV4183 {
     if($state -ne 0 -and $state -ne 2){
       throw ('Excel calculation not safe to observe: '+$case.id+'; state='+$state)
     }
-    $active=[string]$home.Range('D4').Value2
+    $active=[string]$screenSheet.Range('D4').Value2
     if($active -cne [string]$case.year){
       throw ('Tax master year mismatch: '+$case.id)
     }
-    $status=[string]$home.Range('B28').Value2
+    $status=[string]$screenSheet.Range('B28').Value2
     if($status -cne '正常'){throw ('Excel did not return NORMAL for '+$case.id+'; '+$status)}
-    $income=$home.Range('B13').Value2
-    $levy=$home.Range('D8').Value2
-    $limit=$home.Range('B8').Value2
+    $income=$screenSheet.Range('B13').Value2
+    $levy=$screenSheet.Range('D8').Value2
+    $limit=$screenSheet.Range('B8').Value2
     foreach($val in @($income,$levy,$limit)){
       if($null -eq $val -or
          -not ($val -is [double] -or $val -is [int] -or $val -is [long]) -or
@@ -164,7 +164,7 @@ finally {
   if($null -ne $book){try{$book.Close($false)}catch{}}
   if($ownsExcel -and $null -ne $excel){try{$excel.Quit()}catch{}}
   if($null -ne $master){[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($master)}
-  if($null -ne $home){[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($home)}
+  if($null -ne $screenSheet){[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($screenSheet)}
   if($null -ne $book){[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($book)}
   if($null -ne $excel){[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($excel)}
   [GC]::Collect()
