@@ -1,6 +1,6 @@
 {
   "schema": "furusato-private-install/v1",
-  "installerRevision": 2,
+  "installerRevision": 3,
   "projectPrefix": "Furusato_PRIVATE_SYNTHETIC_",
   "access": "MYSELF",
   "executeAs": "USER_DEPLOYING",

@@ -161,6 +161,7 @@ const driveUrl=id=>'https://www.googleapis.com/drive/v3/files/'+encodeURICompone
 async function protectedRemoteDigest(api,id){
   const content=digest((await api(scriptUrl(id)+'/content')).files);
   const deployments=await api(scriptUrl(id)+'/deployments');
+  ensure(!deployments.nextPageToken,'Protected deployment inventory is incomplete; STOP');
   return hash(JSON.stringify({content,deployments}));
 }
 async function sheetCheck(api,id,owner){
