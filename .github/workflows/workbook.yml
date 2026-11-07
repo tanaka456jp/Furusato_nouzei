@@ -239,6 +239,12 @@ jobs:
           $setup = Join-Path $work 'review/setup.ps1'
           powershell.exe -NoProfile -File $setup
           if ($LASTEXITCODE -ne 0) { throw 'Excel installer failed; see setup.log' }
+          $reviewed = Join-Path $work 'review/Furusato_nouzei.xlsm'
+          # The fail-closed UI gate runs BEFORE the tax-master network update.
+          # A blocked external catalog must not conceal stale-result failures.
+          & .\\tools\\verify_stale_ui.ps1 -Workbook $reviewed
+          if (-not $?) { throw 'Manual calculation stale-result gate failed' }
+          'STALE_RESULTS_REAL_EXCEL_PASS (isolated synthetic).' >> $env:GITHUB_STEP_SUMMARY
           $evidence = Join-Path $work 'excel_acceptance.json'
           & .\tools\verify_excel.ps1 -Workbook (Join-Path $work 'review/Furusato_nouzei.xlsm') -EvidencePath $evidence
           if (-not $?) { throw 'Windows Excel acceptance failed' }
