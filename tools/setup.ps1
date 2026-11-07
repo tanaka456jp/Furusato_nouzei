@@ -133,13 +133,23 @@ try {
     $eventCode = @'
 
 Private Sub Workbook_Open()
+    TaxLawUpdater.MaskUnverifiedResults
     TaxLawUpdater.BindButtons
     TaxLawUpdater.ReturnHome
     Application.Calculate
+    TaxLawUpdater.RevealVerifiedResults
 End Sub
 
 Private Sub Workbook_SheetChange(ByVal Sh As Object, ByVal Target As Range)
-    If Sh Is Me.Worksheets(1) Then Application.Calculate
+    If Sh Is Me.Worksheets("操作画面") Or Sh Is Me.Worksheets("例外・分離課税") Then
+        TaxLawUpdater.MaskUnverifiedResults
+        Application.Calculate
+        TaxLawUpdater.RevealVerifiedResults
+    End If
+End Sub
+
+Private Sub Workbook_SheetCalculate(ByVal Sh As Object)
+    TaxLawUpdater.RevealVerifiedResults
 End Sub
 '@
     $bookModule = $workbook.VBProject.VBComponents.Item($workbook.CodeName).CodeModule
