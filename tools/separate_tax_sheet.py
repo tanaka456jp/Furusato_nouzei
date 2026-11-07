@@ -17,19 +17,19 @@ def add_separate_tax(book, home, field, bar, note, progressive):
     model = book.create_sheet(MODEL)
     buckets = SPEC["buckets"]
     bar(home, 42, "詳細設定 | 申告分離課税（検証版）")
-    note(home, 43, "所得控除前・経費差引後の所得を入力します。源泉分離・申告不要・NISAは加えません。金額は円、該当なしは0です。")
+    note(home, 43, "総所得金額は給与所得控除後等の所得です。分離所得は所得控除前・経費差引後で入力。源泉分離・申告不要・NISAは加えません。金額は円、該当なしは0です。")
     field("B44", "計算する案件", "給与・通常", ("給与・通常", "申告分離"))
     field("D44", "申告方式", "確定申告", ("確定申告", "ワンストップ"))
     for row, bucket in enumerate(buckets, 45):
         field(f"B{row}", bucket[1])
-    field("D45", "所得税の所得控除合計")
+    field("D45", "所得税の控除合計（寄附前）")
     field("D46", "住民税の所得控除合計")
     field("D47", "法定人的控除差の合計")
     field("D48", "検算する寄附額")
     field("D49", "適用条件", "未確認", ("未確認", "照合済", "特例あり"))
     field("D50", "分離課税の所得年", 2026, maximum=2026)
     note(home, 52, "標準税率の普通市町村（市町村6%・道府県4%）を前提とします。非課税・調整措置、特別控除、損失、税額控除、源泉税の精算、他の寄附がある案件は「特例あり」を選択。")
-    note(home, 53, "基礎控除を含む所得控除合計を税目別に入力。法定人的控除差は基礎控除5万円を含み、国税と住民税の控除合計の差とは別です。")
+    note(home, 53, "検算対象を含む寄附金控除を除き、基礎控除を含む控除合計を税目別に入力。法定人的控除差は基礎控除5万円を含み、国税と住民税の控除合計の差とは別です。")
     note(home, 54, "入力はブックに保存できます。修正後は自動再計算（手動時はF9）。控除配分・年税額・寄附負担を再計算します。")
     home["A55"] = "詳細設定の状態"
     home["B55"] = f"='{MODEL}'!B2"
@@ -40,7 +40,7 @@ def add_separate_tax(book, home, field, bar, note, progressive):
     home["B56"] = f'=IF(\'{MODEL}\'!B2="計算可能",\'{MODEL}\'!B12,"")'
     home["C56"] = "入力寄附の自己負担"
     home["D56"] = f'=IF(\'{MODEL}\'!B2="計算可能",\'{MODEL}\'!S{CANDIDATE},"")'
-    labels = ("所得区分", "国税控除配分", "国税課税所得", "住民税課税所得")
+    labels = ("所得区分", "控除配分 国税／住民税", "国税課税所得", "住民税課税所得")
     for col, label in enumerate(labels, 1):
         home.cell(57, col, label)
     for row, bucket in enumerate(buckets, 58):
@@ -48,6 +48,11 @@ def add_separate_tax(book, home, field, bar, note, progressive):
         home.cell(row, 1, bucket[1])
         for col, calc_col in zip("BCD", "CEG"):
             home[f"{col}{row}"] = f'=IF(\'{MODEL}\'!B2="計算可能",\'{MODEL}\'!{calc_col}{calc_row},"")'
+        home[f"B{row}"] = (
+            f"""=IF('{MODEL}'!B2="計算可能",TEXT('{MODEL}'!C{calc_row},"#,##0")"""
+            f"""&"／"&TEXT('{MODEL}'!D{calc_row},"#,##0"),"")"""
+        )
+
     home["A65"] = "寄附前：所得税等"
     home["B65"] = f'=IF(\'{MODEL}\'!B2="計算可能",\'{MODEL}\'!B7,"")'
     home["C65"] = "寄附前：住民税所得割"
@@ -55,10 +60,13 @@ def add_separate_tax(book, home, field, bar, note, progressive):
     home["A66"] = "寄附後：所得税等"
     home["B66"] = f'=IF(\'{MODEL}\'!B2="計算可能",\'{MODEL}\'!K{CANDIDATE},"")'
     home["C66"] = "寄附後：住民税所得割"
-    home["D66"] = f'=IF(\'{MODEL}\'!B2="計算可能",\'{MODEL}\'!SUM_PLACEHOLDER,"")'.replace(
-        f"'{MODEL}'!SUM_PLACEHOLDER", f"SUM('{MODEL}'!O{CANDIDATE}:P{CANDIDATE})")
+    home["D66"] = f'=IF(\'{MODEL}\'!B2="計算可能",SUM(\'{MODEL}\'!O{CANDIDATE}:P{CANDIDATE}),"")'
     note(home, 67, "所得税等は源泉徴収精算前。試算対象を超える場合は、寄附目安額・税額を保留します。正式リリースHOLD。")
-    for row in range(56, 67):
+    home["A68"] = "所得年／住民税年度"
+    home["B68"] = '=IF(B55="計算可能",D50&"／"&(D50+1),"")'
+    home["C68"] = "住民税特例控除割合"
+    home["D68"] = f"""=IF('{MODEL}'!B2="計算可能",'{MODEL}'!B6/100000,"")"""
+    for row in list(range(56, 67)) + [68]:
         home.row_dimensions[row].height = 25
         for col in "ABCD":
             cell = home[f"{col}{row}"]
@@ -68,6 +76,7 @@ def add_separate_tax(book, home, field, bar, note, progressive):
                 cell.fill = PatternFill("solid", fgColor="EAF3EA")
                 cell.protection = Protection(locked=True)
 
+    home["D68"].number_format = "0.000%"
     home_ref = "'操作画面'!"
     model["A1"] = "申告分離課税・独立計算（合成検証版）"
     model["B3"] = f"=SUM({home_ref}B45:B51)"
@@ -90,7 +99,6 @@ def add_separate_tax(book, home, field, bar, note, progressive):
         '"SAFE-TAX-015 安全停止。基礎控除を含む税目別控除・法定人的控除差を照合。",'
         '"計算可能"))))))),"SAFE-TAX-011 要確認。入力エラーを修正して再計算。")'
     )
-    model["B5"] = f'=E{FIRST}-{home_ref}D47-MAX(0,B4-480000)'
     model["B6"] = f'=IF(AND(G{FIRST}>0,G{FIRST}-{home_ref}D47-MAX(0,B4-480000)>=0),90000-1021*LOOKUP(G{FIRST}-{home_ref}D47-MAX(0,B4-480000),{{0,1950001,3300001,6950001,9000001,18000001,40000001}},{{5,10,20,23,33,40,45}}),IF(B{FIRST+1}>0,59370,74685))'
     last = FIRST + len(buckets) - 1
     model["B7"] = f'=SUM(H{FIRST}:H{last})+INT(SUM(H{FIRST}:H{last})*21/1000)'

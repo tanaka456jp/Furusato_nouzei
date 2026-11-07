@@ -561,9 +561,10 @@ try {
     if (-not $detail.PageSetup.PrintArea) { throw 'Calculation details lack print area' }
     QA-Stage 'statutory-split-cases-start'
     . (Join-Path $PSScriptRoot 'test_separate_excel.ps1')
-    $splitCases = @(Test-SeparateTaxCases -Excel $excel -Book $book -FixturePath (Join-Path $PSScriptRoot '../taxdata/separate-tax-cases-v1.json'))
+    $splitCases = @(Test-SeparateTaxCases -Excel $excel -Book $book -FixturePath (Join-Path $PSScriptRoot '../taxdata/separate-tax-cases-v1.json') -PdfPath (Join-Path $dir 'split-result.pdf'))
     if ($splitCases.Count -ne 42) { throw 'Split evidence is incomplete' }
     QA-Stage 'statutory-split-42-pass'
+    QA-Stage 'statutory-split-pdf-and-safety-recovery-pass'
     QA-Stage 'all-acceptance-checks-pass'
     $passed = $true
     Write-Output 'PASS: Windows Excel 52 fixtures; 2025/2026 amounts; approved/rejected updates; persisted fault rollback; backup; VBA PDF/hidden UI/no-overwrite; isolated no-overwrite case-save; save/reopen; button wiring.'

@@ -285,6 +285,7 @@ Public Sub ImportWithholding()
     If Not fso.FileExists(backup) Then Err.Raise vbObjectError + 214, , "更新前のバックアップを作成できません。"
     Set home = ThisWorkbook.Worksheets("操作画面")
     Set extra = ThisWorkbook.Worksheets("例外・分離課税")
+    ResetSeparateInputs home
     home.Range("B11:B12,B15:B16,B19:B25,B33:B36,D11:D23").ClearContents
     ' Leave independent pension, business and other income entries untouched.
     extra.Range("B13:B20").ClearContents
@@ -495,9 +496,20 @@ Public Sub RecalculateCase()
     Application.Calculate
 End Sub
 
+Private Sub ResetSeparateInputs(ByVal home As Worksheet)
+    ' Only templates with this detail section own these ranges.
+    If CStr(home.Range("A42").Value2) <> "詳細設定 | 申告分離課税（検証版）" Then Exit Sub
+    home.Range("B44").Value2 = "給与・通常"
+    home.Range("B45:B51,D45:D48").ClearContents
+    home.Range("D44").Value2 = "確定申告"
+    home.Range("D49").Value2 = "未確認"
+    home.Range("D50").Value2 = 2026
+End Sub
+
 Public Sub NewCase()
     If MsgBox("現在の入力を消去しますか？保存が必要な場合は先に案件保存してください。", _
               vbQuestion + vbYesNo + vbDefaultButton2, "新規入力") <> vbYes Then Exit Sub
+    ResetSeparateInputs ThisWorkbook.Worksheets("操作画面")
     With ThisWorkbook.Worksheets("操作画面")
         .Range("B11:B12,B15:B16,B19:B25,B33:B36,D11:D23").ClearContents
         .Range("B11").Value2 = .Range("B4").Value2
@@ -598,6 +610,12 @@ Public Sub ReturnFromAdvanced()
 End Sub
 
 Public Sub ShowDetails()
+    Dim screen As Worksheet
+    Set screen = ThisWorkbook.Worksheets("操作画面")
+    If SeparateMode(screen) Then
+        Application.Goto screen.Range("A55"), True
+        Exit Sub
+    End If
     With ThisWorkbook.Worksheets("計算根拠")
         .Visible = xlSheetVisible
         .Activate
@@ -609,17 +627,45 @@ Public Sub ReturnHome()
     ThisWorkbook.Worksheets("計算根拠").Visible = xlSheetVeryHidden
 End Sub
 
+Private Function SeparateMode(ByVal screen As Worksheet) As Boolean
+    SeparateMode = (CStr(screen.Range("A42").Value2) = "詳細設定 | 申告分離課税（検証版）" And _
+                    CStr(screen.Range("B44").Value2) = "申告分離")
+End Function
+
+Private Sub CheckReportAvailable(ByVal screen As Worksheet)
+    If SeparateMode(screen) Then
+        If CStr(screen.Range("B55").Value2) <> "計算可能" Then
+            Err.Raise vbObjectError + 111, , CStr(screen.Range("B55").Value2)
+        End If
+    ElseIf CStr(screen.Range("B28").Value2) <> "正常" Then
+        Err.Raise vbObjectError + 111, , "入力と計算状態を確認してください。"
+    End If
+End Sub
+
 Public Sub PrintDetails()
+    Dim screen As Worksheet, previousArea As String, areaChanged As Boolean
+    Dim problem As String
     On Error GoTo Failed
     Application.Calculate
-    If CStr(ThisWorkbook.Worksheets("操作画面").Range("B28").Value2) <> "正常" Then
-        Err.Raise vbObjectError + 110, , "入力と計算状態を確認してください。"
+    Set screen = ThisWorkbook.Worksheets("操作画面")
+    CheckReportAvailable screen
+    If SeparateMode(screen) Then
+        previousArea = screen.PageSetup.PrintArea
+        screen.PageSetup.PrintArea = "$A$55:$D$68"
+        areaChanged = True
+        screen.PrintPreview
+        screen.PageSetup.PrintArea = previousArea
+    Else
+        ShowDetails
+        ThisWorkbook.Worksheets("計算根拠").PrintPreview
     End If
-    ShowDetails
-    ThisWorkbook.Worksheets("計算根拠").PrintPreview
     Exit Sub
 Failed:
-    MsgBox Err.Description, vbExclamation, "印刷"
+    problem = Err.Description
+    On Error Resume Next
+    If areaChanged Then screen.PageSetup.PrintArea = previousArea
+    On Error GoTo 0
+    MsgBox problem, vbExclamation, "印刷"
 End Sub
 
 ' PDF export is verified and staged exactly like case saving.
@@ -627,11 +673,11 @@ End Sub
 Public Function ExportDetailsToFile(ByVal destination As String) As Boolean
     Dim fso As Object, folder As String, temporary As String
     Dim i As Long, code As Long, problem As String, openedDetail As Boolean
+    Dim screen As Worksheet, previousArea As String, areaChanged As Boolean
     On Error GoTo Failed
     Application.Calculate
-    If CStr(ThisWorkbook.Worksheets("操作画面").Range("B28").Value2) <> "正常" Then
-        Err.Raise vbObjectError + 111, , "入力と計算状態を確認してください。"
-    End If
+    Set screen = ThisWorkbook.Worksheets("操作画面")
+    CheckReportAvailable screen
     Set fso = CreateObject("Scripting.FileSystemObject")
     If Len(Trim$(destination)) = 0 Or LCase$(Right$(destination, 4)) <> ".pdf" Then
         Err.Raise vbObjectError + 112, , ".pdfの拡張子で保存してください。"
@@ -651,12 +697,21 @@ Public Function ExportDetailsToFile(ByVal destination As String) As Boolean
     If i > 1000 Then
         Err.Raise vbObjectError + 122, , "PDF用一時ファイル名を確保できません。"
     End If
-    If ThisWorkbook.Worksheets("計算根拠").Visible <> xlSheetVisible Then
-        ShowDetails
-        openedDetail = True
+    If SeparateMode(screen) Then
+        previousArea = screen.PageSetup.PrintArea
+        screen.PageSetup.PrintArea = "$A$55:$D$68"
+        areaChanged = True
+        screen.ExportAsFixedFormat Type:=xlTypePDF, Filename:=temporary
+        screen.PageSetup.PrintArea = previousArea
+        areaChanged = False
+    Else
+        If ThisWorkbook.Worksheets("計算根拠").Visible <> xlSheetVisible Then
+            ShowDetails
+            openedDetail = True
+        End If
+        ThisWorkbook.Worksheets("計算根拠").ExportAsFixedFormat _
+            Type:=xlTypePDF, Filename:=temporary
     End If
-    ThisWorkbook.Worksheets("計算根拠").ExportAsFixedFormat _
-        Type:=xlTypePDF, Filename:=temporary
     If Not fso.FileExists(temporary) Then
         Err.Raise vbObjectError + 123, , "PDFの作成を確認できません。"
     End If
@@ -671,6 +726,7 @@ Failed:
     code = Err.Number
     problem = Err.Description
     On Error Resume Next
+    If areaChanged Then screen.PageSetup.PrintArea = previousArea
     If Not fso Is Nothing Then
         If Len(temporary) > 0 Then
             If fso.FileExists(temporary) Then fso.DeleteFile temporary, True
@@ -685,9 +741,7 @@ Public Sub ExportDetails()
     Dim destination As Variant
     On Error GoTo Failed
     Application.Calculate
-    If CStr(ThisWorkbook.Worksheets("操作画面").Range("B28").Value2) <> "正常" Then
-        Err.Raise vbObjectError + 111, , "入力と計算状態を確認してください。"
-    End If
+    CheckReportAvailable ThisWorkbook.Worksheets("操作画面")
     destination = Application.GetSaveAsFilename(InitialFileName:="Furusato_result.pdf", _
                    FileFilter:="PDF (*.pdf),*.pdf")
     If VarType(destination) = vbBoolean Then Exit Sub

@@ -73,11 +73,12 @@ public static class FurusatoExcelParityPidV4183 {
   if(-not $book.ReadOnly){throw 'Accepted XLSM must open read-only'}
   $screenSheet=$book.Worksheets.Item('操作画面')
   $master=$book.Worksheets.Item('設定・税率')
-  if([string]$screenSheet.Range('A1').Value2 -notmatch 'v4\.18\.[34]'){
+  if([string]$screenSheet.Range('A1').Value2 -notmatch 'v4\.18\.[345]'){
     throw 'Workbook is not an approved v4.18.3/4 review build'
   }
   # Manual mode is applied only to this newly-owned Excel instance.
   $excel.Calculation=-4135
+  $excelRevision = [regex]::Match([string]$screenSheet.Range('A1').Value2, 'v4\.18\.[345]').Value + '-review'
   $sequence=@($anchor7[0],$anchor5[0],$anchor7[0]) + @($cases)
   $counter=0
   foreach($case in $sequence){
@@ -212,6 +213,7 @@ public static class FurusatoExcelParityPidV4183 {
   $evidence=[ordered]@{
     schema='furusato-excel-gas-v4183/v1'
     source='EXCEL_COM_V4_18_3_REVIEW'
+    excelRevision=$excelRevision
     officialExcelSource=$false
     workbookSha256=$workbookSha
     gasCommitSha=$expectedCommit

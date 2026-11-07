@@ -222,7 +222,7 @@ class WorkbookTest(unittest.TestCase):
         self.assertEqual(expected[2195999], 1453000)
         self.assertEqual(expected[2199999], 1456000)
         self.assertIn("IF(D4=2025,1900000,2200000)", formula)
-        self.assertIn("v4.18.4 分離課税検証版", self.book[HOME]["A1"].value)
+        self.assertIn("v4.18.5 分離課税検証版", self.book[HOME]["A1"].value)
 
     def test_no_customer_values_in_main_inputs(self):
         home = self.book[HOME]

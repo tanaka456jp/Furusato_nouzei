@@ -104,7 +104,7 @@ function compare(observation, cases, gasEngine, opts = {}) {
   const allNumericMatch = matched === 41 && differences.length === 0;
   return {
     schema: "furusato-excel-gas-41-comparison/v1",
-    excelRevision: "v4.18.3-review", gasCommitSha: PINNED_GAS_SHA,
+    excelRevision: observation.excelRevision || "v4.18.3-review", gasCommitSha: PINNED_GAS_SHA,
     workbookSha256: observation.workbookSha256, gasEngineSha256: observation.gasEngineSha256,
     actualExcelCOM: !opts.allowMock, checked: 41, matched, mismatchCount: differences.length,
     excelCalculationDoneCount: done, excelCalculationPendingCount: pending,
