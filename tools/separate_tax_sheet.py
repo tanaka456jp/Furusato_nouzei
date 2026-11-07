@@ -66,7 +66,7 @@ def add_separate_tax(book, home, field, bar, note, progressive):
     home["B66"] = f'=IF(\'{MODEL}\'!B2="計算可能",\'{MODEL}\'!K{CANDIDATE},"")'
     home["C66"] = "寄附後：住民税所得割"
     home["D66"] = f'=IF(\'{MODEL}\'!B2="計算可能",SUM(\'{MODEL}\'!O{CANDIDATE}:P{CANDIDATE}),"")'
-    note(home, 67, "所得税等は源泉徴収精算前。試算対象を超える場合は、寄附目安額・税額を保留します。正式リリースHOLD。")
+    note(home, 67, '=A1&"。所得税等は源泉徴収精算前。試算対象を超える場合は税額等を保留。正式リリースHOLD。"')
     home["A68"] = "所得年／住民税年度"
     home["B68"] = '=IF(B55="計算可能",D50&"／"&(D50+1),"")'
     home["C68"] = "住民税特例控除割合"
@@ -263,7 +263,7 @@ def add_separate_tax(book, home, field, bar, note, progressive):
             f"{taxable[i]}*{buckets[i][2]}/100" for i in range(1, len(buckets))
         )
         model[f"W{row}"] = f"={guard}{base})"
-        model[f"AB{row}"] = f"={guard}MIN({housing_unused(f'W{row}')},{housing_cap(f'AA{row}')})"
+        model[f"AB{row}"] = f"={guard}MIN({housing_unused(f'W{row}')},{housing_cap(f'AA{row}')}))"
         basic = f"MAX(0,MIN(U{row}*10,$B$3*3)-20000)"
         for column, levy_row, share in (("X", 8, "$B$5"), ("Y", 9, "(5-$B$5)")):
             levy = f"$B${levy_row}"

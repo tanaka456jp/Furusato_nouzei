@@ -644,6 +644,14 @@ Private Sub CheckReportAvailable(ByVal screen As Worksheet)
     End If
 End Sub
 
+Private Function DetailsPrintArea(ByVal screen As Worksheet) As String
+    DetailsPrintArea = "$A$55:$D$70"
+    If CStr(screen.Range("A71").Value2) <> "詳細設定 | 税額控除（該当なしは0）" Then Exit Function
+    If Application.Sum(screen.Range("D74:D76")) > 0 Then
+        DetailsPrintArea = DetailsPrintArea & ",$A$80:$D$86"
+    End If
+End Function
+
 Public Sub PrintDetails()
     Dim screen As Worksheet, previousArea As String, areaChanged As Boolean
     Dim problem As String
@@ -653,7 +661,7 @@ Public Sub PrintDetails()
     CheckReportAvailable screen
     If SeparateMode(screen) Then
         previousArea = screen.PageSetup.PrintArea
-        screen.PageSetup.PrintArea = "$A$55:$D$70"
+        screen.PageSetup.PrintArea = DetailsPrintArea(screen)
         areaChanged = True
         screen.PrintPreview
         screen.PageSetup.PrintArea = previousArea
@@ -701,7 +709,7 @@ Public Function ExportDetailsToFile(ByVal destination As String) As Boolean
     End If
     If SeparateMode(screen) Then
         previousArea = screen.PageSetup.PrintArea
-        screen.PageSetup.PrintArea = "$A$55:$D$70"
+        screen.PageSetup.PrintArea = DetailsPrintArea(screen)
         areaChanged = True
         screen.ExportAsFixedFormat Type:=xlTypePDF, Filename:=temporary
         screen.PageSetup.PrintArea = previousArea

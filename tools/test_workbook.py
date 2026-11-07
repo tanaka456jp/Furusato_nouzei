@@ -1,5 +1,6 @@
 """Static preservation, input wiring and independent synthetic reference amounts."""
 from decimal import Decimal
+from itertools import chain
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
@@ -222,7 +223,7 @@ class WorkbookTest(unittest.TestCase):
         self.assertEqual(expected[2195999], 1453000)
         self.assertEqual(expected[2199999], 1456000)
         self.assertIn("IF(D4=2025,1900000,2200000)", formula)
-        self.assertIn("v4.18.12 分離課税検証版", self.book[HOME]["A1"].value)
+        self.assertIn("v4.18.13 分離課税検証版", self.book[HOME]["A1"].value)
         self.assertEqual(self.book[HOME]["A2"].hyperlink.location, "'操作画面'!A42")
         self.assertIsNone(self.book[HOME]["A7"].hyperlink)
 
@@ -257,8 +258,12 @@ class WorkbookTest(unittest.TestCase):
     def test_generated_formulas_have_valid_excel_parentheses(self):
         # Excel rejects a workbook when an overlong/malformed nested status
         # formula is present. This catches accidental extra closings BEFORE COM.
-        for addr in ("B13", "B14", "B17", "B18", "B28"):
-            formula = self.book[HOME][addr].value
+        home = self.book[HOME]
+        model = self.book["分離課税詳細計算"]
+        home_formulas = (home[addr] for addr in ("B13", "B14", "B17", "B18", "B28"))
+        model_formulas = (cell for row in model.iter_rows() for cell in row if cell.data_type == "f")
+        for cell in chain(home_formulas, model_formulas):
+            addr, formula = cell.coordinate, cell.value
             self.assertIsInstance(formula, str, addr)
             self.assertLess(len(formula), 8192, addr)
             depth, quoted = 0, False
