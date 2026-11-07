@@ -84,6 +84,23 @@ test("2026 low-salary special bands reproduce NTA Q3-1 edge values",()=>{
   ];
   for(const [gross,expected] of cases)assert.equal(x(gross,2026),expected,"2026 gross="+gross);
 });
+test("2026 NTA special salary bands remain correct despite Excel v4.18.2 discrepancy",()=>{
+  // 2026 NTA No.1410 note (2): fixed salary income within three narrow bands.
+  // The officially released Excel v4.18.2 presently differs here (issue #4);
+  // never change GAS to match that legacy Excel formula.
+  const cases=[
+    [2192999,1451000,89600,23000],
+    [2195999,1453000,89800,23000],
+    [2199999,1456000,90100,23000]
+  ];
+  for(const [gross,salary,levy,limit] of cases){
+    const r=tax.calculate({...base,year:2026,salaryGross:String(gross),socialInsurance:"100000"});
+    assert.equal(r.status,"ESTIMATE","gross="+gross);
+    assert.equal(r.calculation.salaryIncomeYen,salary,"NTA special salary income gross="+gross);
+    assert.equal(r.calculation.residentIncomeLevyYen,levy,"resident levy gross="+gross);
+    assert.equal(r.donationLimitYen,limit,"donation limit gross="+gross);
+  }
+});
 test("2025 minimum allowance remains 650k at lower salary edges",()=>{
   const x=tax.salaryIncome;
   for(const [gross,expected] of [[0,0],[649999,0],[650000,0],
