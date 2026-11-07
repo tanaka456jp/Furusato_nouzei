@@ -61,3 +61,14 @@ instance with automatic recalculation disabled. Each synthetic case logs
 EXCEL_CASE_START and EXCEL_CASE_CALCULATED with elapsed time; any
 non-completing case remains HOLD after a bounded timeout. This preserves
 full Excel calculation while avoiding repeated dependency rebuilding.
+
+
+### Excel calculation performance: diagnostic run
+
+A previous first-case FullCalculationRebuild took over 205 seconds without
+returning xlDone on the self-hosted Windows runner; it is not a valid
+calculation result. The current implementation instead uses Excel's
+standard dependency-aware Calculate method after batching the inputs,
+and tests the known 2026 7m/1m 109,000-yen reference first. The
+CalculationState must still reach xlDone for each case; otherwise the
+run fails with HOLD. No simulation or cached value is substituted.

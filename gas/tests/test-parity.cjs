@@ -51,8 +51,10 @@ status.results[0].salaryIncomeYen=null;status.results[0].residentIncomeLevyYen=n
 assert.deepEqual(compare(status,fake,{allowMock:true}).mismatches[0].fields,["status"]);
 const fs=require("node:fs"),path=require("node:path");
 const script=fs.readFileSync(path.join(__dirname,"..","parity","run-excel-oracle.ps1"),"utf8");
-assert.equal((script.match(/CalculateFullRebuild\(\)/g)||[]).length,1);
-assert.ok(script.includes("$excel.Calculation=-4135"),"Excel manual calculation batching required");
-assert.ok(script.includes("if($index -eq 1)"),"Full rebuild must be first case only");
+assert.equal((script.match(/CalculateFullRebuild\(\)/g)||[]).length,0,
+ "Full dependency rebuild is too expensive and must not be part of 41-case loop");
+assert.ok(script.includes("$excel.Calculation=-4135"),"Manual batch calculation mode required");
+assert.ok(script.includes("$excel.Calculate()"),"Excel must actually calculate formulas");
+assert.ok(script.includes("Y2026_G7000000"),"2026 reference anchor required");
 assert.ok(script.includes("EXCEL_CASE_CALCULATED"),"Per-case timing evidence required");
 console.log("PARITY CONTRACT PASS (41 mock rows, provenance, batching and mismatch HOLD). Real Excel result separate.");

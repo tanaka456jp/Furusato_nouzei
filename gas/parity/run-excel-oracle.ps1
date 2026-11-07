@@ -83,8 +83,12 @@ public static class FurusatoExcelPid {
  # Batch input changes with Excel in manual mode. This affects only the
  # newly created COM instance, never any pre-existing Excel process.
  $excel.Calculation=-4135
+ # Start with a known review anchor. No mocked results are used.
+ $anchor=@($cases | Where-Object { $_.id -eq 'Y2026_G7000000' })
+ if($anchor.Count -ne 1){throw 'Missing 2026 Excel anchor'}
+ $ordered=@($anchor)+@($cases | Where-Object { $_.id -ne 'Y2026_G7000000' })
  $index=0
- foreach($case in $cases){
+ foreach($case in $ordered){
   $index++
   Write-Output ('EXCEL_CASE_START '+$index+'/'+$cases.Count+': '+$case.id)
   if($case.year -ne 2025 -and $case.year -ne 2026){throw 'Invalid year'}
@@ -97,7 +101,9 @@ public static class FurusatoExcelPid {
   $sheet.Range('B16').Value2=[double]$case.socialInsurance
   $sheet.Range('D24').Value2=$oneStop
   $timer=[Diagnostics.Stopwatch]::StartNew()
-  if($index -eq 1){$excel.CalculateFullRebuild()}else{$excel.Calculate()}
+  # Excel's normal dependency-aware calculation; full dependency rebuild
+  # repeated on each iteration can remain pending for several minutes.
+  $excel.Calculate()
   $ticks=0
   while([int]$excel.CalculationState -ne 0 -and $ticks -lt 1800){
    Start-Sleep -Milliseconds 100;$ticks++
@@ -108,6 +114,7 @@ public static class FurusatoExcelPid {
   }
   Write-Output ('EXCEL_CASE_CALCULATED '+$case.id+': '+$timer.ElapsedMilliseconds+' ms')
   $state=[string]$sheet.Range('B28').Value2
+  Write-Output ('EXCEL_CASE_STATUS '+$case.id+': '+$state)
   $activeYear=$sheet.Range('D4').Value2
   if([string]$activeYear -cne [string]$case.year){
    throw ('Approved tax master year mismatch: '+$case.id)
@@ -116,6 +123,9 @@ public static class FurusatoExcelPid {
    $amount=$sheet.Range('B8').Value2
    $salary=$sheet.Range('B13').Value2
    $levy=$sheet.Range('D8').Value2
+   if($case.id -ceq 'Y2026_G7000000' -and $amount -ne 109000){
+    throw 'Official Excel 2026 reference anchor mismatch (109000 expected)'
+   }
    foreach($n in @($amount,$salary,$levy)){
     if($null -eq $n -or -not ($n -is [double] -or $n -is [int] -or $n -is [long]) -or
       $n -lt 0 -or $n -gt 1000000000000 -or $n -ne [Math]::Truncate($n)){
