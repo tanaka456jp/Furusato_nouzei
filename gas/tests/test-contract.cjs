@@ -36,3 +36,11 @@ assert.equal(manifest.dependencies.enabledAdvancedServices[0].serviceId,"drive")
 assert.equal(manifest.dependencies.enabledAdvancedServices[0].version,"v3");
 assert.ok(html.includes('id="ocrConsent"'));
 console.log("PASS: private OCR consent and explicit Drive v3 configuration");
+
+assert.ok(html.includes('<meta name="viewport" content="width=device-width'));
+assert.ok(html.includes("@media screen and (min-width:1100px)"));
+assert.ok(html.includes("@media screen and (max-width:680px)"));
+assert.ok(html.includes("font-size:16px"));
+assert.ok(html.includes("env(safe-area-inset-left)"));
+assert.ok(!/maximum-scale=1|user-scalable=no/.test(html));
+console.log("PASS: responsive PC/tablet/mobile contract, user zoom remains enabled");

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ja"><head><base target="_top"><meta charset="UTF-8">
+<html lang="ja"><head><base target="_top"><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <style>
 :root {font-family:"Yu Gothic",Meiryo,system-ui,sans-serif;color:#193044;background:#f3f6fa}
 * {box-sizing:border-box} body{margin:0} button,input,select{font:inherit}
@@ -40,6 +40,50 @@ button:disabled{opacity:.6;cursor:not-allowed}button:focus-visible{outline:2px s
 .report p{line-height:1.6}
 #reportLines{margin:15px 0}.footnote{border-top:1px solid #e3e8ed;margin-top:20px;padding-top:12px;font-size:11px;color:#526779}
 @media(max-width:680px){main{margin:12px auto;padding:0 11px 20px}.panel{padding:17px}.field-grid,.checks{grid-template-columns:1fr}.stepwords{font-size:9px}h2{font-size:19px}.amount{font-size:30px}.actions button{flex:1}header{padding:16px}}
+
+/* Responsive, shared PC/tablet/smartphone view. Tax engine unchanged. */
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+main,.panel,.screen,.field,.report,#splitScreen,#splitOutput{min-width:0}
+.field input[type=file]{height:auto;min-height:48px;max-width:100%;font-size:14px}
+button{min-height:44px;touch-action:manipulation}
+.summary{table-layout:fixed}
+.summary th,.summary td,#splitOutput,.info,.check,.hint,.report{overflow-wrap:anywhere}
+@media screen and (min-width:1100px){
+ main{max-width:1160px;margin:28px auto;padding:0 24px 34px}
+ header{padding:22px max(24px,calc((100vw - 1112px)/2))}
+ .panel{padding:32px}
+ .field-grid,.checks{grid-template-columns:repeat(3,minmax(0,1fr));column-gap:20px}
+ .report{padding:30px}
+}
+@media screen and (max-width:680px){
+ header{padding:16px max(12px,env(safe-area-inset-right)) 16px max(12px,env(safe-area-inset-left))}
+ header h1{font-size:clamp(18px,5vw,22px);line-height:1.4}
+ main{margin:10px auto;padding:0 max(10px,env(safe-area-inset-right)) 24px max(10px,env(safe-area-inset-left))}
+ .panel{padding:16px 14px}
+ .field-grid,.checks{grid-template-columns:minmax(0,1fr);gap:14px}
+ .field input,.field select{min-height:48px;height:auto;font-size:16px}
+ .field input[type=file]{font-size:16px}
+ .check{min-height:48px;padding:12px;line-height:1.5}
+ .check input{min-width:18px;min-height:18px}
+ .mode-switch{display:grid;grid-template-columns:minmax(0,1fr);gap:9px}
+ .mode-switch button{width:100%;white-space:normal}
+ .actions:not(.mode-switch){flex-direction:column-reverse;align-items:stretch;gap:9px}
+ .actions button{flex:none;width:100%;min-height:48px;white-space:normal}
+ .stepwords{gap:3px;font-size:clamp(9px,2.8vw,11px);line-height:1.4}
+ .steplist{gap:5px}
+ .report{padding:15px 12px;margin:14px 0}
+ .amount{font-size:clamp(25px,8vw,34px);overflow-wrap:anywhere}
+ .summary th,.summary td{padding:10px 5px;font-size:13px;line-height:1.45}
+ .summary th{width:57%}.summary td{width:43%}
+ .muted{font-size:13px}
+}
+@media screen and (max-width:360px){
+ .panel{padding:13px 10px}
+ .stepwords{font-size:9px}
+ .summary th,.summary td{font-size:12px}
+ .field label{font-size:13px}
+}
+
 @media print{
 html,body{background:white;color:#111}header,#wizard,#flash,.actions,#printButtons,#controls,#guide{display:none!important}
 main{margin:0;padding:0;max-width:none}.panel{border:0;box-shadow:none;padding:0}
@@ -62,7 +106,7 @@ main{margin:0;padding:0;max-width:none}.panel{border:0;box-shadow:none;padding:0
 </style></head>
 <body>
 <header><h1>ふるさと納税 限度額シミュレーター</h1>
-<p>質問に答えるだけで計算結果と根拠を表示｜GAS検証版 v0.1.13</p></header>
+<p>質問に答えるだけで計算結果と根拠を表示｜GAS検証版 v0.1.14</p></header>
 <main><div class="panel">
 <div class="actions mode-switch" aria-label="入力モード">
 <button type="button" id="salaryMode" aria-pressed="true">給与の入力</button>
