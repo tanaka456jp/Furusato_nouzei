@@ -105,7 +105,7 @@ function assess({candidate,old,drive,oldDigest,newDigest}){
  }
  return {
   status:issues.length?"HOLD":"READY_FOR_SEPARATE_STAGE_APPROVAL",
-  stagePreflightRevision:5,
+  stagePreflightRevision:6,
   stage:!candidateReady?"LOCAL_CANDIDATE":issues.length?"REMOTE_READONLY_ATTESTATION":"APPROVAL_GATE",
   problems:issues,
   candidateChecks:!candidateReady&&Array.isArray(candidate?.reasons)?candidate.reasons:[],
@@ -131,37 +131,50 @@ function assess({candidate,old,drive,oldDigest,newDigest}){
  * Do not output raw JSON, hashes, credentials, paths, time or OAuth claims.
  */
 function inspectGlobalAuthRefresh({receipt,drift,isolatedAuthFile,globalAuthFile}){
- const stop=(baseline,pattern="UNVERIFIED")=>({
-  status:"HOLD",baseline,pattern,writer:"UNVERIFIED",
-  snapshotWrite:"PROHIBITED",ownerReview:"REQUIRED"
+ // The installer snapshots global clasp at INSTALL time, but reuse-auth copies
+ // it earlier. The isolated copy is NOT automatically a historical baseline.
+ // A token-rotation shaped difference between two CURRENT files does not prove
+ // what global auth contained when the snapshot was made.
+ const report=(baseline,pattern="UNVERIFIED")=>({
+  status:"HOLD",baseline,pattern,
+  comparisonScope:"ISOLATED_COPY_VS_CURRENT_GLOBAL_ONLY",
+  historicalSnapshotReconstruction:"NOT_PROVEN",
+  writer:"UNVERIFIED",snapshotWrite:"PROHIBITED",ownerReview:"REQUIRED"
  });
  const checks=drift?.checks;
  if(!Array.isArray(checks)||checks.length!==4||
   checks.some((x,i)=>x?.name!==["housing-clasp","housing-appsscript",
-    "housing-project","global-clasp-auth"][i]))return stop("REPORT_UNVERIFIED");
+    "housing-project","global-clasp-auth"][i]))return report("REPORT_UNVERIFIED");
  if(checks.slice(0,3).some(x=>x.state!=="UNCHANGED")||
-    checks[3].state!=="CHANGED")return stop("NOT_SOLE_GLOBAL_AUTH_CHANGE");
+    checks[3].state!=="CHANGED")return report("NOT_SOLE_GLOBAL_AUTH_CHANGE");
  try {
-  const baseline=receipt?.protectedSnapshot?.[path.resolve(globalAuthFile)];
-  if(typeof baseline!=="string"||!/^[a-f0-9]{64}$/.test(baseline))
-   return stop("HISTORICAL_HASH_UNAVAILABLE");
+  const oldHash=receipt?.protectedSnapshot?.[path.resolve(globalAuthFile)];
+  if(typeof oldHash!=="string"||!/^[a-f0-9]{64}$/.test(oldHash))
+   return report("HISTORICAL_HASH_UNAVAILABLE");
   const safeRead=file=>{
-   const st=fs.lstatSync(file);
-   if(!st.isFile()||st.isSymbolicLink()||st.size<2||st.size>1024*1024)
-    throw Error("UNSAFE_AUTH_FILE");
+   const stat=fs.lstatSync(file);
+   if(!stat.isFile()||stat.isSymbolicLink()||stat.size<2||
+      stat.size>1024*1024)throw Error("UNSAFE_AUTH_FILE");
    return fs.readFileSync(file);
   };
-  const original=safeRead(isolatedAuthFile);
-  const current=safeRead(globalAuthFile);
-  const originalHash=crypto.createHash("sha256").update(original).digest("hex");
-  if(originalHash!==baseline)return stop("HISTORICAL_BYTES_NOT_MATCHED");
-  const currentHash=crypto.createHash("sha256").update(current).digest("hex");
-  if(currentHash===baseline)return stop("GLOBAL_FILE_NOT_CHANGED_NOW");
-  const pattern=google.oauthRefreshPattern(JSON.parse(original.toString("utf8")),
-    JSON.parse(current.toString("utf8")));
-  return stop("HISTORICAL_BYTES_MATCHED",pattern);
- }catch{return stop("HISTORICAL_COMPARISON_UNAVAILABLE");}
+  const oldCopy=safeRead(isolatedAuthFile);
+  const now=safeRead(globalAuthFile);
+  const hashBytes=x=>crypto.createHash("sha256").update(x).digest("hex");
+  const copyHash=hashBytes(oldCopy);
+  const currentHash=hashBytes(now);
+  const baseline=copyHash===oldHash?
+   "HISTORICAL_BYTES_MATCHED":"HISTORICAL_BYTES_NOT_MATCHED";
+  if(currentHash===oldHash)return report("GLOBAL_FILE_NOT_CHANGED_NOW");
+  // Even when copyHash != historical hash, this comparison is useful as a
+  // strictly limited offline *shape* check. Never raise stage readiness.
+  const pattern=google.oauthRefreshPattern(
+   JSON.parse(oldCopy.toString("utf8").replace(/^\uFEFF/,"")),
+   JSON.parse(now.toString("utf8").replace(/^\uFEFF/,""))
+  );
+  return report(baseline,pattern);
+ }catch{return report("HISTORICAL_COMPARISON_UNAVAILABLE");}
 }
+
 /**
  * Sanitize the LOCAL snapshot comparison for owner-visible diagnostics.
  * Never expose paths, hashes, timestamps, token values or file contents.
@@ -177,7 +190,7 @@ function protectedConfigHold(candidate,drift,authReview=null){
   });
  const checks=valid?drift.checks.map(row=>({name:row.name,state:row.state})):[];
  return {
-  status:"HOLD",stagePreflightRevision:5,stage:"PROTECTED_LOCAL_CONFIG",
+  status:"HOLD",stagePreflightRevision:6,stage:"PROTECTED_LOCAL_CONFIG",
   problems:[valid?"PROTECTED_CONFIG_DRIFT":"PROTECTED_DRIFT_REPORT_INVALID"],
   candidateChecks:[],candidateCheckoutIdentity:candidate?.checkoutIdentity||"NOT_VERIFIED",
   protectedConfiguration:{status:"HOLD",checks},
