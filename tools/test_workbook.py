@@ -58,6 +58,10 @@ class WorkbookTest(unittest.TestCase):
         self.assertIn("home-overview.pdf", code)
         self.assertIn('"109,000"', code)
         self.assertIn("Home PDF review version mismatch", code)
+        self.assertIn("def assert_no_text_collision(", code)
+        self.assertIn("def collision_self_test()", code)
+        self.assertIn("checked_words = assert_no_text_collision(", code)
+        self.assertIn('"text_collision_self_test": "PASS"', code)
 
     def test_second_print_page_repeats_year_and_both_versions(self):
         home = self.book[HOME]
