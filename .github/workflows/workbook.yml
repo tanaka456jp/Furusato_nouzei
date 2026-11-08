@@ -388,6 +388,7 @@ jobs:
           name: furusato-windows-logs-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/review/setup.log
+            ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/review/_furusato_mask_qa.trace
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/review/setup_launcher.log
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/excel_acceptance.json
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/excel_open_probe.json
