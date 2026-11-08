@@ -58,6 +58,43 @@ Webアプリの所有者のGoogle承認画面が必要なら、自動認可せ�
 合成OCRがPASSしてもiPhone実機Safariによる非公開GAS操作は別途HOLDです。
 公開静的デモの合格をiPhoneの実Google受入と混同しません。
 
+## 初回の実Googleデプロイ成功後にブラウザ受入でHOLDとなった場合
+
+**再度 `-CreateAndTest` または `install --fresh` を実行しないこと。**
+新規の合成Googleシート・スクリプト・固定版は、最初の成功した導入記録のまま維持します。
+認証、`receipt.json`、`creation-journal.json`、`protectedSnapshot` を初期化・編集しません。
+
+前回のローカルブラウザ証跡を**読み取りのみ**で安全に要約します。ID、URL、OAuth、
+実画面原本、ハッシュ、絶対パスやエラー全文は表示しません。
+
+```powershell
+node gas/scripts/report-private-ocr-status.cjs
+```
+
+以前の証跡は `format:LEGACY_NO_FAILURE_STAGE` の場合があります。その場合、合格した
+工程だけ分かり、停止箇所は確定しません。追加後のブラウザ試験は失敗段階と安全な
+分類のみを記録し、生のPlaywright例外は外部へ出しません。
+
+まず既存デプロイの読取専用API照合のみ実施する場合:
+
+```powershell
+node gas/scripts/check-live-ocr-readiness.cjs --verify-remote
+```
+
+新規作成せず、既存の署名済み**合成専用**非公開デプロイだけで実Google OCR試験を再開する場合は、
+所有者の既存の許可と前後の保護環境照合が有効であることを確かめた後に以下を使用します。
+
+```powershell
+node gas/scripts/check-live-ocr-readiness.cjs --run-synthetic --ack-temporary-google-docs
+```
+
+後者は実際に一時Google OCR文書を作成・削除するため、先に証跡診断を実施してください。
+`OWNER_WEB_APP_AUTH_REQUIRED` と判明した場合、ログインや所有者承認は自動化しません。
+現存の非公開デプロイに対して `node gas/tests/test-real-browser.cjs --live --attest-head --authorize`
+を所有者の専用ブラウザプロファイルで実施し、本人がGoogle画面で認可します。
+実Googleの試験が未完了ならすべてのOCR・一時ファイル削除の合格を主張しません。
+iPhone物理Safariと正式リリースは別の受入としてHOLDを維持します。
+
 ## 登録先の保護
 
 1. HousingERP `.clasp.json` のScript IDと、Google側で取得した親シートIDを拒否リストにする。
