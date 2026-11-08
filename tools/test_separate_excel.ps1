@@ -154,6 +154,30 @@
         $pdf = [System.IO.File]::ReadAllBytes($PdfPath)
         if ($pdf.Length -lt 500 -or [Text.Encoding]::ASCII.GetString($pdf, 0, 5) -ne '%PDF-') { throw 'Split PDF is invalid' }
         if ([string]$screen.PageSetup.PrintArea -ne $area) { throw 'Split PDF changed original print area' }
+        # Bind the eight print-only copy cells to this exact generated PDF.
+        # All fields are synthetic numbers/statuses; never log or store names.
+        $proofPath = Join-Path (Split-Path -Parent $PdfPath) 'split-result.print-inputs.json'
+        if (Test-Path -LiteralPath $proofPath) { throw 'Split print proof already exists' }
+        $proof = [ordered]@{
+            schema = 'furusato-split-pdf-printed-inputs/v1'
+            pdf_sha256 = (Get-FileHash -LiteralPath $PdfPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            reviewVersion = $reviewVersion
+            taxYear = [int]$selectedYear
+            fields = [ordered]@{
+                '住宅の居住開始年' = [int]$screen.Range('B89').Value2
+                '適用上限反映済残高' = [int]$screen.Range('D89').Value2
+                '住宅控除可能額' = [int]$screen.Range('B90').Value2
+                '普通配当対象額' = [int]$screen.Range('D90').Value2
+                '適格外国所得税額' = [int]$screen.Range('B91').Value2
+                '調整国外所得金額' = [int]$screen.Range('D91').Value2
+                '適用条件の確認状態' = [string]$screen.Range('B92').Value2
+                '住民税の課税自治体' = [string]$screen.Range('D92').Value2
+            }
+        }
+        $proof | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $proofPath -Encoding UTF8
+        if (-not (Test-Path -LiteralPath $proofPath -PathType Leaf)) {
+            throw 'Split print source proof was not created'
+        }
         $screen.Range('D49').Value2 = '特例あり'
         $Excel.Calculate()
         foreach ($addr in @('B89','D89','B90','D90','B91','D91','B92','D92')) {
