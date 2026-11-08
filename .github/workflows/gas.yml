@@ -121,4 +121,14 @@ jobs:
         shell: powershell
         run: |
           .\gas\scripts\accept-private-live-ocr.ps1 -PreflightOnly
+      - name: Detached Git worktree guard on actual PowerShell (no Google authentication)
+        shell: powershell
+        run: |
+          git fetch --no-tags origin feature/gas-workflow-20261106
+          if ($LASTEXITCODE -ne 0) { throw 'Synthetic Git fetch failed' }
+          git checkout --detach refs/remotes/origin/feature/gas-workflow-20261106
+          if ($LASTEXITCODE -ne 0) { throw 'Synthetic detached checkout failed' }
+          .\gas\scripts\accept-private-live-ocr.ps1 -GitCheckOnly
+          if ($LASTEXITCODE -ne 0 -or !$?) { throw 'Safe detached worktree guard failed' }
+
 
