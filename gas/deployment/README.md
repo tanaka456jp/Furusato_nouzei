@@ -146,44 +146,45 @@ node gas/scripts/check-live-ocr-readiness.cjs --probe-only
 `REAL_GOOGLE_WEB_APP_PROBE: PASS; OCR NOT EXECUTED` が得られるまで
 本番OCR受入には進みません。Google固定版の変更やiPhone実機の検証は別工程です。
 
-## 所有者のWebアプリ認証と隔離ブラウザセッション再利用（2026-11-09）
+## 既存非公開GASの所有者ログイン：通常ブラウザのみ（2026-11-09）
 
-`LIVE_OCR_SAFE_FAILURE: OWNER_WEB_APP_AUTH_REQUIRED; step=OWNER_WEB_APP_FRAME`
-となり、API固定版照合がPASSしている場合、**既存の非公開GASは再作成しない**。
-Apps Script APIの専用OAuth認証と、ブラウザ画面のログインセッションは別です。
-Webアプリの公開設定は `MYSELF / USER_DEPLOYING` のまま変更しません。
+Google公式ヘルプは、ソフトウェア自動制御によるブラウザからの
+Googleログインを拒否する場合があると説明しています。
+実Windowsで「このブラウザまたはアプリは安全でない可能性があります」
+と表示されたため、**GoogleログインをPlaywrightから完全に分離**しました。
+自動化判定を回避するフラグ、CDP、Cookie移植、認証画面の自動入力を行いません。
 
-既存の合成専用環境を再照合した後、所有者だけが専用ブラウザを開いて
-Googleログイン・初回許可を手動で実行できます。
+**初回作成済みの非公開GASを作り直し・再デプロイしないでください。**
+既存の `MYSELF / USER_DEPLOYING` とソース5ファイルを維持します。
+所有者Windows PCの作業用worktreeで、開発ブランチを取得した後、
 
 ```powershell
 node gas/scripts/check-live-ocr-readiness.cjs --authorize-owner
 ```
 
-このコマンドは、登録済みソース・固定版・保護環境のGoogle API検証を行った後、
-`gas/.private/furusato/browser-profile/` の**専用・Git対象外のブラウザプロファイル**
-で所有者の認証画面を開きます。Googleアカウントのログイン、同意、確認は
-所有者が画面上で行い、コードはログインフォームや同意ボタンを操作しません。
-認証ができてWebアプリの入力画面へ到達すると、**同じブラウザを閉じる前に**
-別タブで同じWebアプリを開き直し、入力画面に到達できることを再検証します。
-その後で専用ブラウザプロファイルを閉じ、**次の独立プロセスでも**
-認証状態が維持されることを検証します。いずれもOCRを実行しません。
-両方に成功した場合に限って `OWNER_WEB_APP_SESSION: PASS` と
-`REAL_GOOGLE_WEB_APP_PROBE: PASS; OCR NOT EXECUTED` を出力します。
-2回目のブラウザ起動時だけ認証が失われる場合はHOLDとし、
-本番OCR検証には進めません。
+を実行します。まずローカル証跡・Git HEAD・保護設定・Google APIの
+固定版・所有者・ソースを検証します。その上で作成済みレシートに
+保存された **専用WebアプリURLをWindows既定ブラウザで開くだけ** です。
+Playwrightや自動制御ブラウザ、専用Playwrightプロファイルは使用しません。
+URL/Script ID/認証データはコンソール・GitHub・CIに出しません。
+表示されるのは
+`OWNER_SYSTEM_BROWSER_OPENED: MANUAL_REVIEW_REQUIRED; OCR NOT EXECUTED; release HOLD`
+であり、**ログイン成功や画面到達のPASSではありません**。
 
-`--probe-only` と実OCR受入 `--run-synthetic --ack-temporary-google-docs` は、
-どちらも手動承認後の専用ブラウザプロファイルを再利用します。
-API用BearerトークンをWebアプリ表示に流用しません。
-`--authorize-owner` は `--probe-only` / `--run-synthetic` と同時指定できず、
-CI上では一切実行できません。Webアプリ画面への到達確認だけでは
-PDF/PNG/JPEG OCR、候補値、計算HOLD、一時文書削除は合格としません。
+通常のEdgeまたはChromeで、GAS作成に使ったGoogle所有者アカウントで
+ログインしてください。画面に「ログインできませんでした」と出続ける場合は
+Googleのブラウザサポート・組織ポリシーを確認し、認証保護を回避しません。
+実際のふるさと納税入力画面を所有者が目視確認した時点では、
+「手動画面到達確認」として報告できますが、OCR合格とは区別します。
+`--authorize-owner` と `--probe-only` / `--run-synthetic` は同時指定不可です。
 
-専用ブラウザのCookieやログイン状態は機微情報であるため、
-`browser-profile`、`owner-auth-evidence.json`、`receipt.json`、ID、URL、
-OAuth認証や画面の内容をGitHub・CI Artifactsへ登録しないでください。
-認証が停止した場合も旧記録・Googleデプロイは保護し、`install --fresh` を再実行しません。
+旧 `test-real-browser.cjs --live --authorize` は安全上明示拒否します。
+ログイン済み通常ブラウザのCookieをPlaywrightへ移すことも行いません。
+現行のPlaywrightによるOCR完全自動検証には別途Google承認済みの
+正式な認証経路が必要です。代替として通常ブラウザから合成画像で手動受入を行い、
+結果と残存ファイル0件をGoogle側で個別に監査できます。
+一般ユーザー向けの静的デモ成功と実GAS/iPhone成功は混同しません。
+正式リリースはHOLDのままです。
 
 ## 登録先の保護
 
