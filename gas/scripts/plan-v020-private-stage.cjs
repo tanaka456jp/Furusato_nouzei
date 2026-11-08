@@ -48,27 +48,45 @@ function checkCandidate({files,committed,packageVersion,branch,origin,dirty,curr
   reasons:issues,appVersion:issues.length?null:"v"+targetVersion};
 }
 function assess({candidate,old,drive,oldDigest,newDigest}){
+ // A failed local check must NEVER masquerade as remote Google/Drive failure.
+ // In this case the API has not been contacted, and the candidate's allowlisted
+ // reason codes are the only verified failures.
+ const candidateReady=candidate?.status==="CANDIDATE_SOURCE_READY";
  const issues=[];
- if(candidate?.status!=="CANDIDATE_SOURCE_READY")issues.push("CANDIDATE_NOT_READY");
- if(old?.status!=="PASS"||old.appVersion!=="v0.1.17"||
-    old.ownerAndPrivateAccess!=="PASS"||
-    old.protectedLocal!=="UNCHANGED"||
-    old.protectedGoogle!=="UNCHANGED")issues.push("OLD_PRIVATE_RELEASE_NOT_VERIFIED");
- if(drive?.status!=="PASS"||drive?.temporaryOcrFiles!==0||
-    drive?.coverage!=="FURUSATO_DEDICATED_OAUTH_SCOPE_ONLY")issues.push("OLD_DRIVE_TEMP_NOT_ZERO");
- if(typeof oldDigest!=="string"||typeof newDigest!=="string"||
-    oldDigest.length!==64||newDigest.length!==64||oldDigest===newDigest)
+ if(!candidateReady)issues.push("CANDIDATE_NOT_READY");
+ else {
+  if(old?.status!=="PASS"||old.appVersion!=="v0.1.17"||
+     old.ownerAndPrivateAccess!=="PASS"||
+     old.protectedLocal!=="UNCHANGED"||
+     old.protectedGoogle!=="UNCHANGED")
+    issues.push("OLD_PRIVATE_RELEASE_NOT_VERIFIED");
+  if(!drive)
+    issues.push("OLD_DRIVE_AUDIT_NOT_RUN");
+  else if(drive.status!=="PASS"||drive.temporaryOcrFiles!==0||
+          drive.coverage!=="FURUSATO_DEDICATED_OAUTH_SCOPE_ONLY")
+    issues.push("OLD_DRIVE_TEMP_NOT_ZERO");
+  if(oldDigest===undefined||newDigest===undefined)
+    issues.push("SOURCE_COMPARISON_NOT_RUN");
+  else if(typeof oldDigest!=="string"||typeof newDigest!=="string"||
+     !/^[a-f0-9]{64}$/.test(oldDigest)||!/^[a-f0-9]{64}$/.test(newDigest)||
+     oldDigest===newDigest)
     issues.push("CANDIDATE_SOURCE_NOT_DISTINCT");
+ }
  return {
   status:issues.length?"HOLD":"READY_FOR_SEPARATE_STAGE_APPROVAL",
+  stage:!candidateReady?"LOCAL_CANDIDATE":issues.length?"REMOTE_READONLY_ATTESTATION":"APPROVAL_GATE",
   problems:issues,
+  candidateChecks:!candidateReady&&Array.isArray(candidate?.reasons)?candidate.reasons:[],
+  oldPrivateAudit:!candidateReady?"NOT_RUN":old?.status==="PASS"?"PASS":"HOLD",
+  driveAudit:!candidateReady?"NOT_RUN":drive?.status==="PASS"?"PASS":drive?"HOLD":"NOT_RUN",
+  sourceComparison:!candidateReady?"NOT_RUN":oldDigest===undefined||newDigest===undefined?"NOT_RUN":
+    oldDigest===newDigest?"SAME":"DISTINCT_OR_INVALID",
   existingApp:"v0.1.17",
   candidateApp:"v0.1.20",
-  existingDeployment:"UNCHANGED",
+  existingDeployment:"NOT_MODIFIED_BY_THIS_CHECK",
   candidateDeployment:"NOT_CREATED",
   proposedTarget:"NEW_ISOLATED_SYNTHETIC_PROJECT_ONLY",
   authorization:"OWNER_EXPLICIT_APPROVAL_REQUIRED_BEFORE_ANY_GOOGLE_WRITE",
-  // This is *not* a write approval, and does not assert historical OCR proof.
   legacyOcrEvidence:"OWNER_ATTESTED_NOT_INDEPENDENTLY_REMEASURED",
   realV020GoogleAcceptance:"NOT_TESTED",
   release:"HOLD"
