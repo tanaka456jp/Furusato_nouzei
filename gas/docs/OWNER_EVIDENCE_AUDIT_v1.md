@@ -106,3 +106,25 @@ node gas/scripts/plan-v020-private-stage.cjs
 
 `REMOTE_TIP_DIFFERS_FROM_CHECKOUT` または `TRUSTED_REMOTE_TIP_UNVERIFIED` のときはHOLDで停止します。ローカル変更を消す `reset --hard` / `git clean` / 強制checkout、既存レシート更新、Google書込はしません。
 
+
+## 2026-11-09 PC①での PROTECTED_CONFIG_DRIFT（事前検査 revision 4）
+
+PC①の読取専用実行で `V020_PRIVATE_STAGE_PREFLIGHT_HOLD: PROTECTED_CONFIG_DRIFT` が出ました。ブランチ名不一致は解消されましたが、**保存済みの4つのローカル保護対象と現在のファイルの差異**が検出されています。原因は未確定です。v0.1.17の過去のGoogle固定版PASSも、この新しいローカル差異を承認・解消する根拠にはなりません。
+
+最新版は `stage:PROTECTED_LOCAL_CONFIG`、`protectedConfiguration.checks` として固定の対象名（`housing-clasp`、`housing-appsscript`、`housing-project`、`global-clasp-auth`）の状態だけを報告します。差異があっても古いハッシュを再計算・上書きせず、GAS/Driveの照合・デプロイを行わず、HOLDで停止します。認証トークン・ファイル内容・パス・実ハッシュ・更新日時は出力しません。
+
+```powershell
+cd $HOME\Development\Furusato_nouzei_GAS_OCR
+git pull --ff-only origin feature/gas-workflow-20261106
+node gas/scripts/plan-v020-private-stage.cjs
+```
+
+さらに原因を分けて確認する既存の読取専用診断は以下です。
+
+```powershell
+node gas/deployment/private-gas.cjs diagnose
+```
+
+`global-clasp-auth:CHANGED` だけの場合は、一般的なOAuthアクセストークン更新の可能性がありますが、自動的に承認・無視はしません。既存の診断が `TOKEN_REFRESH_COMPATIBLE` と表示しても、それは2つの認証ファイルの差分パターンであり、保存済みスナップショットを変更してよい証明ではありません。`housing-*:CHANGED`、`MISSING`、`APPEARED`、`BLOCKED_LINK` などの場合は保護対象の変更や経路の異常を疑い、変更履歴を個別に監査します。いずれも元の認証ファイルや保護スナップショットを再作成しないこと。
+
+正式リリースHOLD、v0.1.20の実Google OCRは未実施です。
