@@ -136,7 +136,7 @@ async function main(){
   const report=await perform(api,receipt,protectedRoot,history);
   console.log(JSON.stringify(report));
 }
-module.exports={exactFiles,appVersion,recordCheck,auditVersion,perform,protectedDigest};
+module.exports={exactFiles,appVersion,recordCheck,auditVersion,perform,protectedDigest,historicalFiles};
 if(require.main===module)main().catch(error=>{
   const allow=new Set(["OWNER_LOCAL_ONLY","RECEIPT_NOT_ATTESTED",
     "PROTECTED_LOCAL_DIFFERS","HISTORICAL_VERSION_NOT_ATTESTED",
