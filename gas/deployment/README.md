@@ -146,6 +146,41 @@ node gas/scripts/check-live-ocr-readiness.cjs --probe-only
 `REAL_GOOGLE_WEB_APP_PROBE: PASS; OCR NOT EXECUTED` が得られるまで
 本番OCR受入には進みません。Google固定版の変更やiPhone実機の検証は別工程です。
 
+## 所有者のWebアプリ認証と隔離ブラウザセッション再利用（2026-11-09）
+
+`LIVE_OCR_SAFE_FAILURE: OWNER_WEB_APP_AUTH_REQUIRED; step=OWNER_WEB_APP_FRAME`
+となり、API固定版照合がPASSしている場合、**既存の非公開GASは再作成しない**。
+Apps Script APIの専用OAuth認証と、ブラウザ画面のログインセッションは別です。
+Webアプリの公開設定は `MYSELF / USER_DEPLOYING` のまま変更しません。
+
+既存の合成専用環境を再照合した後、所有者だけが専用ブラウザを開いて
+Googleログイン・初回許可を手動で実行できます。
+
+```powershell
+node gas/scripts/check-live-ocr-readiness.cjs --authorize-owner
+```
+
+このコマンドは、登録済みソース・固定版・保護環境のGoogle API検証を行った後、
+`gas/.private/furusato/browser-profile/` の**専用・Git対象外のブラウザプロファイル**
+で所有者の認証画面を開きます。Googleアカウントのログイン、同意、確認は
+所有者が画面上で行い、コードはログインフォームや同意ボタンを操作しません。
+認証ができてWebアプリの入力画面へ到達すると、同じローカルセッションで
+自動的に **OCRを実行しない画面到達テスト** を行います。
+成功時は `OWNER_WEB_APP_SESSION: PASS` と
+`REAL_GOOGLE_WEB_APP_PROBE: PASS; OCR NOT EXECUTED` を出力します。
+
+`--probe-only` と実OCR受入 `--run-synthetic --ack-temporary-google-docs` は、
+どちらも手動承認後の専用ブラウザプロファイルを再利用します。
+API用BearerトークンをWebアプリ表示に流用しません。
+`--authorize-owner` は `--probe-only` / `--run-synthetic` と同時指定できず、
+CI上では一切実行できません。Webアプリ画面への到達確認だけでは
+PDF/PNG/JPEG OCR、候補値、計算HOLD、一時文書削除は合格としません。
+
+専用ブラウザのCookieやログイン状態は機微情報であるため、
+`browser-profile`、`owner-auth-evidence.json`、`receipt.json`、ID、URL、
+OAuth認証や画面の内容をGitHub・CI Artifactsへ登録しないでください。
+認証が停止した場合も旧記録・Googleデプロイは保護し、`install --fresh` を再実行しません。
+
 ## 登録先の保護
 
 1. HousingERP `.clasp.json` のScript IDと、Google側で取得した親シートIDを拒否リストにする。
