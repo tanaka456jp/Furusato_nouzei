@@ -105,7 +105,13 @@ function readLocalReadiness(protectedRoot){
 function runChild(args){
  const r=cp.spawnSync(process.execPath,args,{cwd:root,encoding:"utf8",stdio:"pipe",
   windowsHide:true,timeout:8*60*1000});
- if(r.status!==0)throw Error("PRIVATE_GOOGLE_VERIFICATION_OR_SYNTHETIC_OCR_FAILED");
+ if(r.status!==0){
+  // Only relay a known, bounded failure category. Child errors and stack traces
+  // can contain OAuth headers, Google project URLs or local private paths.
+  const match=String(r.stderr||"").match(/PRIVATE_LIVE_BROWSER_HOLD (OWNER_WEB_APP_AUTH_REQUIRED|LOCAL_BROWSER_UNAVAILABLE|DRIVE_DIAGNOSTIC_FAILED|OCR_RESPONSE_FAILED|TIMEOUT|LOCAL_PDF_VALIDATION_FAILED|LIVE_STEP_FAILED) (INITIALIZE|PRIVATE_DEPLOYMENT_VERIFY|PRIVATE_BROWSER_SETUP|WEB_APP_NAVIGATION|OWNER_WEB_APP_FRAME|STANDARD_TAX_CALCULATION|PRINT_PDF|MOBILE_LAYOUT|MORTGAGE_HOLD|DRIVE_DIAGNOSTICS|OCR_PNG|OCR_PDF|OCR_JPEG|SEPARATE_TAX|CLEANUP_BROWSER)/);
+  if(match)console.error("LIVE_OCR_SAFE_FAILURE: "+match[1]+"; step="+match[2]);
+  throw Error("PRIVATE_GOOGLE_VERIFICATION_OR_SYNTHETIC_OCR_FAILED");
+ }
 }
 function main(args){
  const opt=parseArguments(args);
