@@ -68,7 +68,7 @@ const plan=assess(values);
 assert.equal(plan.status,"READY_FOR_SEPARATE_STAGE_APPROVAL");
 assert.equal(plan.candidateDeployment,"NOT_CREATED");
 assert.equal(plan.existingDeployment,"NOT_MODIFIED_BY_THIS_CHECK");
-assert.equal(plan.stagePreflightRevision,5);
+assert.equal(plan.stagePreflightRevision,6);
 assert.equal(plan.stage,"APPROVAL_GATE");
 assert.equal(plan.candidateCheckoutIdentity,"EXPECTED_LOCAL_BRANCH");
 assert.deepEqual(plan.candidateChecks,[]);
@@ -120,7 +120,7 @@ const rows=names.map(name=>({name,state:"UNCHANGED",file:"PRIVATE_ABSOLUTE_PATH"
 rows[3].state="CHANGED";
 const driftHold=protectedConfigHold(pass,{status:"HOLD",checks:rows});
 assert.equal(driftHold.status,"HOLD");
-assert.equal(driftHold.stagePreflightRevision,5);
+assert.equal(driftHold.stagePreflightRevision,6);
 assert.equal(driftHold.stage,"PROTECTED_LOCAL_CONFIG");
 assert.deepEqual(driftHold.problems,["PROTECTED_CONFIG_DRIFT"]);
 assert.equal(driftHold.candidateCheckoutIdentity,"EXPECTED_LOCAL_BRANCH");
@@ -172,13 +172,15 @@ try {
   isolatedAuthFile:originalPath,globalAuthFile:currentPath});
  assert.deepEqual(review,{
   status:"HOLD",baseline:"HISTORICAL_BYTES_MATCHED",
-  pattern:"TOKEN_REFRESH_COMPATIBLE",writer:"UNVERIFIED",
-  snapshotWrite:"PROHIBITED",ownerReview:"REQUIRED"
+  pattern:"TOKEN_REFRESH_COMPATIBLE",
+  comparisonScope:"ISOLATED_COPY_VS_CURRENT_GLOBAL_ONLY",
+  historicalSnapshotReconstruction:"NOT_PROVEN",
+  writer:"UNVERIFIED",snapshotWrite:"PROHIBITED",ownerReview:"REQUIRED"
  });
  const output=protectedConfigHold(pass,drift,review);
  assert.equal(output.status,"HOLD");
  assert.equal(output.stage,"PROTECTED_LOCAL_CONFIG");
- assert.equal(output.stagePreflightRevision,5);
+ assert.equal(output.stagePreflightRevision,6);
  assert.equal(output.globalAuthReview.pattern,"TOKEN_REFRESH_COMPATIBLE");
  assert.equal(output.globalAuthReview.ownerReview,"REQUIRED");
  assert.equal(output.oldPrivateAudit,"NOT_RUN");
@@ -189,9 +191,20 @@ try {
  assert.deepEqual(fs.readFileSync(originalPath),originalBytes,"Historical isolated auth altered");
  assert.equal(fs.readFileSync(currentPath,"utf8"),JSON.stringify(revised),
   "Global clasp auth altered");
- assert.equal(inspectGlobalAuthRefresh({receipt:{protectedSnapshot:{[path.resolve(currentPath)]:"e".repeat(64)}},
-  drift,isolatedAuthFile:originalPath,globalAuthFile:currentPath}).baseline,
-  "HISTORICAL_BYTES_NOT_MATCHED");
+ const unmatched=inspectGlobalAuthRefresh({
+  receipt:{protectedSnapshot:{[path.resolve(currentPath)]:"e".repeat(64)}},
+  drift,isolatedAuthFile:originalPath,globalAuthFile:currentPath
+ });
+ assert.equal(unmatched.baseline,"HISTORICAL_BYTES_NOT_MATCHED");
+ // A pair may look like token refresh even when the historical snapshot
+ // does NOT match. Neither observation permits bypass or proves writer.
+ assert.equal(unmatched.pattern,"TOKEN_REFRESH_COMPATIBLE");
+ assert.equal(unmatched.comparisonScope,"ISOLATED_COPY_VS_CURRENT_GLOBAL_ONLY");
+ assert.equal(unmatched.historicalSnapshotReconstruction,"NOT_PROVEN");
+ assert.equal(unmatched.ownerReview,"REQUIRED");
+ assert.equal(unmatched.status,"HOLD");
+ assert.equal(unmatched.snapshotWrite,"PROHIBITED");
+ assert.equal(protectedConfigHold(pass,drift,unmatched).status,"HOLD");
  const wrongRefresh=structuredClone(revised);
  wrongRefresh.tokens.default.refresh_token="altered-refresh";
  fs.writeFileSync(currentPath,JSON.stringify(wrongRefresh));
@@ -199,6 +212,13 @@ try {
   isolatedAuthFile:originalPath,globalAuthFile:currentPath});
  assert.equal(bad.baseline,"HISTORICAL_BYTES_MATCHED");
  assert.equal(bad.pattern,"UNVERIFIED");
+ const unmatchedBad=inspectGlobalAuthRefresh({
+  receipt:{protectedSnapshot:{[path.resolve(currentPath)]:"e".repeat(64)}},
+  drift,isolatedAuthFile:originalPath,globalAuthFile:currentPath
+ });
+ assert.equal(unmatchedBad.baseline,"HISTORICAL_BYTES_NOT_MATCHED");
+ assert.equal(unmatchedBad.pattern,"UNVERIFIED");
+ assert.equal(unmatchedBad.status,"HOLD");
  fs.writeFileSync(currentPath,"not json");
  assert.equal(inspectGlobalAuthRefresh({receipt,drift,isolatedAuthFile:originalPath,
   globalAuthFile:currentPath}).baseline,"HISTORICAL_COMPARISON_UNAVAILABLE");
