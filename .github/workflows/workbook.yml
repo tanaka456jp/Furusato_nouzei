@@ -247,8 +247,19 @@ jobs:
             try { $installer.Kill() } catch {}
             throw 'Excel installer exceeded 6m without finishing; inspect staged setup.log. Never accept a timed-out XLSM.'
           }
-          if ($installer.ExitCode -ne 0) { throw 'Excel installer failed; see setup.log' }
+          # Refresh the process object after WaitForExit before reading ExitCode.
+          # Prior run produced a validated XLSM and setup-success trace, but
+          # the parent regarded the child exit as nonzero with no numeric code.
+          $installer.Refresh()
+          $exitCode = $installer.ExitCode
           $reviewed = Join-Path $work 'review/Furusato_nouzei.xlsm'
+          $created = Test-Path -LiteralPath $reviewed -PathType Leaf
+          Write-Host ('QA_INSTALLER_PROCESS_EXIT=' + [string]$exitCode)
+          Write-Host ('QA_INSTALLER_OUTPUT_PRESENT=' + [string]$created)
+          if ($null -eq $exitCode -or [int]$exitCode -ne 0) {
+            throw ('Excel installer process did not exit normally (code=' + [string]$exitCode + '); see setup.log')
+          }
+          if (-not $created) { throw 'Installer exited with success but generated no XLSM' }
           # The fail-closed UI gate runs BEFORE the tax-master network update.
           # A blocked external catalog must not conceal stale-result failures.
           & .\tools\verify_stale_ui.ps1 -Workbook $reviewed
