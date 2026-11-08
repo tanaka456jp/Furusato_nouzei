@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 # Dedicated Windows self-hosted Excel runner: synthetic, isolated and no network.
 param([Parameter(Mandatory=$true)][string]$Workbook)
 $ErrorActionPreference = 'Stop'
