@@ -427,6 +427,12 @@ try {
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value $homeSheet.Range('B38').Value2 35000 'Housing 2026 occupancy ordinary 5% base'
     $homeSheet.Range('B35').Value2 = 2022.0
+    $mortgageHint = [string]$homeSheet.Range('D35').Validation.InputMessage
+    if ($mortgageHint -notlike '*消費税10%*' -or
+        $mortgageHint -notlike '*2020/10*' -or
+        $mortgageHint -notlike '*2021/11*') {
+        throw '2022 mortgage guidance missing legal contract and VAT checks'
+    }
     $excel.Run('TaxLawUpdater.RecalculateCase')
     if ([string]$homeSheet.Range('B28').Value2 -notlike 'SAFE-TAX-028*' -or
         [string]$homeSheet.Range('B8').Value2 -ne '' -or
@@ -445,7 +451,32 @@ try {
     if ([string]$homeSheet.Range('B28').Value2 -like 'SAFE-TAX-028*') {
         throw '2022 verified 7-percent class still marked unverified'
     }
+    # High-income synthetic boundary scenarios: verify 2022 statutory caps
+    # against *actual* Excel formula evaluations; no real taxpayer data.
+    QA-Stage 'mortgage-2022-cap-ceilings-start'
+    $extraSheet.Range('B8').Value2 = 4500000.0
+    $homeSheet.Range('B34').Value2 = 1000000.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    if ([double]$engineSheet.Range('J12').Value2 -lt 3000000) {
+        throw 'Mortgage 2022 synthetic ceiling test is below intended taxable base'
+    }
+    Assert-Value $homeSheet.Range('B38').Value2 136500 '2022 verified 7-percent resident ceiling'
+    $homeSheet.Range('D35').Value2 = '通常5%確認'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B38').Value2 97500 '2022 verified 5-percent resident ceiling'
+    $homeSheet.Range('B33').Value2 = 1000000.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B38').Value2 0 'No residual possible credit after full income-tax use'
+    $homeSheet.Range('B33').Value2 = 0.0
+    $homeSheet.Range('B34').Value2 = 150000.0
+    $extraSheet.Range('B8').Value2 = 500000.0
     $homeSheet.Range('D35').Value2 = '未確認'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    if ([string]$homeSheet.Range('B28').Value2 -notlike 'SAFE-TAX-028*' -or
+        [string]$homeSheet.Range('B38').Value2 -ne '') {
+        throw '2022 ceiling case failed to restore unverified-result HOLD'
+    }
+    QA-Stage 'mortgage-2022-cap-ceilings-pass'
     $homeSheet.Range('B35').Value2 = 2024.0
     $homeSheet.Range('D35').Value2 = '経過措置7%確認'
     $excel.Run('TaxLawUpdater.RecalculateCase')

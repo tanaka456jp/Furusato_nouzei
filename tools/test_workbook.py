@@ -186,8 +186,26 @@ class WorkbookTest(unittest.TestCase):
         self.assertNotIn("B13-B14", mortgage)
         self.assertIn("SAFE-TAX-028", formula)
         self.assertIn("SAFE-TAX-029", formula)
+        # Exercise both 2022 statutory resident-credit ceilings with
+        # real Excel evaluation, including zero residual income-tax use.
+        real_qa = (ROOT / "tools/verify_excel.ps1").read_text(encoding="utf-8-sig")
+        for marker in ("mortgage-2022-cap-ceilings-start",
+                       "mortgage-2022-cap-ceilings-pass",
+                       "136500 '2022 verified 7-percent resident ceiling'",
+                       "97500 '2022 verified 5-percent resident ceiling'",
+                       "0 'No residual possible credit after full income-tax use'",
+                       "2022 mortgage guidance missing legal contract and VAT checks"):
+            self.assertIn(marker, real_qa)
         self.assertIn("AND(ISNUMBER(B34),B34<0)", formula)
         self.assertEqual(self.book[HOME]["D35"].value, "未確認")
+        mortgage_rules = [
+            item for item in self.book[HOME].data_validations.dataValidation
+            if str(item.sqref) == "D35"
+        ]
+        self.assertEqual(len(mortgage_rules), 1)
+        self.assertTrue(mortgage_rules[0].showInputMessage)
+        for key in ("消費税10%", "2020/10", "2021/9", "2020/12", "2021/11", "未確認"):
+            self.assertIn(key, mortgage_rules[0].prompt)
         self.assertIn("B35=2022", mortgage)
         self.assertIn("D35=\"経過措置7%確認\"", mortgage)
         self.assertIn("D35=\"通常5%確認\"", mortgage)

@@ -121,7 +121,7 @@ def build(source, output):
         home.add_data_validation(validation)
         validation.add(home[cell])
 
-    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.18.26 分離課税検証版")
+    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.18.27 分離課税検証版")
     bar(extra, 1, "追加所得・分離課税（所得年内で事前試算）")
     extra.merge_cells("A3:D3")
     extra["A3"] = "翌年度の住民税通知書は参照せず、所得年内の収入・経費・控除と法定税率表から計算します。"
@@ -334,6 +334,21 @@ def build(source, output):
     field("B35", "居住開始年（西暦）", maximum=2035)
     field("D35", "2022年入居の特例区分", "未確認",
           ("未確認", "通常5%確認", "経過措置7%確認"))
+    # Tax-law eligibility is not derivable from a withholding statement.
+    # Show the statutory conditions in Excel's native input guidance
+    # rather than silently treating a selected 7% rate as eligibility proof.
+    for rule in home.data_validations.dataValidation:
+        if str(rule.sqref) == "D35":
+            rule.showInputMessage = True
+            rule.promptTitle = "2022年入居・7%経過措置"
+            rule.prompt = (
+                "7%は消費税10%の住宅取得と所定の契約時期等が条件。"
+                "新築2020/10～2021/9、建売・中古・増改築2020/12～2021/11。"
+                "原資料未確認なら「未確認」を選択。"
+            )
+            break
+    else:
+        raise AssertionError("Missing D35 2022 mortgage classification validation")
     field("B36", "住宅ローン控除適用数", maximum=3)
     note(home, 37, "可能額と所得税適用額は別物です。控除可能額があって適用額が空欄なら、原票確認まで試算額を表示しません。")
     home["A38"] = "住民税住宅ローン控除見込額"
