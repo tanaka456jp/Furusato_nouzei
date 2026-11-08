@@ -53,7 +53,9 @@ def assert_split_print_source_proof(pdfpath: Path, printed_page_text: str) -> di
             raise AssertionError(f"Split PDF source proof has invalid type: {label}")
         if isinstance(value, int) and value < 0:
             raise AssertionError(f"Split PDF source proof has negative value: {label}")
-        # Calendar year is never formatted as a monetary amount in Excel.\n        rendered = (str(value) if label == "住宅の居住開始年" else\n                    format(value, ",") if isinstance(value, int) else value)
+        # Calendar year is never formatted as a monetary amount in Excel.
+        rendered = (str(value) if label == "住宅の居住開始年" else
+                    format(value, ",") if isinstance(value, int) else value)
         if not rendered or label not in visible or rendered not in visible:
             raise AssertionError(f"Split PDF lacks printed source field: {label}")
     return {"status": "PASS", "fields_checked": len(fields),
