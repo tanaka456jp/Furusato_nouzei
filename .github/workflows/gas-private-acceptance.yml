@@ -28,6 +28,7 @@ jobs:
       - run: node gas/tests/test-deployment.cjs
       - run: node gas/tests/test-live-ocr-readiness.cjs
       - run: node gas/tests/test-private-ocr-status.cjs
+      - run: node gas/tests/test-private-browser-probe.cjs
       - run: node gas/tests/test-config-drift.cjs
       - run: node gas/tests/test-private-files.cjs
       - run: node gas/tests/test-clasp-files.cjs
@@ -81,6 +82,7 @@ jobs:
       - run: node gas/tests/test-deployment.cjs
       - run: node gas/tests/test-live-ocr-readiness.cjs
       - run: node gas/tests/test-private-ocr-status.cjs
+      - run: node gas/tests/test-private-browser-probe.cjs
       - run: node gas/tests/test-config-drift.cjs
       - run: node gas/tests/test-clasp-files.cjs
       - run: node gas/tests/test-separate-tax.cjs
