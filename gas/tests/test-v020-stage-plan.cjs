@@ -2,7 +2,7 @@
 const assert=require("node:assert/strict");
 const google=require("../deployment/private-gas.cjs");
 const policy=require("../deployment/policy.json");
-const {checkCandidate,assess,committedSources} = require("../scripts/plan-v020-private-stage.cjs");
+const {checkCandidate,assess,committedSources,protectedConfigHold} = require("../scripts/plan-v020-private-stage.cjs");
 const sha="a".repeat(40);
 const origin="https://github.com/tanaka456jp/Furusato_nouzei.git";
 const files=google.source();
@@ -64,7 +64,7 @@ const plan=assess(values);
 assert.equal(plan.status,"READY_FOR_SEPARATE_STAGE_APPROVAL");
 assert.equal(plan.candidateDeployment,"NOT_CREATED");
 assert.equal(plan.existingDeployment,"NOT_MODIFIED_BY_THIS_CHECK");
-assert.equal(plan.stagePreflightRevision,3);
+assert.equal(plan.stagePreflightRevision,4);
 assert.equal(plan.stage,"APPROVAL_GATE");
 assert.equal(plan.candidateCheckoutIdentity,"EXPECTED_LOCAL_BRANCH");
 assert.deepEqual(plan.candidateChecks,[]);
@@ -108,5 +108,41 @@ assert.ok(partialRemote.problems.includes("OLD_DRIVE_AUDIT_NOT_RUN"));
 assert.ok(partialRemote.problems.includes("SOURCE_COMPARISON_NOT_RUN"));
 assert.ok(!partialRemote.problems.includes("OLD_DRIVE_TEMP_NOT_ZERO"));
 assert.equal(partialRemote.stage,"REMOTE_READONLY_ATTESTATION");
+
+// Read-only snapshot drift: report ONLY exact allowlisted names and states.
+// A changed OAuth file is NOT proof of compromise or a verified token refresh.
+const names=["housing-clasp","housing-appsscript","housing-project","global-clasp-auth"];
+const rows=names.map(name=>({name,state:"UNCHANGED",file:"PRIVATE_ABSOLUTE_PATH",modifiedUtc:"SECRET_TIMESTAMP",hash:"SECRET_HASH"}));
+rows[3].state="CHANGED";
+const driftHold=protectedConfigHold(pass,{status:"HOLD",checks:rows});
+assert.equal(driftHold.status,"HOLD");
+assert.equal(driftHold.stagePreflightRevision,4);
+assert.equal(driftHold.stage,"PROTECTED_LOCAL_CONFIG");
+assert.deepEqual(driftHold.problems,["PROTECTED_CONFIG_DRIFT"]);
+assert.equal(driftHold.candidateCheckoutIdentity,"EXPECTED_LOCAL_BRANCH");
+assert.deepEqual(driftHold.protectedConfiguration.checks,
+ names.map((name,i)=>({name,state:i===3?"CHANGED":"UNCHANGED"})));
+assert.equal(driftHold.oldPrivateAudit,"NOT_RUN");
+assert.equal(driftHold.driveAudit,"NOT_RUN");
+assert.equal(driftHold.sourceComparison,"NOT_RUN");
+assert.equal(driftHold.release,"HOLD");
+for(const secret of ["PRIVATE_ABSOLUTE_PATH","SECRET_TIMESTAMP","SECRET_HASH"])
+ assert.ok(!JSON.stringify(driftHold).includes(secret));
+const alternateDrift=protectedConfigHold(checkCandidate({...valid(),branch:"other-local"}),
+ {status:"HOLD",checks:rows});
+assert.equal(alternateDrift.candidateCheckoutIdentity,"TRUSTED_REMOTE_EXACT_COMMIT");
+for(const malformed of [
+ null,{status:"HOLD",checks:[]},
+ {status:"MATCH",checks:rows},
+ {status:"HOLD",checks:rows.map(x=>({...x,name:"private-token"}))},
+ {status:"HOLD",checks:rows.map(x=>({...x,state:"SECRET_VALUE"}))}
+]){
+ const rejected=protectedConfigHold(pass,malformed);
+ assert.equal(rejected.status,"HOLD");
+ assert.deepEqual(rejected.problems,["PROTECTED_DRIFT_REPORT_INVALID"]);
+ assert.deepEqual(rejected.protectedConfiguration.checks,[]);
+}
+// The application must never infer v0.1.20 OCR PASS from a local-only check.
+assert.equal(driftHold.realV020GoogleAcceptance,"NOT_TESTED");
 
 console.log("V020_SEPARATE_STAGE_PREFLIGHT_PASS: synthetic only; no Google resource mutations; approval pending");
