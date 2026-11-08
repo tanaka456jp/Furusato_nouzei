@@ -36,11 +36,16 @@ function liveTrustedBranchTip(){
  const origin=git(["remote","get-url","origin"]);
  if(!remotes.has(origin))throw Error("UNTRUSTED_GIT_ORIGIN");
  const expectedRef="refs/heads/"+expectedBranch;
- const output=cp.execFileSync("git",["ls-remote","--heads","origin",expectedRef],{
-  cwd:root,encoding:"utf8",timeout:30000,maxBuffer:1024*1024,
-  stdio:["ignore","pipe","pipe"],
-  env:{...process.env,GIT_TERMINAL_PROMPT:"0",GCM_INTERACTIVE:"Never"}
- }).trim();
+ let output;
+ try {
+  output=cp.execFileSync("git",["ls-remote","--heads","origin",expectedRef],{
+   cwd:root,encoding:"utf8",timeout:30000,maxBuffer:1024*1024,
+   stdio:["ignore","pipe","pipe"],
+   env:{...process.env,GIT_TERMINAL_PROMPT:"0",GCM_INTERACTIVE:"Never"}
+  }).trim();
+ } catch {
+  throw Error("TRUSTED_REMOTE_READ_FAILED");
+ }
  const rows=output.split(/\r?\n/);
  if(rows.length!==1)throw Error("TRUSTED_REMOTE_TIP_UNVERIFIED");
  const match=/^([a-f0-9]{40})\t(refs\/heads\/feature\/gas-workflow-20261106)$/.exec(rows[0]);
@@ -102,6 +107,7 @@ function assess({candidate,old,drive,oldDigest,newDigest}){
   stage:!candidateReady?"LOCAL_CANDIDATE":issues.length?"REMOTE_READONLY_ATTESTATION":"APPROVAL_GATE",
   problems:issues,
   candidateChecks:!candidateReady&&Array.isArray(candidate?.reasons)?candidate.reasons:[],
+  candidateCheckoutIdentity:candidateReady?candidate.checkoutIdentity:"NOT_VERIFIED",
   oldPrivateAudit:!candidateReady?"NOT_RUN":old?.status==="PASS"?"PASS":"HOLD",
   driveAudit:!candidateReady?"NOT_RUN":drive?.status==="PASS"?"PASS":drive?"HOLD":"NOT_RUN",
   sourceComparison:!candidateReady?"NOT_RUN":oldDigest===undefined||newDigest===undefined?"NOT_RUN":
@@ -175,7 +181,10 @@ async function main(){
  if(report.status!=="READY_FOR_SEPARATE_STAGE_APPROVAL")process.exitCode=2;
 }
 module.exports={checkCandidate,assess,committedSources,liveTrustedBranchTip};
-if(require.main===module)main().catch(()=>{
- console.error("V020_PRIVATE_STAGE_PREFLIGHT_HOLD: LOCAL_OR_GOOGLE_ATTESTATION_UNVERIFIED");
+if(require.main===module)main().catch(error=>{
+ const allowed=new Set(["UNTRUSTED_GIT_ORIGIN","TRUSTED_REMOTE_READ_FAILED",
+  "TRUSTED_REMOTE_TIP_UNVERIFIED","PROTECTED_CONFIG_DRIFT"]);
+ console.error("V020_PRIVATE_STAGE_PREFLIGHT_HOLD: "+
+  (allowed.has(error?.message)?error.message:"LOCAL_OR_GOOGLE_ATTESTATION_UNVERIFIED"));
  process.exitCode=2;
 });
