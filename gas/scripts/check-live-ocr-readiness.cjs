@@ -11,19 +11,20 @@ const google=require("../deployment/private-gas.cjs");
 const policy=require("../deployment/policy.json");
 const sourceNames=policy.sourceFiles;
 const webAppUrl=/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/;
-const options=new Set(["--verify-remote","--probe-only","--run-synthetic","--ack-temporary-google-docs","--protected-root"]);
+const options=new Set(["--verify-remote","--probe-only","--authorize-owner","--run-synthetic","--ack-temporary-google-docs","--protected-root"]);
 function parseArguments(args){
  const choices=new Set(args),i=args.indexOf("--protected-root");
  if(i>=0&&(i===args.length-1||args[i+1].startsWith("--")))throw Error("MISSING_PROTECTED_ROOT");
  const used=args.filter((v,j)=>i<0||j!==i+1);
  if(used.some(x=>!options.has(x)))throw Error("UNKNOWN_ARGUMENT");
- if(choices.has("--probe-only")&&choices.has("--run-synthetic"))throw Error("PROBE_AND_OCR_ARE_EXCLUSIVE");
+ if((Number(choices.has("--probe-only"))+Number(choices.has("--run-synthetic"))+Number(choices.has("--authorize-owner")))>1)
+  throw Error("OWNER_AUTH_PROBE_AND_OCR_ARE_EXCLUSIVE");
  if(choices.has("--run-synthetic")&&!choices.has("--ack-temporary-google-docs"))
   throw Error("EXPLICIT_TEMPORARY_GOOGLE_DOCUMENT_ACK_REQUIRED");
  if(choices.has("--ack-temporary-google-docs")&&!choices.has("--run-synthetic"))
   throw Error("TEMPORARY_GOOGLE_DOCUMENT_ACK_WITHOUT_RUN");
- return {verify:choices.has("--verify-remote")||choices.has("--run-synthetic")||choices.has("--probe-only"),
-  probe:choices.has("--probe-only"),run:choices.has("--run-synthetic"),
+ return {verify:choices.has("--verify-remote")||choices.has("--run-synthetic")||choices.has("--probe-only")||choices.has("--authorize-owner"),
+  probe:choices.has("--probe-only"),authorizeOwner:choices.has("--authorize-owner"),run:choices.has("--run-synthetic"),
   protectedRoot:i>=0?path.resolve(args[i+1]):path.resolve(root,"..","..","HousingERP")};
 }
 /**
@@ -103,9 +104,12 @@ function readLocalReadiness(protectedRoot){
   claspExists:fs.existsSync(path.join(privateDir,"project",".clasp.json")),
   protectedStatus});
 }
-function runChild(args){
- const r=cp.spawnSync(process.execPath,args,{cwd:root,encoding:"utf8",stdio:"pipe",
-  windowsHide:true,timeout:8*60*1000});
+function runChild(args,{interactiveOwner=false}={}){
+ const r=cp.spawnSync(process.execPath,args,{cwd:root,encoding:"utf8",
+  // The owner must SEE the dedicated browser. Do not collect/publish the
+  // consent screen, OAuth credentials or any Google URL as a CI artifact.
+  stdio:interactiveOwner?"inherit":"pipe",
+  windowsHide:!interactiveOwner,timeout:interactiveOwner?12*60*1000:8*60*1000});
  if(r.status!==0){
   // Only relay a known, bounded failure category. Child errors and stack traces
   // can contain OAuth headers, Google project URLs or local private paths.
@@ -116,7 +120,7 @@ function runChild(args){
 }
 function main(args){
  const opt=parseArguments(args);
- if(process.env.CI&&(opt.run||opt.probe))throw Error("LIVE_GOOGLE_OCR_MUST_RUN_OUTSIDE_CI");
+ if(process.env.CI&&(opt.run||opt.probe||opt.authorizeOwner))throw Error("LIVE_GOOGLE_OCR_MUST_RUN_OUTSIDE_CI");
  const local=readLocalReadiness(opt.protectedRoot);
  console.log(JSON.stringify(local));
  if(local.status!=="READY_FOR_REMOTE_VERIFY"){process.exitCode=2;return;}
@@ -126,18 +130,29 @@ function main(args){
  runChild([path.join(root,"deployment","private-gas.cjs"),"verify","--attest-head",
   "--protected-root",opt.protectedRoot]);
  console.log("REMOTE_PRIVATE_IMMUTABLE_VERSION_MATCH: PASS (release HOLD)");
+ if(opt.authorizeOwner){
+  // Owner-only interactive authorization of the existing *isolated* project.
+  // This dedicated private browser profile is reused for probing and OCR.
+  runChild([path.join(root,"tests","test-real-browser.cjs"),"--live","--attest-head",
+   "--authorize","--protected-root",opt.protectedRoot],{interactiveOwner:true});
+  console.log("OWNER_WEB_APP_SESSION: PASS; browser-only consent (release HOLD)");
+  // Confirm auth was persisted. No OCR or Google temporary files are created.
+  runChild([path.join(root,"tests","test-real-browser.cjs"),"--live","--attest-head",
+   "--probe-only","--protected-root",opt.protectedRoot]);
+  console.log("REAL_GOOGLE_WEB_APP_PROBE: PASS; OCR NOT EXECUTED; release HOLD");
+ }
  if(opt.probe){
   // GET-only Web App navigation. Browser exits before clicking workflow inputs,
   // invoking OCR, or creating Google temporary documents.
   runChild([path.join(root,"tests","test-real-browser.cjs"),"--live","--attest-head",
-   "--token-auth","--probe-only","--protected-root",opt.protectedRoot]);
+   "--probe-only","--protected-root",opt.protectedRoot]);
   console.log("REAL_GOOGLE_WEB_APP_PROBE: PASS; OCR NOT EXECUTED; release HOLD");
  }
  if(opt.run){
   // This operation creates and removes only Google temporary OCR documents
   // under the already attested Furusato-private synthetic deployment.
   runChild([path.join(root,"tests","test-real-browser.cjs"),"--live","--attest-head",
-   "--token-auth","--protected-root",opt.protectedRoot]);
+   "--protected-root",opt.protectedRoot]);
   console.log("REAL_GOOGLE_SYNTHETIC_OCR: PASS; inspect private evidence for PNG/PDF/JPEG and cleanup (release HOLD)");
  }
 }
@@ -145,7 +160,7 @@ module.exports={parseArguments,evaluateReadiness,inspectIsolatedAuth,committedSo
 if(require.main===module)try{main(process.argv.slice(2));}catch(e){
  const allow=new Set(["MISSING_PROTECTED_ROOT","UNKNOWN_ARGUMENT","EXPLICIT_TEMPORARY_GOOGLE_DOCUMENT_ACK_REQUIRED",
   "TEMPORARY_GOOGLE_DOCUMENT_ACK_WITHOUT_RUN","UNREADABLE_PRIVATE_RECEIPT","UNVERIFIED_GIT_HEAD",
-  "LIVE_GOOGLE_OCR_MUST_RUN_OUTSIDE_CI","PROBE_AND_OCR_ARE_EXCLUSIVE","PRIVATE_GOOGLE_VERIFICATION_OR_SYNTHETIC_OCR_FAILED"]);
+  "LIVE_GOOGLE_OCR_MUST_RUN_OUTSIDE_CI","OWNER_AUTH_PROBE_AND_OCR_ARE_EXCLUSIVE","PRIVATE_GOOGLE_VERIFICATION_OR_SYNTHETIC_OCR_FAILED"]);
  console.error("LIVE_OCR_HOLD: "+(allow.has(e.message)?e.message:"LOCAL_PRIVATE_STATE_UNVERIFIED"));
  process.exitCode=1;
 }
