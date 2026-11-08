@@ -34,8 +34,8 @@ with ZipFile(package) as archive:
 # The review title and installer log must identify the same candidate build.
 # A stale v4.10 setup label can make isolated evidence appear to be an old release.
 workbook_source = (ROOT / "tools/build_workbook.py").read_text(encoding="utf-8-sig")
-workbook_version = re.search(r'v[0-9]+\\.[0-9]+\\.[0-9]+', workbook_source)
-installer_version = re.search(r'Furusato_nouzei setup (v[0-9]+\\.[0-9]+\\.[0-9]+)', ps)
+workbook_version = re.search(r'v[0-9]+\.[0-9]+\.[0-9]+', workbook_source)
+installer_version = re.search(r'Furusato_nouzei setup (v[0-9]+\.[0-9]+\.[0-9]+)', ps)
 assert workbook_version and installer_version, "Workbook or installer candidate version is missing"
 assert installer_version.group(1) == workbook_version.group(0), (
     f"Installer version {installer_version.group(1)} differs from review workbook {workbook_version.group(0)}"
