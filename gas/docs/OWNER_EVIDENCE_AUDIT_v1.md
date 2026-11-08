@@ -128,3 +128,25 @@ node gas/deployment/private-gas.cjs diagnose
 `global-clasp-auth:CHANGED` だけの場合は、一般的なOAuthアクセストークン更新の可能性がありますが、自動的に承認・無視はしません。既存の診断が `TOKEN_REFRESH_COMPATIBLE` と表示しても、それは2つの認証ファイルの差分パターンであり、保存済みスナップショットを変更してよい証明ではありません。`housing-*:CHANGED`、`MISSING`、`APPEARED`、`BLOCKED_LINK` などの場合は保護対象の変更や経路の異常を疑い、変更履歴を個別に監査します。いずれも元の認証ファイルや保護スナップショットを再作成しないこと。
 
 正式リリースHOLD、v0.1.20の実Google OCRは未実施です。
+
+
+## 2026-11-09 PC①：共通clasp認証だけがCHANGED（事前検査 revision 5）
+
+PC①実画面で `housing-clasp`、`housing-appsscript`、`housing-project` はすべて `UNCHANGED`、`global-clasp-auth` のみ `CHANGED` と確認しました。これは**ローカル保存時から共通認証ファイルの内容が変わった**という事実で、更新理由は未確定です。v0.1.17のGoogle固定版・保護検査の過去PASSとは別に扱います。
+
+事前検査 revision 5 は、前回からの共通認証ファイルの変更が典型的なトークン更新の形に限られているか、**オフラインで読み取って評価**します。まず保存済みスナップショットの共通認証ハッシュと、既存のFurusato用隔離認証コピー（`gas/.private/furusato/auth.json`）のSHA-256が完全一致するかを検査します。一致したときに限り、隔離コピーと現在の共通認証のJSONを比較します。
+
+**出力例の意味：**
+
+- `globalAuthReview.baseline: HISTORICAL_BYTES_MATCHED`：隔離コピーのバイト列が保存済みスナップショットのハッシュと一致。共通認証の現在の内容とは一致するとは限りません。
+- `globalAuthReview.pattern: TOKEN_REFRESH_COMPATIBLE`：旧・新JSONにおける変更が、アクセストークン、有効期限、整合したIDトークンなど、既存コードの許容する更新パターンに限られること。書込元が本物のclaspかどうかを**証明しません**。
+- `HISTORICAL_BYTES_NOT_MATCHED`、`UNVERIFIED`、`HISTORICAL_COMPARISON_UNAVAILABLE`：自動で原因を決めない。旧認証コピーが過去に更新された、内容が一致しない等の可能性があります。
+- `writer: UNVERIFIED` / `ownerReview: REQUIRED` / `snapshotWrite: PROHIBITED` / `status: HOLD` は、どの結果でも変更されません。
+
+```powershell
+cd $HOME\Development\Furusato_nouzei_GAS_OCR
+git pull --ff-only origin feature/gas-workflow-20261106
+node gas/scripts/plan-v020-private-stage.cjs
+```
+
+ハッシュ・OAuthトークン本文・認証JSON・Google Script ID・URL・ローカル絶対パスは表示しません。隔離認証コピー、共通認証ファイル、既存レシート、保護スナップショット、HousingERP、Google側の設定には書き込みません。**トークン更新パターンが一致してもHOLDを自動解除しません。** 未確認の書込元を推測で承認したり、保護ハッシュを差し替えたり、認証ファイルを再初期化したりしないでください。今回の検査はGoogle APIに接続する前に停止するため、v0.1.20の実Google OCRの受入を証明しません。
