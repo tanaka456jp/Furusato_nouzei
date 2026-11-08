@@ -28,9 +28,6 @@ for (const branch of ["", "owner-ocr-worktree", "main"]) {
  assert.equal(alternative.checkoutIdentity,"TRUSTED_REMOTE_EXACT_COMMIT");
 }
 assert.equal(checkCandidate(valid()).checkoutIdentity,"EXPECTED_LOCAL_BRANCH");
-const alternativePlan=assess({...values,candidate:checkCandidate({...valid(),branch:"owner-local"})});
-assert.equal(alternativePlan.status,"READY_FOR_SEPARATE_STAGE_APPROVAL");
-assert.equal(alternativePlan.candidateCheckoutIdentity,"TRUSTED_REMOTE_EXACT_COMMIT");
 const deny=[
  [{branch:"main",remoteHead:"b".repeat(40)},"WRONG_DEVELOPMENT_BRANCH"],
  [{remoteHead:null},"TRUSTED_REMOTE_TIP_UNVERIFIED"],
@@ -60,6 +57,9 @@ const drive={
 };
 const digest=google.digest(files);
 const values={candidate:pass,old,drive,oldDigest:"f".repeat(64),newDigest:digest};
+const alternativePlan=assess({...values,candidate:checkCandidate({...valid(),branch:"owner-local"})});
+assert.equal(alternativePlan.status,"READY_FOR_SEPARATE_STAGE_APPROVAL");
+assert.equal(alternativePlan.candidateCheckoutIdentity,"TRUSTED_REMOTE_EXACT_COMMIT");
 const plan=assess(values);
 assert.equal(plan.status,"READY_FOR_SEPARATE_STAGE_APPROVAL");
 assert.equal(plan.candidateDeployment,"NOT_CREATED");
