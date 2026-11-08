@@ -37,14 +37,26 @@ try {
   if($active -cne '' -and $active -cne $branch){
     throw 'Wrong Git branch; use the expected branch or its matching detached HEAD.'
   }
-  $topLines=@(& git rev-parse --show-toplevel)
-  Confirm-Exit 'Repository root'
-  if($topLines.Count -ne 1 -or [string]::IsNullOrWhiteSpace($topLines[0])){
-    throw 'Git repository root unavailable; STOP.'
+  # PowerShell 5.1 may decode Git's absolute UTF-8 paths differently when
+  # Windows account or directory names contain Japanese characters.
+  # From the script-derived repository directory, use Git's relative prefix
+  # rather than comparing two absolute-path strings. A non-empty prefix
+  # indicates a subdirectory rather than the repository root.
+  $insideLines=@(& git rev-parse --is-inside-work-tree)
+  Confirm-Exit 'Git working-tree identity'
+  if($insideLines.Count -ne 1 -or ([string]$insideLines[0]).Trim() -cne 'true'){
+    throw 'Not inside a Git working tree; STOP.'
   }
-  $actualTop=[IO.Path]::GetFullPath(([string]$topLines[0]).Trim()).TrimEnd([char[]]@('\','/'))
-  $expectedTop=[IO.Path]::GetFullPath($repoRoot).TrimEnd([char[]]@('\','/'))
-  if($actualTop -ine $expectedTop){throw 'Git command is not running in the expected project root.'}
+  $prefixLines=@(& git rev-parse --show-prefix)
+  Confirm-Exit 'Git repository-relative prefix'
+  if($prefixLines.Count -ne 0){
+    throw 'Script-derived directory is not the Git worktree root; STOP.'
+  }
+  if(-not (Test-Path -LiteralPath (Join-Path $repoRoot '.git'))){
+    throw 'Dedicated Git worktree marker missing; STOP.'
+  }
+  & git ls-files --error-unmatch -- gas/scripts/accept-private-live-ocr.ps1 1>$null
+  Confirm-Exit 'Tracked private launcher in the expected Git root'
   $originLines=@(& git remote get-url origin)
   Confirm-Exit 'Git origin'
   if($originLines.Count -ne 1){throw 'Git origin not uniquely identified; STOP.'}
