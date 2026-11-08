@@ -75,3 +75,17 @@ node gas/scripts/plan-v020-private-stage.cjs
 所有者の**対象を限定した承認後**、v0.1.20は別の非共有合成GAS/シート/専用レシートで試験する方針とします。認証ファイル再初期化、既存保護スナップショット書換え、HousingERPへの操作、本番環境へ配信することは含みません。新規Google資源の作成はこのpreflightコマンドには実装しておらず、承認・バックアウト・隔離実装が整うまでは実施しません。
 
 v0.1.20のWindows PDF/PNG/JPEG・iPhone Safariの実Google OCRと削除確認はまだ未実施です。旧版の所有者受入を流用して最新版PASSとはしません。正式リリースHOLD・Draft PR #2を維持します。
+
+## 2026-11-09 PC①でのv0.1.20事前検査HOLDの修正（preflight revision 2）
+
+PC①で当初表示された `CANDIDATE_NOT_READY` は**ローカル候補の停止**を意味します。旧デプロイ、Google Driveの状態はこの時点で問い合わせていないため、同時に表示された `OLD_DRIVE_TEMP_NOT_ZERO`、`OLD_PRIVATE_RELEASE_NOT_VERIFIED`、`CANDIDATE_SOURCE_NOT_DISTINCT` を独立した障害とみなすのは誤りでした。
+
+修正後は `stage: LOCAL_CANDIDATE`、`candidateChecks`（安全な理由コード）、`oldPrivateAudit: NOT_RUN`、`driveAudit: NOT_RUN`、`sourceComparison: NOT_RUN` を返します。これらの診断項目に認証情報、ファイルパス、ソースコード、Google IDは含まれません。Googleへのアクセスは実行しません。CIはGitの**実際のHEADから取得した5ソース**と作業ツリーの一致までLinuxとWindowsで回帰します。
+
+```powershell
+cd $HOME\Development\Furusato_nouzei_GAS_OCR
+git pull --ff-only origin feature/gas-workflow-20261106
+node gas/scripts/plan-v020-private-stage.cjs
+```
+
+`TRACKED_WORKTREE_DIRTY` は追跡ファイルのローカル差分を示します。ユーザーの変更を一括破棄する `git reset --hard`、`git clean`、レシート/認証/スナップショット編集は行わず、別途安全に差分を特定してください。`WORKTREE_SOURCE_DIFFERS_FROM_COMMIT` は5ソースの作業ファイルとGit HEAD不一致です。旧v0.1.17の失敗とは結び付けず、比較対象の文字コードや改行を確認してください。`WRONG_DEVELOPMENT_BRANCH` や `UNTRUSTED_GIT_ORIGIN` は指定作業ツリーの確認を要求します。どれも安全検査を無効化して回避しません。
