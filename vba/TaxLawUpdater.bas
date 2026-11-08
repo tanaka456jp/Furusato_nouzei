@@ -3,6 +3,9 @@ Option Explicit
 
 ' Only isolated tests use this nonmodal diagnostic state.
 Private mLastTestFailure As String
+Private mResultUnverified As Boolean
+Private mResultMaskBusy As Boolean
+Private mSavedResultFormats As Object
 
 ' Isolated QA only: record coarse stages, never taxpayer data, IDs, URLs or tokens.
 ' The forensic trace is kept beside the disposable test workbook and is not
@@ -23,9 +26,6 @@ End Sub
 ' Fail closed if Excel keeps a cached amount/status while recalculation is pending.
 ' Masking is visual (formulas are retained), and print/PDF entrypoints also
 ' independently require trusted, completed, automatic calculation.
-Private mResultUnverified As Boolean
-Private mResultMaskBusy As Boolean
-Private mSavedResultFormats As Object
 
 ' Diagnostic-only trace for the build-time disposable XLSM. Never writes when
 ' customers use a saved workbook, and never records cell contents or credentials.
