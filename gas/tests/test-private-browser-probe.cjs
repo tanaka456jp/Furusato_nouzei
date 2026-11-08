@@ -9,7 +9,19 @@ assert.ok(guard>0&&firstMutation>guard,"Probe must exit before all app workflow 
 assert.ok(browser.includes("googleAcceptance:live&&!authorize&&!probe?status:'HOLD'"),"Probe must not claim real Google OCR acceptance");
 assert.ok(browser.includes("probe?'browser-probe-evidence.json':authorize?"),"Probe must not overwrite previous OCR evidence");
 assert.ok(browser.includes("probe?'REAL_GOOGLE_WEB_APP_PROBE':authorize?"),"Probe must distinguish test scope");
-assert.ok(launcher.includes('if(process.env.CI&&(opt.run||opt.probe))'),"CI must never run real Google live probe");
-assert.ok(launcher.includes('if(choices.has("--probe-only")&&choices.has("--run-synthetic"))'),"Probe cannot also run OCR");
+assert.ok(launcher.includes('if(process.env.CI&&(opt.run||opt.probe||opt.authorizeOwner))'),
+ "CI must never run private owner consent, live probe or OCR");
+assert.ok(launcher.includes('Number(choices.has("--probe-only"))+Number(choices.has("--run-synthetic"))+Number(choices.has("--authorize-owner"))'),
+ "Probe, OCR and owner consent must be exclusive");
+assert.ok(launcher.includes('OWNER_WEB_APP_SESSION: PASS; browser-only consent'),
+ "Owner consent must be a separate no-OCR phase");
+assert.ok(!launcher.includes('"--token-auth"'),"The verified owner browser session must be reused");
+const firstClick=browser.indexOf("await frame.locator('#next').click()");
+const authorizeExit=browser.indexOf("if(authorize){results.push({id:'OWNER-AUTHENTICATED-PAGE',status:'PASS'});return;}");
+assert.ok(authorizeExit>0&&firstClick>authorizeExit,"Owner-consent mode may not run application actions");
+assert.ok(browser.includes("launchPersistentContext(path.join(root,'.private/furusato/browser-profile')"),
+ "Private consent profile must be isolated and persistent");
+assert.ok(browser.includes("authorize?'owner-auth-evidence.json':'browser-evidence.json'"),
+ "Owner consent must not overwrite earlier OCR evidence");
 assert.ok(launcher.includes('REAL_GOOGLE_WEB_APP_PROBE: PASS; OCR NOT EXECUTED'),"Probe console must state limited scope");
 console.log("PRIVATE_GOOGLE_WEB_APP_PROBE_CONTRACT_PASS: no OCR, no Google mutation; synthetic test only");
