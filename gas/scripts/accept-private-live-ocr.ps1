@@ -4,10 +4,10 @@
  No existing script/sheet adoption. No credentials/IDs/URLs in public artifacts.
 #>
 [CmdletBinding()]
-param([switch]$PreflightOnly,[switch]$CreateAndTest,[string]$ProtectedRoot='')
+param([switch]$PreflightOnly,[switch]$CreateAndTest,[switch]$GitCheckOnly,[string]$ProtectedRoot='')
 $ErrorActionPreference='Stop'
-if (($PreflightOnly -and $CreateAndTest) -or (-not $PreflightOnly -and -not $CreateAndTest)) {
-  throw 'Exactly one mode is required: -PreflightOnly or -CreateAndTest.'
+if ((@($PreflightOnly,$CreateAndTest,$GitCheckOnly) | Where-Object { $_ }).Count -ne 1) {
+  throw 'Choose exactly one: -PreflightOnly, -GitCheckOnly or -CreateAndTest.'
 }
 $gasRoot=Split-Path -Parent $PSScriptRoot
 $repoRoot=Split-Path -Parent $gasRoot
@@ -43,8 +43,8 @@ try {
   if($topLines.Count -ne 1 -or [string]::IsNullOrWhiteSpace($topLines[0])){
     throw 'Git repository root unavailable; STOP.'
   }
-  $actualTop=[IO.Path]::GetFullPath(([string]$topLines[0]).Trim()).TrimEnd('\','/')
-  $expectedTop=[IO.Path]::GetFullPath($repoRoot).TrimEnd('\','/')
+  $actualTop=[IO.Path]::GetFullPath(([string]$topLines[0]).Trim()).TrimEnd([char[]]@('\','/'))
+  $expectedTop=[IO.Path]::GetFullPath($repoRoot).TrimEnd([char[]]@('\','/'))
   if($actualTop -ine $expectedTop){throw 'Git command is not running in the dedicated project root.'}
   $originLines=@(& git remote get-url origin)
   Confirm-Exit 'Git origin'
@@ -151,6 +151,10 @@ try {
   $dirty=@(& git status --porcelain --untracked-files=no)
   Confirm-Exit 'Post-fetch Git status'
   if($dirty.Count -gt 0){throw 'Tracked files changed; STOP.'}
+  if($GitCheckOnly){
+    Write-Output 'PRIVATE_LIVE_OCR_GIT_GUARD=PASS; no Google authorization or writes; release HOLD'
+    return
+  }
   if([string]::IsNullOrWhiteSpace($ProtectedRoot)){
     $ProtectedRoot=Join-Path (Split-Path -Parent $repoRoot) 'HousingERP'
   }
