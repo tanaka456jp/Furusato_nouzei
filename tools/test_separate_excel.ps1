@@ -120,9 +120,14 @@
         # and tax year in actual Excel before exporting the synthetic PDF.
         $pageTwo = [string]$screen.Range('A80').Value2
         $selectedYear = [string][int]([double]$screen.Range('D50').Value2)
+        # Compare the page-2 revision to the version actually displayed by
+        # this SAME built workbook; never pin a superseded development version.
+        $banner = [string]$screen.Range('A1').Value2
+        $reviewVersion = [regex]::Match($banner, 'v\d+\.\d+\.\d+').Value
+        if (-not $reviewVersion) { throw 'Version not found in review workbook banner' }
         if ($pageTwo -notlike '*所得年*' -or
             $pageTwo -notlike ('*' + $selectedYear + '*') -or
-            $pageTwo -notlike '*v4.18.17*' -or
+            $pageTwo -notlike ('*' + $reviewVersion + '*') -or
             $pageTwo -notlike '*税制版*') {
             throw ('Second-page year/version header not calculated: ' + $pageTwo)
         }
