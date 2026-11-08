@@ -237,8 +237,17 @@ jobs:
           powershell.exe -NoProfile -File .\tools\probe_excel_open.ps1 -ProbeDirectory $probes -EvidencePath $probeEvidence
           if ($LASTEXITCODE -ne 0) { Write-Warning 'Excel opening diagnostic failed; installer verification continues.' }
           $setup = Join-Path $work 'review/setup.ps1'
-          powershell.exe -NoProfile -File $setup
-          if ($LASTEXITCODE -ne 0) { throw 'Excel installer failed; see setup.log' }
+          # Isolate the installer in an owned PowerShell child process.
+          # A blocked Excel/VBE modal can otherwise consume the entire 20m
+          # acceptance job without producing a usable error stage.
+          $installer = Start-Process -FilePath 'powershell.exe' -ArgumentList @(
+            '-NoProfile','-NonInteractive','-File', ('"' + $setup + '"')
+          ) -NoNewWindow -PassThru
+          if (-not $installer.WaitForExit(360000)) {
+            try { $installer.Kill() } catch {}
+            throw 'Excel installer exceeded 6m without finishing; inspect staged setup.log. Never accept a timed-out XLSM.'
+          }
+          if ($installer.ExitCode -ne 0) { throw 'Excel installer failed; see setup.log' }
           $reviewed = Join-Path $work 'review/Furusato_nouzei.xlsm'
           # The fail-closed UI gate runs BEFORE the tax-master network update.
           # A blocked external catalog must not conceal stale-result failures.
