@@ -43,6 +43,7 @@ jobs:
       - run: node gas/tests/test-real-browser.cjs
       - run: node gas/tests/test-separate-ui.cjs
       - run: node gas/tests/test-responsive.cjs
+      - run: node gas/tests/test-mobile-camera.cjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -95,6 +96,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node gas/tests/test-separate-ui.cjs
           node gas/tests/test-responsive.cjs
+          node gas/tests/test-mobile-camera.cjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:

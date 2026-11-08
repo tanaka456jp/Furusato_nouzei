@@ -41,6 +41,12 @@ button:disabled{opacity:.6;cursor:not-allowed}button:focus-visible{outline:2px s
 #reportLines{margin:15px 0}.footnote{border-top:1px solid #e3e8ed;margin-top:20px;padding-top:12px;font-size:11px;color:#526779}
 @media(max-width:680px){main{margin:12px auto;padding:0 11px 20px}.panel{padding:17px}.field-grid,.checks{grid-template-columns:1fr}.stepwords{font-size:9px}h2{font-size:19px}.amount{font-size:30px}.actions button{flex:1}header{padding:16px}}
 
+
+/* Mobile camera is optional; the regular file picker stays usable everywhere. */
+.mobile-camera{display:none}
+.sr-only{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;border:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.screen h2:focus-visible,#splitScreen>h2:focus-visible{outline:2px solid #166eab;outline-offset:3px}
+@media screen and (max-width:680px){.mobile-camera{display:flex}}
 /* Responsive, shared PC/tablet/smartphone view. Tax engine unchanged. */
 html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 main,.panel,.screen,.field,.report,#splitScreen,#splitOutput{min-width:0}
@@ -106,14 +112,14 @@ main{margin:0;padding:0;max-width:none}.panel{border:0;box-shadow:none;padding:0
 </style></head>
 <body>
 <header><h1>ふるさと納税 限度額シミュレーター</h1>
-<p>質問に答えるだけで計算結果と根拠を表示｜GAS検証版 v0.1.14</p></header>
+<p>質問に答えるだけで計算結果と根拠を表示｜GAS検証版 v0.1.15</p></header>
 <main><div class="panel">
 <div class="actions mode-switch" aria-label="入力モード">
 <button type="button" id="salaryMode" aria-pressed="true">給与の入力</button>
 <button type="button" id="splitMode" aria-pressed="false">詳細設定・分離課税と税額控除</button>
 </div>
 <section id="splitScreen" hidden>
-<h2>詳細設定・分離課税と税額控除</h2>
+<h2 tabindex="-1">詳細設定・分離課税と税額控除</h2>
 <p>総所得金額は給与所得控除後等の所得です。分離所得は所得控除前・経費差引後で入力します。該当なしは0。源泉分離課税、申告不要の所得、NISAは除きます。</p>
 <form id="splitForm" novalidate>
 <div class="field-grid">
@@ -152,10 +158,11 @@ main{margin:0;padding:0;max-width:none}.panel{border:0;box-shadow:none;padding:0
 
 
 <div id="wizard">
+<div id="stepStatus" class="sr-only" role="status" aria-live="polite"></div>
 <div class="stepwords"><span>基本情報</span><span>所得</span><span>控除</span><span>入力確認</span><span>結果</span></div>
 <div class="steplist" aria-label="進行状況"><div class="stage"></div><div class="stage"></div><div class="stage"></div><div class="stage"></div><div class="stage"></div></div>
 <section class="screen active" id="screen0">
-<h2>STEP 1　基本情報</h2><p class="muted">所得年・所得の種類・申告方式を選択してください。</p>
+<h2 tabindex="-1">STEP 1　基本情報</h2><p class="muted">所得年・所得の種類・申告方式を選択してください。</p>
 <div class="field-grid">
 <div class="field"><label for="year">所得年</label><select id="year"><option value="2026">令和8年（2026年）</option><option value="2025">令和7年（2025年）</option></select></div>
 <div class="field"><label for="incomeType">主な所得の種類</label><select id="incomeType"><option value="salary">給与所得のみ</option><option value="business">事業・不動産所得がある</option><option value="mixed">給与と年金など複数所得</option></select><span class="hint">初期検証版は給与所得のみ金額算定可能。他の所得は確認待ちになります。</span></div>
@@ -163,7 +170,7 @@ main{margin:0;padding:0;max-width:none}.panel{border:0;box-shadow:none;padding:0
 </div><div class="info">2027年分は税制未承認のため選択できません。2026年分の算定は令和8年12月以降の通常年末調整を前提とします。</div>
 </section>
 <section class="screen" id="screen1">
-<h2>STEP 2　源泉徴収票・所得の入力</h2>
+<h2 tabindex="-1">STEP 2　源泉徴収票・所得の入力</h2>
 <p class="muted">給与所得者は源泉徴収票から金額を転記してください。金額はすべて円単位です。</p>
 <div class="field-grid">
 <div class="field"><label for="salaryGross">支払金額（必須）</label><input id="salaryGross" inputmode="numeric" type="number" min="0" step="1" placeholder="7000000"></div>
@@ -174,6 +181,7 @@ main{margin:0;padding:0;max-width:none}.panel{border:0;box-shadow:none;padding:0
 <h3>PDF・画像の直接OCR（非公開テスト）</h3>
 <p class="muted">PDF・JPEG・PNG（2MB以下）をGoogle Driveの一時ドキュメントへ変換してOCRを試します。処理後に削除しますが、Googleアカウントへの一時転送・保存が発生します。実務データの投入はGoogle実機受入完了まで禁止です。</p>
 <div class="field"><label for="ocrFile">源泉徴収票PDF・画像</label><input type="file" id="ocrFile" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"></div>
+<div class="field mobile-camera"><label for="ocrCamera">スマホのカメラで源泉徴収票を撮影</label><input type="file" id="ocrCamera" accept="image/*" capture="environment"><span class="hint">写真は端末内で2MB以下のJPEGに縮小できる場合のみOCRへ送ります。HEIC画像などを変換できない端末では、JPEGで撮影・保存して選択してください。</span></div>
 <label class="check" style="margin-top:12px"><input id="ocrConsent" type="checkbox">一時Google Drive転送・OCR・処理後の削除に同意します。</label>
 <button type="button" id="ocrRun" style="margin-top:12px">選択したPDF・画像をOCR読取</button>
 <div class="info warning" id="ocrResult">OCR結果は自動承認されず、限度額の計算はHOLDとなります。</div>
@@ -186,7 +194,7 @@ main{margin:0;padding:0;max-width:none}.panel{border:0;box-shadow:none;padding:0
 <button type="button" id="clearImportedFile" style="display:none;margin-top:12px">読取データを破棄して手入力に戻る</button>
 </section>
 <section class="screen" id="screen2">
-<h2>STEP 3　その他の控除・所得</h2>
+<h2 tabindex="-1">STEP 3　その他の控除・所得</h2>
 <p class="muted">該当するものをすべて選択してください。初期版では、複雑なケースを誤って算定しないため確認待ちにします。</p>
 <div class="checks" id="exclusionChecks">
 <label class="check"><input type="checkbox" data-key="hasSpouse">配偶者控除・配偶者特別控除がある</label>
@@ -202,7 +210,7 @@ main{margin:0;padding:0;max-width:none}.panel{border:0;box-shadow:none;padding:0
 <label class="check" style="margin-top:20px;border-color:#9ebacb"><input id="ack" type="checkbox">上記のすべてを確認しました。チェックしていない項目は該当しません。</label>
 </section>
 <section class="screen" id="screen3">
-<h2>STEP 4　入力内容の確認</h2>
+<h2 tabindex="-1">STEP 4　入力内容の確認</h2>
 <p class="muted">間違いがあれば「戻る」で修正してください。計算はブラウザからGASへ送信されます。初期版では案件保存しません。</p>
 <table class="summary" id="confirmation"></table>
 <div class="info warning">本版の計算対応範囲は「扶養・保険・住宅ローン控除・追加所得のない給与所得の標準ケース」です。対応範囲外は「HOLD」と表示し、誤った金額を示しません。</div>
@@ -212,7 +220,7 @@ main{margin:0;padding:0;max-width:none}.panel{border:0;box-shadow:none;padding:0
 <section class="screen" id="resultScreen" aria-live="polite">
 <div class="report" id="report">
 <div class="kicker">FURUSATO TAX REPORT / 計算根拠書</div>
-<h2>ふるさと納税 限度額計算結果</h2>
+<h2 tabindex="-1">ふるさと納税 限度額計算結果</h2>
 <div id="resultState"></div>
 <div class="amount" id="reportAmount">—</div><p id="reportNote" class="muted"></p>
 <h3>計算根拠</h3><table class="summary" id="reportLines"></table>
@@ -231,6 +239,8 @@ main{margin:0;padding:0;max-width:none}.panel{border:0;box-shadow:none;padding:0
 var salaryRevision=0;
 var state={step:0,sourceStatus:"",sourceYear:null,sourceBasicReference:null,sourceIndicators:{}};
 var steps=Array.prototype.slice.call(document.querySelectorAll(".stage"));
+var stepWords=Array.prototype.slice.call(document.querySelectorAll(".stepwords span"));
+var stepLabels=["基本情報","源泉徴収票と所得の入力","その他の控除・所得","入力内容の確認","計算結果"];
 function byId(id){return document.getElementById(id);}
 function notify(message){byId("flash").textContent=message||"";}
 function fieldValue(id){return byId(id).value.trim();}
@@ -252,15 +262,23 @@ function formData(){
  return obj;
 }
 function invalidateSalary(){salaryRevision++;byId("next").disabled=false;}
-function showStep(n){
+function showStep(n,initial){
  invalidateSalary();
  state.step=n;notify("");
  for(var i=0;i<4;i++)byId("screen"+i).classList.toggle("active",i===n);
  byId("resultScreen").classList.toggle("active",n===4);
  byId("wizard").style.display=n===4?"none":"block";
  steps.forEach(function(node,i){node.classList.toggle("current",i===n);node.classList.toggle("done",i<n);});
+ stepWords.forEach(function(node,i){if(i===n)node.setAttribute("aria-current","step");else node.removeAttribute("aria-current");});
+ byId("stepStatus").textContent="全5ステップ中 "+(n+1)+"： "+stepLabels[n];
  byId("back").style.visibility=n===0?"hidden":"visible";
  byId("next").textContent=n===3?"計算を実行":"次へ";
+ // Focus the new heading, not the hidden bottom button, on narrow touch screens.
+ if(initial!==true){
+  var scope=n===4?byId("resultScreen"):byId("screen"+n);
+  var heading=scope.querySelector("h2");
+  if(heading)heading.focus({preventScroll:true});
+ }
  window.scrollTo(0,0);
 }
 function validInput(){
@@ -357,7 +375,9 @@ function selectMode(advanced) {
  byId("splitScreen").hidden=!advanced;
  byId("splitMode").setAttribute("aria-pressed",String(advanced));
  byId("salaryMode").setAttribute("aria-pressed",String(!advanced));
- if(advanced)byId("splitYear").focus();
+ var heading=advanced?byId("splitScreen").querySelector("h2"):
+  (state.step===4?byId("resultScreen"):byId("screen"+state.step)).querySelector("h2");
+ if(heading)heading.focus({preventScroll:true});
 }
 byId("salaryMode").addEventListener("click",function(){selectMode(false);});
 byId("splitMode").addEventListener("click",function(){selectMode(true);});
@@ -489,6 +509,7 @@ function clearImportedState(clearAmounts){
  byId("sourceConfirmBox").style.display="none";
  byId("clearImportedFile").style.display="none";
  byId("file").value="";
+ byId("ocrFile").value="";byId("ocrCamera").value="";
  if(clearAmounts){
   ["salaryGross","socialInsurance","salaryIncomeReference","deductionsReference"]
    .forEach(function(id){byId(id).value="";});
@@ -616,13 +637,74 @@ byId("file").addEventListener("change",function(ev){
 });
 
 var ocrSequence=0;
+var OCR_BYTES_MAX=2*1024*1024;
+function prepareOcrUpload(file){
+ return new Promise(function(resolve,reject){
+  if(!file||file.size<1||file.size>20*1024*1024){
+   reject(new Error("20MB以下の画像・PDFを選択してください"));return;
+  }
+  var mime=String(file.type||"").toLowerCase();
+  if(["application/pdf","image/png","image/jpeg","image/heic","image/heif"].indexOf(mime)<0){
+   reject(new Error("PDFまたはJPEG/PNG/HEIC画像を選択してください"));return;
+  }
+  if(file.size<=OCR_BYTES_MAX&&["application/pdf","image/png","image/jpeg"].indexOf(mime)>=0){
+   var reader=new FileReader();
+   reader.onerror=function(){reject(new Error("ファイルを読み取れませんでした"));};
+   reader.onload=function(){
+    var base64=String(reader.result||"").split(",")[1];
+    if(!base64)reject(new Error("入力ファイルが不正です"));
+    else resolve({mimeType:mime,base64:base64});
+   };
+   reader.readAsDataURL(file);return;
+  }
+  if(mime==="application/pdf"){
+   reject(new Error("PDFは2MB以下にしてください"));return;
+  }
+  var url=URL.createObjectURL(file),img=new Image();
+  function cleanup(){URL.revokeObjectURL(url);}
+  img.onerror=function(){cleanup();reject(new Error("画像を端末内で読み込めません。JPEGで保存し直してください"));};
+  img.onload=function(){
+   cleanup();
+   var w=img.naturalWidth,h=img.naturalHeight;
+   if(!w||!h||w*h>50000000){reject(new Error("撮影画像の解像度を確認してください"));return;}
+   try{
+    var canvas=document.createElement("canvas"),ctx=canvas.getContext("2d");
+    if(!ctx)throw new Error("画像変換が利用できません");
+    var edges=[2400,2100,1800,1600],qualities=[0.86,0.72,0.58];
+    for(var i=0;i<edges.length;i++){
+     var scale=Math.min(1,edges[i]/Math.max(w,h));
+     canvas.width=Math.max(1,Math.round(w*scale));canvas.height=Math.max(1,Math.round(h*scale));
+     ctx.fillStyle="#fff";ctx.fillRect(0,0,canvas.width,canvas.height);
+     ctx.drawImage(img,0,0,canvas.width,canvas.height);
+     for(var j=0;j<qualities.length;j++){
+      var data=canvas.toDataURL("image/jpeg",qualities[j]);
+      if(!data.startsWith("data:image/jpeg;base64,"))throw new Error("JPEG変換に失敗しました");
+      var encoded=data.slice("data:image/jpeg;base64,".length);
+      if(encoded.length<=Math.floor(OCR_BYTES_MAX*4/3)){
+       resolve({mimeType:"image/jpeg",base64:encoded});return;
+      }
+     }
+    }
+    reject(new Error("画質を維持して2MB以下に縮小できません。別の写真を選択してください"));
+   }catch(error){reject(error);}
+  };
+  img.src=url;
+ });
+}
+["ocrFile","ocrCamera"].forEach(function(id){
+ byId(id).addEventListener("change",function(){
+  if(this.files.length)byId(id==="ocrFile"?"ocrCamera":"ocrFile").value="";
+  ++ocrSequence;byId("ocrRun").disabled=false;
+  byId("ocrResult").textContent="新しい画像・PDFを選択しました。OCRは未実行です。";
+ });
+});
 byId("ocrRun").addEventListener("click",function(){
- var f=byId("ocrFile").files[0];
+ var f=byId("ocrCamera").files[0]||byId("ocrFile").files[0];
  if(!f){notify("PDF・画像を選択してください");return;}
  if(!byId("ocrConsent").checked){notify("Google Driveへの一時転送に同意してください");return;}
- if(f.size<1||f.size>2*1024*1024){notify("2MB以下のファイルのみ対応します");return;}
- if(["application/pdf","image/png","image/jpeg"].indexOf(f.type)<0){
-  notify("PDF・JPEG・PNGのみ対応します");return;
+ if(f.size<1||f.size>20*1024*1024){notify("20MB以下のファイルのみ選択できます");return;}
+ if(["application/pdf","image/png","image/jpeg","image/heic","image/heif"].indexOf(f.type)<0){
+  notify("PDFまたはJPEG・PNG・HEIC画像を選択してください");return;
  }
  if(typeof google==="undefined"||!google.script||!google.script.run||
     typeof google.script.run.extractWithholdingOcr!=="function"){
@@ -635,15 +717,8 @@ byId("ocrRun").addEventListener("click",function(){
  byId("sourceConfirmBox").style.display="none";
  byId("clearImportedFile").style.display="block";
  byId("ocrRun").disabled=true;byId("ocrResult").textContent="一時ドキュメントでOCR処理中です…";
- var reader=new FileReader();
- reader.onerror=function(){
+ prepareOcrUpload(f).then(function(upload){
   if(nonce!==ocrSequence)return;
-  byId("ocrRun").disabled=false;byId("ocrResult").textContent="ファイル読取失敗。計算HOLD。";
- };
- reader.onload=function(){
-  if(nonce!==ocrSequence)return;
-  var encoded=String(reader.result||"").split(",")[1];
-  if(!encoded){byId("ocrRun").disabled=false;notify("入力ファイルが不正です");return;}
   google.script.run.withSuccessHandler(function(result){
    if(nonce!==ocrSequence)return;
    byId("ocrRun").disabled=false;
@@ -672,10 +747,14 @@ byId("ocrRun").addEventListener("click",function(){
    byId("ocrRun").disabled=false;
    byId("ocrResult").textContent="OCR処理または一時ファイル削除に失敗した可能性があります。Google DriveでFurusato_OCR_TEMP_を検索してください。";
    notify("OCR失敗・計算HOLD。Google認可、Drive API、一時ファイル削除を確認してください");
-  }).extractWithholdingOcr({consent:true,mimeType:f.type,base64:encoded});
- };
- reader.readAsDataURL(f);
+  }).extractWithholdingOcr({consent:true,mimeType:upload.mimeType,base64:upload.base64});
+ }).catch(function(error){
+  if(nonce!==ocrSequence)return;
+  byId("ocrRun").disabled=false;
+  byId("ocrResult").textContent="写真の準備に失敗しました（HOLD）。";
+  notify(String(error&&error.message||"入力画像を確認してください"));
+ });
 });
-showStep(0);
+showStep(0,true);
 }());
 </script></body></html>

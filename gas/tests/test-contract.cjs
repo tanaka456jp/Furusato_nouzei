@@ -44,3 +44,12 @@ assert.ok(html.includes("font-size:16px"));
 assert.ok(html.includes("env(safe-area-inset-left)"));
 assert.ok(!/maximum-scale=1|user-scalable=no/.test(html));
 console.log("PASS: responsive PC/tablet/mobile contract, user zoom remains enabled");
+
+assert.ok(html.includes('id="ocrCamera"'));
+assert.ok(html.includes('capture="environment"'));
+assert.ok(html.includes('prepareOcrUpload(f).then'));
+assert.ok(html.includes('if(!byId("ocrConsent").checked)'));
+assert.ok(html.includes('state.sourceStatus="REQUIRES_REVIEW"'));
+assert.ok(html.includes('showStep(0,true)'));
+assert.ok(html.includes('role="status" aria-live="polite"'));
+console.log("PASS: mobile camera is opt-in and OCR stays review-only; step change announces heading");
