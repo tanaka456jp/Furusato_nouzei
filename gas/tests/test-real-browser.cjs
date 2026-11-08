@@ -3,11 +3,12 @@
 // transport. --live uses the actual private Google deployment and server calls.
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict'),cp=require('node:child_process');
 const {chromium}=require('playwright');
-const root=path.resolve(__dirname,'..'),live=process.argv.includes('--live'),authorize=process.argv.includes('--authorize');
+const root=path.resolve(__dirname,'..'),live=process.argv.includes('--live'),authorize=process.argv.includes('--authorize'),probe=process.argv.includes('--probe-only');
 const {source,digest,accessToken}=require('../deployment/private-gas.cjs');
 const tokenAuth=live&&process.argv.includes('--token-auth');
 const {installOriginAuthorization}=require('../deployment/browser-auth.cjs');
 const dest=path.join(root,live?'.private/furusato/evidence':'dist/acceptance');fs.mkdirSync(dest,{recursive:true});
+if(probe&&(!live||authorize))throw Error('PROBE_REQUIRES_LIVE_NONINTERACTIVE_MODE');
 const results=[];
 let currentStage="INITIALIZE",failureCode=null;
 const stage=value=>{currentStage=value;};
@@ -62,6 +63,7 @@ async function main(){
    }
    if(!frame)throw new Error('AUTH_REQUIRED: rerun --live --authorize and complete owner login/consent');
    if(authorize){results.push({id:'OWNER-AUTHENTICATED-PAGE',status:'PASS'});return;}
+   if(probe){results.push({id:'PRIVATE-WEBAPP-REACHABLE',status:'PASS'});return;}
   }
   stage('STANDARD_TAX_CALCULATION');
   await frame.locator('#next').click();await frame.locator('#salaryGross').fill('7000000');await frame.locator('#socialInsurance').fill('1000000');
@@ -146,7 +148,13 @@ main().then(()=>finish('PASS')).catch(e=>{
  finish('HOLD');process.exitCode=1;
 });
 function finish(status){
- const evidence={status,release:'HOLD',data:'SYNTHETIC',environment:authorize?'GOOGLE_OWNER_AUTH_ONLY':live?'REAL_GOOGLE_WEB_APP':'LOCAL_CHROMIUM_PREVIEW',capture:'Playwright browser rendering (not interactive desktop capture)',sourceDigest:digest(source()),workingTreeDirty:!!cp.execFileSync('git',['status','--porcelain','--untracked-files=no'],{cwd:root,encoding:'utf8'}).trim(),sourceCommit:cp.execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim(),timestamp:new Date().toISOString(),tests:results,googleAcceptance:live&&!authorize?status:'HOLD',physicalPrint:'HOLD',
+ const evidence={status,release:'HOLD',data:'SYNTHETIC',environment:probe?'REAL_GOOGLE_WEB_APP_PROBE':authorize?'GOOGLE_OWNER_AUTH_ONLY':live?'REAL_GOOGLE_WEB_APP':'LOCAL_CHROMIUM_PREVIEW',capture:'Playwright browser rendering (not interactive desktop capture)',sourceDigest:digest(source()),workingTreeDirty:!!cp.execFileSync('git',['status','--porcelain','--untracked-files=no'],{cwd:root,encoding:'utf8'}).trim(),sourceCommit:cp.execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim(),timestamp:new Date().toISOString(),tests:results,googleAcceptance:live&&!authorize&&!probe?status:'HOLD',physicalPrint:'HOLD',
   ...(status==='HOLD'?{failureStage:currentStage,failureCode:failureCode||'LIVE_STEP_FAILED'}:{})};
- fs.writeFileSync(path.join(dest,authorize?'owner-auth-evidence.json':'browser-evidence.json'),JSON.stringify(evidence,null,2));console.log(JSON.stringify(evidence));
+ fs.writeFileSync(path.join(dest,probe?'browser-probe-evidence.json':authorize?'owner-auth-evidence.json':'browser-evidence.json'),JSON.stringify(evidence,null,2));
+ // Never emit the full receipt, live URLs or source digests from a private probe.
+ if(probe)console.log(JSON.stringify({status,release:'HOLD',
+  environment:'REAL_GOOGLE_WEB_APP_PROBE',check:'PRIVATE-WEBAPP-REACHABLE',
+  failureStage:status==='HOLD'?currentStage:'NONE',
+  failureCode:status==='HOLD'?(failureCode||'LIVE_STEP_FAILED'):'NONE'}));
+ else console.log(JSON.stringify(evidence));
 }
