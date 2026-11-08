@@ -13,8 +13,11 @@ assert.ok(launcher.includes('if(process.env.CI&&(opt.run||opt.probe||opt.authori
  "CI must never run private owner consent, live probe or OCR");
 assert.ok(launcher.includes('Number(choices.has("--probe-only"))+Number(choices.has("--run-synthetic"))+Number(choices.has("--authorize-owner"))'),
  "Probe, OCR and owner consent must be exclusive");
-assert.ok(launcher.includes('OWNER_WEB_APP_SESSION: PASS; browser-only consent'),
- "Owner consent must be a separate no-OCR phase");
+assert.ok(launcher.includes('OWNER_SAME_SESSION_PROBE: PASS; reopened-browser verification required'),
+ "First owner login must not be reported as final cross-process PASS");
+const reopen=launcher.indexOf('runChild([path.join(root,"tests","test-real-browser.cjs"),"--live","--attest-head",\n   "--probe-only"');
+const final=launcher.indexOf('OWNER_WEB_APP_SESSION: PASS; reopened browser authenticated');
+assert.ok(reopen>0&&final>reopen,"Reopened session must pass before final owner-session PASS");
 assert.ok(!launcher.includes('"--token-auth"'),"The verified owner browser session must be reused");
 const firstClick=browser.indexOf("await frame.locator('#next').click()");
 const authorizeStart=browser.indexOf("if(authorize){");
