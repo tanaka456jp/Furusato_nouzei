@@ -61,6 +61,20 @@ test("nonstandard municipality and transitional returns never show a salary esti
   assert.equal(result.donationLimitYen,null);
   assert.match(result.reasons.join(" "),/独自税率.*準確定申告/);
 });
+test("salary return estimate allows for separate municipal and prefectural rounding",()=>{
+  for(const [year,national] of [[2025,30068],[2026,21900]]){
+    const input={...base,year,salaryGross:2500000,socialInsurance:201000};
+    const result=tax.calculate({...input,filing:"return"});
+    assert.equal(result.status,"ESTIMATE");
+    assert.equal(result.calculation.nationalIncomeTaxTotalYen,national);
+    assert.equal(result.calculation.residentIncomeLevyYen,101400);
+    // Independent calculations for both standard city/prefecture splits give
+    // net costs of 2,026 at 25,000, 2,077 at 24,000, and 1,928 at 23,000.
+    assert.equal(result.calculation.preliminaryLimitYen,25888);
+    assert.equal(result.donationLimitYen,23000);
+    assert.equal(tax.calculate(input).donationLimitYen,25000);
+  }
+});
 test("salary income is calculated automatically from the statutory table at 5m",()=>{
   const x=tax.calculate({...base,salaryGross:"5000000",socialInsurance:"1000000"});
   assert.equal(x.status,"ESTIMATE");

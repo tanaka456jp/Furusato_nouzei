@@ -102,6 +102,44 @@ test("mortgage scenario does not expose a limit, but can print a HOLD report",as
   assert.equal(p.el("print").disabled,false);
  } finally {p.w.close();}
 });
+test("malformed salary calculation cannot display or print a stale or invalid amount",async()=>{
+ const p=createPage();
+ try{
+  p.enterSalary();p.confirmOthers();
+  const runner=p.w.google.script.run;
+  const actual=runner.runFurusatoSimulation;
+  for(const patch of [{donationLimitYen:"bogus"},{calculation:null},{residentYear:2026}]){
+   runner.runFurusatoSimulation=function(input){this.ok({...engine.calculate(input),...patch});};
+   p.next();
+   assert.equal(p.el("resultScreen").classList.contains("active"),false);
+   assert.equal(p.el("print").disabled,true);
+   assert.match(p.el("flash").textContent,/形式を確認できません/);
+  }
+  runner.runFurusatoSimulation=actual;
+  p.next();
+  assert.equal(p.el("reportAmount").textContent,"109,000 円");
+  assert.equal(p.el("print").disabled,false);
+ }finally{p.w.close();}
+});
+test("switching mode while a draft is reading leaves the selected mode in place",async()=>{
+ const p=createPage();
+ try{
+  const values={year:"2025",incomeType:"salary",filing:"return",salaryGross:"7000000",
+   socialInsurance:"1000000",salaryIncomeReference:"",deductionsReference:""};
+  p.w.document.querySelectorAll("#exclusionChecks [data-key]").forEach(node=>{values[node.dataset.key]=false;});
+  let reader;
+  p.w.FileReader=class {
+   constructor(){reader=this;}
+   readAsText(){this.result=JSON.stringify({schema:"furusato-input-draft/v1",mode:"salary",values});}
+  };
+  const file=new p.w.File(["synthetic"],"draft.json",{type:"application/json"});
+  Object.defineProperty(p.el("draftFile"),"files",{value:[file]});
+  p.click("loadDraft");p.click("splitMode");reader.onload();
+  assert.equal(p.el("splitMode").getAttribute("aria-pressed"),"true");
+  assert.equal(p.el("salaryGross").value,"");
+  assert.match(p.el("draftStatus").textContent,/読み込みを中止/);
+ }finally{p.w.close();}
+});
 test("reader READY requires explicit original-paper cross-check, not implicit approval",async()=>{
  const p=createPage();
  try {

@@ -112,7 +112,7 @@ main{margin:0;padding:0;max-width:none}.panel{border:0;box-shadow:none;padding:0
 </style></head>
 <body>
 <header><h1>ふるさと納税 限度額シミュレーター</h1>
-<p>質問に答えるだけで計算結果と根拠を表示｜GAS検証版 v0.1.19</p></header>
+<p>質問に答えるだけで計算結果と根拠を表示｜GAS検証版 v0.1.20</p></header>
 <main><div class="panel">
 <div class="actions mode-switch" aria-label="入力モード">
 <button type="button" id="salaryMode" aria-pressed="true">給与の入力</button>
@@ -272,6 +272,7 @@ function formData(){
 function invalidateSalary(){salaryRevision++;byId("next").disabled=false;}
 function showStep(n,initial){
  invalidateSalary();
+ draftRevision++;
  state.step=n;notify("");
  for(var i=0;i<4;i++)byId("screen"+i).classList.toggle("active",i===n);
  byId("resultScreen").classList.toggle("active",n===4);
@@ -313,10 +314,29 @@ function buildConfirmation(){
  if(state.sourceStatus)tableRow(table,"取込文書",d.sourceReviewPending?"要照合（HOLD）":"原票照合済み（利用者確認）");
  if(state.sourceBasicReference!==null)tableRow(table,"源泉票の基礎控除参考値",yen(state.sourceBasicReference));
 }
-function processResult(result){
+function validSalaryResult(result,expectedYear){
+ if(!result||result.schema!=="furusato-gas-result/v1"||
+    typeof result.version!=="string"||typeof result.taxRevision!=="string"||
+    !Array.isArray(result.reasons)||!result.reasons.every(function(reason){return typeof reason==="string"&&reason.length>0;}))return false;
+ var year=[2025,2026].includes(expectedYear)?expectedYear:null;
+ if(result.year!==year||result.residentYear!==(year===null?null:year+1))return false;
+ if(result.status==="HOLD")return result.donationLimitYen===null&&result.calculation===null&&result.reasons.length>0;
+ var c=result.calculation;
+ if(result.status!=="ESTIMATE"||year===null||!c||result.reasons.length!==0||result.donationLimitYen!==c.donationLimitYen)return false;
+ var amounts=["salaryGrossYen","salaryIncomeYen","socialInsuranceYen","basicIncomeTaxDeductionYen",
+  "incomeTaxTaxableYen","nationalIncomeTaxYen","reconstructionIncomeTaxYen","residentSpecialRateBaseYen",
+  "residentTaxTaxableYen","residentIncomeLevyYen","specialCreditCapYen","preliminaryLimitYen",
+  "residentDonationIncomeCapYen","donationLimitYen"];
+ return amounts.every(function(field){return Number.isSafeInteger(c[field])&&c[field]>=0;})&&
+  Number.isFinite(c.marginalIncomeTaxRate)&&c.marginalIncomeTaxRate>=0&&c.marginalIncomeTaxRate<=.45&&
+  Number.isFinite(c.denominator)&&c.denominator>0&&c.denominator<=1;
+}
+function processResult(result,expectedYear){
+ if(!validSalaryResult(result,expectedYear)){
+  byId("print").disabled=true;notify("計算結果の形式を確認できませんでした。もう一度計算してください。");return;
+ }
  var lines=byId("reportLines");lines.textContent="";byId("reasonBlock").textContent="";
  byId("formulaDetails").style.display="none";byId("formulaDetails").textContent="";
- if(!result||typeof result!=="object"){notify("計算結果を取得できませんでした");return;}
  var ok=result.status==="ESTIMATE";
  byId("resultState").textContent=ok?"計算対象内・暫定試算":"追加確認が必要（HOLD）";
  byId("resultState").className="tag"+(ok?"":" hold");
@@ -333,7 +353,7 @@ function processResult(result){
    ["住民税特例控除の税率判定額",yen(c.residentSpecialRateBaseYen)],
    ["住民税特例控除の適用税率",(c.marginalIncomeTaxRate*100).toFixed(1)+"%"],
    ["住民税課税所得",yen(c.residentTaxTaxableYen)],
-   ["住民税所得割・調整控除後",yen(c.residentIncomeLevyYen)],
+   ["住民税所得割・調整控除後（特例上限の計算基礎）",yen(c.residentIncomeLevyYen)],
    ["住民税特例控除上限（所得割20%）",yen(c.specialCreditCapYen)],
    ["特例控除割合",(c.denominator*100).toFixed(2)+"%"],
    ["寄附限度額（概算）",yen(result.donationLimitYen)]]
@@ -344,7 +364,8 @@ function processResult(result){
    " × 20％） ÷［90％ − 住民税特例控除の適用税率 "+(c.marginalIncomeTaxRate*100).toFixed(1)+
    "％ × 1.021］＝ "+yen(c.preliminaryLimitYen)+
    "。住民税の所得基準による寄附金限度 "+yen(c.residentDonationIncomeCapYen)+
-   " と比較し、安全側で1,000円未満を切捨て。";
+   " と比較して1,000円未満を切り捨てます。"+
+   (byId("filing").value==="return"?"確定申告では、市・県分の端数処理も照合し、自己負担2,000円を超える場合は千円単位で引き下げます。":"");
  }else{
   (result.reasons||["対象外です"]).forEach(function(message){
    var p=document.createElement("p");p.textContent="・"+message;byId("reasonBlock").appendChild(p);
@@ -359,7 +380,7 @@ function send(){
  if(typeof google==="undefined"||!google.script||!google.script.run){
   byId("next").disabled=false;notify("この画面はGAS Webアプリで実行してください。");return;
  }
- google.script.run.withSuccessHandler(function(result){if(revision!==salaryRevision)return;byId("next").disabled=false;processResult(result);})
+ google.script.run.withSuccessHandler(function(result){if(revision!==salaryRevision)return;byId("next").disabled=false;processResult(result,Number(d.year));})
  .withFailureHandler(function(err){if(revision!==salaryRevision)return;byId("next").disabled=false;notify("計算処理に失敗しました。入力を確認してください。");})
  .runFurusatoSimulation(d);
 }
@@ -380,6 +401,7 @@ byId("wizard").addEventListener("input",invalidateSalary);
 byId("wizard").addEventListener("change",invalidateSalary);
 function selectMode(advanced) {
  invalidateSalary();
+ draftRevision++;
  notify("");
  document.querySelector("main").classList.toggle("separate-mode",advanced);
  byId("splitScreen").hidden=!advanced;

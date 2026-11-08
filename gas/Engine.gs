@@ -1,5 +1,5 @@
 /**
- * Furusato GAS MVP 0.1.19 — pure, deterministic, no SpreadsheetApp dependency.
+ * Furusato GAS MVP 0.1.20 — pure, deterministic, no SpreadsheetApp dependency.
  * Scope: 2025/2026, one salary source, no family/insurance/mortgage/other income.
  * All unsupported cases fail closed. This is a pre-release ESTIMATE, never an assessment.
  * Source: NTA No.1155, No.1199, No.1410, No.2260 (see README).
@@ -7,7 +7,7 @@
  */
 var FurusatoEngine = (function () {
   "use strict";
-  var VERSION = "gas-mvp-0.1.19";
+  var VERSION = "gas-mvp-0.1.20";
   var TAX_REVISION = "2026-11-09-bundled";
   var BASIC = {
     2025: [[1320000,950000],[3360000,880000],[4890000,680000],
@@ -204,6 +204,7 @@ var FurusatoEngine = (function () {
       if (afterDonation < 0 || marginal(floor1000(afterDonation)+1000) < rate) {
         return result("HOLD",["確定申告で寄附金控除を適用すると課税所得がなくなるか、所得税率の区分をまたぎます。寄附前後の所得税を個別に確認してください。"],{year:year});
       }
+      donationLimit=FurusatoSeparateTax.safeSalaryReturnDonation(income,incomeBasic+social,430000+social,incomeBasic,donationLimit);
     }
     var nationalIncomeTax = FurusatoSeparateTax.ordinaryIncomeTax(taxableIncome);
     var reconstructionIncomeTax = Math.floor(nationalIncomeTax * 21 / 1000);
@@ -223,7 +224,7 @@ var FurusatoEngine = (function () {
       specialCreditCapYen:specialCap, reconstructionMultiplier:1.021,
       denominator:denominator, preliminaryLimitYen:Math.floor(computed),
       residentDonationIncomeCapYen:residentIncomeCap, donationLimitYen:donationLimit,
-      rounding:"安全側の1,000円未満切捨て"
+      rounding:input.filing==="return"?"千円刻みで標準市町村・指定都市の自己負担を照合":"1,000円未満切捨て"
     };
     return response;
   }
@@ -371,6 +372,24 @@ var FurusatoSeparateTax = (function () {
       netCost: donation - nationalRelief - residentRelief};
   }
 
+  function safeSalaryReturnDonation(income, nationalDeductions, residentDeductions, basic, donation) {
+    var input={ordinary:income,nationalDeductions:nationalDeductions};
+    buckets.slice(1).forEach(function(bucket){input[bucket[0]]=0;});
+    var credits={domesticDividend:0,housingPossible:0,housingYear:0,housingBasisAddition:0,foreignTax:0};
+    var before=national(input,nationalDeductions,credits);
+    var jurisdictions=[3,4].map(function(cityShare){
+      var local=resident(input,residentDeductions,50000,basic,cityShare);
+      local.assessed=local.levy.map(function(levy){return Math.floor(levy/100000)*100;});
+      return local;
+    });
+    // Check the rounded tax bills for both standard city/prefecture splits.
+    // The deduction ceiling alone misses yen rounding around the limit.
+    while(donation>2000&&jurisdictions.some(function(local){
+      return donationResult(input,before,local,income,donation,credits).netCost>2000;
+    }))donation-=1000;
+    return donation;
+  }
+
   function calculate(input, basicDeduction, version) {
     if (input.filing !== "return") {
       return hold("SAFE-TAX-012", "CONFIG_REQUIRED", "申告分離課税は確定申告で試算します。",
@@ -477,5 +496,5 @@ var FurusatoSeparateTax = (function () {
         atLimit: donationResult(input, before, local, total, limit, credits)}
     };
   }
-  return {calculate: calculate, ordinaryIncomeTax: ordinaryIncomeTax};
+  return {calculate: calculate, ordinaryIncomeTax: ordinaryIncomeTax, safeSalaryReturnDonation: safeSalaryReturnDonation};
 }());
