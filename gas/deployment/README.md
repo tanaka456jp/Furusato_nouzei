@@ -95,6 +95,27 @@ node gas/scripts/check-live-ocr-readiness.cjs --run-synthetic --ack-temporary-go
 実Googleの試験が未完了ならすべてのOCR・一時ファイル削除の合格を主張しません。
 iPhone物理Safariと正式リリースは別の受入としてHOLDを維持します。
 
+## 既存GASの画面到達・認証を先に診断（Google OCRを実行しない）
+
+初回の新規非公開GASデプロイが成功し、旧形式のブラウザ証跡が
+`LEGACY_NO_FAILURE_STAGE` / `UNRECORDED` となった場合は、
+新規プロジェクト作成や `install --fresh` を再実行しません。
+既存の所有者・固定版・コード・保護環境を読み取り照合した後、
+Google Webアプリの画面が取得できるかだけを検査します。
+
+```powershell
+node gas/scripts/check-live-ocr-readiness.cjs --probe-only
+```
+
+このモードは新規シート、GAS、Google OCR文書、PDF/PNG/JPEGを作成せず、
+Webアプリを開いて `#next` が存在することだけを確認します。
+`browser-probe-evidence.json` は非公開フォルダ内に作られ、
+既存の `browser-evidence.json` は上書きされません。
+`REAL_GOOGLE_WEB_APP_PROBE: PASS; OCR NOT EXECUTED` は画面到達のみの合格であり、
+OCRの金額認識、計算HOLD、一時ファイル残数0やiPhone実機受入を意味しません。
+認証が足りない場合は安全な理由コードを表示して停止し、同意画面の自動操作はしません。
+公開CIではこのモードを実行できません。
+
 ## 登録先の保護
 
 1. HousingERP `.clasp.json` のScript IDと、Google側で取得した親シートIDを拒否リストにする。
