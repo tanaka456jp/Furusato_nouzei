@@ -31,6 +31,33 @@ GoogleのApps Script API管理アクセスが未許可の場合は、所有者�
 claspの既定認証としてグローバル `.clasprc.json` を使わず、元ファイルへ書き込みません。
 明示的な `reuse-auth` 時だけ元認証を読み取り、専用コピーで更新します。
 
+## 所有者承認後：新規隔離環境の一括作成と実OCR受入 (2026-11-08)
+
+最新のFurusato専用Windows worktreeにのみ適用します。Google認証は
+`gas/.private/furusato/auth.json` の専用ファイルを使用し、
+HousingERP / main / 共通 `.clasprc.json` は書き換えません。
+
+```powershell
+# 読取専用・Googleアクセスなし (CIもこのモードだけ実施)
+powershell -NoProfile -File gas/scripts/accept-private-live-ocr.ps1 -PreflightOnly
+# 所有者が新規合成プロジェクト作成を明示承認した場合だけ
+powershell -NoProfile -File gas/scripts/accept-private-live-ocr.ps1 -CreateAndTest
+```
+
+`-CreateAndTest` はクリーンな最新ブランチ、専用OAuth形式、保護されたHousingERP設定、
+未作成の `receipt.json` / `creation-journal.json` / プロジェクト設定をチェックしてから、
+新しい非共有Googleシート1件と紐付き非公開GASだけを作ります。
+登録ソース5ファイルと固定版、所有者、`MYSELF / USER_DEPLOYING` を検証し、
+合成PDF/PNG/JPEGのOCR候補値、計算HOLD、各処理後のGoogle一時ファイル0件、
+前後の保護環境一致を検査します。生成される非公開証跡・URL・IDはGit対象外です。
+
+Googleでの作成途中にエラーが起きた場合、**同じコマンドを再実行しないでください**。
+`creation-journal.json` と `receipt.json` の非公開記録を確認し、
+重複作成せず既存の未完了作業だけを調査します。
+Webアプリの所有者のGoogle承認画面が必要なら、自動認可せず停止します。
+合成OCRがPASSしてもiPhone実機Safariによる非公開GAS操作は別途HOLDです。
+公開静的デモの合格をiPhoneの実Google受入と混同しません。
+
 ## 登録先の保護
 
 1. HousingERP `.clasp.json` のScript IDと、Google側で取得した親シートIDを拒否リストにする。
