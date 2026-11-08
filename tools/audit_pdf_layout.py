@@ -2,6 +2,7 @@
 """Validate synthetic Excel PDF layout; does NOT validate physical printing."""
 from __future__ import annotations
 import argparse
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -9,6 +10,62 @@ import fitz  # pymupdf pinned by Windows Excel CI
 
 PDFS = (("FurusatoQA.pdf", 1), ("FurusatoQA_hidden.pdf", 1),
         ("split-result.pdf", 2), ("home-overview.pdf", 1))
+SPLIT_PRINT_FIELDS = (
+    "住宅の居住開始年", "適用上限反映済残高",
+    "住宅控除可能額", "普通配当対象額",
+    "適格外国所得税額", "調整国外所得金額",
+    "適用条件の確認状態", "住民税の課税自治体",
+)
+
+
+def assert_split_print_source_proof(pdfpath: Path, printed_page_text: str) -> dict:
+    """Compare a PDF with the *same* Excel COM export's allowlisted input proof.
+
+    All data in the sidecar is synthetic. The hash binds the proof to the PDF,
+    and an 8-field exact schema prevents accidentally exporting other cells.
+    This does not prove statutory correctness or actual paper appearance.
+    """
+    proof_path = pdfpath.with_name("split-result.print-inputs.json")
+    if not proof_path.is_file():
+        raise AssertionError("Split PDF source proof is missing")
+    proof = json.loads(proof_path.read_text(encoding="utf-8-sig"))
+    if proof.get("schema") != "furusato-split-pdf-printed-inputs/v1":
+        raise AssertionError("Split PDF source proof schema mismatch")
+    sha = hashlib.sha256(pdfpath.read_bytes()).hexdigest()
+    if proof.get("pdf_sha256", "").lower() != sha:
+        raise AssertionError("Split PDF source proof SHA-256 mismatch")
+    fields = proof.get("fields")
+    if not isinstance(fields, dict) or set(fields) != set(SPLIT_PRINT_FIELDS):
+        raise AssertionError("Split PDF source proof must contain exactly eight fields")
+    version = proof.get("reviewVersion")
+    tax_year = proof.get("taxYear")
+    if not isinstance(tax_year, int) or tax_year not in (2025, 2026):
+        raise AssertionError("Split PDF source proof tax year is invalid")
+    if not isinstance(version, str) or not re.fullmatch(r"v4\.18\.\d+", version):
+        raise AssertionError("Split PDF source proof review version is invalid")
+    visible = re.sub(r"\s+", "", printed_page_text)
+    if version not in visible or f"所得年{tax_year}" not in visible:
+        raise AssertionError("Split PDF source proof year/version missing from printed page")
+    for label in SPLIT_PRINT_FIELDS:
+        value = fields[label]
+        if isinstance(value, bool) or not isinstance(value, (int, str)):
+            raise AssertionError(f"Split PDF source proof has invalid type: {label}")
+        if isinstance(value, int) and value < 0:
+            raise AssertionError(f"Split PDF source proof has negative value: {label}")
+        rendered = format(value, ",") if isinstance(value, int) else value
+        if not rendered or label not in visible or rendered not in visible:
+            raise AssertionError(f"Split PDF lacks printed source field: {label}")
+    return {"status": "PASS", "fields_checked": len(fields),
+            "pdf_sha256": sha, "source": "synthetic Excel COM input cells"}
+
+
+def source_proof_self_test() -> None:
+    """Guard against a proof that would pass with a missing amount."""
+    printed = "住宅の居住開始年 2025 適用上限反映済残高 49,928,572"
+    if "49,928,572" not in re.sub(r"\s+", "", printed):
+        raise AssertionError("Split PDF source proof normalizer broken")
+    if "49,928,573" in re.sub(r"\s+", "", printed):
+        raise AssertionError("Split PDF source proof false positive")
 
 
 def assert_no_text_collision(page, context: str) -> int:
@@ -59,6 +116,7 @@ def audit(pdfpath: Path, expected_pages: int, out: Path) -> dict:
     if not pdfpath.is_file() or pdfpath.stat().st_size < 500:
         raise AssertionError("Missing synthetic PDF " + pdfpath.name)
     pages = []
+    print_proof = None
     with fitz.open(pdfpath) as doc:
         if doc.needs_pass or len(doc) != expected_pages:
             raise AssertionError(f"{pdfpath.name}: expected {expected_pages} unencrypted pages")
@@ -80,6 +138,8 @@ def audit(pdfpath: Path, expected_pages: int, out: Path) -> dict:
             pages.append({"page": i+1, "size_pt": [round(w, 2), round(h, 2)],
                           "text_blocks": len(blocks), "words_checked": checked_words, "png": filename})
         if pdfpath.name == "split-result.pdf":
+            print_proof = assert_split_print_source_proof(
+                pdfpath, doc[1].get_text(sort=True))
             # The synthetic total-income allocation is a single numeric
             # pair. Material text-collision tests do not catch a line wrap,
             # which can visually interleave the next Excel report row.
@@ -102,7 +162,7 @@ def audit(pdfpath: Path, expected_pages: int, out: Path) -> dict:
             for label in ("ふるさと納税", "109,000", "2026"):
                 if label not in text:
                     raise AssertionError("Home PDF has missing visible label/amount: " + label)
-    return {"pdf": pdfpath.name, "pages": pages}
+    return {"pdf": pdfpath.name, "pages": pages, "source_proof": print_proof}
 
 
 def main():
@@ -111,6 +171,7 @@ def main():
     parser.add_argument("--source", required=True, type=Path)
     args = parser.parse_args()
     collision_self_test()
+    source_proof_self_test()
     folder = args.folder.resolve(strict=True)
     source = args.source.read_text(encoding="utf-8-sig")
     version_match = re.search(r"v4\.18\.\d+ 分離課税検証版", source)
@@ -128,12 +189,13 @@ def main():
         raise AssertionError("Home PDF review version mismatch: " + version)
     report = {"status": "PASS", "revision": version, "pdfs": reports,
               "physical_printer_tested": False, "desktop_screens_tested": False,
-              "text_collision_self_test": "PASS"}
+              "text_collision_self_test": "PASS",
+              "split_print_source_proof": "PASS"}
     output = folder / "audit.json"
     if output.exists():
         raise AssertionError("Refusing PDF evidence overwrite")
     output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-    print("PDF_LAYOUT_PASS: A4 1+1+2+1 pages, print headers, no text overlap, PNG evidence")
+    print("PDF_LAYOUT_PASS: A4 1+1+2+1 pages, eight printed inputs, no text overlap, PNG evidence")
     print("PHYSICAL_PRINTER_AND_DESKTOP_SCREENSHOTS_HOLD")
 
 
