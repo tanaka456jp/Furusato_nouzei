@@ -1,0 +1,15 @@
+"use strict";
+const assert=require("node:assert/strict"),fs=require("node:fs"),path=require("node:path");
+const root=path.resolve(__dirname,"..");
+const browser=fs.readFileSync(path.join(root,"tests","test-real-browser.cjs"),"utf8");
+const launcher=fs.readFileSync(path.join(root,"scripts","check-live-ocr-readiness.cjs"),"utf8");
+const guard=browser.indexOf("if(probe){results.push({id:'PRIVATE-WEBAPP-REACHABLE',status:'PASS'});return;}");
+const firstMutation=browser.indexOf("await frame.locator('#next').click()");
+assert.ok(guard>0&&firstMutation>guard,"Probe must exit before all app workflow interactions");
+assert.ok(browser.includes("googleAcceptance:live&&!authorize&&!probe?status:'HOLD'"),"Probe must not claim real Google OCR acceptance");
+assert.ok(browser.includes("probe?'browser-probe-evidence.json':authorize?"),"Probe must not overwrite previous OCR evidence");
+assert.ok(browser.includes("probe?'REAL_GOOGLE_WEB_APP_PROBE':authorize?"),"Probe must distinguish test scope");
+assert.ok(launcher.includes('if(process.env.CI&&(opt.run||opt.probe))'),"CI must never run real Google live probe");
+assert.ok(launcher.includes('if(choices.has("--probe-only")&&choices.has("--run-synthetic"))'),"Probe cannot also run OCR");
+assert.ok(launcher.includes('REAL_GOOGLE_WEB_APP_PROBE: PASS; OCR NOT EXECUTED'),"Probe console must state limited scope");
+console.log("PRIVATE_GOOGLE_WEB_APP_PROBE_CONTRACT_PASS: no OCR, no Google mutation; synthetic test only");
