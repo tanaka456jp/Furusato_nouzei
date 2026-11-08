@@ -164,10 +164,14 @@ node gas/scripts/check-live-ocr-readiness.cjs --authorize-owner
 `gas/.private/furusato/browser-profile/` の**専用・Git対象外のブラウザプロファイル**
 で所有者の認証画面を開きます。Googleアカウントのログイン、同意、確認は
 所有者が画面上で行い、コードはログインフォームや同意ボタンを操作しません。
-認証ができてWebアプリの入力画面へ到達すると、同じローカルセッションで
-自動的に **OCRを実行しない画面到達テスト** を行います。
-成功時は `OWNER_WEB_APP_SESSION: PASS` と
+認証ができてWebアプリの入力画面へ到達すると、**同じブラウザを閉じる前に**
+別タブで同じWebアプリを開き直し、入力画面に到達できることを再検証します。
+その後で専用ブラウザプロファイルを閉じ、**次の独立プロセスでも**
+認証状態が維持されることを検証します。いずれもOCRを実行しません。
+両方に成功した場合に限って `OWNER_WEB_APP_SESSION: PASS` と
 `REAL_GOOGLE_WEB_APP_PROBE: PASS; OCR NOT EXECUTED` を出力します。
+2回目のブラウザ起動時だけ認証が失われる場合はHOLDとし、
+本番OCR検証には進めません。
 
 `--probe-only` と実OCR受入 `--run-synthetic --ack-temporary-google-docs` は、
 どちらも手動承認後の専用ブラウザプロファイルを再利用します。
