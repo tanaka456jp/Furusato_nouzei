@@ -19,7 +19,57 @@ SPLIT_PRINT_FIELDS = (
 )
 
 
-def assert_split_print_source_proof(pdfpath: Path, printed_page_text: str) -> dict:
+def formatted_print_value(label: str, value: int | str) -> str:
+    # Housing occupancy years use calendar-year formatting, never thousands.
+    return (str(value) if label == "住宅の居住開始年" else
+            format(value, ",") if isinstance(value, int) else value)
+
+
+def assert_split_print_row_geometry(words: list, fields: dict) -> None:
+    """Verify each printed value is beside its label, on its actual table row.
+
+    PDF-wide text existence alone cannot distinguish one repeated zero from
+    another. In this four-row A/B/C/D print table, the value must be in B/D,
+    on the same baseline as its own A/C label, below the audit heading.
+    """
+    heading = [w for w in words if w[4] == "計算条件の照合（入力値の控え）"]
+    if len(heading) != 1:
+        raise AssertionError("Split PDF proof table heading missing or duplicated")
+    table_start = heading[0][3]
+    previous_center = None
+    for i in range(0, len(SPLIT_PRINT_FIELDS), 2):
+        centers = []
+        for side, label in (("left", SPLIT_PRINT_FIELDS[i]),
+                            ("right", SPLIT_PRINT_FIELDS[i + 1])):
+            matching_labels = [
+                w for w in words
+                if w[4] == label and w[1] > table_start + 1
+                and ((w[0] < 295) if side == "left" else (w[0] >= 295))
+            ]
+            if len(matching_labels) != 1:
+                raise AssertionError(f"Split PDF proof label placement: {label}")
+            anchor = matching_labels[0]
+            center = (anchor[1] + anchor[3]) / 2
+            rendered = formatted_print_value(label, fields[label])
+            x_min, x_max = (170, 295) if side == "left" else (430, 585)
+            matching_values = [
+                w for w in words
+                if w[4] == rendered and x_min <= w[0] < x_max
+                and w[0] >= anchor[2] + 3
+                and abs((w[1] + w[3]) / 2 - center) <= 3
+            ]
+            if len(matching_values) != 1:
+                raise AssertionError(f"Split PDF proof value misplaced: {label}")
+            centers.append(center)
+        if abs(centers[0] - centers[1]) > 3:
+            raise AssertionError("Split PDF proof column labels are on different rows")
+        if previous_center is not None and centers[0] <= previous_center + 10:
+            raise AssertionError("Split PDF proof table row order changed")
+        previous_center = centers[0]
+
+
+def assert_split_print_source_proof(
+        pdfpath: Path, printed_page_text: str, printed_words: list) -> dict:
     """Compare a PDF with the *same* Excel COM export's allowlisted input proof.
 
     All data in the sidecar is synthetic. The hash binds the proof to the PDF,
@@ -53,13 +103,13 @@ def assert_split_print_source_proof(pdfpath: Path, printed_page_text: str) -> di
             raise AssertionError(f"Split PDF source proof has invalid type: {label}")
         if isinstance(value, int) and value < 0:
             raise AssertionError(f"Split PDF source proof has negative value: {label}")
-        # Calendar year is never formatted as a monetary amount in Excel.
-        rendered = (str(value) if label == "住宅の居住開始年" else
-                    format(value, ",") if isinstance(value, int) else value)
+        rendered = formatted_print_value(label, value)
         if not rendered or label not in visible or rendered not in visible:
             raise AssertionError(f"Split PDF lacks printed source field: {label}")
+    assert_split_print_row_geometry(printed_words, fields)
     return {"status": "PASS", "fields_checked": len(fields),
-            "pdf_sha256": sha, "source": "synthetic Excel COM input cells"}
+            "pdf_sha256": sha, "row_geometry": "PASS",
+            "source": "synthetic Excel COM input cells"}
 
 
 def source_proof_self_test() -> None:
@@ -72,18 +122,31 @@ def source_proof_self_test() -> None:
                            "照合済", "標準市町村")))
         proof = {"schema": "furusato-split-pdf-printed-inputs/v1",
                  "pdf_sha256": hashlib.sha256(pdf.read_bytes()).hexdigest(),
-                 "reviewVersion": "v4.18.31", "taxYear": 2026, "fields": fields}
+                 "reviewVersion": "v4.18.32", "taxYear": 2026, "fields": fields}
         path = pdf.with_name("split-result.print-inputs.json")
-        visible = "所得年 2026 Excel版 v4.18.31 " + " ".join(
+        visible = "所得年 2026 Excel版 v4.18.32 " + " ".join(
             f"{k} {str(v) if k == '住宅の居住開始年' else format(v, ',') if isinstance(v, int) else v}"
             for k, v in fields.items())
+        # Synthetic PDF word positions mirror the generated four-row table.
+        # Separate left/right boxes ensure repeated zeroes have independent
+        # location checks rather than falsely satisfying each other.
+        words = [(26, 170, 206, 182, "計算条件の照合（入力値の控え）")]
+        for i in range(0, len(SPLIT_PRINT_FIELDS), 2):
+            y = 195 + i // 2 * 29
+            for label, lx, vx in (
+                    (SPLIT_PRINT_FIELDS[i], 26, 250),
+                    (SPLIT_PRINT_FIELDS[i + 1], 306, 520)):
+                words.append((lx, y, lx + 110, y + 11, label))
+                words.append((vx, y, vx + 25, y + 11,
+                              formatted_print_value(label, fields[label])))
         path.write_text(json.dumps(proof, ensure_ascii=False), encoding="utf-8")
-        if assert_split_print_source_proof(pdf, visible)["fields_checked"] != 8:
+        if assert_split_print_source_proof(pdf, visible, words)["fields_checked"] != 8:
             raise AssertionError("Split PDF source proof positive control failed")
 
-        def must_reject(label, text):
+        def must_reject(label, text, word_positions=None):
             try:
-                assert_split_print_source_proof(pdf, text)
+                assert_split_print_source_proof(
+                    pdf, text, words if word_positions is None else word_positions)
             except AssertionError:
                 return
             raise AssertionError("Split PDF source proof accepted " + label)
@@ -91,6 +154,16 @@ def source_proof_self_test() -> None:
         must_reject("wrong printed amount", visible.replace("49,928,572", "49,928,573"))
         must_reject("wrong occupancy year", visible.replace("住宅の居住開始年 2025", "住宅の居住開始年 2024"))
         must_reject("missing printed label", visible.replace("普通配当対象額", ""))
+        displaced = [
+            (w[0], w[1] + 16, w[2], w[3] + 16, w[4])
+            if w[4] == "49,928,572" else w for w in words
+        ]
+        must_reject("value moved to wrong row", visible, displaced)
+        bad_column = [
+            (w[0] - 90, w[1], w[2] - 90, w[3], w[4])
+            if w[4] == "照合済" else w for w in words
+        ]
+        must_reject("value moved out of source column", visible, bad_column)
         proof["pdf_sha256"] = "0" * 64
         path.write_text(json.dumps(proof, ensure_ascii=False), encoding="utf-8")
         must_reject("wrong PDF hash", visible)
@@ -171,7 +244,8 @@ def audit(pdfpath: Path, expected_pages: int, out: Path) -> dict:
                           "text_blocks": len(blocks), "words_checked": checked_words, "png": filename})
         if pdfpath.name == "split-result.pdf":
             print_proof = assert_split_print_source_proof(
-                pdfpath, doc[1].get_text(sort=True))
+                pdfpath, doc[1].get_text(sort=True),
+                doc[1].get_text("words", sort=True))
             # The synthetic total-income allocation is a single numeric
             # pair. Material text-collision tests do not catch a line wrap,
             # which can visually interleave the next Excel report row.
@@ -199,11 +273,17 @@ def audit(pdfpath: Path, expected_pages: int, out: Path) -> dict:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--folder", required=True, type=Path)
-    parser.add_argument("--source", required=True, type=Path)
+    parser.add_argument("--folder", type=Path)
+    parser.add_argument("--source", type=Path)
+    parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     collision_self_test()
     source_proof_self_test()
+    if args.self_test:
+        print("PDF_AUDIT_SELF_TEST_PASS: collisions, proof geometry and mutations")
+        return
+    if args.folder is None or args.source is None:
+        parser.error("--folder and --source are required outside --self-test")
     folder = args.folder.resolve(strict=True)
     source = args.source.read_text(encoding="utf-8-sig")
     version_match = re.search(r"v4\.18\.\d+ 分離課税検証版", source)
@@ -222,7 +302,8 @@ def main():
     report = {"status": "PASS", "revision": version, "pdfs": reports,
               "physical_printer_tested": False, "desktop_screens_tested": False,
               "text_collision_self_test": "PASS",
-              "split_print_source_proof": "PASS"}
+              "split_print_source_proof": "PASS",
+              "split_print_row_geometry": "PASS"}
     output = folder / "audit.json"
     if output.exists():
         raise AssertionError("Refusing PDF evidence overwrite")
