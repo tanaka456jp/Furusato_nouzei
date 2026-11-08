@@ -41,6 +41,11 @@ for(const [code,changed] of failures){
 }
 assert.equal(parseArguments([]).verify,false);
 assert.equal(parseArguments(["--verify-remote"]).verify,true);
+assert.equal(parseArguments(["--probe-only"]).verify,true);
+assert.equal(parseArguments(["--probe-only"]).probe,true);
+assert.equal(parseArguments(["--verify-remote"]).probe,false);
+assert.throws(()=>parseArguments(["--probe-only","--run-synthetic","--ack-temporary-google-docs"]),/PROBE_AND_OCR_ARE_EXCLUSIVE/);
+assert.throws(()=>parseArguments(["--probe-only","--ack-temporary-google-docs"]),/ACK_WITHOUT_RUN/);
 assert.equal(parseArguments(["--run-synthetic","--ack-temporary-google-docs"]).run,true);
 assert.throws(()=>parseArguments(["--run-synthetic"]),/EXPLICIT_TEMPORARY/);
 assert.throws(()=>parseArguments(["--ack-temporary-google-docs"]),/ACK_WITHOUT_RUN/);
