@@ -8,6 +8,7 @@ const fs=require("node:fs"),path=require("node:path"),os=require("node:os"),cp=r
 const root=path.resolve(__dirname,"..");
 const privateDir=path.join(root,".private","furusato");
 const google=require("../deployment/private-gas.cjs");
+const {openOwnerSystemBrowser}=require("../deployment/system-browser.cjs");
 const policy=require("../deployment/policy.json");
 const sourceNames=policy.sourceFiles;
 const webAppUrl=/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/;
@@ -131,17 +132,15 @@ function main(args){
   "--protected-root",opt.protectedRoot]);
  console.log("REMOTE_PRIVATE_IMMUTABLE_VERSION_MATCH: PASS (release HOLD)");
  if(opt.authorizeOwner){
-  // Owner-only interactive authorization of the existing *isolated* project.
-  // This dedicated private browser profile is reused for probing and OCR.
-  runChild([path.join(root,"tests","test-real-browser.cjs"),"--live","--attest-head",
-   "--authorize","--protected-root",opt.protectedRoot],{interactiveOwner:true});
-  console.log("OWNER_SAME_SESSION_PROBE: PASS; reopened-browser verification required (release HOLD)");
-  // Confirm auth really survives a separate browser process. A first-page
-  // PASS must never be misreported as persistent session acceptance.
-  runChild([path.join(root,"tests","test-real-browser.cjs"),"--live","--attest-head",
-   "--probe-only","--protected-root",opt.protectedRoot]);
-  console.log("OWNER_WEB_APP_SESSION: PASS; reopened browser authenticated (release HOLD)");
-  console.log("REAL_GOOGLE_WEB_APP_PROBE: PASS; OCR NOT EXECUTED; release HOLD");
+  // Google may reject sign-in inside software-controlled browsers.
+  // Use the Windows default browser, with NO Playwright/remote control.
+  // Manual account confirmation is required; browser launch is not a PASS.
+  const receiptPath=path.join(privateDir,"receipt.json");
+  const receipt=JSON.parse(fs.readFileSync(receiptPath,"utf8"));
+  const result=openOwnerSystemBrowser(receipt.webAppUrl);
+  if(result.status!=="OPENED")throw Error("OWNER_SYSTEM_BROWSER_OPEN_FAILED");
+  console.log("OWNER_SYSTEM_BROWSER_OPENED: MANUAL_REVIEW_REQUIRED; OCR NOT EXECUTED; release HOLD");
+  return;
  }
  if(opt.probe){
   // GET-only Web App navigation. Browser exits before clicking workflow inputs,
@@ -162,7 +161,9 @@ module.exports={parseArguments,evaluateReadiness,inspectIsolatedAuth,committedSo
 if(require.main===module)try{main(process.argv.slice(2));}catch(e){
  const allow=new Set(["MISSING_PROTECTED_ROOT","UNKNOWN_ARGUMENT","EXPLICIT_TEMPORARY_GOOGLE_DOCUMENT_ACK_REQUIRED",
   "TEMPORARY_GOOGLE_DOCUMENT_ACK_WITHOUT_RUN","UNREADABLE_PRIVATE_RECEIPT","UNVERIFIED_GIT_HEAD",
-  "LIVE_GOOGLE_OCR_MUST_RUN_OUTSIDE_CI","OWNER_AUTH_PROBE_AND_OCR_ARE_EXCLUSIVE","PRIVATE_GOOGLE_VERIFICATION_OR_SYNTHETIC_OCR_FAILED"]);
+  "LIVE_GOOGLE_OCR_MUST_RUN_OUTSIDE_CI","OWNER_AUTH_PROBE_AND_OCR_ARE_EXCLUSIVE",
+  "UNVERIFIED_PRIVATE_WEB_APP_URL","OWNER_SYSTEM_BROWSER_WINDOWS_ONLY","OWNER_SYSTEM_BROWSER_OPEN_FAILED",
+  "PRIVATE_GOOGLE_VERIFICATION_OR_SYNTHETIC_OCR_FAILED"]);
  console.error("LIVE_OCR_HOLD: "+(allow.has(e.message)?e.message:"LOCAL_PRIVATE_STATE_UNVERIFIED"));
  process.exitCode=1;
 }
