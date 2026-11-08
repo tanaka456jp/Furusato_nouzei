@@ -81,6 +81,23 @@ public static class FurusatoWindowCapture {
     $display.observed_scale_percent = if ($dpi -ge 72 -and $dpi -le 384) {
         [int][Math]::Round(100*$dpi/96)
     } else { $null }
+    # The screen bounds may be logical/virtualized pixels. This inference
+    # is NOT a hardware readout and never constitutes release acceptance.
+    $inferred = $null
+    if ($dpi -ge 96 -and $dpi -le 288) {
+        $factor = [double]$dpi / 96.0
+        $hypothesisWidth = [int][Math]::Round($width * $factor)
+        $hypothesisHeight = [int][Math]::Round($height * $factor)
+        $display.inferred_pixels_if_dpi_virtualized = @($hypothesisWidth,$hypothesisHeight)
+        $display.physical_resolution_verified = $false
+        if ($hypothesisWidth -eq 1920 -and $hypothesisHeight -eq 1080 -and
+            $display.observed_scale_percent -eq 125) {
+            $inferred = '1920x1080@125'
+        } elseif ($hypothesisWidth -eq 1366 -and $hypothesisHeight -eq 768 -and
+                  $display.observed_scale_percent -eq 150) {
+            $inferred = '1366x768@150'
+        }
+    }
     $measured = if ($width -eq 1920 -and $height -eq 1080 -and
                        $display.observed_scale_percent -in @(100,125)) {
         "$($width)x$($height)@$($display.observed_scale_percent)"
@@ -91,55 +108,65 @@ public static class FurusatoWindowCapture {
     if ($pxw -lt 500 -or $pxh -lt 400 -or $pxw -gt 6000 -or $pxh -gt 4000) {
         throw 'IMPLAUSIBLE_EXCEL_WINDOW_DIMENSIONS'
     }
-    $bitmap = New-Object System.Drawing.Bitmap($pxw,$pxh)
-    $graphics = [Drawing.Graphics]::FromImage($bitmap)
-    try {
-        $hdc = $graphics.GetHdc()
-        try {
-            $printed = [FurusatoWindowCapture]::PrintWindow($hwnd,$hdc,2)
-        } finally {
-            $graphics.ReleaseHdc($hdc)
-        }
-        if (-not $printed) {
-            throw 'EXCEL_WINDOW_CAPTURE_NOT_SUPPORTED'
-        }
-        # Strip title/ribbon and taskbar to exclude account names or other
-        # application UI. PrintWindow captures only this Excel HWND.
-        $left = 20
-        $top = [Math]::Min(180,[int]($pxh/3))
-        $cropWidth = $pxw - 40
-        $cropHeight = $pxh - $top - 20
-        if ($cropWidth -lt 420 -or $cropHeight -lt 250) {
-            throw 'EXCEL_SHEET_REGION_TOO_SMALL'
-        }
-        $crop = New-Object System.Drawing.Bitmap($cropWidth,$cropHeight)
-        $cropGraphics = [Drawing.Graphics]::FromImage($crop)
-        try {
-            $destination = New-Object Drawing.Rectangle(0,0,$cropWidth,$cropHeight)
-            $sourceRect = New-Object Drawing.Rectangle($left,$top,$cropWidth,$cropHeight)
-            $cropGraphics.DrawImage($bitmap,$destination,$sourceRect,[Drawing.GraphicsUnit]::Pixel)
-        } finally {
-            $cropGraphics.Dispose()
-        }
-        try {
-            $colors = [Collections.Generic.HashSet[int]]::new()
-            for ($x=5; $x -lt $cropWidth; $x+=31) {
-                for ($y=5; $y -lt $cropHeight; $y+=23) {
-                    [void]$colors.Add($crop.GetPixel($x,$y).ToArgb())
-                }
-            }
-            if ($colors.Count -lt 8) {
-                throw 'EXCEL_CAPTURE_BLANK_OR_UNRENDERED'
-            }
-            $pictureName = 'review_excel_window_sheet_only.png'
-            $crop.Save((Join-Path $EvidenceDirectory $pictureName),[Drawing.Imaging.ImageFormat]::Png)
-        } finally {
-            $crop.Dispose()
-        }
-    } finally {
-        $graphics.Dispose()
-        $bitmap.Dispose()
+    # On this runner a 180px crop left the ribbon and formula bar visible.
+    # Limit evidence to the worksheet region. Capture two scroll positions:
+    # upper controls and lower input fields. No desktop-wide screenshots.
+    $top = [Math]::Min(350,[int]($pxh - 300))
+    $left = 20
+    $cropWidth = $pxw - 40
+    $cropHeight = $pxh - $top - 20
+    if ($top -lt 170 -or $cropWidth -lt 420 -or $cropHeight -lt 250) {
+        throw 'EXCEL_SHEET_REGION_TOO_SMALL'
     }
+    $pictures = @()
+    foreach ($capture in @(
+        @{ row = 1; name = 'review_excel_window_sheet_only.png' },
+        @{ row = 12; name = 'review_excel_window_lower_section.png' }
+    )) {
+        $excel.ActiveWindow.ScrollRow = [int]$capture.row
+        Start-Sleep -Milliseconds 450
+        $bitmap = New-Object System.Drawing.Bitmap($pxw,$pxh)
+        $graphics = [Drawing.Graphics]::FromImage($bitmap)
+        try {
+            $hdc = $graphics.GetHdc()
+            try {
+                $printed = [FurusatoWindowCapture]::PrintWindow($hwnd,$hdc,2)
+            } finally {
+                $graphics.ReleaseHdc($hdc)
+            }
+            if (-not $printed) {
+                throw 'EXCEL_WINDOW_CAPTURE_NOT_SUPPORTED'
+            }
+            $crop = New-Object System.Drawing.Bitmap($cropWidth,$cropHeight)
+            $cropGraphics = [Drawing.Graphics]::FromImage($crop)
+            try {
+                $destination = New-Object Drawing.Rectangle(0,0,$cropWidth,$cropHeight)
+                $sourceRect = New-Object Drawing.Rectangle($left,$top,$cropWidth,$cropHeight)
+                $cropGraphics.DrawImage($bitmap,$destination,$sourceRect,[Drawing.GraphicsUnit]::Pixel)
+            } finally {
+                $cropGraphics.Dispose()
+            }
+            try {
+                $colors = [Collections.Generic.HashSet[int]]::new()
+                for ($x=5; $x -lt $cropWidth; $x+=31) {
+                    for ($y=5; $y -lt $cropHeight; $y+=23) {
+                        [void]$colors.Add($crop.GetPixel($x,$y).ToArgb())
+                    }
+                }
+                if ($colors.Count -lt 8) {
+                    throw 'EXCEL_CAPTURE_BLANK_OR_UNRENDERED'
+                }
+                $crop.Save((Join-Path $EvidenceDirectory $capture.name),[Drawing.Imaging.ImageFormat]::Png)
+            } finally {
+                $crop.Dispose()
+            }
+        } finally {
+            $graphics.Dispose()
+            $bitmap.Dispose()
+        }
+        $pictures += [string]$capture.name
+    }
+    $pictureName = $pictures[0]
     $status = 'CAPTURED_REQUIRES_VISUAL_REVIEW'
 } catch {
     $reason = [string]$_.Exception.Message
@@ -166,7 +193,9 @@ public static class FurusatoWindowCapture {
         generated_workbook_sha256 = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant()
         display_observation = $display
         scenario_observed_not_certified = $measured
+        scenario_inferred_from_virtualized_bounds_not_certified = $inferred
         screenshot = $pictureName
+        screenshots = @($pictures)
         unverified_scenarios = @('1920x1080@100','1920x1080@125','1366x768@150')
         limitation = 'Observed runner display only; no display configuration changed; visual inspection and other resolutions remain HOLD'
         failure_category = if ($reason) { ($reason -replace '[^A-Z0-9_]','_').Substring(0,[Math]::Min(80,($reason -replace '[^A-Z0-9_]','_').Length)) } else { '' }
