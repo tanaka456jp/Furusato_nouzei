@@ -6,6 +6,7 @@ import hashlib
 import json
 import re
 from pathlib import Path
+from tempfile import TemporaryDirectory
 import fitz  # pymupdf pinned by Windows Excel CI
 
 PDFS = (("FurusatoQA.pdf", 1), ("FurusatoQA_hidden.pdf", 1),
@@ -60,12 +61,40 @@ def assert_split_print_source_proof(pdfpath: Path, printed_page_text: str) -> di
 
 
 def source_proof_self_test() -> None:
-    """Guard against a proof that would pass with a missing amount."""
-    printed = "住宅の居住開始年 2025 適用上限反映済残高 49,928,572"
-    if "49,928,572" not in re.sub(r"\s+", "", printed):
-        raise AssertionError("Split PDF source proof normalizer broken")
-    if "49,928,573" in re.sub(r"\s+", "", printed):
-        raise AssertionError("Split PDF source proof false positive")
+    """Prove that tampered PDFs, missing data and changed amounts fail closed."""
+    with TemporaryDirectory(prefix="furusato-pdf-proof-") as tmp:
+        pdf = Path(tmp) / "split-result.pdf"
+        pdf.write_bytes(b"%PDF-synthetic-only-self-test")
+        fields = dict(zip(SPLIT_PRINT_FIELDS,
+                          (2025, 49928572, 349500, 0, 8000, 0,
+                           "照合済", "標準市町村")))
+        proof = {"schema": "furusato-split-pdf-printed-inputs/v1",
+                 "pdf_sha256": hashlib.sha256(pdf.read_bytes()).hexdigest(),
+                 "reviewVersion": "v4.18.31", "taxYear": 2026, "fields": fields}
+        path = pdf.with_name("split-result.print-inputs.json")
+        visible = "所得年 2026 Excel版 v4.18.31 " + " ".join(
+            f"{k} {format(v, ',') if isinstance(v, int) else v}"
+            for k, v in fields.items())
+        path.write_text(json.dumps(proof, ensure_ascii=False), encoding="utf-8")
+        if assert_split_print_source_proof(pdf, visible)["fields_checked"] != 8:
+            raise AssertionError("Split PDF source proof positive control failed")
+
+        def must_reject(label, text):
+            try:
+                assert_split_print_source_proof(pdf, text)
+            except AssertionError:
+                return
+            raise AssertionError("Split PDF source proof accepted " + label)
+
+        must_reject("wrong printed amount", visible.replace("49,928,572", "49,928,573"))
+        must_reject("missing printed label", visible.replace("普通配当対象額", ""))
+        proof["pdf_sha256"] = "0" * 64
+        path.write_text(json.dumps(proof, ensure_ascii=False), encoding="utf-8")
+        must_reject("wrong PDF hash", visible)
+        proof["pdf_sha256"] = hashlib.sha256(pdf.read_bytes()).hexdigest()
+        proof["fields"].pop("住宅控除可能額")
+        path.write_text(json.dumps(proof, ensure_ascii=False), encoding="utf-8")
+        must_reject("missing field", visible)
 
 
 def assert_no_text_collision(page, context: str) -> int:
