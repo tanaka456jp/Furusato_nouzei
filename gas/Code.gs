@@ -6,7 +6,7 @@
 function doGet() {
   return HtmlService.createHtmlOutputFromFile("Index")
     .setTitle("ふるさと納税 限度額シミュレーター — GAS検証版")
-    .addMetaTag("viewport","width=device-width, initial-scale=1");
+    .addMetaTag("viewport","width=device-width, initial-scale=1, viewport-fit=cover");
 }
 function runFurusatoSimulation(input) {
   return FurusatoEngine.calculate(input);

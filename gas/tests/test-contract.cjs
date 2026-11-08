@@ -53,3 +53,11 @@ assert.ok(html.includes('state.sourceStatus="REQUIRES_REVIEW"'));
 assert.ok(html.includes('showStep(0,true)'));
 assert.ok(html.includes('role="status" aria-live="polite"'));
 console.log("PASS: mobile camera is opt-in and OCR stays review-only; step change announces heading");
+
+assert.ok(html.includes("++sourceFileSequence;"));
+assert.ok(html.includes('state.sourceStatus="REQUIRES_REVIEW";'));
+assert.ok(html.includes('var seq=++sourceFileSequence;'));
+assert.ok(html.includes('if(seq!==sourceFileSequence)return;'));
+const webSource=fs.readFileSync(path.join(root,"Code.gs"),"utf8");
+assert.ok(webSource.includes('viewport-fit=cover'));
+console.log("PASS: source switch invalidation and official GAS Web App viewport");

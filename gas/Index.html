@@ -112,7 +112,7 @@ main{margin:0;padding:0;max-width:none}.panel{border:0;box-shadow:none;padding:0
 </style></head>
 <body>
 <header><h1>ふるさと納税 限度額シミュレーター</h1>
-<p>質問に答えるだけで計算結果と根拠を表示｜GAS検証版 v0.1.15</p></header>
+<p>質問に答えるだけで計算結果と根拠を表示｜GAS検証版 v0.1.16</p></header>
 <main><div class="panel">
 <div class="actions mode-switch" aria-label="入力モード">
 <button type="button" id="salaryMode" aria-pressed="true">給与の入力</button>
@@ -500,8 +500,10 @@ var allowedReaderFields=[
  "mortgage_claim_count","income_adjustment","under16_count","basic_reference",
  "special_relative_count","special_relative_deduction_reference"
 ];
+var sourceFileSequence=0;
 function clearImportedState(clearAmounts){
  ++ocrSequence;
+ ++sourceFileSequence;
  byId("ocrResult").textContent="OCR情報を破棄しました。";
  byId("ocrRun").disabled=false;
  state.sourceStatus="";state.sourceYear=null;state.sourceBasicReference=null;state.sourceIndicators={};
@@ -579,6 +581,11 @@ function parseReaderFile(text,filename){
 }
 byId("file").addEventListener("change",function(ev){
  var file=ev.target.files[0]; if(!file)return;
+ var seq=++sourceFileSequence;
+ ++ocrSequence; // A newer JSON/TSV must also invalidate a pending OCR response.
+ byId("ocrFile").value="";byId("ocrCamera").value="";
+ byId("ack").checked=false;
+ byId("sourceMessage").textContent="新しい読取ファイルの照合待ちです（HOLD）。";
  // A failed or partial import must not inherit a previous review approval.
  state.sourceStatus="INVALID";state.sourceYear=null;state.sourceBasicReference=null;state.sourceIndicators={};
  byId("sourceConfirmed").checked=false;
@@ -589,8 +596,9 @@ byId("file").addEventListener("change",function(ev){
   notify("JSON/TSV以外は未対応です。PDF/画像OCRは未実装です");return;
  }
  var reader=new FileReader();
- reader.onerror=function(){notify("読取結果ファイルを開けませんでした");};
+ reader.onerror=function(){if(seq===sourceFileSequence)notify("読取結果ファイルを開けませんでした");};
  reader.onload=function(){
+  if(seq!==sourceFileSequence)return;
   try{
    var data=parseReaderFile(String(reader.result||""),file.name);
    var provisional=data.STATUS==="REQUIRES_REVIEW"||data._warnings.length>0;
@@ -693,9 +701,28 @@ function prepareOcrUpload(file){
 }
 ["ocrFile","ocrCamera"].forEach(function(id){
  byId(id).addEventListener("change",function(){
-  if(this.files.length)byId(id==="ocrFile"?"ocrCamera":"ocrFile").value="";
-  ++ocrSequence;byId("ocrRun").disabled=false;
+  // Selecting a new image is a new document, not an amendment to an approved one.
+  // Do not let an old source-review checkbox or pending JSON reader authorize it.
+  if(!this.files.length)return;
+  ++ocrSequence;++sourceFileSequence;
+  byId(id==="ocrFile"?"ocrCamera":"ocrFile").value="";
+  byId("file").value="";
+  var priorFlags=state.sourceIndicators;
+  Array.prototype.forEach.call(document.querySelectorAll("[data-key]"),function(el){
+   if(priorFlags[el.getAttribute("data-key")]===true){
+    el.checked=false;el.disabled=false;
+   }
+  });
+  state.sourceStatus="REQUIRES_REVIEW";
+  state.sourceYear=null;state.sourceBasicReference=null;state.sourceIndicators={};
+  byId("sourceConfirmed").checked=false;
+  byId("sourceConfirmBox").style.display="none";
+  byId("clearImportedFile").style.display="block";
+  byId("ack").checked=false;
+  byId("sourceMessage").textContent="新しい写真・PDFを選択しました。OCR前・原票未照合のため計算停止（HOLD）。";
+  byId("ocrRun").disabled=false;
   byId("ocrResult").textContent="新しい画像・PDFを選択しました。OCRは未実行です。";
+  notify("");
  });
 });
 byId("ocrRun").addEventListener("click",function(){
@@ -711,6 +738,7 @@ byId("ocrRun").addEventListener("click",function(){
   notify("OCRはGoogle上の非公開Webアプリでのみ実行できます");return;
  }
  var nonce=++ocrSequence;
+ ++sourceFileSequence; // A late JSON/TSV read must not replace this OCR review.
  state.sourceStatus="REQUIRES_REVIEW";state.sourceYear=null;
  state.sourceBasicReference=null;state.sourceIndicators={};
  byId("sourceConfirmed").checked=false;

@@ -212,6 +212,72 @@ test("source year mismatch and re-edited amounts invalidate review",async()=>{
  } finally {p.w.close();}
 });
 
+
+test("new smartphone photo revokes previously confirmed reader data before OCR",async()=>{
+ const p=createPage();
+ try{
+  p.next();
+  await importJson(p,source("READY_FOR_EXCEL_CROSSCHECK"));
+  p.el("sourceConfirmed").checked=true;
+  const file=new p.w.File(["synthetic"],"new-photo.jpg",{type:"image/jpeg"});
+  Object.defineProperty(p.el("ocrCamera"),"files",{configurable:true,value:[file]});
+  p.el("ocrCamera").dispatchEvent(new p.w.Event("change",{bubbles:true}));
+  assert.equal(p.el("sourceConfirmed").checked,false);
+  assert.equal(p.el("sourceConfirmBox").style.display,"none");
+  assert.match(p.el("sourceMessage").textContent,/HOLD/);
+  assert.equal(p.el("ack").checked,false);
+  // Do not click OCR. The document is new, so old acknowledgement is invalid.
+  p.next();p.el("ack").checked=true;p.next();p.next();
+  assert.equal(p.calls.at(-1).sourceReviewPending,true);
+  assert.equal(p.el("reportAmount").textContent,"計算停止");
+ }finally{p.w.close();}
+});
+test("clearing while a JSON reader is pending prevents a stale ready status",async()=>{
+ const p=createPage();
+ try{
+  p.next();
+  const original=p.w.FileReader;
+  class DeferredReader {
+   constructor(){p.w.__deferredSource=this;}
+   readAsText(){this.result=JSON.stringify(source("READY_FOR_EXCEL_CROSSCHECK"));}
+  }
+  p.w.FileReader=DeferredReader;
+  const doc=new p.w.File(["synthetic"],"reader.json",{type:"application/json"});
+  Object.defineProperty(p.el("file"),"files",{configurable:true,value:[doc]});
+  p.el("file").dispatchEvent(new p.w.Event("change",{bubbles:true}));
+  assert.equal(p.el("sourceConfirmBox").style.display,"none");
+  p.click("clearImportedFile");
+  p.w.__deferredSource.onload();
+  assert.equal(p.el("sourceConfirmBox").style.display,"none");
+  assert.equal(p.el("sourceMessage").textContent.includes("読取データを使用していません"),true);
+  assert.equal(p.el("sourceConfirmed").checked,false);
+  p.w.FileReader=original;
+ }finally{p.w.close();}
+});
+test("new camera selection invalidates delayed JSON read and old OCR",async()=>{
+ const p=createPage();
+ try{
+  p.next();
+  const old=p.w.FileReader;
+  class DeferredReader {
+   constructor(){p.w.__deferredSource=this;}
+   readAsText(){this.result=JSON.stringify(source("READY_FOR_EXCEL_CROSSCHECK"));}
+  }
+  p.w.FileReader=DeferredReader;
+  const doc=new p.w.File(["synthetic"],"reader.json",{type:"application/json"});
+  Object.defineProperty(p.el("file"),"files",{configurable:true,value:[doc]});
+  p.el("file").dispatchEvent(new p.w.Event("change",{bubbles:true}));
+  const photo=new p.w.File(["synthetic"],"camera.jpg",{type:"image/jpeg"});
+  Object.defineProperty(p.el("ocrCamera"),"files",{configurable:true,value:[photo]});
+  p.el("ocrCamera").dispatchEvent(new p.w.Event("change",{bubbles:true}));
+  p.w.__deferredSource.onload();
+  assert.equal(p.el("sourceConfirmBox").style.display,"none");
+  assert.match(p.el("sourceMessage").textContent,/HOLD/);
+  assert.equal(p.el("sourceConfirmed").checked,false);
+  p.w.FileReader=old;
+ }finally{p.w.close();}
+});
+
 (async()=>{
  let failed=0;
  for(const item of tests){
