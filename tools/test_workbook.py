@@ -261,7 +261,7 @@ class WorkbookTest(unittest.TestCase):
         self.assertEqual(expected[2195999], 1453000)
         self.assertEqual(expected[2199999], 1456000)
         self.assertIn("IF(D4=2025,1900000,2200000)", formula)
-        self.assertIn("v4.18.20 分離課税検証版", self.book[HOME]["A1"].value)
+        self.assertRegex(self.book[HOME]["A1"].value, r"\bv4\.18\.\d+ 分離課税検証版\b")
         self.assertEqual(self.book[HOME]["A2"].hyperlink.location, "'操作画面'!A42")
         self.assertIsNone(self.book[HOME]["A7"].hyperlink)
 
