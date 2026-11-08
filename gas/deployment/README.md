@@ -116,6 +116,36 @@ OCRの金額認識、計算HOLD、一時ファイル残数0やiPhone実機受入
 認証が足りない場合は安全な理由コードを表示して停止し、同意画面の自動操作はしません。
 公開CIではこのモードを実行できません。
 
+## 非公開GAS画面検証：ローカルブラウザ起動の失敗時
+
+`LOCAL_BROWSER_UNAVAILABLE; step=PRIVATE_BROWSER_SETUP` は、
+Google側のデプロイ不整合やOCRの結果ではなく、
+PC内でPlaywrightがブラウザを起動できなかったことを示します。
+`npm ci --ignore-scripts` はブラウザ本体を導入しないため、
+Playwright Chromiumが存在しないWindowsでも
+既存のMicrosoft Edge、次いでChromeを自動選択します。
+ブラウザが見つからない場合はHOLDで停止し、
+Google側・Windows既定ブラウザ設定・既存プロファイルを変更しません。
+
+まずローカル環境だけを確認できます（Google接続なし・秘密情報表示なし）。
+
+```powershell
+node gas/scripts/check-local-browser.cjs
+```
+
+`status:PASS` ならブラウザ本体を検出できたことを表し、
+ブラウザの起動成功やGoogle認証成功を保証するものではありません。
+`status:HOLD` の場合は`reason`を確認し、既存GASを再作成しないでください。
+ブラウザが利用可能であれば、既存の認証済み合成環境に対して
+
+```powershell
+node gas/scripts/check-live-ocr-readiness.cjs --probe-only
+```
+
+を実行します。プローブではGoogle OCR文書は作成しません。
+`REAL_GOOGLE_WEB_APP_PROBE: PASS; OCR NOT EXECUTED` が得られるまで
+本番OCR受入には進みません。Google固定版の変更やiPhone実機の検証は別工程です。
+
 ## 登録先の保護
 
 1. HousingERP `.clasp.json` のScript IDと、Google側で取得した親シートIDを拒否リストにする。
