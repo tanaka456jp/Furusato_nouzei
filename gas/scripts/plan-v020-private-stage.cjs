@@ -26,14 +26,16 @@ const remotes=new Set([
  "https://github.com/tanaka456jp/Furusato_nouzei",
  "git@github.com:tanaka456jp/Furusato_nouzei.git"
 ]);
-function git(args){
- return cp.execFileSync("git",args,{cwd:root,encoding:"utf8",
-  stdio:["ignore","pipe","pipe"],timeout:12000,maxBuffer:8*1024*1024}).trim();
+function git(args,trim=true){
+ const output=cp.execFileSync("git",args,{cwd:root,encoding:"utf8",
+  stdio:["ignore","pipe","pipe"],timeout:12000,maxBuffer:8*1024*1024});
+ return trim?output.trim():output;
 }
-function checkCandidate({files,committed,packageVersion,branch,origin,dirty,currentHead}) {
+function checkCandidate({files,committed,packageVersion,branch,origin,dirty,currentHead,expectedHead}) {
  const issues=[];
  const fail=(code,condition)=>{if(condition)issues.push(code);};
  fail("INVALID_GIT_HEAD",!(/^[a-f0-9]{40}$/).test(currentHead||""));
+ fail("GIT_HEAD_CHANGED_DURING_PROBE",!!expectedHead&&expectedHead!==currentHead);
  fail("UNTRUSTED_GIT_ORIGIN",!remotes.has(origin));
  fail("WRONG_DEVELOPMENT_BRANCH",branch!==expectedBranch);
  fail("TRACKED_WORKTREE_DIRTY",!!dirty);
@@ -75,7 +77,7 @@ function assess({candidate,old,drive,oldDigest,newDigest}){
 function committedSources(){
  const head=git(["rev-parse","HEAD"]);
  const current=policy.sourceFiles.map(filename=>{
-  const source=git(["show",head+":gas/"+filename]);
+  const source=git(["show",head+":gas/"+filename],false);
   return {name:filename.replace(/\.(gs|html|json)$/,""),
    type:filename.endsWith(".gs")?"SERVER_JS":filename.endsWith(".html")?"HTML":"JSON",source};
  });
@@ -115,9 +117,10 @@ async function main(){
  const api=google.googleApi(await google.accessToken());
  const old=await perform(api,receipt,protectedRoot,historical);
  const drive=await countTemporaryDocuments(api);
+ const afterCommitted=committedSources();
  const after=checkCandidate({
-  files:google.source(),committed:committedSources().files,packageVersion:pkg.version,
-  currentHead:committed.head,branch:git(["branch","--show-current"]),
+  files:google.source(),committed:afterCommitted.files,packageVersion:pkg.version,
+  currentHead:afterCommitted.head,expectedHead:committed.head,branch:git(["branch","--show-current"]),
   origin:git(["remote","get-url","origin"]),
   dirty:git(["status","--porcelain","--untracked-files=no"])
  });
