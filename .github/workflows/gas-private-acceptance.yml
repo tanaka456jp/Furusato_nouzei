@@ -30,6 +30,7 @@ jobs:
       - run: node gas/tests/test-private-ocr-status.cjs
       - run: node gas/tests/test-private-browser-probe.cjs
       - run: node gas/tests/test-browser-runtime.cjs
+      - run: node gas/tests/test-system-browser.cjs
       - run: node --check gas/tests/test-real-browser.cjs
       - run: node --check gas/scripts/check-local-browser.cjs
       - run: node gas/tests/test-config-drift.cjs
@@ -87,6 +88,7 @@ jobs:
       - run: node gas/tests/test-private-ocr-status.cjs
       - run: node gas/tests/test-private-browser-probe.cjs
       - run: node gas/tests/test-browser-runtime.cjs
+      - run: node gas/tests/test-system-browser.cjs
       - run: node --check gas/tests/test-real-browser.cjs
       - run: node --check gas/scripts/check-local-browser.cjs
       - run: node gas/tests/test-config-drift.cjs
