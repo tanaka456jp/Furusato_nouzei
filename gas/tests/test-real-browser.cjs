@@ -65,9 +65,17 @@ async function main(){
    if(authorize)console.log('OWNER_ACTION: complete Google login/app consent in dedicated browser (up to 10 minutes).');
    for(let i=0;i<(authorize?1200:20);i++){
     frame=undefined;
-    for(const candidate of page.frames())if(await candidate.locator('#next').count()){frame=candidate;break;}
+    // Owner consent may open a separate Google tab. Observe all open pages,
+    // but never click buttons, fill credentials, or automate the consent UI.
+    const pages=authorize?context.pages():[page];
+    for(const candidatePage of pages){
+     for(const candidate of candidatePage.frames()){
+      if(await candidate.locator('#next').count()){frame=candidate;break;}
+     }
+     if(frame)break;
+    }
     if(frame)break;
-    frame=undefined;await page.waitForTimeout(500);
+    await page.waitForTimeout(500);
    }
    if(!frame)throw new Error('AUTH_REQUIRED: rerun --live --authorize and complete owner login/consent');
    if(authorize){results.push({id:'OWNER-AUTHENTICATED-PAGE',status:'PASS'});return;}
@@ -160,9 +168,14 @@ function finish(status){
   ...(status==='HOLD'?{failureStage:currentStage,failureCode:failureCode||'LIVE_STEP_FAILED'}:{})};
  fs.writeFileSync(path.join(dest,probe?'browser-probe-evidence.json':authorize?'owner-auth-evidence.json':'browser-evidence.json'),JSON.stringify(evidence,null,2));
  // Never emit the full receipt, live URLs or source digests from a private probe.
- if(probe)console.log(JSON.stringify({status,release:'HOLD',
-  environment:'REAL_GOOGLE_WEB_APP_PROBE',check:'PRIVATE-WEBAPP-REACHABLE',
+ if(probe||authorize)console.log(JSON.stringify({status,release:'HOLD',
+  environment:probe?'REAL_GOOGLE_WEB_APP_PROBE':'GOOGLE_OWNER_AUTH_ONLY',
+  check:probe?'PRIVATE-WEBAPP-REACHABLE':'OWNER-AUTHENTICATED-PAGE',
   failureStage:status==='HOLD'?currentStage:'NONE',
   failureCode:status==='HOLD'?(failureCode||'LIVE_STEP_FAILED'):'NONE'}));
- else console.log(JSON.stringify(evidence));
+ else if(!live)console.log(JSON.stringify(evidence));
+ // Live OCR evidence is kept locally only; never dump identifiers or digests.
+ else console.log(JSON.stringify({status,release:'HOLD',environment:'REAL_GOOGLE_WEB_APP',
+  passedTests:results.map(x=>x.id),failureStage:status==='HOLD'?currentStage:'NONE',
+  failureCode:status==='HOLD'?(failureCode||'LIVE_STEP_FAILED'):'NONE'}));
 }
