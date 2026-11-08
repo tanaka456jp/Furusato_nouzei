@@ -200,9 +200,19 @@ End Sub
     $excel.CalculateFullRebuild()
     Assert ($workbook.Worksheets.Item('自動回帰テスト').Range('B49').Value2 -ceq 'PASS') 'Excelでの内蔵回帰試験が不合格です。'
     $phase = 'VBA実行スモーク'
-    Log 'マクロを実際に実行して、Excel/VBA連携を検査します。'
+    Log 'マクロ実行によるExcel/VBA連携を確認します（合成テストブック）。'
+    Log 'QA_SMOKE BindButtons START'
     $excel.Run('TaxLawUpdater.BindButtons')
+    Log 'QA_SMOKE BindButtons PASS'
+    Log 'QA_SMOKE MaskUnverifiedResults START'
+    $excel.Run('TaxLawUpdater.MaskUnverifiedResults')
+    Log 'QA_SMOKE MaskUnverifiedResults PASS'
+    Log 'QA_SMOKE RevealVerifiedResults START'
+    $excel.Run('TaxLawUpdater.RevealVerifiedResults')
+    Log 'QA_SMOKE RevealVerifiedResults RETURN'
+    Log 'QA_SMOKE RecalculateCase START'
     $excel.Run('TaxLawUpdater.RecalculateCase')
+    Log 'QA_SMOKE RecalculateCase PASS'
     Assert ($workbook.Worksheets.Item('自動回帰テスト').Range('B49').Value2 -ceq 'PASS') 'マクロの実行後、回帰試験が不合格です。'
     $phase = 'ファイル確定保存'
     Log 'マクロ付きブックを保存します。'
