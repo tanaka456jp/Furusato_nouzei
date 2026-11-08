@@ -17,8 +17,17 @@ assert.ok(launcher.includes('OWNER_WEB_APP_SESSION: PASS; browser-only consent')
  "Owner consent must be a separate no-OCR phase");
 assert.ok(!launcher.includes('"--token-auth"'),"The verified owner browser session must be reused");
 const firstClick=browser.indexOf("await frame.locator('#next').click()");
-const authorizeExit=browser.indexOf("if(authorize){results.push({id:'OWNER-AUTHENTICATED-PAGE',status:'PASS'});return;}");
-assert.ok(authorizeExit>0&&firstClick>authorizeExit,"Owner-consent mode may not run application actions");
+const authorizeStart=browser.indexOf("if(authorize){");
+const secondNavigation=browser.indexOf("await secondPage.goto(receipt.webAppUrl)");
+const revalidate=browser.indexOf("const verified=await waitForWizard(()=>[secondPage],secondPage,30)");
+const ownerPass=browser.indexOf("results.push({id:'OWNER-SAME-SESSION-PROBE',status:'PASS'})");
+assert.ok(authorizeStart>0&&secondNavigation>authorizeStart&&revalidate>secondNavigation&&
+ ownerPass>revalidate&&firstClick>ownerPass,
+ "Owner consent must verify a second app navigation in same context before PASS, without wizard clicks");
+assert.ok(browser.includes("headless:!(process.argv.includes('--headed')||authorize||(live&&!tokenAuth))"),
+ "Live owner browser profile must stay headed across separate processes");
+assert.ok(browser.includes("candidate.locator('#salaryGross').count()"),
+ "Furusato wizard detection must not match generic Google consent buttons");
 assert.ok(browser.includes("launchPersistentContext(path.join(root,'.private/furusato/browser-profile')"),
  "Private consent profile must be isolated and persistent");
 assert.ok(browser.includes("authorize?'owner-auth-evidence.json':'browser-evidence.json'"),
