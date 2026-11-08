@@ -237,29 +237,21 @@ jobs:
           powershell.exe -NoProfile -File .\tools\probe_excel_open.ps1 -ProbeDirectory $probes -EvidencePath $probeEvidence
           if ($LASTEXITCODE -ne 0) { Write-Warning 'Excel opening diagnostic failed; installer verification continues.' }
           $setup = Join-Path $work 'review/setup.ps1'
-          # Isolate the installer in an owned PowerShell child process.
-          # A blocked Excel/VBE modal can otherwise consume the entire 20m
-          # acceptance job without producing a usable error stage.
-          $installer = Start-Process -FilePath 'powershell.exe' -ArgumentList @(
-            '-NoProfile','-NonInteractive','-File', ('"' + $setup + '"')
-          ) -NoNewWindow -PassThru
-          if (-not $installer.WaitForExit(360000)) {
-            try { $installer.Kill() } catch {}
-            throw 'Excel installer exceeded 6m without finishing; inspect staged setup.log. Never accept a timed-out XLSM.'
+          # The installer is already bounded by the Excel CI job timeout.
+          # PowerShell 5.1 Start-Process returned a blank ExitCode even when
+          # setup.log and the staged XLSM confirmed a successful build.
+          # Use the previously accepted direct invocation; NEVER treat an
+          # unverified file or an absent return code as a successful build.
+          powershell.exe -NoProfile -File $setup
+          $installerExitCode = $LASTEXITCODE
+          Write-Host ('QA_INSTALLER_NATIVE_EXIT=' + [string]$installerExitCode)
+          if ($null -eq $installerExitCode -or [int]$installerExitCode -ne 0) {
+            throw ('Excel installer did not exit successfully (code=' + [string]$installerExitCode + '); see setup.log')
           }
-          # Refresh the process object after WaitForExit before reading ExitCode.
-          # Prior run produced a validated XLSM and setup-success trace, but
-          # the parent regarded the child exit as nonzero with no numeric code.
-          $installer.Refresh()
-          $exitCode = $installer.ExitCode
           $reviewed = Join-Path $work 'review/Furusato_nouzei.xlsm'
-          $created = Test-Path -LiteralPath $reviewed -PathType Leaf
-          Write-Host ('QA_INSTALLER_PROCESS_EXIT=' + [string]$exitCode)
-          Write-Host ('QA_INSTALLER_OUTPUT_PRESENT=' + [string]$created)
-          if ($null -eq $exitCode -or [int]$exitCode -ne 0) {
-            throw ('Excel installer process did not exit normally (code=' + [string]$exitCode + '); see setup.log')
+          if (-not (Test-Path -LiteralPath $reviewed -PathType Leaf)) {
+            throw 'Excel installer returned success without a generated XLSM'
           }
-          if (-not $created) { throw 'Installer exited with success but generated no XLSM' }
           # The fail-closed UI gate runs BEFORE the tax-master network update.
           # A blocked external catalog must not conceal stale-result failures.
           & .\tools\verify_stale_ui.ps1 -Workbook $reviewed
