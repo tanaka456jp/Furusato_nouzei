@@ -35,6 +35,8 @@ jobs:
           node gas/tests/test-ocr.cjs
           node gas/tests/test-private-ocr-status.cjs
           node gas/tests/test-owner-ocr-evidence.cjs
+          node gas/tests/test-installed-private-version.cjs
+          node --check gas/scripts/audit-installed-private-version.cjs
           node --check gas/scripts/audit-owner-ocr-evidence.cjs
           node gas/tests/test-private-browser-probe.cjs
           node gas/tests/test-browser-runtime.cjs
@@ -111,14 +113,14 @@ jobs:
       - name: Independent engine regression
         run: |
           $tests = @('test-engine', 'test-separate-tax', 'test-ocr', 'test-private-ocr-status',
-            'test-owner-ocr-evidence', 'test-private-browser-probe', 'test-browser-runtime', 'test-system-browser',
+            'test-owner-ocr-evidence', 'test-installed-private-version', 'test-private-browser-probe', 'test-browser-runtime', 'test-system-browser',
             'test-private-ocr-temporary-files', 'test-deployment', 'test-config-drift',
             'test-google-recovery', 'test-parity', 'test-observed')
           foreach ($test in $tests) {
             node "gas/tests/$test.cjs"
             if ($LASTEXITCODE -ne 0) { throw "Windows Node regression failed ($test)" }
           }
-          foreach ($script in @('scripts/check-private-ocr-temporary-files', 'scripts/audit-owner-ocr-evidence', 'scripts/accept-owner-ocr',
+          foreach ($script in @('scripts/check-private-ocr-temporary-files', 'scripts/audit-owner-ocr-evidence', 'scripts/audit-installed-private-version', 'scripts/accept-owner-ocr',
             'tests/test-real-browser', 'scripts/check-local-browser')) {
             node --check "gas/$script.cjs"
             if ($LASTEXITCODE -ne 0) { throw "Windows Node syntax check failed ($script)" }
