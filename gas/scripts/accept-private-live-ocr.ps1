@@ -49,7 +49,10 @@ try {
   }
   $prefixLines=@(& git rev-parse --show-prefix)
   Confirm-Exit 'Git repository-relative prefix'
-  if($prefixLines.Count -ne 0){
+  # Git may print a blank line at repository root. PowerShell can return
+  # either [] or [""] for it, so only non-whitespace prefix content is a mismatch.
+  if($prefixLines.Count -gt 1 -or
+      ($prefixLines.Count -eq 1 -and -not [string]::IsNullOrWhiteSpace([string]$prefixLines[0]))){
     throw 'Script-derived directory is not the Git worktree root; STOP.'
   }
   if(-not (Test-Path -LiteralPath (Join-Path $repoRoot '.git'))){
