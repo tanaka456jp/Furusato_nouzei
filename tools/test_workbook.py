@@ -1,4 +1,5 @@
 """Static preservation, input wiring and independent synthetic reference amounts."""
+import ast
 from decimal import Decimal
 from itertools import chain
 from pathlib import Path
@@ -47,6 +48,15 @@ class WorkbookTest(unittest.TestCase):
         excel = (ROOT / "tools/verify_excel.ps1").read_text(encoding="utf-8-sig")
         code = (ROOT / "tools/audit_pdf_layout.py").read_text(encoding="utf-8")
         compile(code, "tools/audit_pdf_layout.py", "exec")
+        # Compile succeeds even if a mistakenly escaped newline comments out
+        # the assignment; check the executable AST actually binds rendered.
+        syntax = ast.parse(code)
+        proof_fn = next(n for n in syntax.body if isinstance(n, ast.FunctionDef)
+                        and n.name == "assert_split_print_source_proof")
+        self.assertTrue(any(isinstance(n, ast.Name) and n.id == "rendered"
+                            and isinstance(n.ctx, ast.Store)
+                            for n in ast.walk(proof_fn)),
+                        "PDF print proof must assign its normalized value")
         for token in ("Verify synthetic Excel PDF layout and render evidence",
                       "tools/audit_pdf_layout.py --folder", "PDF_LAYOUT_REVIEW_",
                       "-PdfEvidencePath"):
