@@ -15,7 +15,7 @@ const options=new Set(["--verify-remote","--run-synthetic","--ack-temporary-goog
 function parseArguments(args){
  const choices=new Set(args),i=args.indexOf("--protected-root");
  if(i>=0&&(i===args.length-1||args[i+1].startsWith("--")))throw Error("MISSING_PROTECTED_ROOT");
- const used=args.filter((v,j)=>j!==i+1);
+ const used=args.filter((v,j)=>i<0||j!==i+1);
  if(used.some(x=>!options.has(x)))throw Error("UNKNOWN_ARGUMENT");
  if(choices.has("--run-synthetic")&&!choices.has("--ack-temporary-google-docs"))
   throw Error("EXPLICIT_TEMPORARY_GOOGLE_DOCUMENT_ACK_REQUIRED");
