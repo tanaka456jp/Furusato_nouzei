@@ -12,6 +12,12 @@ const fixture={
 const context={receipt:fixture,sourceDigest:fixture.uploadDigest,
  gitHeadMatches:true,authExists:true,authValid:true,claspExists:true,protectedStatus:"MATCH"};
 assert.equal(evaluateReadiness(context).status,"READY_FOR_REMOTE_VERIFY");
+const freshState=evaluateReadiness({...context,receipt:null,claspExists:false,protectedStatus:"HOLD"});
+assert.equal(freshState.status,"HOLD");
+assert.ok(freshState.problems.includes("PRIVATE_RECEIPT_MISSING"));
+assert.ok(freshState.problems.includes("ISOLATED_CLASP_CONFIG_UNAVAILABLE"));
+assert.ok(!freshState.problems.includes("PROTECTED_CONFIG_DRIFT"),
+ "No saved snapshot means drift cannot yet be assessed");
 const failures=[
  ["PRIVATE_RECEIPT_MISSING",{receipt:null}],
  ["RECEIPT_NOT_ATTESTED",{receipt:{...fixture,sourceCommit:null}}],
