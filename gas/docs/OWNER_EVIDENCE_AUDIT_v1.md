@@ -89,3 +89,20 @@ node gas/scripts/plan-v020-private-stage.cjs
 ```
 
 `TRACKED_WORKTREE_DIRTY` は追跡ファイルのローカル差分を示します。ユーザーの変更を一括破棄する `git reset --hard`、`git clean`、レシート/認証/スナップショット編集は行わず、別途安全に差分を特定してください。`WORKTREE_SOURCE_DIFFERS_FROM_COMMIT` は5ソースの作業ファイルとGit HEAD不一致です。旧v0.1.17の失敗とは結び付けず、比較対象の文字コードや改行を確認してください。`WRONG_DEVELOPMENT_BRANCH` や `UNTRUSTED_GIT_ORIGIN` は指定作業ツリーの確認を要求します。どれも安全検査を無効化して回避しません。
+
+## 2026-11-09 PC①のブランチ名不一致対応（事前検査 revision 3）
+
+以前のPC①では `candidateChecks:["WRONG_DEVELOPMENT_BRANCH"]` を確認しました。`git pull --ff-only` の成功だけでは、現在のローカルブランチ名と開発ブランチ名の一致は保証されません。
+
+修正後の事前検査は、許可済み `origin` に対する読取専用の `git ls-remote --heads` でGitHubの**現在の開発ブランチ先端SHA**を確認します。作業ツリーHEADがそのSHAに完全一致し、追跡ファイルの変更がなく、転送対象5ソースとHEADが一致する場合のみ、ローカルブランチが別名やdetachedであっても**読取専用事前検査に限り**受け入れます。取得失敗・古いSHA・別リポジトリ・追跡変更は従来通りHOLDです。Google読み取り後にも同じ先端SHAを再確認します。
+
+```powershell
+cd $HOME\Development\Furusato_nouzei_GAS_OCR
+git pull --ff-only origin feature/gas-workflow-20261106
+node gas/scripts/plan-v020-private-stage.cjs
+```
+
+新しい出力の `checkoutIdentity:TRUSTED_REMOTE_EXACT_COMMIT` は、別名worktreeのGit HEADが現在の許可済み開発ブランチと一致したことを意味します。更新承認ではありません。
+
+`REMOTE_TIP_DIFFERS_FROM_CHECKOUT` または `TRUSTED_REMOTE_TIP_UNVERIFIED` のときはHOLDで停止します。ローカル変更を消す `reset --hard` / `git clean` / 強制checkout、既存レシート更新、Google書込はしません。
+
