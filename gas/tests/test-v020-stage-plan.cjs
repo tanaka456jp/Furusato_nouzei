@@ -28,6 +28,9 @@ for (const branch of ["", "owner-ocr-worktree", "main"]) {
  assert.equal(alternative.checkoutIdentity,"TRUSTED_REMOTE_EXACT_COMMIT");
 }
 assert.equal(checkCandidate(valid()).checkoutIdentity,"EXPECTED_LOCAL_BRANCH");
+const alternativePlan=assess({...values,candidate:checkCandidate({...valid(),branch:"owner-local"})});
+assert.equal(alternativePlan.status,"READY_FOR_SEPARATE_STAGE_APPROVAL");
+assert.equal(alternativePlan.candidateCheckoutIdentity,"TRUSTED_REMOTE_EXACT_COMMIT");
 const deny=[
  [{branch:"main",remoteHead:"b".repeat(40)},"WRONG_DEVELOPMENT_BRANCH"],
  [{remoteHead:null},"TRUSTED_REMOTE_TIP_UNVERIFIED"],
@@ -63,6 +66,7 @@ assert.equal(plan.candidateDeployment,"NOT_CREATED");
 assert.equal(plan.existingDeployment,"NOT_MODIFIED_BY_THIS_CHECK");
 assert.equal(plan.stagePreflightRevision,3);
 assert.equal(plan.stage,"APPROVAL_GATE");
+assert.equal(plan.candidateCheckoutIdentity,"EXPECTED_LOCAL_BRANCH");
 assert.deepEqual(plan.candidateChecks,[]);
 assert.equal(plan.release,"HOLD");
 assert.equal(plan.realV020GoogleAcceptance,"NOT_TESTED");
@@ -92,6 +96,7 @@ const localHold=assess({candidate:checkCandidate({...valid(),dirty:" M gas/Engin
 assert.deepEqual(localHold.problems,["CANDIDATE_NOT_READY"]);
 assert.deepEqual(localHold.candidateChecks,["TRACKED_WORKTREE_DIRTY"]);
 assert.equal(localHold.stage,"LOCAL_CANDIDATE");
+assert.equal(localHold.candidateCheckoutIdentity,"NOT_VERIFIED");
 assert.equal(localHold.oldPrivateAudit,"NOT_RUN");
 assert.equal(localHold.driveAudit,"NOT_RUN");
 assert.equal(localHold.sourceComparison,"NOT_RUN");
