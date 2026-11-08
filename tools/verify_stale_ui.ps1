@@ -15,9 +15,12 @@ try {
     $excel.Visible = $false
     $excel.AutomationSecurity = 1
     $excel.EnableEvents = $false
-    $excel.Calculation = -4105 # automatic
+    # Excel may reject setting Application.Calculation (0x800A03EC)
+    # when the isolated COM process does not yet have an open workbook.
     $book = $excel.Workbooks.Open($copy,0,$false)
     $excel.AutomationSecurity = 3
+    $excel.Calculation = -4105 # xlCalculationAutomatic
+    Write-Output 'QA_STALE_OPEN_AND_AUTOCALC_PASS'
     $homeSheet = $book.Worksheets.Item('操作画面')
     $settings = $book.Worksheets.Item('設定・税率')
     $settings.Range('B4').Value2 = 2026.0
@@ -30,6 +33,7 @@ try {
     $homeSheet.Range('D22').Value2 = '該当なし'
     $homeSheet.Range('D24').Value2 = '確定申告'
     $excel.Run('TaxLawUpdater.RecalculateCase')
+    Write-Output 'QA_STALE_BASELINE_RECALCULATED'
     if ([string]$homeSheet.Range('B28').Value2 -ne '正常' -or [int]$homeSheet.Range('B8').Value2 -ne 109000) {
         throw 'Baseline synthetic result was not 109000'
     }
