@@ -31,3 +31,20 @@ node gas/scripts/audit-owner-ocr-evidence.cjs
 4. 同一候補版でWindows EdgeのPDF/PNG/JPEG、HOLD、各操作後の一時文書0件、iPhone Safariを実Googleで再受入。PC上の合成ブラウザCIでは代用しない。
 
 この監査用スクリプトとテストの追加は非デプロイ・ソース変更であり、Googleに登録された5ファイル、GAS v0.1.20のアプリ実装、Excel main、本番HousingERP、認証、レシート、保護スナップショットを変更しません。
+
+
+## 読取専用で「既存のGoogle固定版」を独立照合する（追加手順）
+
+証跡構造監査がPASSでも、以前の所有者回答JSON自体には固定デプロイ版の番号がありません。次のコマンドは、元の導入レシートに記録された**当時のGitコミット**から旧ソース5ファイルを取得し、Google APIの現在の固定版・登録ソース・所有者/権限・親シート・HousingERP保護状態を読み取り照合します。
+
+```powershell
+cd $HOME\Development\Furusato_nouzei_GAS_OCR
+git pull --ff-only origin feature/gas-workflow-20261106
+node gas/scripts/audit-installed-private-version.cjs
+```
+
+このコマンドは旧固定版v0.1.17専用です。現在の作業ツリーがv0.1.20でも、旧版と現行版のソースが異なることだけを理由に失敗しません。旧版のSourceコミット、レシート内ソースdigest、GASプロジェクトの現在HEAD、固定versionの5ファイルが全て一致しなければHOLDにします。Googleプロジェクトの新規作成、clasp push、デプロイ更新、ブラウザ自動ログイン、ファイルの削除、レシート/認証/保護スナップショットの書換えは行いません。Google認証のアクセストークン更新HTTPリクエストは必要ですが、専用認証ファイルには書き戻しません。
+
+`status:PASS` は**照合を実行した時点**でGoogleの既存固定版v0.1.17がソースと一致したという限定結果です。過去のOCR操作が正しくその固定版に向けて行われたこと、OCR文字/金額が正しいこと、Drive側で全ファイルが永久削除されたことを証明しません。これらの項目は出力で `NOT_PROVEN` と表示され、正式リリースは常にHOLDです。
+
+公開GitHubやチャットには、判定JSON中の非機密ステータスだけを共有してください。障害時の生Google応答や認証・固定URL・IDを記録/転載しません。
