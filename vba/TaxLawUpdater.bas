@@ -27,6 +27,20 @@ Private mResultUnverified As Boolean
 Private mResultMaskBusy As Boolean
 Private mSavedResultFormats As Object
 
+' Diagnostic-only trace for the build-time disposable XLSM. Never writes when
+' customers use a saved workbook, and never records cell contents or credentials.
+Private Sub TraceBuildMaskStage(ByVal stage As String)
+    Dim f As Integer
+    If Left$(ThisWorkbook.Name, Len("_furusato_build_")) <> "_furusato_build_" Then Exit Sub
+    On Error Resume Next
+    f = FreeFile
+    Open ThisWorkbook.Path & Application.PathSeparator & _
+        "_furusato_mask_qa.trace" For Append As #f
+    Print #f, stage
+    Close #f
+    On Error GoTo 0
+End Sub
+
 Private Function OutputAreas() As Variant
     OutputAreas = Array("B8", "D8", "B26", "B55", "B56", "D56", _
         "B58:D64", "B65", "D65", "B66", "D66", "B68", "D68", _
@@ -50,20 +64,27 @@ Public Sub MaskUnverifiedResults()
     If mResultMaskBusy Then Exit Sub
     mResultMaskBusy = True
     mResultUnverified = True
+    TraceBuildMaskStage "entered"
     oldEvents = Application.EnableEvents
     On Error GoTo Failed
     Application.EnableEvents = False
     Set home = ThisWorkbook.Worksheets("操作画面")
+    TraceBuildMaskStage "sheet"
     If mSavedResultFormats Is Nothing Then Set mSavedResultFormats = CreateObject("Scripting.Dictionary")
+    TraceBuildMaskStage "dictionary"
     For Each address In OutputAreas()
+        TraceBuildMaskStage "before:" & CStr(address)
         If Not mSavedResultFormats.Exists(CStr(address)) Then
             original = CStr(home.Range(CStr(address)).NumberFormat)
             If original = ";;;" Then original = OriginalResultFormat(CStr(address))
             mSavedResultFormats.Add CStr(address), original
         End If
         home.Range(CStr(address)).NumberFormat = ";;;"
+        TraceBuildMaskStage "after:" & CStr(address)
     Next address
+    TraceBuildMaskStage "before-status"
     home.Range("A9").Value2 = "計算未完了：旧結果を非表示にしました。自動計算に戻して「計算」を実行してください。"
+    TraceBuildMaskStage "after-status"
     Application.EnableEvents = oldEvents
     mResultMaskBusy = False
     Exit Sub
