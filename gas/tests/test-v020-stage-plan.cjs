@@ -1,8 +1,12 @@
 "use strict";
 const assert=require("node:assert/strict");
+const fs=require("node:fs");
+const os=require("node:os");
+const path=require("node:path");
+const crypto=require("node:crypto");
 const google=require("../deployment/private-gas.cjs");
 const policy=require("../deployment/policy.json");
-const {checkCandidate,assess,committedSources,protectedConfigHold} = require("../scripts/plan-v020-private-stage.cjs");
+const {checkCandidate,assess,committedSources,protectedConfigHold,inspectGlobalAuthRefresh} = require("../scripts/plan-v020-private-stage.cjs");
 const sha="a".repeat(40);
 const origin="https://github.com/tanaka456jp/Furusato_nouzei.git";
 const files=google.source();
@@ -64,7 +68,7 @@ const plan=assess(values);
 assert.equal(plan.status,"READY_FOR_SEPARATE_STAGE_APPROVAL");
 assert.equal(plan.candidateDeployment,"NOT_CREATED");
 assert.equal(plan.existingDeployment,"NOT_MODIFIED_BY_THIS_CHECK");
-assert.equal(plan.stagePreflightRevision,4);
+assert.equal(plan.stagePreflightRevision,5);
 assert.equal(plan.stage,"APPROVAL_GATE");
 assert.equal(plan.candidateCheckoutIdentity,"EXPECTED_LOCAL_BRANCH");
 assert.deepEqual(plan.candidateChecks,[]);
@@ -116,7 +120,7 @@ const rows=names.map(name=>({name,state:"UNCHANGED",file:"PRIVATE_ABSOLUTE_PATH"
 rows[3].state="CHANGED";
 const driftHold=protectedConfigHold(pass,{status:"HOLD",checks:rows});
 assert.equal(driftHold.status,"HOLD");
-assert.equal(driftHold.stagePreflightRevision,4);
+assert.equal(driftHold.stagePreflightRevision,5);
 assert.equal(driftHold.stage,"PROTECTED_LOCAL_CONFIG");
 assert.deepEqual(driftHold.problems,["PROTECTED_CONFIG_DRIFT"]);
 assert.equal(driftHold.candidateCheckoutIdentity,"EXPECTED_LOCAL_BRANCH");
@@ -144,5 +148,67 @@ for(const malformed of [
 }
 // The application must never infer v0.1.20 OCR PASS from a local-only check.
 assert.equal(driftHold.realV020GoogleAcceptance,"NOT_TESTED");
+
+// Synthetic-only historical auth comparison: proves a limited token diff shape,
+ // NOT the writer identity, remote deployment integrity, or safe bypass.
+const dir=fs.mkdtempSync(path.join(os.tmpdir(),"furusato-auth-review-"));
+try {
+ const originalPath=path.join(dir,"isolated-auth.json");
+ const currentPath=path.join(dir,"global-auth.json");
+ const baseAuth={tokens:{default:{
+  refresh_token:"synthetic-refresh",client_id:"synthetic-id",
+  client_secret:"synthetic-secret",access_token:"synthetic-access-old",expiry_date:100
+ }}};
+ const revised=structuredClone(baseAuth);
+ revised.tokens.default.access_token="synthetic-access-new";
+ revised.tokens.default.expiry_date=200;
+ const originalBytes=Buffer.from(JSON.stringify(baseAuth));
+ fs.writeFileSync(originalPath,originalBytes);
+ fs.writeFileSync(currentPath,JSON.stringify(revised));
+ const hash=value=>crypto.createHash("sha256").update(value).digest("hex");
+ const receipt={protectedSnapshot:{[path.resolve(currentPath)]:hash(originalBytes)}};
+ const drift={status:"HOLD",checks:rows};
+ const review=inspectGlobalAuthRefresh({receipt,drift,
+  isolatedAuthFile:originalPath,globalAuthFile:currentPath});
+ assert.deepEqual(review,{
+  status:"HOLD",baseline:"HISTORICAL_BYTES_MATCHED",
+  pattern:"TOKEN_REFRESH_COMPATIBLE",writer:"UNVERIFIED",
+  snapshotWrite:"PROHIBITED",ownerReview:"REQUIRED"
+ });
+ const output=protectedConfigHold(pass,drift,review);
+ assert.equal(output.status,"HOLD");
+ assert.equal(output.stage,"PROTECTED_LOCAL_CONFIG");
+ assert.equal(output.stagePreflightRevision,5);
+ assert.equal(output.globalAuthReview.pattern,"TOKEN_REFRESH_COMPATIBLE");
+ assert.equal(output.globalAuthReview.ownerReview,"REQUIRED");
+ assert.equal(output.oldPrivateAudit,"NOT_RUN");
+ assert.equal(output.driveAudit,"NOT_RUN");
+ for(const value of ["synthetic-refresh","synthetic-secret","synthetic-access-old",
+  "synthetic-access-new",dir,receipt.protectedSnapshot[path.resolve(currentPath)]])
+  assert.ok(!JSON.stringify(output).includes(value),"Private value escaped");
+ assert.deepEqual(fs.readFileSync(originalPath),originalBytes,"Historical isolated auth altered");
+ assert.equal(fs.readFileSync(currentPath,"utf8"),JSON.stringify(revised),
+  "Global clasp auth altered");
+ assert.equal(inspectGlobalAuthRefresh({receipt:{protectedSnapshot:{[path.resolve(currentPath)]:"e".repeat(64)}},
+  drift,isolatedAuthFile:originalPath,globalAuthFile:currentPath}).baseline,
+  "HISTORICAL_BYTES_NOT_MATCHED");
+ const wrongRefresh=structuredClone(revised);
+ wrongRefresh.tokens.default.refresh_token="altered-refresh";
+ fs.writeFileSync(currentPath,JSON.stringify(wrongRefresh));
+ const bad=inspectGlobalAuthRefresh({receipt,drift,
+  isolatedAuthFile:originalPath,globalAuthFile:currentPath});
+ assert.equal(bad.baseline,"HISTORICAL_BYTES_MATCHED");
+ assert.equal(bad.pattern,"UNVERIFIED");
+ fs.writeFileSync(currentPath,"not json");
+ assert.equal(inspectGlobalAuthRefresh({receipt,drift,isolatedAuthFile:originalPath,
+  globalAuthFile:currentPath}).baseline,"HISTORICAL_COMPARISON_UNAVAILABLE");
+ fs.writeFileSync(currentPath,JSON.stringify(revised));
+ const changedHousing=structuredClone(drift);
+ changedHousing.checks[0].state="CHANGED";
+ assert.equal(inspectGlobalAuthRefresh({receipt,drift:changedHousing,isolatedAuthFile:originalPath,
+  globalAuthFile:currentPath}).baseline,"NOT_SOLE_GLOBAL_AUTH_CHANGE");
+ assert.equal(inspectGlobalAuthRefresh({receipt,drift,isolatedAuthFile:path.join(dir,"missing"),
+  globalAuthFile:currentPath}).baseline,"HISTORICAL_COMPARISON_UNAVAILABLE");
+}finally{fs.rmSync(dir,{recursive:true,force:true});}
 
 console.log("V020_SEPARATE_STAGE_PREFLIGHT_PASS: synthetic only; no Google resource mutations; approval pending");
