@@ -10,7 +10,7 @@ const pkg=require("../package.json");
 assert.equal(pkg.version,"0.1.20");
 const valid=()=>({files,committed:files.map(f=>({...f})),
   packageVersion:pkg.version,branch:"feature/gas-workflow-20261106",
-  origin,dirty:"",currentHead:sha,expectedHead:sha});
+  origin,dirty:"",currentHead:sha,expectedHead:sha,remoteHead:sha});
 const pass=checkCandidate(valid());
 assert.equal(pass.status,"CANDIDATE_SOURCE_READY");
 assert.equal(pass.appVersion,"v0.1.20");
@@ -18,11 +18,20 @@ const realCheckout=committedSources();
 // Never substitute a copied worktree file for the actual committed sources.
 // This catches Windows line-ending/encoding mismatches missed by mock-only CI.
 const realCandidate=checkCandidate({...valid(),files:google.source(),committed:realCheckout.files,
- currentHead:realCheckout.head,expectedHead:realCheckout.head});
+ currentHead:realCheckout.head,expectedHead:realCheckout.head,remoteHead:realCheckout.head});
 assert.equal(realCandidate.status,"CANDIDATE_SOURCE_READY",
  `Actual Git checkout source mismatch: ${realCandidate.reasons.join(",")}`);
+// Different local branch/detached HEAD is safe if and only if GitHub HEAD matches.
+for (const branch of ["", "owner-ocr-worktree", "main"]) {
+ const alternative=checkCandidate({...valid(),branch});
+ assert.equal(alternative.status,"CANDIDATE_SOURCE_READY");
+ assert.equal(alternative.checkoutIdentity,"TRUSTED_REMOTE_EXACT_COMMIT");
+}
+assert.equal(checkCandidate(valid()).checkoutIdentity,"EXPECTED_LOCAL_BRANCH");
 const deny=[
- [{branch:"main"},"WRONG_DEVELOPMENT_BRANCH"],
+ [{branch:"main",remoteHead:"b".repeat(40)},"WRONG_DEVELOPMENT_BRANCH"],
+ [{remoteHead:null},"TRUSTED_REMOTE_TIP_UNVERIFIED"],
+ [{remoteHead:"b".repeat(40)},"REMOTE_TIP_DIFFERS_FROM_CHECKOUT"],
  [{origin:"https://github.com/bad/other"},"UNTRUSTED_GIT_ORIGIN"],
  [{dirty:" M gas/Engine.gs"},"TRACKED_WORKTREE_DIRTY"],
  [{packageVersion:"0.1.19"},"CANDIDATE_VERSION_INVALID"],
@@ -52,7 +61,7 @@ const plan=assess(values);
 assert.equal(plan.status,"READY_FOR_SEPARATE_STAGE_APPROVAL");
 assert.equal(plan.candidateDeployment,"NOT_CREATED");
 assert.equal(plan.existingDeployment,"NOT_MODIFIED_BY_THIS_CHECK");
-assert.equal(plan.stagePreflightRevision,2);
+assert.equal(plan.stagePreflightRevision,3);
 assert.equal(plan.stage,"APPROVAL_GATE");
 assert.deepEqual(plan.candidateChecks,[]);
 assert.equal(plan.release,"HOLD");
