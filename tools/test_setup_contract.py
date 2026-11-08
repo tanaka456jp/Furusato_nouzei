@@ -71,11 +71,11 @@ assert "Furusato_nouzei.xlsm" in ps and "Furusato_nouzei.xlsx" in ps, "Naming mi
 # VBA module-level declarations and constants MUST precede the first
 # procedure. Putting either below a Sub can open an unattended compile dialog
 # that hangs Windows Excel COM without an actionable Python exception.
-first_proc = re.search(r"^(?:Public|Private|Friend)\\s+(?:Sub|Function|Property)\\b", vba, re.M)
+first_proc = re.search(r"^(?:Public|Private|Friend)\s+(?:Sub|Function|Property)\b", vba, re.M)
 assert first_proc is not None, "VBA entrypoints not found"
 module_decls = re.finditer(
-    r"^(?:(?:Private|Public|Friend|Global)\\s+)?(?:Const\\s+|"
-    r"m[A-Z][A-Za-z0-9_]*\\s+As\\s+)",
+    r"^(?:(?:Private|Public|Friend|Global)\s+)?(?:Const\s+|"
+    r"m[A-Z][A-Za-z0-9_]*\s+As\s+)",
     vba, re.M
 )
 for item in module_decls:
