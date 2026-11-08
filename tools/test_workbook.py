@@ -62,6 +62,14 @@ class WorkbookTest(unittest.TestCase):
         self.assertIn("def collision_self_test()", code)
         self.assertIn("checked_words = assert_no_text_collision(", code)
         self.assertIn('"text_collision_self_test": "PASS"', code)
+        self.assertIn("def assert_split_print_source_proof(", code)
+        self.assertIn("split-result.print-inputs.json", code)
+        self.assertIn('"split_print_source_proof": "PASS"', code)
+        self.assertIn("split-result.print-inputs.json", excel)
+        self.assertIn("pdf_sha256", code)
+        live_qa = (ROOT / "tools/test_separate_excel.ps1").read_text(encoding="utf-8-sig")
+        self.assertIn("furusato-split-pdf-printed-inputs/v1", live_qa)
+        self.assertIn("Get-FileHash -LiteralPath $PdfPath -Algorithm SHA256", live_qa)
 
     def test_second_print_page_repeats_year_and_both_versions(self):
         home = self.book[HOME]
