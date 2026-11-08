@@ -30,6 +30,8 @@ jobs:
       - run: node gas/tests/test-private-ocr-status.cjs
       - run: node gas/tests/test-owner-ocr-evidence.cjs
       - run: node gas/tests/test-installed-private-version.cjs
+      - run: node gas/tests/test-v020-stage-plan.cjs
+      - run: node --check gas/scripts/plan-v020-private-stage.cjs
       - run: node --check gas/scripts/audit-installed-private-version.cjs
       - run: node --check gas/scripts/audit-owner-ocr-evidence.cjs
       - run: node gas/tests/test-private-browser-probe.cjs
@@ -94,6 +96,8 @@ jobs:
       - run: node gas/tests/test-private-ocr-status.cjs
       - run: node gas/tests/test-owner-ocr-evidence.cjs
       - run: node gas/tests/test-installed-private-version.cjs
+      - run: node gas/tests/test-v020-stage-plan.cjs
+      - run: node --check gas/scripts/plan-v020-private-stage.cjs
       - run: node --check gas/scripts/audit-installed-private-version.cjs
       - run: node --check gas/scripts/audit-owner-ocr-evidence.cjs
       - run: node gas/tests/test-private-browser-probe.cjs
