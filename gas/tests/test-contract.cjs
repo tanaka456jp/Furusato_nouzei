@@ -61,3 +61,10 @@ assert.ok(html.includes('if(seq!==sourceFileSequence)return;'));
 const webSource=fs.readFileSync(path.join(root,"Code.gs"),"utf8");
 assert.ok(webSource.includes('viewport-fit=cover'));
 console.log("PASS: source switch invalidation and official GAS Web App viewport");
+
+assert.ok(html.includes('byId("ocrConsent").checked=false;'));
+assert.ok(html.includes('["input","change"].forEach(function(kind)'));
+assert.ok(html.includes('function cancelPendingOcr(message)'));
+assert.ok(html.includes('ocrInProgress=true;'));
+assert.ok(html.includes('if(!byId("ocrConsent").checked){'));
+console.log("PASS: fresh-document consent and stale OCR callback invalidation");

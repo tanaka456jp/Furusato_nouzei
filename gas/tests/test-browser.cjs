@@ -278,6 +278,56 @@ test("new camera selection invalidates delayed JSON read and old OCR",async()=>{
  }finally{p.w.close();}
 });
 
+test("new photo and clearing source both revoke prior Google upload consent",async()=>{
+ const p=createPage();
+ try{
+  p.next();
+  p.el("ocrConsent").checked=true;
+  const doc=new p.w.File(["synthetic"],"camera.jpg",{type:"image/jpeg"});
+  Object.defineProperty(p.el("ocrCamera"),"files",{configurable:true,value:[doc]});
+  p.el("ocrCamera").dispatchEvent(new p.w.Event("change",{bubbles:true}));
+  assert.equal(p.el("ocrConsent").checked,false);
+  p.el("ocrConsent").checked=true;p.click("clearImportedFile");
+  assert.equal(p.el("ocrConsent").checked,false);
+ }finally{p.w.close();}
+});
+test("salary source confirmation becomes invalid immediately on input before blur",async()=>{
+ const p=createPage();
+ try{
+  p.next();await importJson(p,source("READY_FOR_EXCEL_CROSSCHECK"));
+  p.el("sourceConfirmed").checked=true;
+  p.el("salaryGross").value="7100000";
+  p.el("salaryGross").dispatchEvent(new p.w.Event("input",{bubbles:true}));
+  assert.equal(p.el("sourceConfirmed").checked,false);
+  p.next();p.el("ack").checked=true;p.next();p.next();
+  assert.equal(p.el("reportAmount").textContent,"計算停止");
+ }finally{p.w.close();}
+});
+test("revoked consent during deferred photo load blocks upload",async()=>{
+ const p=createPage();
+ try{
+  p.next();
+  let calls=0;p.w.google.script.run.extractWithholdingOcr=function(){calls++;};
+  class DeferredReader{
+   constructor(){p.w.reader=this;}
+   readAsDataURL(){this.result="data:image/jpeg;base64,/9j/2Q==";}
+  }
+  p.w.FileReader=DeferredReader;
+  const doc=new p.w.File(["synthetic"],"camera.jpg",{type:"image/jpeg"});
+  Object.defineProperty(p.el("ocrCamera"),"files",{configurable:true,value:[doc]});
+  p.el("ocrCamera").dispatchEvent(new p.w.Event("change",{bubbles:true}));
+  p.el("ocrConsent").checked=true;p.click("ocrRun");
+  assert.equal(p.el("ocrRun").disabled,true);
+  p.el("ocrConsent").checked=false;
+  p.el("ocrConsent").dispatchEvent(new p.w.Event("change",{bubbles:true}));
+  assert.equal(p.el("ocrRun").disabled,false);
+  p.w.reader.onload();
+  await Promise.resolve();await Promise.resolve();
+  assert.equal(calls,0);
+  assert.match(p.el("ocrResult").textContent,/HOLD/);
+ }finally{p.w.close();}
+});
+
 (async()=>{
  let failed=0;
  for(const item of tests){

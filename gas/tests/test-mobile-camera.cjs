@@ -74,6 +74,36 @@ const directory=path.join(root,"dist/acceptance/mobile-camera");
     assert.ok(upload.bytes>0&&upload.bytes<=2*1024*1024);
     assert.equal(upload.jpegHeader,true);
     assert.match(upload.status,/HOLD/);
+    if(p.name==="iphone"){
+     // OCR has returned on STEP 2; select a second synthetic document here.
+     await page.evaluate(()=>{
+      window.__newOcrRequest=null;window.__newOcrCount=0;
+      window.google.script.run.extractWithholdingOcr=function(req){
+       window.__newOcrCount++;window.__newOcrRequest={req,callback:this.onSuccess};
+      };
+      const c=document.createElement("canvas");c.width=8;c.height=8;
+      c.getContext("2d").fillRect(0,0,8,8);
+      c.toBlob(blob=>{
+       const dt=new DataTransfer();
+       dt.items.add(new File([blob],"second.png",{type:"image/png"}));
+       const input=document.querySelector("#ocrCamera");input.files=dt.files;
+       input.dispatchEvent(new Event("change",{bubbles:true}));
+      },"image/png");
+     });
+     await page.waitForFunction(()=>document.querySelector("#ocrCamera").files.length>0 &&
+       document.querySelector("#ocrConsent").checked===false);
+     await page.locator("#ocrRun").click();
+     assert.equal(await page.evaluate(()=>window.__newOcrCount),0,"new source needs consent");
+     await page.locator("#ocrConsent").check();
+     await page.locator("#ocrRun").click();
+     await page.waitForFunction(()=>window.__newOcrCount===1);
+     await page.locator("#salaryGross").fill("7100000");
+     await page.evaluate(()=>window.__newOcrRequest.callback({
+      schema:"furusato-ocr-review/v1",status:"REQUIRES_REVIEW",year:2026,
+      candidates:{salary_gross:9999999,social_insurance:9999999}}));
+     assert.equal(await page.locator("#salaryGross").inputValue(),"7100000");
+     assert.match(await page.locator("#ocrResult").textContent(),/HOLD/);
+    }
     await page.locator("#salaryGross").fill("7000000");
     await page.locator("#socialInsurance").fill("1000000");
     await page.locator("#next").click();
