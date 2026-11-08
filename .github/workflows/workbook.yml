@@ -263,7 +263,7 @@ jobs:
         run: |
           $work = Join-Path $env:RUNNER_TEMP ('furusato-' + $env:GITHUB_RUN_ID + '-' + $env:GITHUB_RUN_ATTEMPT)
           $evidence = Join-Path $work 'excel_acceptance.json'
-          & .\tools\verify_excel.ps1 -Workbook (Join-Path $work 'review/Furusato_nouzei.xlsm') -EvidencePath $evidence
+          & .\tools\verify_excel.ps1 -Workbook (Join-Path $work 'review/Furusato_nouzei.xlsm') -EvidencePath $evidence -PdfEvidencePath (Join-Path $work 'pdf_layout_evidence')
           if (-not $?) { throw 'Windows Excel acceptance failed' }
           if (-not (Test-Path -LiteralPath $evidence)) { throw 'Excel acceptance evidence was not created' }
           $report = Get-Content -LiteralPath $evidence -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -274,6 +274,25 @@ jobs:
       # VBAUpdater read-only and real sandbox project-push are mandatory release
       # gates. The sandbox source is intentionally modified by one ASCII comment
       # to prove a real write; no customer or distributed workbook is changed.
+      - name: Verify synthetic Excel PDF layout and render evidence
+        if: success()
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m pip install --disable-pip-version-check pymupdf==1.26.4
+          if ($LASTEXITCODE -ne 0) { throw 'PDF audit renderer install failed: HOLD' }
+          $work = Join-Path $env:RUNNER_TEMP ('furusato-' + $env:GITHUB_RUN_ID + '-' + $env:GITHUB_RUN_ATTEMPT)
+          python tools/audit_pdf_layout.py --folder (Join-Path $work 'pdf_layout_evidence') --source tools/build_workbook.py
+          if ($LASTEXITCODE -ne 0) { throw 'PDF layout audit failed: HOLD' }
+          'Synthetic Excel A4 PDF layout: PASS. Physical printer and real desktop screen: HOLD.' >> $env:GITHUB_STEP_SUMMARY
+      - name: Upload synthetic PDF visual evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Furusato_nouzei_PDF_LAYOUT_REVIEW_${{ github.run_id }}
+          path: ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/pdf_layout_evidence/
+          if-no-files-found: ignore
+          retention-days: 7
       - name: VBAUpdater isolated read-only preflight and diff
         if: success()
         shell: powershell

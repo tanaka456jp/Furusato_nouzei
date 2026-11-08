@@ -2,7 +2,8 @@
 # Run on a dedicated Windows Excel desktop with VBOM access configured for the build user.
 param(
     [Parameter(Mandatory=$true)][string]$Workbook,
-    [string]$EvidencePath = ''
+    [string]$EvidencePath = '',
+    [string]$PdfEvidencePath = ''
 )
 $ErrorActionPreference = 'Stop'
 $Workbook = (Resolve-Path -LiteralPath $Workbook).Path
@@ -728,6 +729,21 @@ try {
     if ($splitCases.Count -ne 70) { throw 'Split evidence is incomplete' }
     QA-Stage 'statutory-split-70-exact-pass'
     QA-Stage 'statutory-split-pdf-and-safety-recovery-pass'
+    # Export only this isolated runner's synthetic PDF output for layout QA.
+    if (-not [string]::IsNullOrWhiteSpace($PdfEvidencePath)) {
+        if (Test-Path -LiteralPath $PdfEvidencePath) {
+            throw 'PDF layout evidence destination already exists'
+        }
+        [void][IO.Directory]::CreateDirectory($PdfEvidencePath)
+        foreach ($name in @('FurusatoQA.pdf', 'FurusatoQA_hidden.pdf', 'split-result.pdf')) {
+            $inputPdf = Join-Path $dir $name
+            if (-not (Test-Path -LiteralPath $inputPdf -PathType Leaf)) {
+                throw ('Synthetic PDF is missing: ' + $name)
+            }
+            Copy-Item -LiteralPath $inputPdf -Destination (Join-Path $PdfEvidencePath $name) -ErrorAction Stop
+        }
+        QA-Stage 'synthetic-pdf-audit-input-export-pass'
+    }
     QA-Stage 'all-acceptance-checks-pass'
     $passed = $true
     Write-Output 'PASS: Windows Excel 52 fixtures; 2025/2026 amounts; approved/rejected updates; persisted fault rollback; backup; VBA PDF/hidden UI/no-overwrite; isolated no-overwrite case-save; save/reopen; button wiring.'

@@ -42,6 +42,19 @@ class WorkbookTest(unittest.TestCase):
                       "TaxLawUpdater.RevealVerifiedResults"):
             self.assertIn(token, setup)
 
+    def test_pdf_visual_acceptance_has_a_static_contract(self):
+        workflow = (ROOT / ".github/workflows/workbook.yml").read_text(encoding="utf-8")
+        excel = (ROOT / "tools/verify_excel.ps1").read_text(encoding="utf-8-sig")
+        code = (ROOT / "tools/audit_pdf_layout.py").read_text(encoding="utf-8")
+        compile(code, "tools/audit_pdf_layout.py", "exec")
+        for token in ("Verify synthetic Excel PDF layout and render evidence",
+                      "tools/audit_pdf_layout.py --folder", "PDF_LAYOUT_REVIEW_",
+                      "-PdfEvidencePath"):
+            self.assertIn(token, workflow)
+        self.assertIn("synthetic-pdf-audit-input-export-pass", excel)
+        for name in ("FurusatoQA.pdf", "FurusatoQA_hidden.pdf", "split-result.pdf"):
+            self.assertIn(name, excel)
+
     def test_second_print_page_repeats_year_and_both_versions(self):
         home = self.book[HOME]
         formula = str(home["A80"].value)
