@@ -32,7 +32,7 @@ const adapter=String.raw`
 const bootstrap="<script>\n"+engine+"\n"+adapter+"\n</script>\n";
 const banner=String.raw`
 <div id="localPreview" style="background:#fff3cc;color:#663d08;text-align:center;padding:10px 14px;font-size:13px;font-weight:650">
-ローカル検証プレビュー（Google未接続・実運用禁止）／入力はファイル内でのみ処理され、保存・送信されません
+ローカル検証プレビュー（Google未接続・実運用禁止）／入力は端末内で処理され、保存は利用者の操作で行います
 </div>
 `;
 const output=html.replace("</header>","</header>\n"+banner)

@@ -55,6 +55,12 @@ test("filing route matters when the donation crosses the 1.95m national rate thr
   assert.match(taxReturn.reasons.join(" "),/所得税率の区分/);
   assert.equal(tax.calculate({...base,filing:"return"}).donationLimitYen,109000);
 });
+test("nonstandard municipality and transitional returns never show a salary estimate",()=>{
+  const result=tax.calculate({...base,hasNonstandardConditions:true});
+  assert.equal(result.status,"HOLD");
+  assert.equal(result.donationLimitYen,null);
+  assert.match(result.reasons.join(" "),/独自税率.*準確定申告/);
+});
 test("salary income is calculated automatically from the statutory table at 5m",()=>{
   const x=tax.calculate({...base,salaryGross:"5000000",socialInsurance:"1000000"});
   assert.equal(x.status,"ESTIMATE");

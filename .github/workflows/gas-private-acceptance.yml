@@ -108,13 +108,10 @@ jobs:
         env:
           FURUSATO_BROWSER_CHANNEL: msedge
         run: |
-          node gas/tests/test-browser-auth.cjs
-          if ($LASTEXITCODE -ne 0) { throw 'Origin authorization boundary regression failed' }
-          node gas/tests/test-real-browser.cjs
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node gas/tests/test-separate-ui.cjs
-          node gas/tests/test-responsive.cjs
-          node gas/tests/test-mobile-camera.cjs
+          foreach ($test in @('test-browser-auth', 'test-real-browser', 'test-separate-ui', 'test-responsive', 'test-mobile-camera')) {
+            node "gas/tests/$test.cjs"
+            if ($LASTEXITCODE -ne 0) { throw "Windows Edge regression failed ($test)" }
+          }
       - uses: actions/upload-artifact@v4
         if: always()
         with:

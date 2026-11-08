@@ -124,6 +124,9 @@ test("reader REVIEW cannot be overridden by clicking a checkbox",async()=>{
  try {
   p.next();
   await importJson(p,source("REQUIRES_REVIEW"));
+  p.w.URL.createObjectURL=()=>{throw new Error("Unreviewed OCR data must not be saved as a manual draft");};
+  p.click("saveDraft");
+  assert.match(p.el("draftStatus").textContent,/取込中の原票があるため保存できません/);
   assert.equal(p.el("sourceConfirmBox").style.display,"none");
   p.next();p.el("ack").checked=true;p.next();p.next();
   assert.equal(p.calls.at(-1).sourceReviewPending,true);

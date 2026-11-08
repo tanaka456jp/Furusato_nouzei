@@ -1,5 +1,5 @@
 /**
- * Furusato GAS MVP 0.1.18 — pure, deterministic, no SpreadsheetApp dependency.
+ * Furusato GAS MVP 0.1.19 — pure, deterministic, no SpreadsheetApp dependency.
  * Scope: 2025/2026, one salary source, no family/insurance/mortgage/other income.
  * All unsupported cases fail closed. This is a pre-release ESTIMATE, never an assessment.
  * Source: NTA No.1155, No.1199, No.1410, No.2260 (see README).
@@ -7,7 +7,7 @@
  */
 var FurusatoEngine = (function () {
   "use strict";
-  var VERSION = "gas-mvp-0.1.18";
+  var VERSION = "gas-mvp-0.1.19";
   var TAX_REVISION = "2026-11-09-bundled";
   var BASIC = {
     2025: [[1320000,950000],[3360000,880000],[4890000,680000],
@@ -29,6 +29,7 @@ var FurusatoEngine = (function () {
     ["hasMedical","医療費・iDeCo・障害者・配当などの追加控除を適用した税額は給与の簡易試算では計算できません"],
     ["hasSplitIncome","申告分離課税の寄附控除配分は未検証"],
     ["hasIncomeAdjustment","所得金額調整控除がある場合は実額照合が必要"],
+    ["hasNonstandardConditions","自治体の独自税率、年途中の死亡・出国による準確定申告など、標準条件外または条件不明のため試算を停止しました"],
     ["sourceReviewPending","原票の読取結果が未確認です"]
   ];
   function money(value, name, required, reasons) {

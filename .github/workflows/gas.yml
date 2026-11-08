@@ -108,22 +108,19 @@ jobs:
         run: node gas/tests/test-contract.cjs
       - name: Independent engine regression
         run: |
-          node gas/tests/test-engine.cjs
-          node gas/tests/test-separate-tax.cjs
-          node gas/tests/test-ocr.cjs
-          node gas/tests/test-private-ocr-status.cjs
-          node gas/tests/test-private-browser-probe.cjs
-          node gas/tests/test-browser-runtime.cjs
-          node gas/tests/test-system-browser.cjs
-          node gas/tests/test-private-ocr-temporary-files.cjs
-          node --check gas/scripts/check-private-ocr-temporary-files.cjs
-          node --check gas/tests/test-real-browser.cjs
-          node --check gas/scripts/check-local-browser.cjs
-          node gas/tests/test-deployment.cjs
-          node gas/tests/test-config-drift.cjs
-          node gas/tests/test-google-recovery.cjs
-          node gas/tests/test-parity.cjs
-          node gas/tests/test-observed.cjs
+          $tests = @('test-engine', 'test-separate-tax', 'test-ocr', 'test-private-ocr-status',
+            'test-private-browser-probe', 'test-browser-runtime', 'test-system-browser',
+            'test-private-ocr-temporary-files', 'test-deployment', 'test-config-drift',
+            'test-google-recovery', 'test-parity', 'test-observed')
+          foreach ($test in $tests) {
+            node "gas/tests/$test.cjs"
+            if ($LASTEXITCODE -ne 0) { throw "Windows Node regression failed ($test)" }
+          }
+          foreach ($script in @('scripts/check-private-ocr-temporary-files', 'scripts/accept-owner-ocr',
+            'tests/test-real-browser', 'scripts/check-local-browser')) {
+            node --check "gas/$script.cjs"
+            if ($LASTEXITCODE -ne 0) { throw "Windows Node syntax check failed ($script)" }
+          }
       - name: Workflow and source import simulated browser regression
         run: node gas/tests/test-browser.cjs
       - name: Official Excel parity script preflight (no Excel or Google)

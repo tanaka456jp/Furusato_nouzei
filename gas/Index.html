@@ -106,18 +106,25 @@ main{margin:0;padding:0;max-width:none}.panel{border:0;box-shadow:none;padding:0
 #splitOutput{overflow-wrap:anywhere}
 #splitOutput p{margin:.5rem 0}
 @media print{
- .mode-switch,.separate-mode #splitForm,.separate-mode #splitScreen>p{display:none!important}
+ .mode-switch,#draftPanel,.separate-mode #splitForm,.separate-mode #splitScreen>p{display:none!important}
 }
 
 </style></head>
 <body>
 <header><h1>ふるさと納税 限度額シミュレーター</h1>
-<p>質問に答えるだけで計算結果と根拠を表示｜GAS検証版 v0.1.18</p></header>
+<p>質問に答えるだけで計算結果と根拠を表示｜GAS検証版 v0.1.19</p></header>
 <main><div class="panel">
 <div class="actions mode-switch" aria-label="入力モード">
 <button type="button" id="salaryMode" aria-pressed="true">給与の入力</button>
 <button type="button" id="splitMode" aria-pressed="false">詳細設定・分離課税と税額控除</button>
 </div>
+<details id="draftPanel"><summary>入力の保存・再読込</summary>
+<p class="hint">入力中の金額を端末にJSONで保存します。保存ファイルには所得や控除の金額が含まれます。読み込むと対象モードの入力が置き換わり、確認チェックは解除されます。</p>
+<button type="button" id="saveDraft">表示中の入力を保存</button>
+<div class="field"><label for="draftFile">保存済みの入力ファイル</label><input id="draftFile" type="file" accept=".json,application/json"></div>
+<button type="button" id="loadDraft">選択した入力を読み込む</button>
+<p class="hint" id="draftStatus" role="status"></p>
+</details>
 <section id="splitScreen" hidden>
 <h2 tabindex="-1">詳細設定・分離課税と税額控除</h2>
 <p>総所得金額は給与所得控除後等の所得です。分離所得は所得控除前・経費差引後で入力します。該当なしは0。源泉分離課税、申告不要の所得、NISAは除きます。</p>
@@ -206,12 +213,13 @@ main{margin:0;padding:0;max-width:none}.panel{border:0;box-shadow:none;padding:0
 <label class="check"><input type="checkbox" data-key="hasMedical">医療費控除、iDeCo、障害者控除、配当控除など、ほかの控除がある</label>
 <label class="check"><input type="checkbox" data-key="hasSplitIncome">株式・土地建物などの申告分離課税所得がある</label>
 <label class="check"><input type="checkbox" data-key="hasIncomeAdjustment">所得金額調整控除がある</label>
+<label class="check"><input type="checkbox" data-key="hasNonstandardConditions">自治体の住民税所得割が標準の合計10％と異なる・不明、または死亡・出国に伴う準確定申告に該当する</label>
 </div>
 <label class="check" style="margin-top:20px;border-color:#9ebacb"><input id="ack" type="checkbox">上記のすべてを確認しました。チェックしていない項目は該当しません。</label>
 </section>
 <section class="screen" id="screen3">
 <h2 tabindex="-1">STEP 4　入力内容の確認</h2>
-<p class="muted">間違いがあれば「戻る」で修正してください。計算はブラウザからGASへ送信されます。初期版では案件保存しません。</p>
+<p class="muted">間違いがあれば「戻る」で修正してください。計算はブラウザからGASへ送信されます。入力を残すときは画面上部から保存してください。</p>
 <table class="summary" id="confirmation"></table>
 <div class="info warning">本版の計算対応範囲は「扶養・保険・住宅ローン控除・追加所得のない給与所得の標準ケース」です。対応範囲外は「HOLD」と表示し、誤った金額を示しません。</div>
 </section>
@@ -503,9 +511,9 @@ var allowedReaderFields=[
  "special_relative_count","special_relative_deduction_reference"
 ];
 var sourceFileSequence=0;
+var salaryAmountIds=["salaryGross","socialInsurance","salaryIncomeReference","deductionsReference"];
 function clearSalarySourceAmounts(){
- ["salaryGross","socialInsurance","salaryIncomeReference","deductionsReference"]
-  .forEach(function(id){byId(id).value="";});
+ salaryAmountIds.forEach(function(id){byId(id).value="";});
 }
 function clearSourceIndicators(){
  Array.prototype.forEach.call(document.querySelectorAll("[data-key]"),function(el){
@@ -816,6 +824,84 @@ byId("ocrRun").addEventListener("click",function(){
   byId("ocrResult").textContent="写真の準備に失敗しました（HOLD）。";
   notify(String(error&&error.message||"入力画像を確認してください"));
  });
+});
+var draftSchema="furusato-input-draft/v1",draftRevision=0,draftReadSequence=0;
+function draftFields(mode){
+ if(mode==="separate")return Array.from(splitForm.elements).filter(function(field){return field.name;});
+ return ["year","incomeType","filing"].concat(salaryAmountIds).map(byId)
+  .concat(Array.from(document.querySelectorAll("#exclusionChecks [data-key]")));
+}
+function draftKey(field){return field.id||field.getAttribute("data-key");}
+function validDraftValue(field,value){
+ if(field.type==="checkbox")return typeof value==="boolean";
+ if(typeof value!=="string")return false;
+ if(field.tagName==="SELECT")return Array.from(field.options).some(function(option){return option.value===value;});
+ return value===""||/^(0|[1-9][0-9]{0,11})$/.test(value);
+}
+function draftStatus(message){byId("draftStatus").textContent=message;}
+["input","change"].forEach(function(type){
+ document.querySelector("main").addEventListener(type,function(){draftRevision++;});
+});
+byId("saveDraft").addEventListener("click",function(){
+ var mode=byId("splitMode").getAttribute("aria-pressed")==="true"?"separate":"salary";
+ if(mode==="salary"&&state.sourceStatus){
+  draftStatus("取込中の原票があるため保存できません。原票と照合し、読取データを破棄してから手入力した内容を保存できます。");return;
+ }
+ var values={};
+ var valid=draftFields(mode).every(function(field){
+  var value=field.type==="checkbox"?field.checked:field.value;
+  values[draftKey(field)]=value;
+  return validDraftValue(field,value);
+ });
+ if(!valid){draftStatus("整数で入力できていない金額欄があります。修正して保存してください。");return;}
+ var url=URL.createObjectURL(new Blob([JSON.stringify({schema:draftSchema,mode:mode,values:values},null,2)],{type:"application/json"}));
+ var link=document.createElement("a");link.href=url;link.download="furusato-input-"+mode+".json";
+ document.body.appendChild(link);link.click();link.remove();
+ setTimeout(function(){URL.revokeObjectURL(url);},1000);
+ draftStatus("保存ファイルはブラウザのダウンロード先で確認できます。");
+});
+byId("loadDraft").addEventListener("click",function(){
+ var picker=byId("draftFile"),file=picker.files[0],revision=draftRevision,sequence=++draftReadSequence;
+ if(!file||!file.size||file.size>16384||!/\.json$/i.test(file.name)){
+  draftStatus("この画面で保存した16KB以下のJSONファイルを選択してください。");return;
+ }
+ var reader=new FileReader();
+ reader.onerror=function(){if(sequence===draftReadSequence)draftStatus("保存ファイルを開けませんでした。");};
+ reader.onload=function(){
+  if(sequence!==draftReadSequence)return;
+  if(revision!==draftRevision){draftStatus("入力が変更されたため読み込みを中止しました。読み込む場合はボタンを押し直してください。");return;}
+  var data;
+  try{data=JSON.parse(String(reader.result||""));}catch{}
+  if(!data||data.schema!==draftSchema||Object.keys(data).length!==3||
+     (data.mode!=="salary"&&data.mode!=="separate")||!data.values||
+     typeof data.values!=="object"||Array.isArray(data.values)){
+   draftStatus("保存ファイルの形式または版が対応範囲外です。");return;
+  }
+  var fields=draftFields(data.mode),values=data.values;
+  if(Object.keys(values).length!==fields.length||!fields.every(function(field){
+   var key=draftKey(field);
+   return Object.prototype.hasOwnProperty.call(values,key)&&validDraftValue(field,values[key]);
+  })){
+   draftStatus("保存ファイルに不明な項目、欠けている項目、または不正な値があります。");return;
+  }
+  var advanced=data.mode==="separate";
+  if(advanced){
+   byId("splitReviewed").checked=false;
+   splitForm.dispatchEvent(new Event("input",{bubbles:true}));
+  }else{
+   clearImportedState(true);
+   showStep(0);
+  }
+  fields.forEach(function(field){
+   var value=values[draftKey(field)];
+   if(field.type==="checkbox")field.checked=value;
+   else field.value=value;
+  });
+  selectMode(advanced);
+  picker.value="";
+  draftStatus("入力を読み込みました。金額と適用条件を確認してから計算してください。");
+ };
+ reader.readAsText(file,"UTF-8");
 });
 showStep(0,true);
 }());

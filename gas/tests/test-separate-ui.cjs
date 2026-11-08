@@ -48,6 +48,51 @@ const profiles = [
       evidence.push({...profile, status:"PASS", scope:"synthetic Chromium viewport and scale"});
       await page.close();
     }
+    const draftPage = await browser.newPage();
+    await draftPage.goto(source);
+    await draftPage.locator("#draftPanel summary").click();
+    const downloadDraft = async mode => {
+      const download = draftPage.waitForEvent("download");
+      await draftPage.locator("#saveDraft").click();
+      const saved = await download;
+      assert.equal(saved.suggestedFilename(),"furusato-input-"+mode+".json");
+      return JSON.parse(fs.readFileSync(await saved.path(),"utf8"));
+    };
+    const restoreDraft = async payload => {
+      await draftPage.locator("#draftFile").setInputFiles({name:"draft.json",mimeType:"application/json",
+        buffer:Buffer.from(JSON.stringify(payload))});
+      await draftPage.locator("#loadDraft").click();
+    };
+    await draftPage.locator("#next").click();
+    await draftPage.locator("#salaryGross").fill("7000000");
+    await draftPage.locator("#socialInsurance").fill("1000000");
+    await draftPage.locator("#ocrConsent").check();
+    const salaryDraft = await downloadDraft("salary");
+    assert.equal(salaryDraft.schema,"furusato-input-draft/v1");
+    assert.equal(salaryDraft.values.salaryGross,"7000000");
+    assert.equal(salaryDraft.values.ocrConsent,undefined);
+    assert.equal(salaryDraft.values.ack,undefined);
+    await draftPage.locator("#salaryGross").fill("5000000");
+    await restoreDraft({...salaryDraft,values:{...salaryDraft.values,ack:true}});
+    await draftPage.locator("#draftStatus").getByText(/不明な項目/).waitFor();
+    assert.equal(await draftPage.locator("#salaryGross").inputValue(),"5000000");
+    await restoreDraft(salaryDraft);
+    await draftPage.locator("#draftStatus").getByText(/読み込みました/).waitFor();
+    assert.equal(await draftPage.locator("#screen0").isVisible(),true);
+    assert.equal(await draftPage.locator("#salaryGross").inputValue(),"7000000");
+    assert.equal(await draftPage.locator("#ocrConsent").isChecked(),false);
+    await draftPage.locator("#splitMode").click();
+    await draftPage.locator("#split-listedStock").fill("5000000");
+    await draftPage.locator("#splitReviewed").check();
+    const splitDraft = await downloadDraft("separate");
+    await draftPage.locator("#salaryMode").click();
+    await restoreDraft(splitDraft);
+    await draftPage.locator("#splitScreen").waitFor();
+    assert.equal(await draftPage.locator("#split-listedStock").inputValue(),"5000000");
+    assert.equal(await draftPage.locator("#splitReviewed").isChecked(),false);
+    assert.equal(await draftPage.locator("#splitPrint").isVisible(),false);
+    await draftPage.close();
+    evidence.push({name:"local-draft-download-and-restore",status:"PASS"});
     // An old salary callback must not publish a result after entering another case.
     const page = await browser.newPage();
     await page.goto(source);

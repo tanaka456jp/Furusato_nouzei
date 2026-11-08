@@ -1,4 +1,4 @@
-# Furusato_nouzei GAS v0.1.18 — 開発・検証版 / 正式リリースHOLD
+# Furusato_nouzei GAS v0.1.19 — 開発・検証版 / 正式リリースHOLD
 
 Excel正式版v4.18.2とは独立した、Apps Script HTML Serviceの5ステップ試算画面です。
 Draft PR #2を維持し、mainのExcel正式版とHousingERPの本番運用を変更しません。
@@ -34,10 +34,12 @@ Google側の所有者・親ID・共有範囲・登録コードを照合します
 - 2MB以内のPDF/PNG/JPEGを明示同意後にDriveの一時Google文書へ変換してOCR。本文・氏名等は返さず、一時文書は削除を試行。失敗時はHOLDと手動確認警告。
 - OCRは常にREQUIRES_REVIEW。候補値を自動承認せず、照合して手入力し直すまで計算停止。
 - 計算根拠とHOLD理由をブラウザで印刷/PDF出力。入力値・原票・税額をシートへ自動保存しません。
+- 「入力の保存・再読込」で、給与の手入力や詳細設定の下書きを端末にJSONで保存できます。保存ファイルには金額が含まれます。読み込むと対象の入力が置き換わり、計算結果と確認チェックは復元されません。原票を取り込んでいる給与入力は保存の対象外です。
 
 Google Advanced Drive v3と `spreadsheets.currentonly / drive.file / documents` が必要です。
 実源泉徴収票を試験に使用しません。参照シート作成関数は明示実行時だけ動き、導入処理では呼びません。
 税務実務・販売・申告用の正式受入、全税制ケースのExcel一致、自治体差、実物印刷は未完了です。
+税制の適用範囲と受入の再開順序は [検証範囲と再開手順](docs/RELEASE_ACCEPTANCE.md) を参照してください。
 
 ## 回帰試験
 
