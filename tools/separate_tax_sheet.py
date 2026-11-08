@@ -114,6 +114,33 @@ def add_separate_tax(book, home, field, bar, note, progressive):
     home["B80"].alignment = Alignment(horizontal="center", vertical="center")
     home["D80"] = "寄附後"
     home["D80"].alignment = Alignment(horizontal="center", vertical="center")
+    # Second printed page must contain the *source inputs* underpinning the
+    # before/after tax credits, not merely figures without an audit trail.
+    # These are read-only formula copies: editing here cannot alter a return.
+    home.row_dimensions[87].height = 9
+    bar(home, 88, "計算条件の照合（入力値の控え）")
+    print_sources = (
+        (89, "住宅の居住開始年", "D72", "適用上限反映済残高", "D73"),
+        (90, "住宅控除可能額", "D74", "普通配当対象額", "D75"),
+        (91, "適格外国所得税額", "D76", "調整国外所得金額", "D77"),
+        (92, "適用条件の確認状態", "D49", "住民税の課税自治体", "D51"),
+    )
+    for row, left_label, left_input, right_label, right_input in print_sources:
+        home[f"A{row}"] = left_label
+        home[f"C{row}"] = right_label
+        home[f"A{row}"].alignment = Alignment(wrap_text=True, vertical="center")
+        home[f"C{row}"].alignment = Alignment(wrap_text=True, vertical="center")
+        home.row_dimensions[row].height = 28
+        for destination, input_addr in (("B", left_input), ("D", right_input)):
+            cell = home[f"{destination}{row}"]
+            cell.value = f'=IF(B55="計算可能",{input_addr},"")'
+            cell.alignment = Alignment(horizontal="right", vertical="center")
+            cell.fill = PatternFill("solid", fgColor="EAF3EA")
+            cell.protection = Protection(locked=True)
+            if row != 92 and not (row == 89 and destination == "B"):
+                cell.number_format = "#,##0"
+    note(home, 93, "この欄は試算に用いた入力値の控えです。契約・取得条件、控除の適用要件は原資料で照合してください。")
+    home.row_dimensions[93].height = 40
     note(home, 79, "外国税の限度額分母が所得合計と一致し、繰越や調整がない案件のみ。その他の税額控除、特殊な住宅・配当、非課税は個別計算。")
     home["D68"].number_format = "0.000%"
     home_ref = "'操作画面'!"

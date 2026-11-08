@@ -81,7 +81,9 @@ def audit(pdfpath: Path, expected_pages: int, out: Path) -> dict:
                           "text_blocks": len(blocks), "words_checked": checked_words, "png": filename})
         if pdfpath.name == "split-result.pdf":
             text = re.sub(r"\s+", "", doc[1].get_text(sort=True))
-            for label in ("所得年", "住民税", "税制版"):
+            for label in ("所得年", "住民税", "税制版",
+                          "計算条件の照合", "住宅控除可能額",
+                          "適格外国所得税額", "住民税の課税自治体"):
                 if label not in text:
                     raise AssertionError("Split PDF page two lacks: " + label)
         if pdfpath.name == "home-overview.pdf":

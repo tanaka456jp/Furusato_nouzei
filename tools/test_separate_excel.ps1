@@ -131,12 +131,36 @@
             $pageTwo -notlike '*税制版*') {
             throw ('Second-page year/version header not calculated: ' + $pageTwo)
         }
+        # Check the print-only audit evidence against the real input cells
+        # while the synthetic case is still valid. These must be copies, not
+        # a second, independently editable set of tax assumptions.
+        if ([string]$screen.Range('B55').Value2 -ne '計算可能') {
+            throw 'Split source-to-print audit was not in a calculable state'
+        }
+        foreach ($copyPair in @(
+            @('B89','D72'), @('D89','D73'),
+            @('B90','D74'), @('D90','D75'),
+            @('B91','D76'), @('D91','D77'),
+            @('B92','D49'), @('D92','D51')
+        )) {
+            $printed = [string]$screen.Range($copyPair[0]).Value2
+            $origin = [string]$screen.Range($copyPair[1]).Value2
+            if ($printed -cne $origin) {
+                throw ('Split print source mismatch: ' + $copyPair[0] + ' / ' + $copyPair[1])
+            }
+        }
         $area = [string]$screen.PageSetup.PrintArea
         if (-not $Excel.Run('TaxLawUpdater.ExportDetailsToFile', $PdfPath)) { throw 'Split PDF export failed' }
         $pdf = [System.IO.File]::ReadAllBytes($PdfPath)
         if ($pdf.Length -lt 500 -or [Text.Encoding]::ASCII.GetString($pdf, 0, 5) -ne '%PDF-') { throw 'Split PDF is invalid' }
         if ([string]$screen.PageSetup.PrintArea -ne $area) { throw 'Split PDF changed original print area' }
         $screen.Range('D49').Value2 = '特例あり'
+        $Excel.Calculate()
+        foreach ($addr in @('B89','D89','B90','D90','B91','D91','B92','D92')) {
+            if ([string]$screen.Range($addr).Value2 -ne '') {
+                throw ('Split print audit value remained visible under HOLD: ' + $addr)
+            }
+        }
         if ($Excel.Run('TaxLawUpdater.TryExportDetailsToFileForTest', (Join-Path (Split-Path $PdfPath) 'unsafe-split.pdf'))) { throw 'HOLD permitted a split PDF' }
         return $results.ToArray()
     }

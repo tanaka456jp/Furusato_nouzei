@@ -121,7 +121,7 @@ def build(source, output):
         home.add_data_validation(validation)
         validation.add(home[cell])
 
-    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.18.28 分離課税検証版")
+    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.18.29 分離課税検証版")
     bar(extra, 1, "追加所得・分離課税（所得年内で事前試算）")
     extra.merge_cells("A3:D3")
     extra["A3"] = "翌年度の住民税通知書は参照せず、所得年内の収入・経費・控除と法定税率表から計算します。"
@@ -325,8 +325,8 @@ def build(source, output):
     field("D22", "本人の控除区分", "該当なし", ("該当なし", "寡婦", "ひとり親（母）", "ひとり親（父）", "勤労学生"))
     field("D23", "16歳未満の扶養（人数）", maximum=30)
     field("D24", "申告方式", "ワンストップ", ("ワンストップ", "確定申告"))
-    note(home, 27, "公的年金・事業所得・雑所得は追加所得欄へ。申告分離課税は上の「詳細設定・申告分離課税へ」から入力してください。")
-    home.row_dimensions[27].height = 42
+    note(home, 27, "公的年金・事業所得・雑所得は追加所得欄へ。申告分離課税は上部の詳細設定リンクから入力。")
+    home.row_dimensions[27].height = 30
     note(home, 31, "対象外の手動判定は不要。原票の所得控除を優先し、入力内容に応じて計算可否を自動判定します。")
     bar(home, 32, "住宅ローン控除（通常処理・源泉徴収票から転記）")
     field("B33", "住宅ローン控除の所得税適用額")
@@ -698,7 +698,7 @@ def build(source, output):
         detail[f"B{row}"].alignment = Alignment(horizontal="right", vertical="center")
         detail.merge_cells(start_row=row, start_column=3, end_row=row, end_column=4)
         detail[f"C{row}"] = explanation
-        detail[f"C{row}"].alignment = Alignment(wrap_text=True, vertical="center")
+        detail[f"C{row}"].alignment = Alignment(wrap_text=True, vertical="center", indent=1)
         detail.row_dimensions[row].height = 28
     note(detail, 15, "申告分離課税では所得税の実際の減税額・住民税を寄附額ごとに再計算し、自己負担2,000円以内の最大額を探索します。")
     detail["A16"] = "分離課税（課税所得）"
@@ -714,7 +714,7 @@ def build(source, output):
         detail[f"B{row}"].number_format = '#,##0'
         detail[f"B{row}"].alignment = Alignment(horizontal="right")
         detail.merge_cells(start_row=row,start_column=3,end_row=row,end_column=4)
-        detail[f"C{row}"].alignment = Alignment(wrap_text=True)
+        detail[f"C{row}"].alignment = Alignment(wrap_text=True, indent=1)
         detail.row_dimensions[row].height = 32
     note(detail, 19, "分離課税の新規試算は操作画面の詳細設定に表示します。")
     detail.print_area = "A1:D19"

@@ -803,7 +803,7 @@ Private Function DetailsPrintArea(ByVal screen As Worksheet) As String
     DetailsPrintArea = "$A$55:$D$70"
     If CStr(screen.Range("A71").Value2) <> "詳細設定 | 税額控除（該当なしは0）" Then Exit Function
     If Application.Sum(screen.Range("D74:D76")) > 0 Then
-        DetailsPrintArea = DetailsPrintArea & ",$A$80:$D$86"
+        DetailsPrintArea = DetailsPrintArea & ",$A$80:$D$93"
     End If
 End Function
 

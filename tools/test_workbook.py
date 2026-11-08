@@ -77,7 +77,19 @@ class WorkbookTest(unittest.TestCase):
         self.assertIn('CHAR(10)&"税制版 "', formula)
         # Detailed tax-credit page is emitted from the same area as A80.
         source = (ROOT / "vba" / "TaxLawUpdater.bas").read_text(encoding="utf-8-sig")
-        self.assertIn('DetailsPrintArea = DetailsPrintArea & ",$A$80:$D$86"', source)
+        self.assertIn('DetailsPrintArea = DetailsPrintArea & ",$A$80:$D$93"', source)
+        for row, left, right in ((89, "D72", "D73"), (90, "D74", "D75"),
+                                  (91, "D76", "D77"), (92, "D49", "D51")):
+            self.assertIn('B55="計算可能"', home[f"B{row}"].value)
+            self.assertIn(left, home[f"B{row}"].value)
+            self.assertIn('B55="計算可能"', home[f"D{row}"].value)
+            self.assertIn(right, home[f"D{row}"].value)
+            self.assertTrue(home[f"B{row}"].protection.locked)
+        self.assertEqual(home["A88"].value, "計算条件の照合（入力値の控え）")
+        self.assertTrue(home["A93"].alignment.wrap_text)
+        live_qa = (ROOT / "tools/test_separate_excel.ps1").read_text(encoding="utf-8-sig")
+        self.assertIn("Split print source mismatch", live_qa)
+        self.assertIn("Split print audit value remained visible under HOLD", live_qa)
 
     def test_single_visible_home(self):
         self.assertEqual(self.book.active.title, HOME)
