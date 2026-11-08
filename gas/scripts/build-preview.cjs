@@ -37,7 +37,7 @@ const banner=String.raw`
 `;
 const output=html.replace("</header>","</header>\n"+banner)
  .replace("<script>",bootstrap+"<script>")
- .replace("GAS検証版 v0.1.17","ローカル動作プレビュー v0.1.17");
+ .replace(/GAS検証版 (v\d+\.\d+\.\d+)/,"ローカル動作プレビュー $1");
 if(output===html||output.indexOf("window.google={script:{run:delegate}}")<0)throw new Error("Bundle step failed");
 const dest=path.join(root,"dist","Furusato_GAS_LocalPreview.html");
 fs.mkdirSync(path.dirname(dest),{recursive:true});

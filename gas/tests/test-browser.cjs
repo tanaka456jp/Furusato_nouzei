@@ -65,6 +65,7 @@ test("e-Tax five-stage wizard yields printable standard salary estimate",async()
   assert.equal(p.el("resultScreen").classList.contains("active"),true);
   assert.equal(p.el("reportAmount").textContent,"109,000 円");
   assert.ok(p.el("reportLines").textContent.includes("住民税所得割"));
+  assert.match(p.el("reportLines").textContent,/所得税（寄附控除前）278,500 円/);
   assert.ok(p.el("formulaDetails").textContent.includes("計算式"));
   assert.equal(p.el("print").disabled,false);
  } finally {p.w.close();}
@@ -227,6 +228,11 @@ test("new smartphone photo revokes previously confirmed reader data before OCR",
   assert.match(p.el("sourceMessage").textContent,/HOLD/);
   assert.equal(p.el("ack").checked,false);
   // Do not click OCR. The document is new, so old acknowledgement is invalid.
+  assert.equal(p.el("salaryGross").value,"");
+  assert.equal(p.el("socialInsurance").value,"");
+  assert.equal(p.el("salaryIncomeReference").value,"");
+  p.next();assert.equal(p.calls.length,0);
+  p.type("salaryGross",7000000);p.type("socialInsurance",1000000);
   p.next();p.el("ack").checked=true;p.next();p.next();
   assert.equal(p.calls.at(-1).sourceReviewPending,true);
   assert.equal(p.el("reportAmount").textContent,"計算停止");

@@ -92,6 +92,8 @@ const directory=path.join(root,"dist/acceptance/mobile-camera");
      });
      await page.waitForFunction(()=>document.querySelector("#ocrCamera").files.length>0 &&
        document.querySelector("#ocrConsent").checked===false);
+     assert.equal(await page.locator("#salaryGross").inputValue(),"");
+     assert.equal(await page.locator("#socialInsurance").inputValue(),"");
      await page.locator("#ocrRun").click();
      assert.equal(await page.evaluate(()=>window.__newOcrCount),0,"new source needs consent");
      await page.locator("#ocrConsent").check();

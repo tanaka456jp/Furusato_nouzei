@@ -1,5 +1,5 @@
 /**
- * Furusato GAS MVP 0.1.17 — pure, deterministic, no SpreadsheetApp dependency.
+ * Furusato GAS MVP 0.1.18 — pure, deterministic, no SpreadsheetApp dependency.
  * Scope: 2025/2026, one salary source, no family/insurance/mortgage/other income.
  * All unsupported cases fail closed. This is a pre-release ESTIMATE, never an assessment.
  * Source: NTA No.1155, No.1199, No.1410, No.2260 (see README).
@@ -7,8 +7,8 @@
  */
 var FurusatoEngine = (function () {
   "use strict";
-  var VERSION = "gas-mvp-0.1.17";
-  var TAX_REVISION = "2026-11-05-bundled";
+  var VERSION = "gas-mvp-0.1.18";
+  var TAX_REVISION = "2026-11-09-bundled";
   var BASIC = {
     2025: [[1320000,950000],[3360000,880000],[4890000,680000],
            [6550000,630000],[23500000,580000],[24000000,480000],
@@ -26,7 +26,7 @@ var FurusatoEngine = (function () {
     ["hasEarthquakeInsurance","地震保険料控除の所得税・住民税差額は未検証"],
     ["hasMortgage","住宅借入金等特別控除の住民税への影響は未検証"],
     ["hasOtherIncome","公的年金・事業・不動産・雑所得の配分は未検証"],
-    ["hasMedical","医療費・寄附金以外の所得控除は未検証"],
+    ["hasMedical","医療費・iDeCo・障害者・配当などの追加控除を適用した税額は給与の簡易試算では計算できません"],
     ["hasSplitIncome","申告分離課税の寄附控除配分は未検証"],
     ["hasIncomeAdjustment","所得金額調整控除がある場合は実額照合が必要"],
     ["sourceReviewPending","原票の読取結果が未確認です"]
@@ -70,7 +70,7 @@ var FurusatoEngine = (function () {
     // 2025 uses the ordinary ¥650k minimum at low incomes.
     if (year !== 2025 && year !== 2026) return null;
     if (year === 2025 && gross < 1900000)
-      return Math.max(0,gross-650000);
+      return gross < 651000 ? 0 : gross-650000;
     if (year === 2026 && gross < 2200000) {
       if (gross < 741000) return 0;
       if (gross < 2191000) return gross-740000;
@@ -197,12 +197,23 @@ var FurusatoEngine = (function () {
     var residentIncomeCap = Math.floor(income*.3);
     var deductibleMax = Math.min(computed,residentIncomeCap);
     var donationLimit = floor1000(Math.max(0,deductibleMax));
+    if (input.filing === "return" && donationLimit > 2000) {
+      var beforeRounding = income-incomeBasic-social;
+      var afterDonation = beforeRounding-(donationLimit-2000);
+      if (afterDonation < 0 || marginal(floor1000(afterDonation)+1000) < rate) {
+        return result("HOLD",["確定申告で寄附金控除を適用すると課税所得がなくなるか、所得税率の区分をまたぎます。寄附前後の所得税を個別に確認してください。"],{year:year});
+      }
+    }
+    var nationalIncomeTax = FurusatoSeparateTax.ordinaryIncomeTax(taxableIncome);
+    var reconstructionIncomeTax = Math.floor(nationalIncomeTax * 21 / 1000);
     var response = result("ESTIMATE",[],{year:year});
     response.donationLimitYen = donationLimit;
     response.calculation = {
       salaryGrossYen:gross, salaryIncomeYen:income, socialInsuranceYen:social,
       basicIncomeTaxDeductionYen:incomeBasic, residentBasicDeductionYen:430000,
       incomeTaxTaxableYen:taxableIncome, marginalIncomeTaxRate:rate,
+      nationalIncomeTaxYen:nationalIncomeTax, reconstructionIncomeTaxYen:reconstructionIncomeTax,
+      nationalIncomeTaxTotalYen:nationalIncomeTax+reconstructionIncomeTax,
       residentSpecialRateBaseYen:bracketIncome,
       residentHumanDeductionDifferenceYen:50000,
       residentBasicExcessDeductionYen:Math.max(0,incomeBasic-480000),
@@ -279,11 +290,15 @@ var FurusatoSeparateTax = (function () {
     return {rows: rows, unused: remaining};
   }
 
+  function ordinaryIncomeTax(ordinary) {
+    var bracket = brackets.find(function (b) { return ordinary <= b[0]; });
+    return ordinary * bracket[1] / 100 - bracket[2];
+  }
+
   function national(income, deductions, credits) {
     var allocation = allocate(income, deductions);
     var ordinary = allocation.rows[0].taxable;
-    var bracket = brackets.find(function (b) { return ordinary <= b[0]; });
-    var base = ordinary * bracket[1] / 100 - bracket[2];
+    var base = ordinaryIncomeTax(ordinary);
     allocation.rows.slice(1).forEach(function (row, i) {
       base += row.taxable * buckets[i + 1][1] / 100;
     });
@@ -461,5 +476,5 @@ var FurusatoSeparateTax = (function () {
         atLimit: donationResult(input, before, local, total, limit, credits)}
     };
   }
-  return {calculate: calculate};
+  return {calculate: calculate, ordinaryIncomeTax: ordinaryIncomeTax};
 }());

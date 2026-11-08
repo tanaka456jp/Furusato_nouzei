@@ -9,6 +9,6 @@ from pypdf import PdfReader
 reader = PdfReader(sys.argv[1])
 assert len(reader.pages) == 1, 'Standard synthetic report must fit one A4 page'
 text = unicodedata.normalize('NFKC', '\n'.join(page.extract_text() for page in reader.pages))
-for expected in ['109,000', '7,000,000', '1,000,000', '374,500', '2026', '計算根拠', '限度額']:
+for expected in ['109,000', '7,000,000', '1,000,000', '374,500', '278,500', '5,848', '2026', '計算根拠', '限度額']:
     assert expected in text, 'Required report content absent: ' + expected
 print('PRINT_PDF_CONTENT_PASS: one A4 page with expected synthetic values')

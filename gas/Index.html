@@ -112,7 +112,7 @@ main{margin:0;padding:0;max-width:none}.panel{border:0;box-shadow:none;padding:0
 </style></head>
 <body>
 <header><h1>ふるさと納税 限度額シミュレーター</h1>
-<p>質問に答えるだけで計算結果と根拠を表示｜GAS検証版 v0.1.17</p></header>
+<p>質問に答えるだけで計算結果と根拠を表示｜GAS検証版 v0.1.18</p></header>
 <main><div class="panel">
 <div class="actions mode-switch" aria-label="入力モード">
 <button type="button" id="salaryMode" aria-pressed="true">給与の入力</button>
@@ -166,7 +166,7 @@ main{margin:0;padding:0;max-width:none}.panel{border:0;box-shadow:none;padding:0
 <div class="field-grid">
 <div class="field"><label for="year">所得年</label><select id="year"><option value="2026">令和8年（2026年）</option><option value="2025">令和7年（2025年）</option></select></div>
 <div class="field"><label for="incomeType">主な所得の種類</label><select id="incomeType"><option value="salary">給与所得のみ</option><option value="business">事業・不動産所得がある</option><option value="mixed">給与と年金など複数所得</option></select><span class="hint">初期検証版は給与所得のみ金額算定可能。他の所得は確認待ちになります。</span></div>
-<div class="field"><label for="filing">申告方式</label><select id="filing"><option value="one-stop">ワンストップ特例を利用予定</option><option value="return">確定申告を行う予定</option></select></div>
+<div class="field"><label for="filing">申告方式</label><select id="filing"><option value="one-stop">ワンストップ特例を利用予定</option><option value="return">確定申告を行う予定</option></select><span class="hint">ワンストップ特例は確定申告が不要で、寄附先が5自治体以内の場合に選びます。確定申告する場合は、すべての対象寄附を申告します。</span></div>
 </div><div class="info">2027年分は税制未承認のため選択できません。2026年分の算定は令和8年12月以降の通常年末調整を前提とします。</div>
 </section>
 <section class="screen" id="screen1">
@@ -203,7 +203,7 @@ main{margin:0;padding:0;max-width:none}.panel{border:0;box-shadow:none;padding:0
 <label class="check"><input type="checkbox" data-key="hasEarthquakeInsurance">地震保険料控除がある</label>
 <label class="check"><input type="checkbox" data-key="hasMortgage">住宅ローン控除がある</label>
 <label class="check"><input type="checkbox" data-key="hasOtherIncome">公的年金・事業所得・雑所得などがある</label>
-<label class="check"><input type="checkbox" data-key="hasMedical">医療費控除などの別控除がある</label>
+<label class="check"><input type="checkbox" data-key="hasMedical">医療費控除、iDeCo、障害者控除、配当控除など、ほかの控除がある</label>
 <label class="check"><input type="checkbox" data-key="hasSplitIncome">株式・土地建物などの申告分離課税所得がある</label>
 <label class="check"><input type="checkbox" data-key="hasIncomeAdjustment">所得金額調整控除がある</label>
 </div>
@@ -320,8 +320,10 @@ function processResult(result){
    ["給与所得金額",yen(c.salaryIncomeYen)],["社会保険料等",yen(c.socialInsuranceYen)],
    ["所得税基礎控除",yen(c.basicIncomeTaxDeductionYen)],
    ["所得税課税所得",yen(c.incomeTaxTaxableYen)],
+   ["所得税（寄附控除前）",yen(c.nationalIncomeTaxYen)],
+   ["復興特別所得税（寄附控除前）",yen(c.reconstructionIncomeTaxYen)],
    ["住民税特例控除の税率判定額",yen(c.residentSpecialRateBaseYen)],
-   ["所得税限界税率",(c.marginalIncomeTaxRate*100).toFixed(1)+"%"],
+   ["住民税特例控除の適用税率",(c.marginalIncomeTaxRate*100).toFixed(1)+"%"],
    ["住民税課税所得",yen(c.residentTaxTaxableYen)],
    ["住民税所得割・調整控除後",yen(c.residentIncomeLevyYen)],
    ["住民税特例控除上限（所得割20%）",yen(c.specialCreditCapYen)],
@@ -501,6 +503,18 @@ var allowedReaderFields=[
  "special_relative_count","special_relative_deduction_reference"
 ];
 var sourceFileSequence=0;
+function clearSalarySourceAmounts(){
+ ["salaryGross","socialInsurance","salaryIncomeReference","deductionsReference"]
+  .forEach(function(id){byId(id).value="";});
+}
+function clearSourceIndicators(){
+ Array.prototype.forEach.call(document.querySelectorAll("[data-key]"),function(el){
+  if(state.sourceIndicators[el.getAttribute("data-key")]===true){
+   el.checked=false;el.disabled=false;
+  }
+ });
+ state.sourceIndicators={};
+}
 function clearImportedState(clearAmounts){
  ++ocrSequence;
  ++sourceFileSequence;
@@ -514,8 +528,7 @@ function clearImportedState(clearAmounts){
  byId("file").value="";
  byId("ocrFile").value="";byId("ocrCamera").value="";
  if(clearAmounts){
-  ["salaryGross","socialInsurance","salaryIncomeReference","deductionsReference"]
-   .forEach(function(id){byId(id).value="";});
+  clearSalarySourceAmounts();
   Array.prototype.forEach.call(document.querySelectorAll("[data-key]"),
    function(el){el.checked=false;el.disabled=false;});
   byId("ack").checked=false;
@@ -592,13 +605,15 @@ byId("file").addEventListener("change",function(ev){
  byId("ack").checked=false;
  byId("sourceMessage").textContent="新しい読取ファイルの照合待ちです（HOLD）。";
  // A failed or partial import must not inherit a previous review approval.
- state.sourceStatus="INVALID";state.sourceYear=null;state.sourceBasicReference=null;state.sourceIndicators={};
+ state.sourceStatus="INVALID";state.sourceYear=null;state.sourceBasicReference=null;
+ clearSourceIndicators();
+ clearSalarySourceAmounts();
  byId("sourceConfirmed").checked=false;
  byId("sourceConfirmBox").style.display="none";
  byId("clearImportedFile").style.display="block";
  if(file.size>1024*1024){notify("1MB以下の読取結果ファイルのみ対応します");return;}
  if(!/\.(json|tsv|txt)$/i.test(file.name)){
-  notify("JSON/TSV以外は未対応です。PDF/画像OCRは未実装です");return;
+  notify("読取結果はJSONまたはTSVを選択してください。PDF・画像は下のOCR欄から選択できます。");return;
  }
  var reader=new FileReader();
  reader.onerror=function(){if(seq===sourceFileSequence)notify("読取結果ファイルを開けませんでした");};
@@ -607,8 +622,6 @@ byId("file").addEventListener("change",function(ev){
   try{
    var data=parseReaderFile(String(reader.result||""),file.name);
    var provisional=data.STATUS==="REQUIRES_REVIEW"||data._warnings.length>0;
-   ["salaryGross","salaryIncomeReference","socialInsurance","deductionsReference"]
-    .forEach(function(id){byId(id).value="";});
    [["salaryGross","salary_gross"],["salaryIncomeReference","salary_reference"],
     ["socialInsurance","social_insurance"],["deductionsReference","deductions_reference"]]
     .forEach(function(pair){if(data[pair[1]]!==undefined)byId(pair[0]).value=String(data[pair[1]]);});
@@ -721,14 +734,10 @@ function prepareOcrUpload(file){
   ocrInProgress=false;byId("ocrConsent").checked=false;
   byId(id==="ocrFile"?"ocrCamera":"ocrFile").value="";
   byId("file").value="";
-  var priorFlags=state.sourceIndicators;
-  Array.prototype.forEach.call(document.querySelectorAll("[data-key]"),function(el){
-   if(priorFlags[el.getAttribute("data-key")]===true){
-    el.checked=false;el.disabled=false;
-   }
-  });
+  clearSourceIndicators();
   state.sourceStatus="REQUIRES_REVIEW";
-  state.sourceYear=null;state.sourceBasicReference=null;state.sourceIndicators={};
+  state.sourceYear=null;state.sourceBasicReference=null;
+  clearSalarySourceAmounts();
   byId("sourceConfirmed").checked=false;
   byId("sourceConfirmBox").style.display="none";
   byId("clearImportedFile").style.display="block";
@@ -755,6 +764,7 @@ byId("ocrRun").addEventListener("click",function(){
  ++sourceFileSequence; // A late JSON/TSV read must not replace this OCR review.
  state.sourceStatus="REQUIRES_REVIEW";state.sourceYear=null;
  state.sourceBasicReference=null;state.sourceIndicators={};
+ clearSalarySourceAmounts();
  byId("sourceConfirmed").checked=false;
  byId("sourceConfirmBox").style.display="none";
  byId("clearImportedFile").style.display="block";
@@ -789,7 +799,8 @@ byId("ocrRun").addEventListener("click",function(){
    state.sourceBasicReference=Number.isSafeInteger(candidates.basic_reference)?candidates.basic_reference:null;
    byId("ack").checked=false;
    byId("ocrResult").textContent="OCR完了（原票照合待ち・HOLD）。候補"+count+"項目。認識値は仮転記のみで計算に使えません。";
-   byId("sourceMessage").textContent="PDF・画像のOCR仮転記です。手元の原票を確認してください（HOLD）。";
+   var detectedYear=state.sourceYear===null?"所得年を認識できませんでした。":"認識した所得年は"+state.sourceYear+"年です。";
+   byId("sourceMessage").textContent=detectedYear+" 金額欄はPDF・画像からの仮転記です。手元の原票を確認してください（HOLD）。";
    notify("");
   }).withFailureHandler(function(){
    if(nonce!==ocrSequence)return;

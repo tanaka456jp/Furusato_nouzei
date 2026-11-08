@@ -1,4 +1,4 @@
-# Furusato_nouzei GAS v0.1.17 — 開発・検証版 / 正式リリースHOLD
+# Furusato_nouzei GAS v0.1.18 — 開発・検証版 / 正式リリースHOLD
 
 Excel正式版v4.18.2とは独立した、Apps Script HTML Serviceの5ステップ試算画面です。
 Draft PR #2を維持し、mainのExcel正式版とHousingERPの本番運用を変更しません。
@@ -52,11 +52,9 @@ node gas/scripts/build-preview.cjs
 node gas/tests/test-preview.cjs
 $env:FURUSATO_BROWSER_CHANNEL='msedge'
 node gas/tests/test-real-browser.cjs
-# 実Google非公開デプロイ・所有者のWebアプリ認可が済んだ環境だけ
-node gas/tests/test-real-browser.cjs --live --headed
-# 所有者の初回認可後、既存認証によるヘッドレス実Google試験
-node gas/tests/test-real-browser.cjs --live --token-auth
 ```
+
+既存の非公開v0.1.17の実Google試験は [所有者による受入手順](docs/REAL_GOOGLE_OCR_HANDOFF_v0.1.17.md) に沿って通常Edgeで行います。
 
 ローカルプレビューは `dist/Furusato_GAS_LocalPreview.html`。Google未接続と画面表示します。
 `.github/workflows/gas.yml` はLinux/Windowsで合成回帰と許可リスト限定の配布ZIPを生成します。
@@ -82,7 +80,7 @@ CI成功はGoogle認可・デプロイ・実OCRの成功を意味しません。
 - [国税庁 基礎控除](https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1199.htm)
 - [国税庁 令和8年改正Q&A](https://www.nta.go.jp/users/gensen/2026kiso/pdf/0026005-024.pdf)
 
-税制計算そのものは本導入改修で変更していません。正式リリースはHOLDです。
+v0.1.18は令和7年分の給与所得表の下端を修正し、標準給与の寄附控除前の所得税と復興特別所得税を結果に表示します。既存の非公開実Google受入は固定版v0.1.17で行います。
 
 Excel差分照合の追加ガード: **操作画面**と非表示の**設定・税率**に年度を同期、
 2025/2026各年に一定数の正常ケース必須、2026年の700万円アンカーを照合。

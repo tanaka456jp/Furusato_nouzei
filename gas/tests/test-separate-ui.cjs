@@ -39,7 +39,7 @@ const profiles = [
       assert.equal(await page.locator("#splitForm").isVisible(), false);
       assert.equal(await page.locator("#resultScreen").isVisible(), false);
       assert.equal(await page.locator("#splitOutput").isVisible(), true);
-      assert.match(await page.locator("#splitOutput").innerText(), /GAS検証版 v0\.1\.17/);
+      assert.ok((await page.locator("#splitOutput").innerText()).includes("GAS検証版 v"+require("../package.json").version));
       await page.emulateMedia({media:"screen"});
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false, profile.name);
       await page.screenshot({path:path.join(out,profile.name+".png"),fullPage:true});

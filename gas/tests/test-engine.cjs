@@ -15,12 +15,16 @@ const base={
   salaryIncomeReference:"",deductionsReference:"",
   acknowledgedExclusions:true
 };
-test("2026 standard wage 7m reproduces reviewed Excel reference 109,000",()=>{
+test("2026 standard wage 7m matches independently calculated tax and donation estimate",()=>{
   const x=tax.calculate(base);
   assert.equal(x.status,"ESTIMATE");assert.equal(x.donationLimitYen,109000);
   assert.equal(x.calculation.salaryIncomeYen,5200000);
   assert.equal(x.calculation.basicIncomeTaxDeductionYen,670000);
   assert.equal(x.calculation.incomeTaxTaxableYen,3530000);
+  // NTA No.2260: 3,530,000 × 20% − 427,500 = 278,500; 2.1% is 5,848 yen.
+  assert.equal(x.calculation.nationalIncomeTaxYen,278500);
+  assert.equal(x.calculation.reconstructionIncomeTaxYen,5848);
+  assert.equal(x.calculation.nationalIncomeTaxTotalYen,284348);
   assert.equal(x.calculation.residentIncomeLevyYen,374500);
   assert.equal(x.calculation.marginalIncomeTaxRate,.20);
   assert.equal(x.residentYear,2027);
@@ -28,11 +32,28 @@ test("2026 standard wage 7m reproduces reviewed Excel reference 109,000",()=>{
 test("2025 standard wage 7m has different income-tax basic deduction",()=>{
   const x=tax.calculate({...base,year:2025});
   assert.equal(x.status,"ESTIMATE");assert.equal(x.calculation.basicIncomeTaxDeductionYen,630000);
+  assert.equal(x.calculation.nationalIncomeTaxYen,286500);
+  assert.equal(x.calculation.reconstructionIncomeTaxYen,6016);
+  assert.equal(x.calculation.residentIncomeLevyYen,374500);
+  assert.equal(x.donationLimitYen,109000);
   assert.equal(x.residentYear,2026);
 });
 test("2027 is unapproved and fails closed",()=>{
   const x=tax.calculate({...base,year:2027});
   assert.equal(x.status,"HOLD");assert.equal(x.donationLimitYen,null);
+});
+test("filing route matters when the donation crosses the 1.95m national rate threshold",()=>{
+  const input={...base,salaryGross:5600000,socialInsurance:1040000};
+  const oneStop=tax.calculate(input);
+  assert.equal(oneStop.calculation.incomeTaxTaxableYen,1960000);
+  assert.equal(oneStop.calculation.nationalIncomeTaxYen,98500);
+  assert.equal(oneStop.calculation.residentIncomeLevyYen,254500);
+  assert.equal(oneStop.donationLimitYen,65000);
+  const taxReturn=tax.calculate({...input,filing:"return"});
+  assert.equal(taxReturn.status,"HOLD");
+  assert.equal(taxReturn.donationLimitYen,null);
+  assert.match(taxReturn.reasons.join(" "),/所得税率の区分/);
+  assert.equal(tax.calculate({...base,filing:"return"}).donationLimitYen,109000);
 });
 test("salary income is calculated automatically from the statutory table at 5m",()=>{
   const x=tax.calculate({...base,salaryGross:"5000000",socialInsurance:"1000000"});
@@ -101,10 +122,10 @@ test("2026 NTA special salary bands remain correct despite Excel v4.18.2 discrep
     assert.equal(r.donationLimitYen,limit,"donation limit gross="+gross);
   }
 });
-test("2025 minimum allowance remains 650k at lower salary edges",()=>{
+test("2025 statutory table sets income to zero below 651,000 yen",()=>{
   const x=tax.salaryIncome;
   for(const [gross,expected] of [[0,0],[649999,0],[650000,0],
-    [650001,1],[1899999,1249999],[1900000,1250000]]) {
+    [650001,0],[650999,0],[651000,1000],[1899999,1249999],[1900000,1250000]]) {
     assert.equal(x(gross,2025),expected,"2025 gross="+gross);
   }
 });
