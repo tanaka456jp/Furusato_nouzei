@@ -10,6 +10,8 @@
 const fs=require("node:fs");
 const path=require("node:path");
 const cp=require("node:child_process");
+const os=require("node:os");
+const crypto=require("node:crypto");
 const google=require("../deployment/private-gas.cjs");
 const policy=require("../deployment/policy.json");
 const {
@@ -103,7 +105,7 @@ function assess({candidate,old,drive,oldDigest,newDigest}){
  }
  return {
   status:issues.length?"HOLD":"READY_FOR_SEPARATE_STAGE_APPROVAL",
-  stagePreflightRevision:4,
+  stagePreflightRevision:5,
   stage:!candidateReady?"LOCAL_CANDIDATE":issues.length?"REMOTE_READONLY_ATTESTATION":"APPROVAL_GATE",
   problems:issues,
   candidateChecks:!candidateReady&&Array.isArray(candidate?.reasons)?candidate.reasons:[],
@@ -124,10 +126,47 @@ function assess({candidate,old,drive,oldDigest,newDigest}){
  };
 }
 /**
+ * Read and compare credential shapes offline. This is NOT authorization to
+ * ignore protected snapshot drift: we cannot verify the actual writer.
+ * Do not output raw JSON, hashes, credentials, paths, time or OAuth claims.
+ */
+function inspectGlobalAuthRefresh({receipt,drift,isolatedAuthFile,globalAuthFile}){
+ const stop=(baseline,pattern="UNVERIFIED")=>({
+  status:"HOLD",baseline,pattern,writer:"UNVERIFIED",
+  snapshotWrite:"PROHIBITED",ownerReview:"REQUIRED"
+ });
+ const checks=drift?.checks;
+ if(!Array.isArray(checks)||checks.length!==4||
+  checks.some((x,i)=>x?.name!==["housing-clasp","housing-appsscript",
+    "housing-project","global-clasp-auth"][i]))return stop("REPORT_UNVERIFIED");
+ if(checks.slice(0,3).some(x=>x.state!=="UNCHANGED")||
+    checks[3].state!=="CHANGED")return stop("NOT_SOLE_GLOBAL_AUTH_CHANGE");
+ try {
+  const baseline=receipt?.protectedSnapshot?.[path.resolve(globalAuthFile)];
+  if(typeof baseline!=="string"||!/^[a-f0-9]{64}$/.test(baseline))
+   return stop("HISTORICAL_HASH_UNAVAILABLE");
+  const safeRead=file=>{
+   const st=fs.lstatSync(file);
+   if(!st.isFile()||st.isSymbolicLink()||st.size<2||st.size>1024*1024)
+    throw Error("UNSAFE_AUTH_FILE");
+   return fs.readFileSync(file);
+  };
+  const original=safeRead(isolatedAuthFile);
+  const current=safeRead(globalAuthFile);
+  const originalHash=crypto.createHash("sha256").update(original).digest("hex");
+  if(originalHash!==baseline)return stop("HISTORICAL_BYTES_NOT_MATCHED");
+  const currentHash=crypto.createHash("sha256").update(current).digest("hex");
+  if(currentHash===baseline)return stop("GLOBAL_FILE_NOT_CHANGED_NOW");
+  const pattern=google.oauthRefreshPattern(JSON.parse(original.toString("utf8")),
+    JSON.parse(current.toString("utf8")));
+  return stop("HISTORICAL_BYTES_MATCHED",pattern);
+ }catch{return stop("HISTORICAL_COMPARISON_UNAVAILABLE");}
+}
+/**
  * Sanitize the LOCAL snapshot comparison for owner-visible diagnostics.
  * Never expose paths, hashes, timestamps, token values or file contents.
  */
-function protectedConfigHold(candidate,drift){
+function protectedConfigHold(candidate,drift,authReview=null){
  const names=["housing-clasp","housing-appsscript","housing-project","global-clasp-auth"];
  const states=new Set(["UNCHANGED","CHANGED","MISSING","APPEARED",
   "BLOCKED_LINK","NOT_REGULAR_FILE","UNREADABLE"]);
@@ -138,10 +177,11 @@ function protectedConfigHold(candidate,drift){
   });
  const checks=valid?drift.checks.map(row=>({name:row.name,state:row.state})):[];
  return {
-  status:"HOLD",stagePreflightRevision:4,stage:"PROTECTED_LOCAL_CONFIG",
+  status:"HOLD",stagePreflightRevision:5,stage:"PROTECTED_LOCAL_CONFIG",
   problems:[valid?"PROTECTED_CONFIG_DRIFT":"PROTECTED_DRIFT_REPORT_INVALID"],
   candidateChecks:[],candidateCheckoutIdentity:candidate?.checkoutIdentity||"NOT_VERIFIED",
   protectedConfiguration:{status:"HOLD",checks},
+  globalAuthReview:authReview||{status:"HOLD",baseline:"NOT_ASSESSED",pattern:"UNVERIFIED",writer:"UNVERIFIED",snapshotWrite:"PROHIBITED",ownerReview:"REQUIRED"},
   oldPrivateAudit:"NOT_RUN",driveAudit:"NOT_RUN",sourceComparison:"NOT_RUN",
   existingApp:"v0.1.17",candidateApp:"v0.1.20",
   existingDeployment:"NOT_MODIFIED_BY_THIS_CHECK",candidateDeployment:"NOT_CREATED",
@@ -189,7 +229,12 @@ async function main(){
  const protectedRoot=path.resolve(root,"..","..","HousingERP");
  const drift=google.configDriftReport(receipt,protectedRoot);
  if(drift.status!=="MATCH"){
-  console.log(JSON.stringify(protectedConfigHold(candidate,drift)));
+  const authReview=inspectGlobalAuthRefresh({
+   receipt,drift,
+   isolatedAuthFile:path.join(privateRoot,"auth.json"),
+   globalAuthFile:path.join(os.homedir(),".clasprc.json")
+  });
+  console.log(JSON.stringify(protectedConfigHold(candidate,drift,authReview)));
   process.exitCode=2;return;
  }
  const historical=historicalFiles(receipt.sourceCommit);
@@ -209,7 +254,7 @@ async function main(){
  console.log(JSON.stringify(report));
  if(report.status!=="READY_FOR_SEPARATE_STAGE_APPROVAL")process.exitCode=2;
 }
-module.exports={checkCandidate,assess,committedSources,liveTrustedBranchTip,protectedConfigHold};
+module.exports={checkCandidate,assess,committedSources,liveTrustedBranchTip,protectedConfigHold,inspectGlobalAuthRefresh};
 if(require.main===module)main().catch(error=>{
  const allowed=new Set(["UNTRUSTED_GIT_ORIGIN","TRUSTED_REMOTE_READ_FAILED",
   "TRUSTED_REMOTE_TIP_UNVERIFIED","PROTECTED_CONFIG_DRIFT"]);
