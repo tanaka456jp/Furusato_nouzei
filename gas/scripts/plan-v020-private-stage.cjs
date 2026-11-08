@@ -74,6 +74,7 @@ function assess({candidate,old,drive,oldDigest,newDigest}){
  }
  return {
   status:issues.length?"HOLD":"READY_FOR_SEPARATE_STAGE_APPROVAL",
+  stagePreflightRevision:2,
   stage:!candidateReady?"LOCAL_CANDIDATE":issues.length?"REMOTE_READONLY_ATTESTATION":"APPROVAL_GATE",
   problems:issues,
   candidateChecks:!candidateReady&&Array.isArray(candidate?.reasons)?candidate.reasons:[],
