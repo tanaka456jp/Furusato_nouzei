@@ -7,6 +7,7 @@ const root=path.resolve(__dirname,'..'),live=process.argv.includes('--live'),aut
 const {source,digest,accessToken}=require('../deployment/private-gas.cjs');
 const tokenAuth=live&&process.argv.includes('--token-auth');
 const {installOriginAuthorization}=require('../deployment/browser-auth.cjs');
+const {chooseBrowser}=require('../deployment/browser-runtime.cjs');
 const dest=path.join(root,live?'.private/furusato/evidence':'dist/acceptance');fs.mkdirSync(dest,{recursive:true});
 if(probe&&(!live||authorize))throw Error('PROBE_REQUIRES_LIVE_NONINTERACTIVE_MODE');
 const results=[];
@@ -15,7 +16,7 @@ const stage=value=>{currentStage=value;};
 function classifyFailure(err){
  const message=String(err?.message||"");
  if(message.includes("AUTH_REQUIRED"))return "OWNER_WEB_APP_AUTH_REQUIRED";
- if(/browserType\.launch|executable doesn't exist|browser has been closed/i.test(message))
+ if(message==='LOCAL_BROWSER_UNAVAILABLE'||/browserType\.launch|executable doesn't exist|browser has been closed|spawn .*ENOENT|Failed to launch/i.test(message))
   return "LOCAL_BROWSER_UNAVAILABLE";
  if(/Google runtime diagnostics failed/i.test(message))return "DRIVE_DIAGNOSTIC_FAILED";
  if(/Google OCR (png|jpeg|pdf) failed/i.test(message))return "OCR_RESPONSE_FAILED";
@@ -26,7 +27,14 @@ function classifyFailure(err){
 async function main(){
  let context,browser;
  const launch={headless:!process.argv.includes('--headed')};
- if(process.env.FURUSATO_BROWSER_CHANNEL)launch.channel=process.env.FURUSATO_BROWSER_CHANNEL;
+ if(live){
+  stage('PRIVATE_BROWSER_SETUP');
+  const selected=chooseBrowser({chromium});
+  if(selected.status!=='PASS')throw Error('LOCAL_BROWSER_UNAVAILABLE');
+  Object.assign(launch,selected.launch);
+ }else if(process.env.FURUSATO_BROWSER_CHANNEL){
+  launch.channel=process.env.FURUSATO_BROWSER_CHANNEL;
+ }
  let receipt;
  if(live){
   const optIndex=process.argv.indexOf('--protected-root');
