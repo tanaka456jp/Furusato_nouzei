@@ -17,8 +17,8 @@ const directory=path.join(root,"dist/acceptance/mobile-camera");
    try{
     await page.goto(preview);
     assert.equal(await page.locator("#ocrCamera").getAttribute("capture"),"environment");
-    assert.equal(await page.locator("#ocrCamera").isVisible(),p.w<=680,"camera visibility "+p.name);
     await page.locator("#next").click();
+    assert.equal(await page.locator("#ocrCamera").isVisible(),p.w<=680,"camera visibility "+p.name);
     assert.equal(await page.evaluate(()=>document.activeElement?.textContent.trim()),"STEP 2　源泉徴収票・所得の入力");
     assert.match(await page.locator("#stepStatus").textContent(),/全5ステップ中 2/);
     assert.equal(await page.locator(".stepwords [aria-current='step']").count(),1);
