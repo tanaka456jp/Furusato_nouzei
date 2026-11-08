@@ -134,7 +134,10 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $unicode = Join-Path $env:RUNNER_TEMP 'ふるさと納税_漢字検証'
+          # Keep inline PowerShell ASCII: Windows PowerShell 5.1 parses its
+          # generated script without requiring a UTF-8 BOM.
+          $unicodeSuffix = ([string][char]0x6F22) + ([string][char]0x5B57) + '_worktree'
+          $unicode = Join-Path $env:RUNNER_TEMP $unicodeSuffix
           if (Test-Path -LiteralPath $unicode) { throw 'Unsafe existing Unicode test path' }
           try {
             git worktree add --detach "$unicode" HEAD
