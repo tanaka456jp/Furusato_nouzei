@@ -1,6 +1,6 @@
 ﻿#Requires -Version 5.1
 <#
-  Live numerical observations from an isolated, already-accepted v4.18.3 XLSM.
+  Live numerical observations from an isolated, already-accepted v4.18.3+ review XLSM.
   A separate pinned GAS engine checks the results. Customer files are never used.
 #>
 [CmdletBinding()]
@@ -73,12 +73,17 @@ public static class FurusatoExcelParityPidV4183 {
   if(-not $book.ReadOnly){throw 'Accepted XLSM must open read-only'}
   $screenSheet=$book.Worksheets.Item('操作画面')
   $master=$book.Worksheets.Item('設定・税率')
-  if([string]$screenSheet.Range('A1').Value2 -notmatch 'v4\.18\.(?:1[0-5]|[3-9])'){
-    throw 'Workbook is not an approved v4.18.3/4 review build'
+  # The workflow has already matched this exact XLSM SHA-256 to an accepted
+  # real-Excel evidence report. Reject the production v4.18.2 and unrelated
+  # builds, but do not impose a stale upper patch-version limit.
+  $banner=[string]$screenSheet.Range('A1').Value2
+  $versionMatch=[regex]::Match($banner, 'v4\.18\.(\d+)\b')
+  if(-not $versionMatch.Success -or [int]$versionMatch.Groups[1].Value -lt 3){
+    throw 'Workbook is not a v4.18.3+ accepted review build'
   }
   # Manual mode is applied only to this newly-owned Excel instance.
   $excel.Calculation=-4135
-  $excelRevision = [regex]::Match([string]$screenSheet.Range('A1').Value2, 'v4\.18\.(?:1[0-5]|[3-9])').Value + '-review'
+  $excelRevision = $versionMatch.Value + '-review'
   $sequence=@($anchor7[0],$anchor5[0],$anchor7[0]) + @($cases)
   $counter=0
   foreach($case in $sequence){
