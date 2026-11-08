@@ -642,6 +642,9 @@ End Sub
 Private Sub ResetSeparateInputs(ByVal home As Worksheet)
     ' Only templates with this detail section own these ranges.
     If CStr(home.Range("A42").Value2) <> "詳細設定 | 申告分離課税（検証版）" Then Exit Sub
+    ' The 2022 eligibility attestation is case-specific; an imported PDF
+    ' or NewCase must not inherit it from a previous taxpayer.
+    home.Range("D35").Value2 = "未確認"
     home.Range("B44").Value2 = "給与・通常"
     home.Range("B45:B51,D45:D48").ClearContents
     home.Range("D44").Value2 = "確定申告"

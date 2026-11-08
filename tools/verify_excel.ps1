@@ -428,10 +428,31 @@ try {
     $homeSheet.Range('B35').Value2 = 2022.0
     $excel.Run('TaxLawUpdater.RecalculateCase')
     if ([string]$homeSheet.Range('B28').Value2 -notlike 'SAFE-TAX-028*' -or
-        [string]$homeSheet.Range('B8').Value2 -ne '') {
-        throw '2022 transitional housing exception escaped HOLD'
+        [string]$homeSheet.Range('B8').Value2 -ne '' -or
+        [string]$homeSheet.Range('B38').Value2 -ne '') {
+        throw '2022 unverified mortgage class escaped HOLD'
     }
+    $homeSheet.Range('D35').Value2 = '通常5%確認'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B38').Value2 44500 '2022 ordinary 5-percent mortgage class'
+    if ([string]$homeSheet.Range('B28').Value2 -like 'SAFE-TAX-028*') {
+        throw '2022 verified 5-percent class still marked unverified'
+    }
+    $homeSheet.Range('D35').Value2 = '経過措置7%確認'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B38').Value2 62300 '2022 eligible 7-percent transition'
+    if ([string]$homeSheet.Range('B28').Value2 -like 'SAFE-TAX-028*') {
+        throw '2022 verified 7-percent class still marked unverified'
+    }
+    $homeSheet.Range('D35').Value2 = '未確認'
     $homeSheet.Range('B35').Value2 = 2024.0
+    $homeSheet.Range('D35').Value2 = '経過措置7%確認'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    if ([string]$homeSheet.Range('B28').Value2 -notlike 'SAFE-TAX-029*' -or
+        [string]$homeSheet.Range('B8').Value2 -ne '') {
+        throw 'Stale 2022-specific mortgage class accepted in another year'
+    }
+    $homeSheet.Range('D35').Value2 = '未確認'
     $homeSheet.Range('B34').Value2 = -1.0
     $excel.Run('TaxLawUpdater.RecalculateCase')
     if ([string]$homeSheet.Range('B28').Value2 -eq '正常') {
@@ -440,6 +461,7 @@ try {
     $sourceExtra.Range('B14').ClearContents()
     $extraSheet.Range('B8:B9').ClearContents()
     $homeSheet.Range('B33:B36').ClearContents()
+    $homeSheet.Range('D35').Value2 = '未確認'
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Housing statutory corrections restored'
     QA-Stage 'mortgage-2025-2026-basic-delta-pass'

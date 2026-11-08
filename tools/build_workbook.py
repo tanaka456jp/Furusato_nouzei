@@ -121,7 +121,7 @@ def build(source, output):
         home.add_data_validation(validation)
         validation.add(home[cell])
 
-    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.18.22 分離課税検証版")
+    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.18.23 分離課税検証版")
     bar(extra, 1, "追加所得・分離課税（所得年内で事前試算）")
     extra.merge_cells("A3:D3")
     extra["A3"] = "翌年度の住民税通知書は参照せず、所得年内の収入・経費・控除と法定税率表から計算します。"
@@ -332,6 +332,8 @@ def build(source, output):
     field("B33", "住宅ローン控除の所得税適用額")
     field("B34", "住宅ローン控除可能額（G36）")
     field("B35", "居住開始年（西暦）", maximum=2035)
+    field("D35", "2022年入居の特例区分", "未確認",
+          ("未確認", "通常5%確認", "経過措置7%確認"))
     field("B36", "住宅ローン控除適用数", maximum=3)
     note(home, 37, "可能額と所得税適用額は別物です。控除可能額があって適用額が空欄なら、原票確認まで試算額を表示しません。")
     home["A38"] = "住民税住宅ローン控除見込額"
@@ -342,15 +344,25 @@ def build(source, output):
     # J12 includes ordinary pension/business income; B13-B14 does not.
     mortgage_taxable = f'N({ref(ENGINE,"J12")})'
     mortgage_basic_delta = f'MAX(0,N({ref(ENGINE,"F15")})-480000)'
+    # 2022 occupancy can be 5%/97,500 or an exceptional 7%/136,500.
+    # No tax-credit amount is displayed before the operator identifies
+    # which legal acquisition/contract conditions the source proves.
+    housing_2022_seven = 'AND(B35=2022,D35="経過措置7%確認")'
+    housing_2022_unknown = (
+        'AND(B35=2022,NOT(OR(D35="通常5%確認",D35="経過措置7%確認")))'
+    )
     home["B38"] = (
-        '=IF(B34="",0,IF(AND(ISNUMBER(B33),ISNUMBER(B35),B35>=2022,B35<=D4),'
-        f'MIN(MAX(0,B34-B33),97500,ROUNDDOWN(MAX(0,{mortgage_taxable}+'
-        f'IF(B35>=2026,0,{mortgage_basic_delta}))/1000,0)*50),""))'
+        '=IF(B34="",0,IF(' + housing_2022_unknown + ',"",'
+        'IF(AND(ISNUMBER(B33),ISNUMBER(B35),B35>=2022,B35<=D4),'
+        f'MIN(MAX(0,B34-B33),IF({housing_2022_seven},136500,97500),'
+        f'ROUNDDOWN(MAX(0,{mortgage_taxable}+'
+        f'IF(B35>=2026,0,{mortgage_basic_delta}))/1000,0)*'
+        f'IF({housing_2022_seven},70,50)),"")))'
     )
     home["B38"].number_format = '#,##0'
     home["B38"].fill = PatternFill("solid", fgColor="EAF3EA")
     home["B38"].protection = Protection(locked=True)
-    note(home, 39, "住民税控除の自動見込は5%/97,500円の通常枠。2025・2026年分は所得税基礎控除差を反映。2022年入居の契約特例・複数適用・残余税額不足は安全停止します。")
+    note(home, 39, "2022年入居は契約・取得条件で通常5%／経過措置7%を必ず選択（未確認は停止）。2025・2026年分は所得税基礎控除差を反映。その他の特例・複数適用は個別照合。")
     home.row_dimensions[39].height = 36
     home.print_area = "A1:D39"
 
@@ -595,8 +607,10 @@ def build(source, output):
          "SAFE-TAX-026 要確認。詳細設定の税額控除は通常計算に反映されません。入力内容を個別に照合してください。"),
         ('AND(ISNUMBER(B33),B33>0,OR(NOT(ISNUMBER(B34)),B34<B33))',
          "SAFE-TAX-027 要確認。住宅ローン控除の所得税適用額があるため、控除可能額（G36）を確認してください。"),
-        ('AND(N(B34)>0,B35=2022)',
-         "SAFE-TAX-028 要確認。2022年入居の住宅ローン控除には契約時期による7%特例があり、個別照合が必要です。"),
+        ('AND(N(B34)>0,' + housing_2022_unknown + ')',
+         "SAFE-TAX-028 要確認。2022年入居の住宅ローン控除は取得・契約条件を照合し、5%／7%の適用区分を選択してください。"),
+        ('AND(D35<>"",D35<>"未確認",OR(B35<>2022,N(B34)<=0))',
+         "SAFE-TAX-029 要確認。2022年以外の住宅ローン控除に2022年入居の特例区分が残っています。"),
         (f'OR({ref(ADVANCED,"B24")}<>"",{ref(ADVANCED,"B36")}<>"")',
          "SAFE-TAX-016 要確認。旧・控除後の分離課税入力です。詳細設定で控除前の所得と税目別控除を入力し、再計算してください。"),
         ('OR(IFERROR(1*B4,0)<>D4,IFERROR(1*B11,0)<>D4)', "警告：源泉徴収票と適用中の所得年を一致させてください"),

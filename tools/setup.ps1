@@ -13,7 +13,7 @@ $utf8 = New-Object System.Text.UTF8Encoding($true)
 $strictUtf8 = New-Object System.Text.UTF8Encoding($false, $true)
 $excel = $null; $workbook = $null; $tempBook = $null; $stagingDir = $null; $stagedSource = $null
 $button = $null; $sheet = $null; $anchor = $null; $component = $null
-try { [System.IO.File]::WriteAllText($logFile, ('Furusato_nouzei setup v4.18.22 ' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + "`r`n"), $utf8) }
+try { [System.IO.File]::WriteAllText($logFile, ('Furusato_nouzei setup v4.18.23 ' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + "`r`n"), $utf8) }
 catch { Write-Host ('Unable to create setup.log: ' + $_.Exception.Message); exit 10 }
 function Log([string]$message) {
     $line = '[' + (Get-Date -Format 'HH:mm:ss') + '] [' + $script:phase + '] ' + $message
