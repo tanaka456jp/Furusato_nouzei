@@ -135,10 +135,12 @@ function main(args){
   // This dedicated private browser profile is reused for probing and OCR.
   runChild([path.join(root,"tests","test-real-browser.cjs"),"--live","--attest-head",
    "--authorize","--protected-root",opt.protectedRoot],{interactiveOwner:true});
-  console.log("OWNER_WEB_APP_SESSION: PASS; browser-only consent (release HOLD)");
-  // Confirm auth was persisted. No OCR or Google temporary files are created.
+  console.log("OWNER_SAME_SESSION_PROBE: PASS; reopened-browser verification required (release HOLD)");
+  // Confirm auth really survives a separate browser process. A first-page
+  // PASS must never be misreported as persistent session acceptance.
   runChild([path.join(root,"tests","test-real-browser.cjs"),"--live","--attest-head",
    "--probe-only","--protected-root",opt.protectedRoot]);
+  console.log("OWNER_WEB_APP_SESSION: PASS; reopened browser authenticated (release HOLD)");
   console.log("REAL_GOOGLE_WEB_APP_PROBE: PASS; OCR NOT EXECUTED; release HOLD");
  }
  if(opt.probe){
