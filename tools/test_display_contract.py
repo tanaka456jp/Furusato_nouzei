@@ -28,7 +28,7 @@ for forbidden in ("SetDisplayConfig", "ChangeDisplaySettings", "Set-DisplayResol
                   "GetDesktopWindow", "CopyFromScreen", "BitBlt(", "CAPTURED_PASS"):
     assert forbidden not in ps, f"Unreviewed desktop/screen mutation: {forbidden}"
 for token in (
-    "tools/probe_display_layout.ps1",
+    r".\tools\probe_display_layout.ps1",
     "tools/test_display_contract.py",
     "Furusato_nouzei_DISPLAY_REVIEW_",
     "display_review.json",
