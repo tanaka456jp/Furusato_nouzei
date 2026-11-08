@@ -194,7 +194,11 @@ class WorkbookTest(unittest.TestCase):
                        "136500 '2022 verified 7-percent resident ceiling'",
                        "97500 '2022 verified 5-percent resident ceiling'",
                        "0 'No residual possible credit after full income-tax use'",
-                       "2022 mortgage guidance missing legal contract and VAT checks"):
+                       "2022 mortgage guidance missing legal contract and VAT checks",
+                       "mortgage-2022-cap-rounding-boundaries-start",
+                       "mortgage-2022-cap-rounding-boundaries-pass",
+                       "136430.0", "97450.0",
+                       "Pasted unsupported 2022 mortgage eligibility escaped HOLD"):
             self.assertIn(marker, real_qa)
         self.assertIn("AND(ISNUMBER(B34),B34<0)", formula)
         self.assertEqual(self.book[HOME]["D35"].value, "未確認")

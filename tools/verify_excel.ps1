@@ -464,9 +464,50 @@ try {
     $homeSheet.Range('D35').Value2 = '通常5%確認'
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value $homeSheet.Range('B38').Value2 97500 '2022 verified 5-percent resident ceiling'
+    # Actual Excel statutory rounding immediately BELOW and AT both 2022
+    # resident-tax mortgage caps; independently compute national taxable
+    # base and the national basic-deduction transition for each tax year.
+    QA-Stage 'mortgage-2022-cap-rounding-boundaries-start'
+    foreach ($edge in @(
+        @{ Year=2025; ExtraBelow=1649000.0; ExtraAt=1650000.0; Basic=580000.0 },
+        @{ Year=2026; ExtraBelow=1609000.0; ExtraAt=1610000.0; Basic=620000.0 }
+    )) {
+        $settings.Range('B4').Value2 = [double]$edge.Year
+        $homeSheet.Range('B4').Value2 = [double]$edge.Year
+        $homeSheet.Range('B11').Value2 = [double]$edge.Year
+        foreach ($row in @(
+            @{ Extra=[double]$edge.ExtraBelow; TaxableBase=1949000.0; Five=97450.0; Seven=136430.0 },
+            @{ Extra=[double]$edge.ExtraAt; TaxableBase=1950000.0; Five=97500.0; Seven=136500.0 }
+        )) {
+            $extraSheet.Range('B8').Value2 = [double]$row.Extra
+            $homeSheet.Range('D35').Value2 = '経過措置7%確認'
+            $excel.Run('TaxLawUpdater.RecalculateCase')
+            Assert-Value $engineSheet.Range('F15').Value2 $edge.Basic ('Basic deduction '+$edge.Year)
+            $base = [double]$engineSheet.Range('J12').Value2 + [double]$engineSheet.Range('F15').Value2 - 480000.0
+            Assert-Value $base $row.TaxableBase ('Housing transitional taxable base '+$edge.Year)
+            Assert-Value $homeSheet.Range('B38').Value2 $row.Seven ('Housing 7-percent rounding '+$edge.Year)
+            $homeSheet.Range('D35').Value2 = '通常5%確認'
+            $excel.Run('TaxLawUpdater.RecalculateCase')
+            Assert-Value $homeSheet.Range('B38').Value2 $row.Five ('Housing 5-percent rounding '+$edge.Year)
+        }
+    }
+    # A paste can bypass the Excel drop-down validation; an unrecognised
+    # textual confirmation must still fail closed in the tax formula.
+    $homeSheet.Range('D35').Value2 = '経過措置7%（未検証）'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    if ([string]$homeSheet.Range('B28').Value2 -notlike 'SAFE-TAX-028*' -or
+        [string]$homeSheet.Range('B38').Value2 -ne '') {
+        throw 'Pasted unsupported 2022 mortgage eligibility escaped HOLD'
+    }
+    $homeSheet.Range('D35').Value2 = '通常5%確認'
+    $extraSheet.Range('B8').Value2 = 4500000.0
     $homeSheet.Range('B33').Value2 = 1000000.0
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value $homeSheet.Range('B38').Value2 0 'No residual possible credit after full income-tax use'
+    QA-Stage 'mortgage-2022-cap-rounding-boundaries-pass'
+    $settings.Range('B4').Value2 = 2026.0
+    $homeSheet.Range('B4').Value2 = 2026.0
+    $homeSheet.Range('B11').Value2 = 2026.0
     $homeSheet.Range('B33').Value2 = 0.0
     $homeSheet.Range('B34').Value2 = 150000.0
     $extraSheet.Range('B8').Value2 = 500000.0
