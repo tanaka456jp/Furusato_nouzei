@@ -103,7 +103,7 @@ function assess({candidate,old,drive,oldDigest,newDigest}){
  }
  return {
   status:issues.length?"HOLD":"READY_FOR_SEPARATE_STAGE_APPROVAL",
-  stagePreflightRevision:3,
+  stagePreflightRevision:4,
   stage:!candidateReady?"LOCAL_CANDIDATE":issues.length?"REMOTE_READONLY_ATTESTATION":"APPROVAL_GATE",
   problems:issues,
   candidateChecks:!candidateReady&&Array.isArray(candidate?.reasons)?candidate.reasons:[],
@@ -121,6 +121,32 @@ function assess({candidate,old,drive,oldDigest,newDigest}){
   legacyOcrEvidence:"OWNER_ATTESTED_NOT_INDEPENDENTLY_REMEASURED",
   realV020GoogleAcceptance:"NOT_TESTED",
   release:"HOLD"
+ };
+}
+/**
+ * Sanitize the LOCAL snapshot comparison for owner-visible diagnostics.
+ * Never expose paths, hashes, timestamps, token values or file contents.
+ */
+function protectedConfigHold(candidate,drift){
+ const names=["housing-clasp","housing-appsscript","housing-project","global-clasp-auth"];
+ const states=new Set(["UNCHANGED","CHANGED","MISSING","APPEARED",
+  "BLOCKED_LINK","NOT_REGULAR_FILE","UNREADABLE"]);
+ const valid=drift&&drift.status==="HOLD"&&Array.isArray(drift.checks)&&
+  drift.checks.length===names.length&&names.every((name,index)=>{
+   const row=drift.checks[index];
+   return row&&row.name===name&&states.has(row.state);
+  });
+ const checks=valid?drift.checks.map(row=>({name:row.name,state:row.state})):[];
+ return {
+  status:"HOLD",stagePreflightRevision:4,stage:"PROTECTED_LOCAL_CONFIG",
+  problems:[valid?"PROTECTED_CONFIG_DRIFT":"PROTECTED_DRIFT_REPORT_INVALID"],
+  candidateChecks:[],candidateCheckoutIdentity:candidate?.checkoutIdentity||"NOT_VERIFIED",
+  protectedConfiguration:{status:"HOLD",checks},
+  oldPrivateAudit:"NOT_RUN",driveAudit:"NOT_RUN",sourceComparison:"NOT_RUN",
+  existingApp:"v0.1.17",candidateApp:"v0.1.20",
+  existingDeployment:"NOT_MODIFIED_BY_THIS_CHECK",candidateDeployment:"NOT_CREATED",
+  guidance:"Review a read-only protected configuration diagnosis. Never refresh snapshots or bypass protection.",
+  realV020GoogleAcceptance:"NOT_TESTED",release:"HOLD"
  };
 }
 function committedSources(){
@@ -161,8 +187,11 @@ async function main(){
  }
  const receipt=readReceipt();
  const protectedRoot=path.resolve(root,"..","..","HousingERP");
- if(google.configDriftReport(receipt,protectedRoot).status!=="MATCH")
-  throw Error("PROTECTED_CONFIG_DRIFT");
+ const drift=google.configDriftReport(receipt,protectedRoot);
+ if(drift.status!=="MATCH"){
+  console.log(JSON.stringify(protectedConfigHold(candidate,drift)));
+  process.exitCode=2;return;
+ }
  const historical=historicalFiles(receipt.sourceCommit);
  const api=google.googleApi(await google.accessToken());
  const old=await perform(api,receipt,protectedRoot,historical);
@@ -180,7 +209,7 @@ async function main(){
  console.log(JSON.stringify(report));
  if(report.status!=="READY_FOR_SEPARATE_STAGE_APPROVAL")process.exitCode=2;
 }
-module.exports={checkCandidate,assess,committedSources,liveTrustedBranchTip};
+module.exports={checkCandidate,assess,committedSources,liveTrustedBranchTip,protectedConfigHold};
 if(require.main===module)main().catch(error=>{
  const allowed=new Set(["UNTRUSTED_GIT_ORIGIN","TRUSTED_REMOTE_READ_FAILED",
   "TRUSTED_REMOTE_TIP_UNVERIFIED","PROTECTED_CONFIG_DRIFT"]);
