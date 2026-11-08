@@ -25,6 +25,22 @@ function parseArguments(args){
   run:choices.has("--run-synthetic"),
   protectedRoot:i>=0?path.resolve(args[i+1]):path.resolve(root,"..","..","HousingERP")};
 }
+/**
+ * Offline shape check only. Never prints, exports, refreshes or hashes tokens.
+ * Mirrors the fields private-gas.cjs/accessToken actually requires.
+ */
+function inspectIsolatedAuth(file){
+ let stat;
+ try{stat=fs.lstatSync(file);}catch(e){return e.code==="ENOENT"?"MISSING":"INVALID";}
+ if(!stat.isFile()||stat.size<2||stat.size>1024*1024)return "INVALID";
+ try{
+  const data=JSON.parse(fs.readFileSync(file,"utf8").replace(/^\uFEFF/,""));
+  const token=data?.tokens?.default;
+  const valid=["refresh_token","client_id","client_secret"].every(k=>
+   typeof token?.[k]==="string"&&token[k].trim().length>0&&!/[\r\n]/.test(token[k]));
+  return valid?"VALID":"INVALID";
+ }catch{return "INVALID";}
+}
 function evaluateReadiness(data){
  const problems=[];
  const fail=(code,test)=>{if(test)problems.push(code);};
@@ -43,6 +59,7 @@ function evaluateReadiness(data){
  }
  fail("SOURCE_DIFFERS_FROM_GIT_HEAD",data.gitHeadMatches!==true);
  fail("ISOLATED_AUTH_UNAVAILABLE",data.authExists!==true);
+ fail("ISOLATED_AUTH_FORMAT_INVALID",data.authExists===true&&data.authValid!==true);
  fail("ISOLATED_CLASP_CONFIG_UNAVAILABLE",data.claspExists!==true);
  fail("PROTECTED_CONFIG_DRIFT",data.protectedStatus!=="MATCH");
  return {status:problems.length?"HOLD":"READY_FOR_REMOTE_VERIFY",
@@ -80,6 +97,7 @@ function readLocalReadiness(protectedRoot){
  try{headMatches=committedSourceDigest()===localDigest;}catch{}
  return evaluateReadiness({receipt,sourceDigest:localDigest,gitHeadMatches:headMatches,
   authExists:fs.existsSync(path.join(privateDir,"auth.json")),
+  authValid:inspectIsolatedAuth(path.join(privateDir,"auth.json"))==="VALID",
   claspExists:fs.existsSync(path.join(privateDir,"project",".clasp.json")),
   protectedStatus});
 }
@@ -108,7 +126,7 @@ function main(args){
   console.log("REAL_GOOGLE_SYNTHETIC_OCR: PASS; inspect private evidence for PNG/PDF/JPEG and cleanup (release HOLD)");
  }
 }
-module.exports={parseArguments,evaluateReadiness,committedSourceDigest,readLocalReadiness};
+module.exports={parseArguments,evaluateReadiness,inspectIsolatedAuth,committedSourceDigest,readLocalReadiness};
 if(require.main===module)try{main(process.argv.slice(2));}catch(e){
  const allow=new Set(["MISSING_PROTECTED_ROOT","UNKNOWN_ARGUMENT","EXPLICIT_TEMPORARY_GOOGLE_DOCUMENT_ACK_REQUIRED",
   "TEMPORARY_GOOGLE_DOCUMENT_ACK_WITHOUT_RUN","UNREADABLE_PRIVATE_RECEIPT","UNVERIFIED_GIT_HEAD",
