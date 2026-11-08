@@ -8,7 +8,7 @@ from pathlib import Path
 import fitz  # pymupdf pinned by Windows Excel CI
 
 PDFS = (("FurusatoQA.pdf", 1), ("FurusatoQA_hidden.pdf", 1),
-        ("split-result.pdf", 2))
+        ("split-result.pdf", 2), ("home-overview.pdf", 1))
 
 
 def audit(pdfpath: Path, expected_pages: int, out: Path) -> dict:
@@ -39,6 +39,11 @@ def audit(pdfpath: Path, expected_pages: int, out: Path) -> dict:
             for label in ("所得年", "住民税", "税制版"):
                 if label not in text:
                     raise AssertionError("Split PDF page two lacks: " + label)
+        if pdfpath.name == "home-overview.pdf":
+            text = re.sub(r"\s+", "", doc[0].get_text(sort=True))
+            for label in ("ふるさと納税", "109,000", "2026"):
+                if label not in text:
+                    raise AssertionError("Home PDF has missing visible label/amount: " + label)
     return {"pdf": pdfpath.name, "pages": pages}
 
 
@@ -58,13 +63,17 @@ def main():
         page2 = re.sub(r"\s+", "", doc[1].get_text(sort=True))
     if version not in page2:
         raise AssertionError("Split PDF second-page version mismatch: " + version)
+    with fitz.open(folder / "home-overview.pdf") as doc:
+        home_text = re.sub(r"\s+", "", doc[0].get_text(sort=True))
+    if version not in home_text:
+        raise AssertionError("Home PDF review version mismatch: " + version)
     report = {"status": "PASS", "revision": version, "pdfs": reports,
               "physical_printer_tested": False, "desktop_screens_tested": False}
     output = folder / "audit.json"
     if output.exists():
         raise AssertionError("Refusing PDF evidence overwrite")
     output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-    print("PDF_LAYOUT_PASS: synthetic A4 1+1+2 pages, printed header, PNG evidence")
+    print("PDF_LAYOUT_PASS: synthetic A4 1+1+2+1 pages, printed header, PNG evidence")
     print("PHYSICAL_PRINTER_AND_DESKTOP_SCREENSHOTS_HOLD")
 
 

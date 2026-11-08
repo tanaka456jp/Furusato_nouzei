@@ -723,6 +723,17 @@ try {
     $excel.Run('TaxLawUpdater.BindButtons')
     Assert-MacroAction ([string]$homeSheet.Buttons().Item('btnTaxLawUpdate').OnAction) 'FurusatoQA.xlsm!TaxLawUpdater.TaxLawUpdate' 'Reloaded case macro ownership'
     if (-not $detail.PageSetup.PrintArea) { throw 'Calculation details lack print area' }
+    # Electronic home print audit on synthetic data; no real user document.
+    QA-Stage 'home-overview-pdf-start'
+    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Home print valid status'
+    Assert-Value $homeSheet.Range('B8').Value2 109000 'Home print donation estimate'
+    $homePdf = Join-Path $dir 'home-overview.pdf'
+    $homeSheet.ExportAsFixedFormat(0, $homePdf, 0, $true, $false)
+    if (-not (Test-Path -LiteralPath $homePdf -PathType Leaf) -or
+        (Get-Item -LiteralPath $homePdf).Length -lt 500) {
+        throw 'Synthetic home overview PDF missing or empty'
+    }
+    QA-Stage 'home-overview-pdf-pass'
     QA-Stage 'statutory-split-cases-start'
     . (Join-Path $PSScriptRoot 'test_separate_excel.ps1')
     $splitCases = @(Test-SeparateTaxCases -Excel $excel -Book $book -FixturePath (Join-Path $PSScriptRoot '../taxdata/separate-tax-cases-v1.json') -PdfPath (Join-Path $dir 'split-result.pdf'))
@@ -735,7 +746,7 @@ try {
             throw 'PDF layout evidence destination already exists'
         }
         [void][IO.Directory]::CreateDirectory($PdfEvidencePath)
-        foreach ($name in @('FurusatoQA.pdf', 'FurusatoQA_hidden.pdf', 'split-result.pdf')) {
+        foreach ($name in @('FurusatoQA.pdf', 'FurusatoQA_hidden.pdf', 'split-result.pdf', 'home-overview.pdf')) {
             $inputPdf = Join-Path $dir $name
             if (-not (Test-Path -LiteralPath $inputPdf -PathType Leaf)) {
                 throw ('Synthetic PDF is missing: ' + $name)

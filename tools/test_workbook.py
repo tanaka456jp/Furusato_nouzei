@@ -52,8 +52,12 @@ class WorkbookTest(unittest.TestCase):
                       "-PdfEvidencePath"):
             self.assertIn(token, workflow)
         self.assertIn("synthetic-pdf-audit-input-export-pass", excel)
-        for name in ("FurusatoQA.pdf", "FurusatoQA_hidden.pdf", "split-result.pdf"):
+        for name in ("FurusatoQA.pdf", "FurusatoQA_hidden.pdf", "split-result.pdf", "home-overview.pdf"):
             self.assertIn(name, excel)
+        self.assertIn("home-overview-pdf-pass", excel)
+        self.assertIn("home-overview.pdf", code)
+        self.assertIn('"109,000"', code)
+        self.assertIn("Home PDF review version mismatch", code)
 
     def test_second_print_page_repeats_year_and_both_versions(self):
         home = self.book[HOME]
@@ -62,7 +66,11 @@ class WorkbookTest(unittest.TestCase):
         for token in ("D50", "B29", "A1", "CHAR(10)", 'FIND("v4.",A1)'):
             self.assertIn(token, formula)
         self.assertTrue(home["A80"].alignment.wrap_text)
-        self.assertGreaterEqual(home.row_dimensions[80].height, 40)
+        self.assertGreaterEqual(home.row_dimensions[80].height, 60)
+        # Three deliberate lines are required, rather than a wrapped
+        # orphaned "版" in the first printed header line.
+        self.assertIn('"Excel版 "', formula)
+        self.assertIn('CHAR(10)&"税制版 "', formula)
         # Detailed tax-credit page is emitted from the same area as A80.
         source = (ROOT / "vba" / "TaxLawUpdater.bas").read_text(encoding="utf-8-sig")
         self.assertIn('DetailsPrintArea = DetailsPrintArea & ",$A$80:$D$86"', source)
