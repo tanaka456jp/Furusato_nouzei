@@ -130,5 +130,24 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Synthetic detached checkout failed' }
           .\gas\scripts\accept-private-live-ocr.ps1 -GitCheckOnly
           if ($LASTEXITCODE -ne 0 -or !$?) { throw 'Safe detached worktree guard failed' }
+      - name: Unicode-path detached worktree guard on Windows (no Google access)
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $unicode = Join-Path $env:RUNNER_TEMP 'ふるさと納税_漢字検証'
+          if (Test-Path -LiteralPath $unicode) { throw 'Unsafe existing Unicode test path' }
+          try {
+            git worktree add --detach "$unicode" HEAD
+            if ($LASTEXITCODE -ne 0) { throw 'Unicode test worktree creation failed' }
+            & (Join-Path $unicode 'gas\scripts\accept-private-live-ocr.ps1') -GitCheckOnly
+            if ($LASTEXITCODE -ne 0 -or !$?) { throw 'Unicode path Git guard failed' }
+            'UNICODE_WORKTREE_GIT_GUARD=PASS; no Google access' >> $env:GITHUB_STEP_SUMMARY
+          } finally {
+            if (Test-Path -LiteralPath $unicode) {
+              git worktree remove --force "$unicode"
+              if ($LASTEXITCODE -ne 0) { throw 'Unicode test worktree cleanup failed' }
+            }
+          }
+
 
 
