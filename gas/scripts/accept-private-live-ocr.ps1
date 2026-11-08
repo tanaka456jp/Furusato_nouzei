@@ -56,7 +56,7 @@ try {
     }
   }
   $authFile=Join-Path $privateRoot 'auth.json'
-  $authState=& node -e 'const s=require("./gas/scripts/check-live-ocr-readiness.cjs");process.stdout.write(s.inspectIsolatedAuth(process.argv[1]));' $authFile
+  $authState=& node -e "const s=require('./gas/scripts/check-live-ocr-readiness.cjs');process.stdout.write(s.inspectIsolatedAuth(process.argv[1]));" $authFile
   Confirm-Exit 'Dedicated OAuth format'
   if($authState -cne 'VALID'){throw 'Dedicated auth missing or malformed; STOP.'}
   foreach($p in @(
@@ -78,7 +78,7 @@ try {
     & python -m pip install --target $pyTarget 'pypdf==6.1.3' --disable-pip-version-check
     Confirm-Exit 'Isolated PDF checker install'
   }
-  & python -c 'import sys;sys.path.insert(0,sys.argv[1]);import pypdf;assert pypdf.__version__=="6.1.3"' $pyTarget
+  & python -c "import sys;sys.path.insert(0,sys.argv[1]);import pypdf;assert pypdf.__version__=='6.1.3'" $pyTarget
   Confirm-Exit 'PDF checker readiness'
   # First Google write begins in guarded install --fresh, after all local checks.
   Write-Output 'OWNER_APPROVED_NEW_PRIVATE_GOOGLE_SYNTHETIC_CREATION: beginning guarded installation'
