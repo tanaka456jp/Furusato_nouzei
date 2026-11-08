@@ -155,6 +155,19 @@ class WorkbookTest(unittest.TestCase):
         self.assertIn("B34-B33", self.book[HOME]["B38"].value)
         self.assertTrue(self.book[HOME]["B38"].protection.locked)
 
+    def test_separate_credit_grid_cannot_leak_into_ordinary_estimate(self):
+        formula = self.book[HOME]["B28"].value
+        self.assertIn("SAFE-TAX-026", formula)
+        self.assertIn("SAFE-TAX-027", formula)
+        for row in range(72, 78):
+            self.assertIn(f"D{row}<>0", formula)
+            self.assertEqual(self.book[HOME][f"D{row}"].value, 0)
+        self.assertIn("AND(ISNUMBER(B33),B33>0", formula)
+        self.assertIn("NOT(ISNUMBER(B34))", formula)
+        self.assertIn("B34<B33", formula)
+        self.assertIn('B28<>"正常"', self.book[HOME]["B8"].value)
+        self.assertIn('B28<>"正常"', self.book[HOME]["D8"].value)
+
     def test_split_donation_allocation_is_real_tax_difference(self):
         model = self.book["分離課税寄附控除"]
         self.assertEqual(model.sheet_state, "veryHidden")

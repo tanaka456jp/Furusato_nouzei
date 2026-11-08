@@ -395,6 +395,39 @@ try {
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Mortgage case reset'
     QA-Stage 'mortgage-regressions-pass'
+    # Unused split-credit inputs must never silently affect an ordinary
+    # estimate. All tests use the isolated synthetic Excel workbook.
+    QA-Stage 'ordinary-tax-credit-fail-closed-start'
+    foreach ($test in @(
+        @('D72', 2024.0), @('D73', 30000000.0), @('D74', 140000.0),
+        @('D75', 10000.0), @('D76', 5000.0), @('D77', 100000.0))) {
+        $address = [string]$test[0]
+        $homeSheet.Range($address).Value2 = [double]$test[1]
+        $excel.Run('TaxLawUpdater.RecalculateCase')
+        if ([string]$homeSheet.Range('B28').Value2 -notlike 'SAFE-TAX-026*' -or
+            [string]$homeSheet.Range('B8').Value2 -ne '' -or
+            [string]$homeSheet.Range('D8').Value2 -ne '' -or
+            [string]$homeSheet.Range('B26').Value2 -ne '追加確認') {
+            throw ('Ordinary credit was silently ignored: ' + $address)
+        }
+        $homeSheet.Range($address).Value2 = 0.0
+        $excel.Run('TaxLawUpdater.RecalculateCase')
+        Assert-Value $homeSheet.Range('B28').Value2 '正常' ('Credit reset ' + $address)
+    }
+    foreach ($possible in @($null, 0.0)) {
+        $homeSheet.Range('B33').Value2 = 50000.0
+        if ($null -eq $possible) { $homeSheet.Range('B34').ClearContents() }
+        else { $homeSheet.Range('B34').Value2 = [double]$possible }
+        $excel.Run('TaxLawUpdater.RecalculateCase')
+        if ([string]$homeSheet.Range('B28').Value2 -notlike 'SAFE-TAX-027*' -or
+            [string]$homeSheet.Range('B8').Value2 -ne '') {
+            throw 'Mortgage applied credit without possible credit escaped safety gate'
+        }
+    }
+    $homeSheet.Range('B33:B36').ClearContents()
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Mortgage missing possible reset'
+    QA-Stage 'ordinary-tax-credit-fail-closed-pass'
     # FAIL-14: Excel manual mode with pending formula caches must never leave
     # the old donation amount or a false "計算可能" visible to the operator.
     # Only a freshly owned synthetic workbook and this Excel COM instance

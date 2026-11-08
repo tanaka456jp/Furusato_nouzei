@@ -121,7 +121,7 @@ def build(source, output):
         home.add_data_validation(validation)
         validation.add(home[cell])
 
-    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.18.20 分離課税検証版")
+    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.18.21 分離課税検証版")
     bar(extra, 1, "追加所得・分離課税（所得年内で事前試算）")
     extra.merge_cells("A3:D3")
     extra["A3"] = "翌年度の住民税通知書は参照せず、所得年内の収入・経費・控除と法定税率表から計算します。"
@@ -573,8 +573,18 @@ def build(source, output):
         f'IF(D24="ワンストップ",1,MAX(0,1-N({rate})*1.021))'
     )
     add_separate_tax(book, home, field, bar, note, income_tax_progressive)
+    # D72:D77 belong exclusively to the split-tax reviewed model.  If any
+    # separate-case credit remains populated in ordinary salary mode, the
+    # ordinary donation estimate does NOT account for it and must not show.
+    # Compare raw cells (not N()), so pasted text and negative entries also
+    # fail closed rather than silently being interpreted as zero.
+    unhandled_ordinary_credits = 'OR(' + ','.join(f'D{row}<>0' for row in range(72, 78)) + ')'
     status = [
         ('B44<>"給与・通常"', "詳細設定の55行目以降で状態と試算額を確認してください。"),
+        (unhandled_ordinary_credits,
+         "SAFE-TAX-026 要確認。詳細設定の税額控除は通常計算に反映されません。入力内容を個別に照合してください。"),
+        ('AND(ISNUMBER(B33),B33>0,OR(NOT(ISNUMBER(B34)),B34<B33))',
+         "SAFE-TAX-027 要確認。住宅ローン控除の所得税適用額があるため、控除可能額（G36）を確認してください。"),
         (f'OR({ref(ADVANCED,"B24")}<>"",{ref(ADVANCED,"B36")}<>"")',
          "SAFE-TAX-016 要確認。旧・控除後の分離課税入力です。詳細設定で控除前の所得と税目別控除を入力し、再計算してください。"),
         ('OR(IFERROR(1*B4,0)<>D4,IFERROR(1*B11,0)<>D4)', "警告：源泉徴収票と適用中の所得年を一致させてください"),
