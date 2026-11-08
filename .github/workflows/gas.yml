@@ -37,6 +37,8 @@ jobs:
           node gas/tests/test-private-browser-probe.cjs
           node gas/tests/test-browser-runtime.cjs
           node gas/tests/test-system-browser.cjs
+          node gas/tests/test-private-ocr-temporary-files.cjs
+          node --check gas/scripts/check-private-ocr-temporary-files.cjs
           node --check gas/tests/test-real-browser.cjs
           node --check gas/scripts/check-local-browser.cjs
           node gas/tests/test-deployment.cjs
@@ -113,6 +115,8 @@ jobs:
           node gas/tests/test-private-browser-probe.cjs
           node gas/tests/test-browser-runtime.cjs
           node gas/tests/test-system-browser.cjs
+          node gas/tests/test-private-ocr-temporary-files.cjs
+          node --check gas/scripts/check-private-ocr-temporary-files.cjs
           node --check gas/tests/test-real-browser.cjs
           node --check gas/scripts/check-local-browser.cjs
           node gas/tests/test-deployment.cjs
