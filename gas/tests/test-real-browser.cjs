@@ -24,9 +24,24 @@ function classifyFailure(err){
  if(/Command failed:.*(?:python|assert-print-pdf)/i.test(message))return "LOCAL_PDF_VALIDATION_FAILED";
  return "LIVE_STEP_FAILED";
 }
+async function waitForWizard(pages,waitPage,cycles){
+ for(let i=0;i<cycles;i++){
+  for(const candidatePage of pages()){
+   for(const candidate of candidatePage.frames()){
+    // A Google consent screen is not a Furusato wizard. Check both.
+    if(await candidate.locator('#next').count() &&
+       await candidate.locator('#salaryGross').count())return candidate;
+   }
+  }
+  await waitPage.waitForTimeout(500);
+ }
+ return null;
+}
 async function main(){
  let context,browser;
- const launch={headless:!process.argv.includes('--headed')};
+ // Owner-authenticated Google Web Apps may reject a second headless session
+ // even when a headed session successfully reached the wizard.
+ const launch={headless:!(process.argv.includes('--headed')||authorize||(live&&!tokenAuth))};
  if(live){
   stage('PRIVATE_BROWSER_SETUP');
   const selected=chooseBrowser({chromium});
@@ -45,7 +60,6 @@ async function main(){
    ...(process.argv.includes('--attest-head')?['--attest-head']:[]),
    ...(optIndex>=0?['--protected-root',process.argv[optIndex+1]]:[])],{stdio:'pipe'});
   receipt=JSON.parse(fs.readFileSync(path.join(root,'.private/furusato/receipt.json'),'utf8'));
-  if(authorize)launch.headless=false;
   stage('PRIVATE_BROWSER_SETUP');
   if(tokenAuth){
    assert.equal(authorize,false,'Token mode does not automate owner consent');
@@ -63,22 +77,23 @@ async function main(){
    stage('OWNER_WEB_APP_FRAME');
    // OAuth screens are never automated. The owner completes them, then reruns.
    if(authorize)console.log('OWNER_ACTION: complete Google login/app consent in dedicated browser (up to 10 minutes).');
-   for(let i=0;i<(authorize?1200:20);i++){
-    frame=undefined;
-    // Owner consent may open a separate Google tab. Observe all open pages,
-    // but never click buttons, fill credentials, or automate the consent UI.
-    const pages=authorize?context.pages():[page];
-    for(const candidatePage of pages){
-     for(const candidate of candidatePage.frames()){
-      if(await candidate.locator('#next').count()){frame=candidate;break;}
-     }
-     if(frame)break;
-    }
-    if(frame)break;
-    await page.waitForTimeout(500);
-   }
+   frame=await waitForWizard(authorize?()=>context.pages():()=>[page],page,authorize?1200:30);
    if(!frame)throw new Error('AUTH_REQUIRED: rerun --live --authorize and complete owner login/consent');
-   if(authorize){results.push({id:'OWNER-AUTHENTICATED-PAGE',status:'PASS'});return;}
+   if(authorize){
+    // The first visible wizard is not enough: verify a second app navigation
+    // within the SAME authenticated browser session before declaring PASS.
+    // Do not click wizard controls or create any Google OCR document.
+    stage('OWNER_SAME_SESSION_PROBE');
+    const secondPage=await context.newPage();
+    try{
+     await secondPage.goto(receipt.webAppUrl);
+     const verified=await waitForWizard(()=>[secondPage],secondPage,30);
+     if(!verified)throw new Error('AUTH_REQUIRED: same-session Web App navigation failed');
+    }finally{await secondPage.close();}
+    results.push({id:'OWNER-AUTHENTICATED-PAGE',status:'PASS'});
+    results.push({id:'OWNER-SAME-SESSION-PROBE',status:'PASS'});
+    return;
+   }
    if(probe){results.push({id:'PRIVATE-WEBAPP-REACHABLE',status:'PASS'});return;}
   }
   stage('STANDARD_TAX_CALCULATION');
