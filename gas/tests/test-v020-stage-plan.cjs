@@ -2,7 +2,7 @@
 const assert=require("node:assert/strict");
 const google=require("../deployment/private-gas.cjs");
 const policy=require("../deployment/policy.json");
-const {checkCandidate,assess} = require("../scripts/plan-v020-private-stage.cjs");
+const {checkCandidate,assess,committedSources} = require("../scripts/plan-v020-private-stage.cjs");
 const sha="a".repeat(40);
 const origin="https://github.com/tanaka456jp/Furusato_nouzei.git";
 const files=google.source();
@@ -14,6 +14,13 @@ const valid=()=>({files,committed:files.map(f=>({...f})),
 const pass=checkCandidate(valid());
 assert.equal(pass.status,"CANDIDATE_SOURCE_READY");
 assert.equal(pass.appVersion,"v0.1.20");
+const realCheckout=committedSources();
+// Never substitute a copied worktree file for the actual committed sources.
+// This catches Windows line-ending/encoding mismatches missed by mock-only CI.
+const realCandidate=checkCandidate({...valid(),files:google.source(),committed:realCheckout.files,
+ currentHead:realCheckout.head,expectedHead:realCheckout.head});
+assert.equal(realCandidate.status,"CANDIDATE_SOURCE_READY",
+ `Actual Git checkout source mismatch: ${realCandidate.reasons.join(",")}`);
 const deny=[
  [{branch:"main"},"WRONG_DEVELOPMENT_BRANCH"],
  [{origin:"https://github.com/bad/other"},"UNTRUSTED_GIT_ORIGIN"],
@@ -44,7 +51,10 @@ const values={candidate:pass,old,drive,oldDigest:"f".repeat(64),newDigest:digest
 const plan=assess(values);
 assert.equal(plan.status,"READY_FOR_SEPARATE_STAGE_APPROVAL");
 assert.equal(plan.candidateDeployment,"NOT_CREATED");
-assert.equal(plan.existingDeployment,"UNCHANGED");
+assert.equal(plan.existingDeployment,"NOT_MODIFIED_BY_THIS_CHECK");
+assert.equal(plan.stagePreflightRevision,2);
+assert.equal(plan.stage,"APPROVAL_GATE");
+assert.deepEqual(plan.candidateChecks,[]);
 assert.equal(plan.release,"HOLD");
 assert.equal(plan.realV020GoogleAcceptance,"NOT_TESTED");
 assert.equal(plan.authorization,"OWNER_EXPLICIT_APPROVAL_REQUIRED_BEFORE_ANY_GOOGLE_WRITE");
@@ -66,4 +76,23 @@ for(const [patch,reason] of cases){
  assert.ok(report.problems.includes(reason),reason);
  assert.equal(report.release,"HOLD");
 }
+
+// The initial owner's HOLD was a local-only failure. It must never imply that
+// Google API or Drive had been checked, or that a Drive file actually remained.
+const localHold=assess({candidate:checkCandidate({...valid(),dirty:" M gas/Engine.gs"})});
+assert.deepEqual(localHold.problems,["CANDIDATE_NOT_READY"]);
+assert.deepEqual(localHold.candidateChecks,["TRACKED_WORKTREE_DIRTY"]);
+assert.equal(localHold.stage,"LOCAL_CANDIDATE");
+assert.equal(localHold.oldPrivateAudit,"NOT_RUN");
+assert.equal(localHold.driveAudit,"NOT_RUN");
+assert.equal(localHold.sourceComparison,"NOT_RUN");
+assert.ok(!JSON.stringify(localHold).includes("OLD_DRIVE_TEMP_NOT_ZERO"));
+assert.ok(!JSON.stringify(localHold).includes("OLD_PRIVATE_RELEASE_NOT_VERIFIED"));
+assert.ok(!JSON.stringify(localHold).includes("CANDIDATE_SOURCE_NOT_DISTINCT"));
+const partialRemote=assess({candidate:pass});
+assert.ok(partialRemote.problems.includes("OLD_DRIVE_AUDIT_NOT_RUN"));
+assert.ok(partialRemote.problems.includes("SOURCE_COMPARISON_NOT_RUN"));
+assert.ok(!partialRemote.problems.includes("OLD_DRIVE_TEMP_NOT_ZERO"));
+assert.equal(partialRemote.stage,"REMOTE_READONLY_ATTESTATION");
+
 console.log("V020_SEPARATE_STAGE_PREFLIGHT_PASS: synthetic only; no Google resource mutations; approval pending");
