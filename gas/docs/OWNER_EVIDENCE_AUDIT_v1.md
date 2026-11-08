@@ -48,3 +48,30 @@ node gas/scripts/audit-installed-private-version.cjs
 `status:PASS` は**照合を実行した時点**でGoogleの既存固定版v0.1.17がソースと一致したという限定結果です。過去のOCR操作が正しくその固定版に向けて行われたこと、OCR文字/金額が正しいこと、Drive側で全ファイルが永久削除されたことを証明しません。これらの項目は出力で `NOT_PROVEN` と表示され、正式リリースは常にHOLDです。
 
 公開GitHubやチャットには、判定JSON中の非機密ステータスだけを共有してください。障害時の生Google応答や認証・固定URL・IDを記録/転載しません。
+
+## v0.1.20 実Google受入前の無変更プラン確認
+
+旧v0.1.17の固定版照合がPASSなら、次のコマンドでv0.1.20候補と既存環境を **Googleへの書き込みなし** で照合します。
+
+```powershell
+cd $HOME\Development\Furusato_nouzei_GAS_OCR
+git pull --ff-only origin feature/gas-workflow-20261106
+node gas/scripts/plan-v020-private-stage.cjs
+```
+
+このコマンドは以下を調べます。
+
+- 所定のGitリポジトリ/開発ブランチ、追跡ファイルの無変更、HEADに登録された**正確な5ファイル**、v0.1.20のversion
+- 既存レシートからたどるv0.1.17のhistorical source/固定デプロイ/所有者専用権限/親シート/保護状態の実Google API照合
+- 専用OAuthの可視範囲内における、一時OCRファイル残数0件（ゴミ箱を含む）と前後の保護設定の不変
+- 新旧5ファイルのsource digestが異なること。古い環境と最新候補が同じものだと誤認しない。
+
+結果の `READY_FOR_SEPARATE_STAGE_APPROVAL` は、**更新を承認したという意味ではありません**。新しい隔離合成ステージの作成を所有者に明示承認してもらう前提条件だけが整ったことを示します。Googleへのアクセスは認証更新とGET（読み取り）のみで、既存v0.1.17レシート、Googleスクリプト、デプロイURL、固定バージョン、保護スナップショット、HousingERPを変更しません。機密URL・ID・トークン・digestは出力しません。Googleアカウント、OAuthスコープ全体での削除を保証するものでもありません。
+
+### 安全なv0.1.20の正式受入方針
+
+受入済みv0.1.17デプロイと既存 `receipt.json` を保持するため、従来の **`install --synthetic-update --deploy` は実行しない**。この更新モードは既存の5ソース・固定版参照先・レシートを変更するからです。
+
+所有者の**対象を限定した承認後**、v0.1.20は別の非共有合成GAS/シート/専用レシートで試験する方針とします。認証ファイル再初期化、既存保護スナップショット書換え、HousingERPへの操作、本番環境へ配信することは含みません。新規Google資源の作成はこのpreflightコマンドには実装しておらず、承認・バックアウト・隔離実装が整うまでは実施しません。
+
+v0.1.20のWindows PDF/PNG/JPEG・iPhone Safariの実Google OCRと削除確認はまだ未実施です。旧版の所有者受入を流用して最新版PASSとはしません。正式リリースHOLD・Draft PR #2を維持します。
