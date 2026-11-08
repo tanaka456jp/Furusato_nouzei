@@ -15,8 +15,12 @@ async function main(){
  if(process.env.FURUSATO_BROWSER_CHANNEL)launch.channel=process.env.FURUSATO_BROWSER_CHANNEL;
  let receipt;
  if(live){
+  const optIndex=process.argv.indexOf('--protected-root');
+  if(optIndex>=0&&(!process.argv[optIndex+1]||process.argv[optIndex+1].startsWith('--')))
+   throw new Error('Missing protected root');
   cp.execFileSync(process.execPath,[path.join(root,'deployment/private-gas.cjs'),'verify',
-   ...(process.argv.includes('--attest-head')?['--attest-head']:[])],{stdio:'pipe'});
+   ...(process.argv.includes('--attest-head')?['--attest-head']:[]),
+   ...(optIndex>=0?['--protected-root',process.argv[optIndex+1]]:[])],{stdio:'pipe'});
   receipt=JSON.parse(fs.readFileSync(path.join(root,'.private/furusato/receipt.json'),'utf8'));
   if(authorize)launch.headless=false;
   if(tokenAuth){
