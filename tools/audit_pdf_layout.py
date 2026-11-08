@@ -53,7 +53,7 @@ def assert_split_print_source_proof(pdfpath: Path, printed_page_text: str) -> di
             raise AssertionError(f"Split PDF source proof has invalid type: {label}")
         if isinstance(value, int) and value < 0:
             raise AssertionError(f"Split PDF source proof has negative value: {label}")
-        rendered = format(value, ",") if isinstance(value, int) else value
+        # Calendar year is never formatted as a monetary amount in Excel.\n        rendered = (str(value) if label == "住宅の居住開始年" else\n                    format(value, ",") if isinstance(value, int) else value)
         if not rendered or label not in visible or rendered not in visible:
             raise AssertionError(f"Split PDF lacks printed source field: {label}")
     return {"status": "PASS", "fields_checked": len(fields),
@@ -73,7 +73,7 @@ def source_proof_self_test() -> None:
                  "reviewVersion": "v4.18.31", "taxYear": 2026, "fields": fields}
         path = pdf.with_name("split-result.print-inputs.json")
         visible = "所得年 2026 Excel版 v4.18.31 " + " ".join(
-            f"{k} {format(v, ',') if isinstance(v, int) else v}"
+            f"{k} {str(v) if k == '住宅の居住開始年' else format(v, ',') if isinstance(v, int) else v}"
             for k, v in fields.items())
         path.write_text(json.dumps(proof, ensure_ascii=False), encoding="utf-8")
         if assert_split_print_source_proof(pdf, visible)["fields_checked"] != 8:
@@ -87,6 +87,7 @@ def source_proof_self_test() -> None:
             raise AssertionError("Split PDF source proof accepted " + label)
 
         must_reject("wrong printed amount", visible.replace("49,928,572", "49,928,573"))
+        must_reject("wrong occupancy year", visible.replace("住宅の居住開始年 2025", "住宅の居住開始年 2024"))
         must_reject("missing printed label", visible.replace("普通配当対象額", ""))
         proof["pdf_sha256"] = "0" * 64
         path.write_text(json.dumps(proof, ensure_ascii=False), encoding="utf-8")
