@@ -15,6 +15,7 @@ let currentStage="INITIALIZE",failureCode=null;
 const stage=value=>{currentStage=value;};
 function classifyFailure(err){
  const message=String(err?.message||"");
+ if(message.includes("OWNER_LOGIN_REQUIRES_SYSTEM_BROWSER"))return "OWNER_LOGIN_REQUIRES_SYSTEM_BROWSER";
  if(message.includes("AUTH_REQUIRED"))return "OWNER_WEB_APP_AUTH_REQUIRED";
  if(message==='LOCAL_BROWSER_UNAVAILABLE'||/browserType\.launch|executable doesn't exist|browser has been closed|spawn .*ENOENT|Failed to launch/i.test(message))
   return "LOCAL_BROWSER_UNAVAILABLE";
@@ -38,6 +39,10 @@ async function waitForWizard(pages,waitPage,cycles){
  return null;
 }
 async function main(){
+ // Google's official sign-in policy can reject software-controlled browsers.
+ // Never enter owner Google login/consent in Playwright. Use the verified
+ // unautomated system browser mode in check-live-ocr-readiness.cjs instead.
+ if(live&&authorize)throw Error('OWNER_LOGIN_REQUIRES_SYSTEM_BROWSER');
  let context,browser;
  // Owner-authenticated Google Web Apps may reject a second headless session
  // even when a headed session successfully reached the wizard.
