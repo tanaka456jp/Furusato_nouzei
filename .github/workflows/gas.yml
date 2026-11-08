@@ -117,4 +117,8 @@ jobs:
         shell: powershell
         run: |
           .\gas\scripts\setup-private-gas.ps1
+      - name: Owner-approved live OCR launcher preflight only (never creates Google files)
+        shell: powershell
+        run: |
+          .\gas\scripts\accept-private-live-ocr.ps1 -PreflightOnly
 
