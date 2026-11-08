@@ -61,7 +61,8 @@ function evaluateReadiness(data){
  fail("ISOLATED_AUTH_UNAVAILABLE",data.authExists!==true);
  fail("ISOLATED_AUTH_FORMAT_INVALID",data.authExists===true&&data.authValid!==true);
  fail("ISOLATED_CLASP_CONFIG_UNAVAILABLE",data.claspExists!==true);
- fail("PROTECTED_CONFIG_DRIFT",data.protectedStatus!=="MATCH");
+ // No receipt means no saved protection baseline exists to compare against.
+ fail("PROTECTED_CONFIG_DRIFT",!!r&&data.protectedStatus!=="MATCH");
  return {status:problems.length?"HOLD":"READY_FOR_REMOTE_VERIFY",
   release:"HOLD",scope:"ISOLATED_SYNTHETIC_ONLY",problems};
 }
