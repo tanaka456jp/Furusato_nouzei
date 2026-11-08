@@ -41,6 +41,10 @@ $staleBytes = [IO.File]::ReadAllBytes((Join-Path $root 'tools/verify_stale_ui.ps
 $hasBom = ($staleBytes.Length -ge 3) -and ($staleBytes[0] -eq 239) -and
           ($staleBytes[1] -eq 187) -and ($staleBytes[2] -eq 191)
 Require $hasBom 'Stale-result PowerShell gate must have UTF-8 BOM on Windows PowerShell 5.1'
+# PowerShell variable names are case-insensitive: $home aliases the protected
+# automatic $HOME variable and fails before the actual tax-safety test can run.
+$staleSource = [IO.File]::ReadAllText((Join-Path $root 'tools/verify_stale_ui.ps1'), [Text.Encoding]::UTF8)
+Require (-not [regex]::IsMatch($staleSource, '(?i)\$home\b')) 'QA must not assign PowerShell automatic HOME variable'
 
 $testRoot = Join-Path $env:RUNNER_TEMP ('Furusato_受入_日本語_' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $testRoot | Out-Null
