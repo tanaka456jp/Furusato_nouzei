@@ -27,7 +27,7 @@ try {
     Write-Output 'PRIVATE_LIVE_OCR_LAUNCHER_PREFLIGHT=PASS; Google not accessed; release HOLD'
     return
   }
-  if($env:CI){throw 'Live Google acceptance prohibited inside CI.'}
+  if($env:CI -and $CreateAndTest){throw 'Live Google acceptance prohibited inside CI.'}
   # A dedicated git worktree may be detached at an exact reviewed commit.
   # PowerShell 5.1 returns $null (not "") for a command with no output;
   # never call .Trim() on the result of 'git branch --show-current' directly.
