@@ -35,6 +35,9 @@ jobs:
           node gas/tests/test-ocr.cjs
           node gas/tests/test-private-ocr-status.cjs
           node gas/tests/test-private-browser-probe.cjs
+          node gas/tests/test-browser-runtime.cjs
+          node --check gas/tests/test-real-browser.cjs
+          node --check gas/scripts/check-local-browser.cjs
           node gas/tests/test-deployment.cjs
           node gas/tests/test-config-drift.cjs
           node gas/tests/test-google-recovery.cjs
@@ -107,6 +110,9 @@ jobs:
           node gas/tests/test-ocr.cjs
           node gas/tests/test-private-ocr-status.cjs
           node gas/tests/test-private-browser-probe.cjs
+          node gas/tests/test-browser-runtime.cjs
+          node --check gas/tests/test-real-browser.cjs
+          node --check gas/scripts/check-local-browser.cjs
           node gas/tests/test-deployment.cjs
           node gas/tests/test-config-drift.cjs
           node gas/tests/test-google-recovery.cjs
