@@ -121,7 +121,7 @@ def build(source, output):
         home.add_data_validation(validation)
         validation.add(home[cell])
 
-    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.18.21 分離課税検証版")
+    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.18.22 分離課税検証版")
     bar(extra, 1, "追加所得・分離課税（所得年内で事前試算）")
     extra.merge_cells("A3:D3")
     extra["A3"] = "翌年度の住民税通知書は参照せず、所得年内の収入・経費・控除と法定税率表から計算します。"
@@ -335,12 +335,22 @@ def build(source, output):
     field("B36", "住宅ローン控除適用数", maximum=3)
     note(home, 37, "可能額と所得税適用額は別物です。控除可能額があって適用額が空欄なら、原票確認まで試算額を表示しません。")
     home["A38"] = "住民税住宅ローン控除見込額"
-    home["B38"] = ('=IF(B34="",0,IF(AND(ISNUMBER(B33),ISNUMBER(B35),B35>=2022,B35<=D4),'
-                   'MIN(MAX(0,B34-B33),97500,ROUNDDOWN(MAX(0,B13-B14)/1000,0)*50),""))')
+    # From 2026 resident-tax year, the ordinary 5% housing-credit cap for
+    # occupancies through 2025 uses taxable national total PLUS the excess
+    # of the national basic deduction over the former ¥480,000 baseline.
+    # The 2026-occupancy cap is defined on the taxable total itself.
+    # J12 includes ordinary pension/business income; B13-B14 does not.
+    mortgage_taxable = f'N({ref(ENGINE,"J12")})'
+    mortgage_basic_delta = f'MAX(0,N({ref(ENGINE,"F15")})-480000)'
+    home["B38"] = (
+        '=IF(B34="",0,IF(AND(ISNUMBER(B33),ISNUMBER(B35),B35>=2022,B35<=D4),'
+        f'MIN(MAX(0,B34-B33),97500,ROUNDDOWN(MAX(0,{mortgage_taxable}+'
+        f'IF(B35>=2026,0,{mortgage_basic_delta}))/1000,0)*50),""))'
+    )
     home["B38"].number_format = '#,##0'
     home["B38"].fill = PatternFill("solid", fgColor="EAF3EA")
     home["B38"].protection = Protection(locked=True)
-    note(home, 39, "住民税控除の自動見込は居住年2022年以降・通常の5%/97,500円枠のみ。古い住宅・複数適用・残余税額不足は追加照合で安全停止します。")
+    note(home, 39, "住民税控除の自動見込は5%/97,500円の通常枠。2025・2026年分は所得税基礎控除差を反映。2022年入居の契約特例・複数適用・残余税額不足は安全停止します。")
     home.row_dimensions[39].height = 36
     home.print_area = "A1:D39"
 
@@ -425,7 +435,7 @@ def build(source, output):
         'AND(N(B34)>0,OR(NOT(ISNUMBER(B33)),NOT(ISNUMBER(B35)),B35<2022,B35>D4))',
         'AND(N(B34)>0,OR(NOT(ISNUMBER(B36)),B36<>1))',
         'AND(N(B34)>0,ISNUMBER(B33),B33>B34)',
-        'AND(ISNUMBER(B33),B33<0)',
+        'AND(ISNUMBER(B33),B33<0)', 'AND(ISNUMBER(B34),B34<0)',
         # Source reference totals include omitted special and family deductions.
         # They are authoritative when extracted from the withholding form.
         f'AND(ISNUMBER({ref(ADVANCED,"B14")}),{ref(ADVANCED,"B14")}<B16)',
@@ -585,6 +595,8 @@ def build(source, output):
          "SAFE-TAX-026 要確認。詳細設定の税額控除は通常計算に反映されません。入力内容を個別に照合してください。"),
         ('AND(ISNUMBER(B33),B33>0,OR(NOT(ISNUMBER(B34)),B34<B33))',
          "SAFE-TAX-027 要確認。住宅ローン控除の所得税適用額があるため、控除可能額（G36）を確認してください。"),
+        ('AND(N(B34)>0,B35=2022)',
+         "SAFE-TAX-028 要確認。2022年入居の住宅ローン控除には契約時期による7%特例があり、個別照合が必要です。"),
         (f'OR({ref(ADVANCED,"B24")}<>"",{ref(ADVANCED,"B36")}<>"")',
          "SAFE-TAX-016 要確認。旧・控除後の分離課税入力です。詳細設定で控除前の所得と税目別控除を入力し、再計算してください。"),
         ('OR(IFERROR(1*B4,0)<>D4,IFERROR(1*B11,0)<>D4)', "警告：源泉徴収票と適用中の所得年を一致させてください"),

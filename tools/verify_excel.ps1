@@ -395,6 +395,54 @@ try {
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Mortgage case reset'
     QA-Stage 'mortgage-regressions-pass'
+    # Independent statutory resident-mortgage tests for the 2025/2026
+    # national basic deduction increase and non-salary ordinary income.
+    # No customer data; the isolated Excel state is restored afterward.
+    QA-Stage 'mortgage-2025-2026-basic-delta-start'
+    $sourceExtra.Range('B14').Value2 = 5000000.0
+    $homeSheet.Range('B33').Value2 = 0.0
+    $homeSheet.Range('B34').Value2 = 150000.0
+    $homeSheet.Range('B35').Value2 = 2024.0
+    $homeSheet.Range('B36').Value2 = 1.0
+    foreach ($case in @(
+        @{ Year=2025; Basic=630000; Credit=17500 },
+        @{ Year=2026; Basic=670000; Credit=19500 }
+    )) {
+        $settings.Range('B4').Value2 = [double]$case.Year
+        $homeSheet.Range('B4').Value2 = [double]$case.Year
+        $homeSheet.Range('B11').Value2 = [double]$case.Year
+        $excel.Run('TaxLawUpdater.RecalculateCase')
+        Assert-Value $homeSheet.Range('B13').Value2 5200000 ('Housing salary '+$case.Year)
+        Assert-Value $engineSheet.Range('F15').Value2 $case.Basic ('Housing basic '+$case.Year)
+        Assert-Value $engineSheet.Range('J12').Value2 200000 ('Housing taxable '+$case.Year)
+        Assert-Value $homeSheet.Range('B38').Value2 $case.Credit ('Housing basic delta '+$case.Year)
+    }
+    $extraSheet.Range('B8').Value2 = 500000.0
+    $extraSheet.Range('B9').Value2 = 0.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $engineSheet.Range('J12').Value2 700000 'Housing ordinary extra-income taxable total'
+    Assert-Value $homeSheet.Range('B38').Value2 44500 'Housing with ordinary extra income'
+    $homeSheet.Range('B35').Value2 = 2026.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B38').Value2 35000 'Housing 2026 occupancy ordinary 5% base'
+    $homeSheet.Range('B35').Value2 = 2022.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    if ([string]$homeSheet.Range('B28').Value2 -notlike 'SAFE-TAX-028*' -or
+        [string]$homeSheet.Range('B8').Value2 -ne '') {
+        throw '2022 transitional housing exception escaped HOLD'
+    }
+    $homeSheet.Range('B35').Value2 = 2024.0
+    $homeSheet.Range('B34').Value2 = -1.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    if ([string]$homeSheet.Range('B28').Value2 -eq '正常') {
+        throw 'Negative housing possible credit was accepted'
+    }
+    $sourceExtra.Range('B14').ClearContents()
+    $extraSheet.Range('B8:B9').ClearContents()
+    $homeSheet.Range('B33:B36').ClearContents()
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Housing statutory corrections restored'
+    QA-Stage 'mortgage-2025-2026-basic-delta-pass'
     # Unused split-credit inputs must never silently affect an ordinary
     # estimate. All tests use the isolated synthetic Excel workbook.
     QA-Stage 'ordinary-tax-credit-fail-closed-start'

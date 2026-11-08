@@ -153,6 +153,14 @@ class WorkbookTest(unittest.TestCase):
         self.assertIn("ISNUMBER(B38)", formula)
         self.assertIn("住宅ローン", self.book[HOME]["A32"].value)
         self.assertIn("B34-B33", self.book[HOME]["B38"].value)
+        mortgage = self.book[HOME]["B38"].value
+        self.assertIn("'ふるさと納税限度額計算'!J12", mortgage)
+        self.assertIn("'ふるさと納税限度額計算'!F15", mortgage)
+        self.assertIn("-480000", mortgage)
+        self.assertIn("B35>=2026", mortgage)
+        self.assertNotIn("B13-B14", mortgage)
+        self.assertIn("SAFE-TAX-028", formula)
+        self.assertIn("AND(ISNUMBER(B34),B34<0)", formula)
         self.assertTrue(self.book[HOME]["B38"].protection.locked)
 
     def test_separate_credit_grid_cannot_leak_into_ordinary_estimate(self):
