@@ -300,6 +300,18 @@ jobs:
           if ($result.screenshot -and -not (Test-Path -LiteralPath (Join-Path $folder $result.screenshot))) {
             throw 'Display evidence names a missing image'
           }
+          if ($result.status -eq 'CAPTURED_REQUIRES_VISUAL_REVIEW' -and
+              @($result.screenshots).Count -ne 2) {
+            throw 'Both worksheet regions must be captured before visual review'
+          }
+          foreach ($imageName in @($result.screenshots)) {
+            if ($imageName -and -not (Test-Path -LiteralPath (Join-Path $folder $imageName))) {
+              throw 'Display evidence names a missing worksheet region'
+            }
+          }
+          if ($result.display_observation.physical_resolution_verified -eq $true) {
+            throw 'Inferred DPI-virtualized bounds must not certify physical display resolution'
+          }
           ('Desktop display observation: '+$result.status+
              '; scenario not certified; other requested DPI/resolutions remain HOLD.') >> $env:GITHUB_STEP_SUMMARY
       - name: Upload isolated Excel display evidence
