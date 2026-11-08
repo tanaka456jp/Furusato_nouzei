@@ -818,10 +818,10 @@ try {
             throw 'PDF layout evidence destination already exists'
         }
         [void][IO.Directory]::CreateDirectory($PdfEvidencePath)
-        foreach ($name in @('FurusatoQA.pdf', 'FurusatoQA_hidden.pdf', 'split-result.pdf', 'home-overview.pdf')) {
+        foreach ($name in @('FurusatoQA.pdf', 'FurusatoQA_hidden.pdf', 'split-result.pdf', 'split-result.print-inputs.json', 'home-overview.pdf')) {
             $inputPdf = Join-Path $dir $name
             if (-not (Test-Path -LiteralPath $inputPdf -PathType Leaf)) {
-                throw ('Synthetic PDF is missing: ' + $name)
+                throw ('Synthetic PDF/layout proof is missing: ' + $name)
             }
             Copy-Item -LiteralPath $inputPdf -Destination (Join-Path $PdfEvidencePath $name) -ErrorAction Stop
         }
