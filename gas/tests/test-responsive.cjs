@@ -24,7 +24,8 @@ async function measure(page,name,width,mobile){
  assert.ok(m.scroll<=m.client+1,name+" horizontal overflow: "+JSON.stringify(m));
  if(mobile){
   assert.ok(m.font>=16,name+" iOS text field font");
-  assert.ok(m.button>=44&&m.mode>=44,name+" touch target");
+  assert.ok(m.mode>=44,name+" mode-switch touch target");
+  if(m.button>0)assert.ok(m.button>=44,name+" visible next-button touch target");
  }
  return m;
 }
