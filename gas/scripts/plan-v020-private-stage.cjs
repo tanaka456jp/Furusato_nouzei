@@ -31,13 +31,36 @@ function git(args,trim=true){
   stdio:["ignore","pipe","pipe"],timeout:12000,maxBuffer:8*1024*1024});
  return trim?output.trim():output;
 }
-function checkCandidate({files,committed,packageVersion,branch,origin,dirty,currentHead,expectedHead}) {
+function liveTrustedBranchTip(){
+ // Remote-tracking refs may be stale. Ask trusted GitHub directly, read-only.
+ const origin=git(["remote","get-url","origin"]);
+ if(!remotes.has(origin))throw Error("UNTRUSTED_GIT_ORIGIN");
+ const expectedRef="refs/heads/"+expectedBranch;
+ const output=cp.execFileSync("git",["ls-remote","--heads","origin",expectedRef],{
+  cwd:root,encoding:"utf8",timeout:30000,maxBuffer:1024*1024,
+  stdio:["ignore","pipe","pipe"],
+  env:{...process.env,GIT_TERMINAL_PROMPT:"0",GCM_INTERACTIVE:"Never"}
+ }).trim();
+ const rows=output.split(/\r?\n/);
+ if(rows.length!==1)throw Error("TRUSTED_REMOTE_TIP_UNVERIFIED");
+ const match=/^([a-f0-9]{40})\t(refs\/heads\/feature\/gas-workflow-20261106)$/.exec(rows[0]);
+ if(!match||match[2]!==expectedRef)throw Error("TRUSTED_REMOTE_TIP_UNVERIFIED");
+ return match[1];
+}
+function checkCandidate({files,committed,packageVersion,branch,origin,dirty,currentHead,expectedHead,remoteHead}) {
  const issues=[];
  const fail=(code,condition)=>{if(condition)issues.push(code);};
  fail("INVALID_GIT_HEAD",!(/^[a-f0-9]{40}$/).test(currentHead||""));
  fail("GIT_HEAD_CHANGED_DURING_PROBE",!!expectedHead&&expectedHead!==currentHead);
  fail("UNTRUSTED_GIT_ORIGIN",!remotes.has(origin));
- fail("WRONG_DEVELOPMENT_BRANCH",branch!==expectedBranch);
+ // An existing owner worktree may have another local name or detached HEAD.
+ // It is accepted only when its commit is exactly the current trusted
+ // development branch tip on GitHub, not merely because files look alike.
+ fail("TRUSTED_REMOTE_TIP_UNVERIFIED",!(/^[a-f0-9]{40}$/).test(remoteHead||""));
+ fail("REMOTE_TIP_DIFFERS_FROM_CHECKOUT",
+   (/^[a-f0-9]{40}$/).test(remoteHead||"")&&remoteHead!==currentHead);
+ fail("WRONG_DEVELOPMENT_BRANCH",branch!==expectedBranch&&
+   !(remoteHead===currentHead&&(/^[a-f0-9]{40}$/).test(remoteHead||"")&&remotes.has(origin)));
  fail("TRACKED_WORKTREE_DIRTY",!!dirty);
  fail("CANDIDATE_SOURCE_SET_INVALID",!exactFiles(files)||!exactFiles(committed));
  fail("CANDIDATE_VERSION_INVALID",packageVersion!==targetVersion||
@@ -45,7 +68,8 @@ function checkCandidate({files,committed,packageVersion,branch,origin,dirty,curr
  if(exactFiles(files)&&exactFiles(committed))
   fail("WORKTREE_SOURCE_DIFFERS_FROM_COMMIT",google.digest(files)!==google.digest(committed));
  return {status:issues.length?"HOLD":"CANDIDATE_SOURCE_READY",
-  reasons:issues,appVersion:issues.length?null:"v"+targetVersion};
+  reasons:issues,checkoutIdentity:issues.length?null:branch===expectedBranch?"EXPECTED_LOCAL_BRANCH":"TRUSTED_REMOTE_EXACT_COMMIT",
+  appVersion:issues.length?null:"v"+targetVersion};
 }
 function assess({candidate,old,drive,oldDigest,newDigest}){
  // A failed local check must NEVER masquerade as remote Google/Drive failure.
@@ -74,7 +98,7 @@ function assess({candidate,old,drive,oldDigest,newDigest}){
  }
  return {
   status:issues.length?"HOLD":"READY_FOR_SEPARATE_STAGE_APPROVAL",
-  stagePreflightRevision:2,
+  stagePreflightRevision:3,
   stage:!candidateReady?"LOCAL_CANDIDATE":issues.length?"REMOTE_READONLY_ATTESTATION":"APPROVAL_GATE",
   problems:issues,
   candidateChecks:!candidateReady&&Array.isArray(candidate?.reasons)?candidate.reasons:[],
@@ -119,9 +143,10 @@ async function main(){
  google.preflight();
  const pkg=JSON.parse(fs.readFileSync(path.join(root,"package.json"),"utf8"));
  const candidateFiles=google.source(),committed=committedSources();
+ const initialRemoteTip=liveTrustedBranchTip();
  const candidate=checkCandidate({
   files:candidateFiles,committed:committed.files,packageVersion:pkg.version,
-  currentHead:committed.head,branch:git(["branch","--show-current"]),
+  currentHead:committed.head,remoteHead:initialRemoteTip,branch:git(["branch","--show-current"]),
   origin:git(["remote","get-url","origin"]),
   dirty:git(["status","--porcelain","--untracked-files=no"])
  });
@@ -139,7 +164,7 @@ async function main(){
  const afterCommitted=committedSources();
  const after=checkCandidate({
   files:google.source(),committed:afterCommitted.files,packageVersion:pkg.version,
-  currentHead:afterCommitted.head,expectedHead:committed.head,branch:git(["branch","--show-current"]),
+  currentHead:afterCommitted.head,expectedHead:committed.head,remoteHead:liveTrustedBranchTip(),branch:git(["branch","--show-current"]),
   origin:git(["remote","get-url","origin"]),
   dirty:git(["status","--porcelain","--untracked-files=no"])
  });
@@ -149,7 +174,7 @@ async function main(){
  console.log(JSON.stringify(report));
  if(report.status!=="READY_FOR_SEPARATE_STAGE_APPROVAL")process.exitCode=2;
 }
-module.exports={checkCandidate,assess,committedSources};
+module.exports={checkCandidate,assess,committedSources,liveTrustedBranchTip};
 if(require.main===module)main().catch(()=>{
  console.error("V020_PRIVATE_STAGE_PREFLIGHT_HOLD: LOCAL_OR_GOOGLE_ATTESTATION_UNVERIFIED");
  process.exitCode=2;
