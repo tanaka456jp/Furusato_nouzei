@@ -80,6 +80,17 @@ def audit(pdfpath: Path, expected_pages: int, out: Path) -> dict:
             pages.append({"page": i+1, "size_pt": [round(w, 2), round(h, 2)],
                           "text_blocks": len(blocks), "words_checked": checked_words, "png": filename})
         if pdfpath.name == "split-result.pdf":
+            # The synthetic total-income allocation is a single numeric
+            # pair. Material text-collision tests do not catch a line wrap,
+            # which can visually interleave the next Excel report row.
+            first_page_lines = [
+                re.sub(r"\s+", "", line)
+                for line in doc[0].get_text(sort=True).splitlines()
+            ]
+            if not any("1,000,000／850,000" in line for line in first_page_lines):
+                raise AssertionError(
+                    "Split PDF allocation wraps to multiple printed lines"
+                )
             text = re.sub(r"\s+", "", doc[1].get_text(sort=True))
             for label in ("所得年", "住民税", "税制版",
                           "計算条件の照合", "住宅控除可能額",

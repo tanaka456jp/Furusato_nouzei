@@ -87,6 +87,19 @@ class WorkbookTest(unittest.TestCase):
             self.assertTrue(home[f"B{row}"].protection.locked)
         self.assertEqual(home["A88"].value, "計算条件の照合（入力値の控え）")
         self.assertTrue(home["A93"].alignment.wrap_text)
+        # Visible printing is audited too: header wrapping may be planned,
+        # but money allocation must remain on a single printed line.
+        self.assertGreaterEqual(home.row_dimensions[57].height, 40)
+        self.assertGreaterEqual(home.row_dimensions[67].height, 44)
+        for row in range(58, 65):
+            self.assertFalse(home[f"B{row}"].alignment.wrap_text)
+            self.assertTrue(home[f"B{row}"].alignment.shrink_to_fit)
+            self.assertGreaterEqual(home.row_dimensions[row].height, 29)
+        for row in range(89, 93):
+            self.assertGreaterEqual(home[f"C{row}"].alignment.indent, 1)
+            self.assertGreaterEqual(home[f"B{row}"].alignment.indent, 1)
+        audit = (ROOT / "tools/audit_pdf_layout.py").read_text(encoding="utf-8")
+        self.assertIn("Split PDF allocation wraps to multiple printed lines", audit)
         live_qa = (ROOT / "tools/test_separate_excel.ps1").read_text(encoding="utf-8-sig")
         self.assertIn("Split print source mismatch", live_qa)
         self.assertIn("Split print audit value remained visible under HOLD", live_qa)

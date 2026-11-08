@@ -86,6 +86,37 @@ def add_separate_tax(book, home, field, bar, note, progressive):
                 cell.fill = PatternFill("solid", fgColor="EAF3EA")
                 cell.protection = Protection(locked=True)
 
+    # Print clarity: a two-line B57 header and a one-line amount
+    # allocation are different things. The former needs adequate row
+    # height, while the latter must never wrap into the next tax row.
+    home.row_dimensions[57].height = 43
+    for col in "ABCD":
+        home[f"{col}57"].alignment = Alignment(
+            horizontal="center", vertical="center", wrap_text=True)
+        home[f"{col}57"].font = Font(
+            name="Yu Gothic", size=10, bold=True, color="163A56")
+    for row in range(58, 65):
+        home.row_dimensions[row].height = 30
+        home[f"B{row}"].alignment = Alignment(
+            horizontal="right", vertical="center", wrap_text=False,
+            shrink_to_fit=True, indent=1)
+        home[f"C{row}"].alignment = Alignment(
+            horizontal="left", vertical="center", wrap_text=True, indent=1)
+        home[f"D{row}"].alignment = Alignment(
+            horizontal="right", vertical="center", indent=1)
+    for row in (56, 65, 66, 68, 69):
+        home.row_dimensions[row].height = 29
+        home[f"C{row}"].alignment = Alignment(
+            horizontal="left", vertical="center", wrap_text=True, indent=1)
+        home[f"B{row}"].alignment = Alignment(
+            horizontal="right", vertical="center", shrink_to_fit=True,
+            wrap_text=False, indent=1)
+        home[f"D{row}"].alignment = Alignment(
+            horizontal="right", vertical="center", shrink_to_fit=True,
+            wrap_text=False, indent=1)
+    home.row_dimensions[67].height = 48
+    home["A67"].alignment = Alignment(wrap_text=True, vertical="center")
+
     bar(home, 71, "詳細設定 | 税額控除（該当なしは0）")
     for row, label in enumerate((
         "住宅の居住開始年", "適用上限反映済み残高", "住宅の控除可能額",
@@ -129,12 +160,14 @@ def add_separate_tax(book, home, field, bar, note, progressive):
         home[f"A{row}"] = left_label
         home[f"C{row}"] = right_label
         home[f"A{row}"].alignment = Alignment(wrap_text=True, vertical="center")
-        home[f"C{row}"].alignment = Alignment(wrap_text=True, vertical="center")
-        home.row_dimensions[row].height = 28
+        home[f"C{row}"].alignment = Alignment(
+            horizontal="left", wrap_text=True, vertical="center", indent=1)
+        home.row_dimensions[row].height = 31
         for destination, input_addr in (("B", left_input), ("D", right_input)):
             cell = home[f"{destination}{row}"]
             cell.value = f'=IF(B55="計算可能",{input_addr},"")'
-            cell.alignment = Alignment(horizontal="right", vertical="center")
+            cell.alignment = Alignment(horizontal="right", vertical="center",
+                                       wrap_text=False, shrink_to_fit=True, indent=1)
             cell.fill = PatternFill("solid", fgColor="EAF3EA")
             cell.protection = Protection(locked=True)
             if row != 92 and not (row == 89 and destination == "B"):
