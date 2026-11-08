@@ -19,6 +19,7 @@ $packagePath = (Resolve-Path -LiteralPath $Package).Path
 foreach ($source in @(
     'tools/setup.ps1',
     'tools/verify_excel.ps1',
+    'tools/verify_stale_ui.ps1',
     'tools/register_shared_pc_runner.ps1',
     'tools/verify_windows_hosted.ps1',
     'tools/probe_excel_open.ps1',
@@ -33,6 +34,13 @@ foreach ($source in @(
     ) | Out-Null
     Require ($errors.Count -eq 0) ("PowerShell 5.1 syntax failure in " + $source + ": " + ($errors | Out-String))
 }
+
+# Windows PowerShell 5.1 decodes BOM-less non-ASCII scripts as ANSI.
+# The real-device stale-result gate contains Japanese input literals.
+$staleBytes = [IO.File]::ReadAllBytes((Join-Path $root 'tools/verify_stale_ui.ps1'))
+$hasBom = ($staleBytes.Length -ge 3) -and ($staleBytes[0] -eq 239) -and
+          ($staleBytes[1] -eq 187) -and ($staleBytes[2] -eq 191)
+Require $hasBom 'Stale-result PowerShell gate must have UTF-8 BOM on Windows PowerShell 5.1'
 
 $testRoot = Join-Path $env:RUNNER_TEMP ('Furusato_受入_日本語_' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $testRoot | Out-Null
