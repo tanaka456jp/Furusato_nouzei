@@ -6,6 +6,8 @@ Private mLastTestFailure As String
 Private mResultUnverified As Boolean
 Private mResultMaskBusy As Boolean
 Private mSavedResultFormats As Object
+Private Const CATALOG_URL As String = "https://raw.githubusercontent.com/tanaka456jp/Furusato_nouzei/main/taxdata/catalog.tsv"
+Private Const BUNDLED_REVISION As String = "2026-11-05-bundled"
 
 ' Isolated QA only: record coarse stages, never taxpayer data, IDs, URLs or tokens.
 ' The forensic trace is kept beside the disposable test workbook and is not
@@ -136,8 +138,6 @@ Public Function ResultsAreCurrent() As Boolean
 End Function
 
 
-Private Const CATALOG_URL As String = "https://raw.githubusercontent.com/tanaka456jp/Furusato_nouzei/main/taxdata/catalog.tsv"
-Private Const BUNDLED_REVISION As String = "2026-11-05-bundled"
 
 ' User-facing command. The test entrypoint executes the very same transaction,
 ' but reports failures as exceptions instead of modal dialogs.
