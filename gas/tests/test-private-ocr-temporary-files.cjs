@@ -8,9 +8,10 @@ async function main(){
   const u=new URL(url);
   assert.equal(u.origin,"https://www.googleapis.com");
   assert.equal(u.pathname,"/drive/v3/files");
-  assert.equal(u.searchParams.get("q"),"trashed = false and name contains 'Furusato_OCR_TEMP_'");
+  assert.equal(u.searchParams.get("q"),"name contains 'Furusato_OCR_TEMP_'");
+  assert.equal(u.searchParams.get("corpora"),"user");
   assert.equal(u.searchParams.get("pageSize"),"100");
-  assert.equal(u.searchParams.get("fields"),"nextPageToken,files(name)");
+  assert.equal(u.searchParams.get("fields"),"nextPageToken,incompleteSearch,files(name)");
   queries.push(u.toString());
   const index=queries.length-1;
   return pages[index];
@@ -32,6 +33,9 @@ async function main(){
   {files:[],nextPageToken:""}]){
   assert.throws(()=>checkPage(invalid));
  }
+ queries.length=0;
+ await assert.rejects(()=>countTemporaryDocuments(mock([{files:[],incompleteSearch:true}])),
+  /DRIVE_LIST_NOT_EXHAUSTIVE/);
  queries.length=0;
  await assert.rejects(()=>countTemporaryDocuments(mock([
   {files:[],nextPageToken:"abc"},

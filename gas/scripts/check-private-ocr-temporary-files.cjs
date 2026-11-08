@@ -12,6 +12,8 @@ const PREFIX="Furusato_OCR_TEMP_";
 function checkPage(page){
  if(!page||typeof page!=="object"||!Array.isArray(page.files))
   throw Error("DRIVE_LIST_RESPONSE_INVALID");
+ if(page.incompleteSearch!==undefined&&page.incompleteSearch!==false)
+  throw Error("DRIVE_LIST_NOT_EXHAUSTIVE");
  if(page.files.length>100)throw Error("DRIVE_LIST_PAGE_OVERFLOW");
  for(const f of page.files){
   if(!f||typeof f.name!=="string"||!f.name.startsWith(PREFIX))
@@ -29,8 +31,9 @@ async function countTemporaryDocuments(api){
  do{
   if(++pages>100)throw Error("DRIVE_LIST_NOT_EXHAUSTIVE");
   const url=new URL("https://www.googleapis.com/drive/v3/files");
-  url.searchParams.set("q","trashed = false and name contains '"+PREFIX+"'");
-  url.searchParams.set("fields","nextPageToken,files(name)");
+  url.searchParams.set("q","name contains '"+PREFIX+"'");
+  url.searchParams.set("corpora","user");
+  url.searchParams.set("fields","nextPageToken,incompleteSearch,files(name)");
   url.searchParams.set("pageSize","100");
   url.searchParams.set("spaces","drive");
   if(token)url.searchParams.set("pageToken",token);

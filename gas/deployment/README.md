@@ -81,17 +81,15 @@ node gas/scripts/report-private-ocr-status.cjs
 node gas/scripts/check-live-ocr-readiness.cjs --verify-remote
 ```
 
-新規作成せず、既存の署名済み**合成専用**非公開デプロイだけで実Google OCR試験を再開する場合は、
-所有者の既存の許可と前後の保護環境照合が有効であることを確かめた後に以下を使用します。
+既存の**合成専用**非公開デプロイで実Google OCR試験を再開する場合は、
+所有者が通常のMicrosoft Edgeを操作する以下の手順を使用します。
 
 ```powershell
-node gas/scripts/check-live-ocr-readiness.cjs --run-synthetic --ack-temporary-google-docs
+node gas/scripts/accept-owner-ocr.cjs
 ```
 
-後者は実際に一時Google OCR文書を作成・削除するため、先に証跡診断を実施してください。
-`OWNER_WEB_APP_AUTH_REQUIRED` と判明した場合、ログインや所有者承認は自動化しません。
-現存の非公開デプロイに対して `node gas/tests/test-real-browser.cjs --live --attest-head --authorize`
-を所有者の専用ブラウザプロファイルで実施し、本人がGoogle画面で認可します。
+画面操作は所有者が行い、OCRの前後で専用Google Driveと保護対象を照合します。
+合成ファイルの準備は [v0.1.17の引継ぎ手順](../docs/REAL_GOOGLE_OCR_HANDOFF_v0.1.17.md) を参照してください。
 実Googleの試験が未完了ならすべてのOCR・一時ファイル削除の合格を主張しません。
 iPhone物理Safariと正式リリースは別の受入としてHOLDを維持します。
 
@@ -143,8 +141,8 @@ node gas/scripts/check-live-ocr-readiness.cjs --probe-only
 ```
 
 を実行します。プローブではGoogle OCR文書は作成しません。
-`REAL_GOOGLE_WEB_APP_PROBE: PASS; OCR NOT EXECUTED` が得られるまで
-本番OCR受入には進みません。Google固定版の変更やiPhone実機の検証は別工程です。
+通常ブラウザで所有者が画面到達を確認した場合は、所有者用OCR手順に進めます。
+Google固定版の変更やiPhone実機の検証は別工程です。
 
 ## 既存非公開GASの所有者ログイン：通常ブラウザのみ（2026-11-09）
 
@@ -213,7 +211,7 @@ node gas/scripts/check-private-ocr-temporary-files.cjs
 `coverage:FURUSATO_DEDICATED_OAUTH_SCOPE_ONLY` のみで
 名前・ID・URL・トークンを表示しません。
 `PASS / temporaryOcrFiles:0` は**そのOAuthの権限範囲で見える
-未ゴミ箱化ファイルが0件**であることを意味します。
+ファイルがゴミ箱を含め0件**であることを意味します。
 Googleアカウント全体に対して完全な削除を保証するものではなく、
 必要に応じてGoogle Driveの所有者画面でも
 `Furusato_OCR_TEMP_` の検索を行い、残存0件を確認してください。
