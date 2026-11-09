@@ -20,7 +20,8 @@ const good={
  workingFiles:files,committedFiles:files,packageVersion:"0.1.23",
  head:sha,remoteHead:sha,origin:"https://github.com/tanaka456jp/Furusato_nouzei.git",
  localBranch:"feature/gas-workflow-20261106",trackedChanges:"",
- previousDigest:g.digest(previousFiles),previousCommit:prior,stageAbsent:true
+ previousDigest:g.digest(previousFiles),previousCommit:prior,
+ previousCommitAncestor:true,stageAbsent:true
 };
 assert.equal(assessCandidate(good).ready,true);
 for(const patch of [
@@ -36,6 +37,7 @@ for(const patch of [
  {previousDigest:g.digest(files)},
  {previousDigest:"bad"},
  {previousCommit:"not a commit"},
+ {previousCommitAncestor:false},
  {stageAbsent:false}
 ]){
  assert.equal(assessCandidate({...good,...patch}).ready,false,JSON.stringify(Object.keys(patch)));
