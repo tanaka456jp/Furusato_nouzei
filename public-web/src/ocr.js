@@ -213,21 +213,42 @@
         var page=await pdf.getPage(1);
         var extracted=await digitalPdfText(page);
         var digital=window.FurusatoSlipReview.reviewDigitalPdf(extracted.text);
-        if(digital.eligibleForManualTransfer){
-          if(typeof window.FurusatoPdfLayout!=="object"||
-             typeof window.FurusatoPdfLayout.audit!=="function")
-            throw Error("PDF_POSITION_AUDIT_MISSING");
+        if(typeof window.FurusatoPdfLayout!=="object"||
+           typeof window.FurusatoPdfLayout.audit!=="function"||
+           typeof window.FurusatoPdfLayout.extract!=="function")
+          throw Error("PDF_POSITION_AUDIT_MISSING");
+        var positioned=window.FurusatoPdfLayout.extract(extracted.items);
+        var hardTextFailure=(digital.reasons||[]).some(function(reason){
+          return reason.startsWith("FIELD_CONFLICT_")||
+                 reason.startsWith("FIELD_DUPLICATE_")||
+                 reason.startsWith("FIELD_INVALID_");
+        });
+        var conflictingYears=positioned.year!==null&&digital.year!==null&&
+          positioned.year!==digital.year;
+        if(positioned.positionStatus==="CONFLICT"||
+           hardTextFailure||conflictingYears){
+          result={
+            schema:"furusato-slip-pdf-cross-check/v1",
+            status:"REQUIRES_SOURCE_REVIEW",year:null,candidates:{},
+            reasons:positioned.positionStatus==="CONFLICT"
+              ?positioned.reasons:["PDF_TEXT_OR_YEAR_CONFLICT"],
+            eligibleForManualTransfer:false,originalCompared:false,
+            autoApproved:false
+          };
+        }else if(digital.eligibleForManualTransfer){
           var positions=window.FurusatoPdfLayout.audit(
             extracted.items,digital.candidates);
           result=positions.status==="CONFLICT"?{
             schema:digital.schema,status:"REQUIRES_SOURCE_REVIEW",
-            year:null,candidates:{},
-            reasons:positions.reasons,
-            eligibleForManualTransfer:false,originalCompared:false,autoApproved:false
+            year:null,candidates:{},reasons:positions.reasons,
+            eligibleForManualTransfer:false,originalCompared:false,
+            autoApproved:false
           }:digital;
-        }
-        else if((digital.reasons||[]).some(function(reason){return reason.startsWith("FIELD_CONFLICT_");})){
-          result=digital;
+        }else if(positioned.eligibleForManualTransfer){
+          // Only a fully unique title/year/four-fields geometry result can
+          // supply missing digital text candidates. It still needs original
+          // verification and full tax-engine checks before any estimate.
+          result=positioned;
         }else{
           canvas=await rasterizePdf(page);
           result=await twoPass(canvas);
