@@ -24,12 +24,19 @@
     report.appendChild(line);
     report.hidden=false;
   }
+  function clearEstimate(){
+    var output=document.getElementById("result");
+    if(!output)return;
+    output.replaceChildren();output.hidden=true;output.className="result";
+  }
   function blocked(message){
+    clearEstimate();
     review=null;reviewFile=null;reviewYear=null;reviewGeneration=-1;
     acceptCheck.checked=false;acceptButton.disabled=true;
     show(message);
   }
   function clearReview(){
+    clearEstimate();
     generation++;
     review=null;reviewFile=null;reviewYear=null;reviewGeneration=-1;
     acceptCheck.checked=false;acceptButton.disabled=true;
