@@ -134,6 +134,7 @@ async function main(){
  }]});
  file.dispatchEvent(new win.Event("change",{bubbles:true}));
  assert.equal(form.dataset.ocrReviewPending,"true");
+ holdRecognizer=false;
  oldRelease();
  for(let i=0;i<100 && scan.disabled;i++)
    await new Promise(resolve=>setImmediate(resolve));
