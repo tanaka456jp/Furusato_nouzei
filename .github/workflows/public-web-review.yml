@@ -39,6 +39,8 @@ jobs:
           node --check public-web/src/ocr-regions.js
           node --check public-web/tests/test-ocr-regions.cjs
           node --check public-web/tests/test-ocr-region-dom.cjs
+          node --check public-web/scripts/ocr-accuracy-metrics.cjs
+          node --check public-web/tests/test-ocr-accuracy-metrics.cjs
           node --check public-web/quality/score-private.cjs
           node --check public-web/tests/test-ocr-benchmark.cjs
           node --check public-web/tests/test-ocr-layout.cjs
@@ -54,6 +56,7 @@ jobs:
           node public-web/tests/test-ocr-perspective.cjs
           node public-web/tests/test-ocr-regions.cjs
           node public-web/tests/test-ocr-region-dom.cjs
+          node public-web/tests/test-ocr-accuracy-metrics.cjs
           node public-web/tests/test-ocr-benchmark.cjs
           node public-web/tests/test-public-web.cjs
           node public-web/tests/test-ocr-dom.cjs
