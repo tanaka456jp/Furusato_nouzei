@@ -14,6 +14,7 @@
   var report=document.getElementById("slipReview");
   if(!form||!fileInput||!runButton||!acceptButton||!acceptCheck||!report)return;
   var review=null, busy=false;
+  var generation=0,reviewFile=null,reviewYear=null,reviewGeneration=-1;
   var MAX_BYTES=8*1024*1024;
   var ACCEPTED={"image/jpeg":true,"image/png":true,"application/pdf":true};
   function show(message){
@@ -24,11 +25,14 @@
     report.hidden=false;
   }
   function blocked(message){
-    review=null;acceptCheck.checked=false;acceptButton.disabled=true;
+    review=null;reviewFile=null;reviewYear=null;reviewGeneration=-1;
+    acceptCheck.checked=false;acceptButton.disabled=true;
     show(message);
   }
   function clearReview(){
-    review=null;acceptCheck.checked=false;acceptButton.disabled=true;
+    generation++;
+    review=null;reviewFile=null;reviewYear=null;reviewGeneration=-1;
+    acceptCheck.checked=false;acceptButton.disabled=true;
     report.replaceChildren();report.hidden=true;
     delete form.dataset.ocrYear;
     delete form.dataset.ocrReviewPending;
@@ -45,6 +49,15 @@
     }
   });
   form.addEventListener("reset",function(){clearReview();fileInput.value="";});
+  var taxYear=form.elements.namedItem("year");
+  taxYear.addEventListener("change",function(){
+    var hadTransferredSource=!!form.dataset.ocrYear;
+    clearReview();
+    if(hadTransferredSource||(fileInput.files&&fileInput.files.length)){
+      form.dataset.ocrReviewPending="true";
+      show("所得年が変更されました。以前の原票からの読取結果は使えません。新規入力または原票の再確認が必要です。");
+    }
+  });
   function safeCanvas(source,width,height){
     var factor=Math.min(1,2600/Math.max(width,height));
     var w=Math.max(1,Math.floor(width*factor));
@@ -127,6 +140,11 @@
       throw Error("端末内OCRエンジンを読み込めません。");
     var original=image,enhanced=null,worker=null;
     try{
+      if(typeof window.FurusatoImageQuality!=="object"||
+         typeof window.FurusatoImageQuality.assessCanvas!=="function")
+        throw Error("IMAGE_QUALITY_MODULE_MISSING");
+      var quality=window.FurusatoImageQuality.assessCanvas(original);
+      if(quality.status!=="REVIEW")throw Error("IMAGE_QUALITY_HOLD");
       enhanced=contrastVariant(image);
       var paths={
         workerPath:new URL("./vendor/tesseract/worker.min.js",location.href).href,
@@ -186,6 +204,7 @@
       return;
     }
     busy=true;runButton.disabled=true;acceptButton.disabled=true;
+    var requestedGeneration=generation,requestedYear=Number(taxYear.value);
     var canvas=null,pdf=null;
     try{
       var result;
@@ -205,10 +224,17 @@
         canvas=await imageToCanvas(file);
         result=await twoPass(canvas);
       }
-      review=result;
+      // A source swap, form reset or year change during async OCR invalidates
+      // the old attempt, even if the two text recognitions both succeeded.
+      if(generation!==requestedGeneration||
+         (fileInput.files&&fileInput.files[0])!==file||
+         Number(taxYear.value)!==requestedYear)return;
+      review=result;reviewFile=file;reviewYear=requestedYear;
+      reviewGeneration=requestedGeneration;
       displayReview(result);
     }catch(error){
-      blocked("OCRを完了できませんでした。入力原票は送信されません。個人情報の誤読を避けるため手入力に切り替えてください。");
+      if(generation===requestedGeneration)
+        blocked("OCRを完了できませんでした。入力原票は送信されません。画質・ページ構成を確認し、必要なら撮影し直すか手入力してください。");
     }finally{
       busy=false;runButton.disabled=false;
       if(canvas){canvas.width=0;canvas.height=0;}
@@ -220,7 +246,10 @@
   });
   acceptButton.addEventListener("click",function(){
     if(!review?.eligibleForManualTransfer||!acceptCheck.checked||
-      Number(form.elements.namedItem("year").value)!==review.year){
+      reviewGeneration!==generation||
+      reviewFile!==(fileInput.files&&fileInput.files[0])||
+      reviewYear!==Number(taxYear.value)||
+      Number(taxYear.value)!==review.year){
       show("原票の4金額・年分と控除状況を確認してから反映してください。");return;
     }
     window.FurusatoSlipReview.FIELDS.forEach(function(field){
