@@ -161,6 +161,29 @@ async function main(){
  form.reset();
  assert.equal(form.dataset.ocrReviewPending,undefined);
  assert.equal(transfer.disabled,true);
+ // A cancelled second file chooser must NOT silently restore the earlier
+ // source amounts and permit a new estimate on the old income figures.
+ field("year").value="2026";
+ Object.defineProperty(file,"files",{configurable:true,value:[{
+   name:"synthetic-replacement.png",type:"image/png",size:1024
+ }]});
+ file.dispatchEvent(new win.Event("change",{bubbles:true}));
+ scan.click();
+ for(let i=0;i<100&&(scan.disabled||recognized<oldCount+4);i++)
+   await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(scan.disabled,false);
+ assert.equal(transfer.disabled,false);
+ check.checked=true;
+ transfer.click();
+ assert.equal(field("salaryGross").value,"7000000");
+ Object.defineProperty(file,"files",{configurable:true,value:[]});
+ file.dispatchEvent(new win.Event("change",{bubbles:true}));
+ assert.equal(field("salaryGross").value,"");
+ assert.equal(field("socialInsurance").value,"");
+ assert.equal(field("salaryIncomeReference").value,"");
+ assert.equal(field("deductionsReference").value,"");
+ field("acknowledgedExclusions").checked=true;
+ assert.equal(calc().className,"result hold");
  assert.equal(networkAttempts,0);
  dom.window.close();
  console.log("PUBLIC_OCR_MANUAL_TRANSFER_DOM_PASS; synthetic; no network; not accuracy proof");

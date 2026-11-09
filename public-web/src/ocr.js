@@ -37,12 +37,22 @@
   }
   function clearReview(){
     clearEstimate();
+    // A new file (including a cancelled selection), reset or tax-year change
+    // must not leave the four values copied from an older source slip.
+    // Never erase unrelated manual inputs when OCR has not been transferred.
+    var hadTransferredSource=!!form.dataset.ocrYear;
     generation++;
     review=null;reviewFile=null;reviewYear=null;reviewGeneration=-1;
     acceptCheck.checked=false;acceptButton.disabled=true;
     report.replaceChildren();report.hidden=true;
     delete form.dataset.ocrYear;
     delete form.dataset.ocrReviewPending;
+    if(hadTransferredSource){
+      ["salaryGross","socialInsurance"].forEach(function(name){
+        var input=form.elements.namedItem(name);
+        if(input)input.value="";
+      });
+    }
     if(form.elements.namedItem("salaryIncomeReference"))
       form.elements.namedItem("salaryIncomeReference").value="";
     if(form.elements.namedItem("deductionsReference"))
