@@ -454,6 +454,19 @@ test("OCR timeout discards late success and requires new consent after failure",
  }finally{p.w.close();}
 });
 
+test("a new OCR request invalidates an older pending draft reset",async()=>{
+ const p=createPage();
+ try{
+  p.next();const {success}=await startSyntheticOcr(p);success(completeOcr);
+  p.click("newDraft");
+  assert.equal(p.el("draftConfirm").hidden,false);
+  p.click("ocrRun");p.click("draftConfirmYes");
+  assert.equal(p.el("screen1").classList.contains("active"),true);
+  assert.match(p.el("draftStatus").textContent,/確認待ちの間に入力が変わりました/);
+  await new Promise(resolve=>setImmediate(resolve));
+ }finally{p.w.close();}
+});
+
 (async()=>{
  let failed=0;
  for(const item of tests){

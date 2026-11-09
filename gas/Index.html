@@ -112,7 +112,7 @@ main{margin:0;padding:0;max-width:none}.panel{border:0;box-shadow:none;padding:0
 </style></head>
 <body>
 <header><h1>ふるさと納税 限度額シミュレーター</h1>
-<p>質問に答えるだけで計算結果と根拠を表示｜GAS検証版 v0.1.22</p></header>
+<p>質問に答えるだけで計算結果と根拠を表示｜GAS検証版 v0.1.23</p></header>
 <main><div class="panel">
 <div class="actions mode-switch" aria-label="入力モード">
 <button type="button" id="salaryMode" aria-pressed="true">給与の入力</button>
@@ -818,6 +818,7 @@ byId("ocrRun").addEventListener("click",function(){
   notify("OCRはGoogle上の非公開Webアプリでのみ実行できます");return;
  }
  var nonce=++ocrSequence;
+ draftRevision++;
  ++sourceFileSequence; // A late JSON/TSV read must not replace this OCR review.
  state.sourceStatus="REQUIRES_REVIEW";state.sourceYear=null;
  state.sourceBasicReference=null;state.sourceIndicators={};
