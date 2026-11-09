@@ -33,6 +33,8 @@ jobs:
       - run: node gas/tests/test-v020-stage-plan.cjs
       - run: node gas/tests/test-v020-isolated-stage.cjs
       - run: node gas/tests/test-v020-recovery-diagnostic.cjs
+      - run: node gas/tests/test-v023-stage-plan.cjs
+      - run: node --check gas/scripts/plan-v023-isolated-stage.cjs
       - run: node --check gas/scripts/diagnose-v020-isolated-stage.cjs
       - run: node --check gas/scripts/create-v020-isolated-stage.cjs
       - run: node --check gas/scripts/plan-v020-private-stage.cjs
@@ -103,6 +105,8 @@ jobs:
       - run: node gas/tests/test-v020-stage-plan.cjs
       - run: node gas/tests/test-v020-isolated-stage.cjs
       - run: node gas/tests/test-v020-recovery-diagnostic.cjs
+      - run: node gas/tests/test-v023-stage-plan.cjs
+      - run: node --check gas/scripts/plan-v023-isolated-stage.cjs
       - run: node --check gas/scripts/diagnose-v020-isolated-stage.cjs
       - run: node --check gas/scripts/create-v020-isolated-stage.cjs
       - run: node --check gas/scripts/plan-v020-private-stage.cjs
