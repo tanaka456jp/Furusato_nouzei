@@ -129,6 +129,14 @@ jobs:
             node --check "gas/$script.cjs"
             if ($LASTEXITCODE -ne 0) { throw "Windows Node syntax check failed ($script)" }
           }
+      - name: Validate normal Edge owner launcher syntax (offline)
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path 'gas/scripts/open-v020-stage.ps1'), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { throw 'Owner Edge launcher syntax invalid' }
+          Write-Host 'V020_EDGE_LAUNCHER_SYNTAX_PASS; NO_GOOGLE_LOGIN_OR_NETWORK'
       - name: Workflow and source import simulated browser regression
         run: node gas/tests/test-browser.cjs
       - name: Official Excel parity script preflight (no Excel or Google)
