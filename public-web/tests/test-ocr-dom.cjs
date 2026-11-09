@@ -505,6 +505,58 @@ async function main(){
  assert.equal(form.dataset.ocrReviewPending,undefined);
  assert.equal(calc().className,"result",
    "explicit reset may return to regular manual input");
+ // A file picker can issue cancel but no change. Reject old candidates.
+ Object.defineProperty(file,"files",{configurable:true,value:[
+   syntheticRasterFile("synthetic-cancel-event.png","image/png",1024)
+ ]});
+ file.dispatchEvent(new win.Event("change",{bubbles:true}));
+ scan.click();
+ for(let i=0;i<100&&scan.disabled;i++)
+   await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(scan.disabled,false);
+ assert.equal(transfer.disabled,false);
+ assert.equal(check.disabled,false);
+ check.checked=true;
+ file.dispatchEvent(new win.Event("cancel",{bubbles:true}));
+ assert.equal(transfer.disabled,true);
+ assert.equal(check.checked,false);
+ assert.equal(check.disabled,true);
+ assert.equal(form.dataset.ocrReviewPending,"true");
+ assert.equal(calc().className,"result hold");
+ assert.doesNotMatch(doc.getElementById("slipReview").textContent,
+   /項目候補を抽出しました/);
+ // Without change, the still-selected file can be reread, but consent
+ // must be explicitly renewed for the fresh candidate.
+ const beforeCancelRetry=recognized;
+ scan.click();
+ for(let i=0;i<100&&scan.disabled;i++)
+   await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(scan.disabled,false);
+ assert.equal(recognized,beforeCancelRetry+2);
+ assert.equal(transfer.disabled,false);
+ assert.equal(check.checked,false);
+ check.checked=true;
+ transfer.click();
+ assert.equal(form.dataset.ocrYear,"2026");
+ assert.equal(field("salaryGross").value,"7000000");
+ Object.defineProperty(file,"files",{configurable:true,value:[]});
+ file.dispatchEvent(new win.Event("cancel",{bubbles:true}));
+ assert.equal(form.dataset.ocrYear,undefined);
+ assert.equal(form.dataset.ocrReviewPending,"true");
+ assert.equal(field("salaryGross").value,"");
+ assert.equal(field("socialInsurance").value,"");
+ assert.equal(transfer.disabled,true);
+ // No source and no file: cancel must not break a purely manual entry.
+ form.reset();
+ field("year").value="2026";
+ field("salaryGross").value="7000000";
+ field("socialInsurance").value="1000000";
+ field("acknowledgedExclusions").checked=true;
+ file.dispatchEvent(new win.Event("cancel",{bubbles:true}));
+ assert.equal(form.dataset.ocrReviewPending,undefined);
+ assert.equal(field("salaryGross").value,"7000000");
+ assert.equal(field("acknowledgedExclusions").checked,true);
+ assert.equal(calc().className,"result");
  assert.equal(networkAttempts,0);
  dom.window.close();
  console.log("PUBLIC_OCR_MANUAL_TRANSFER_DOM_PASS; synthetic; no network; not accuracy proof");

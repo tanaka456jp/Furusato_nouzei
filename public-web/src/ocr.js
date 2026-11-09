@@ -127,6 +127,17 @@
       show("原票選択が取り消されました。未確認の読取結果は使えません。入力をクリアして手入力するか、原票を再選択してください。");
     }
   });
+  // File pickers can dispatch cancel without change when dismissed or
+  // when the same file is reselected. Previous candidates are invalid.
+  fileInput.addEventListener("cancel",function(){
+    var hasSource=!!transferredSource||!!form.dataset.ocrYear||
+      form.dataset.ocrReviewPending==="true"||review!==null||
+      !!(fileInput.files&&fileInput.files.length);
+    if(!hasSource)return; // pure manual entry stays unaffected
+    clearReview();
+    form.dataset.ocrReviewPending="true";
+    show("原票のファイル選択が中止されました。以前の候補は無効です。原票を再読取するか、入力をクリアして手入力してください。");
+  });
   form.addEventListener("reset",function(){clearReview();fileInput.value="";});
   var taxYear=form.elements.namedItem("year");
   taxYear.addEventListener("change",function(){
