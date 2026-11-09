@@ -174,6 +174,28 @@ async function main(){
  assert.equal(field("salaryIncomeReference").value,"");
  assert.equal(doc.getElementById("slipReview").textContent.includes("older-synthetic"),false);
  holdRecognizer=false;
+ // A manual monetary edit while the first OCR pass is still pending must
+ // invalidate the late answer, even if both recognitions agree afterward.
+ holdRecognizer=true;
+ releaseRecognition=null;
+ const duringManualBefore=recognized;
+ scan.click();
+ for(let i=0;i<100&&!releaseRecognition;i++)
+   await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(recognized,duringManualBefore+1);
+ const releasePendingRecognition=releaseRecognition;
+ releaseRecognition=null;
+ field("salaryGross").value="7150000";
+ field("salaryGross").dispatchEvent(new win.Event("input",{bubbles:true}));
+ assert.equal(form.dataset.ocrReviewPending,"true");
+ assert.equal(transfer.disabled,true);
+ holdRecognizer=false;
+ releasePendingRecognition();
+ for(let i=0;i<100&&scan.disabled;i++)
+   await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(scan.disabled,false);
+ assert.equal(field("salaryGross").value,"7150000");
+ assert.equal(transfer.disabled,true);
  // Reset must invalidate any old source data even when no result exists.
  form.reset();
  assert.equal(form.dataset.ocrReviewPending,undefined);
