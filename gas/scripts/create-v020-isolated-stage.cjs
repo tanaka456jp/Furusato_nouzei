@@ -209,7 +209,11 @@ async function createStage({api,r,old,files,candidate,before,dir=stageDir,
   title:name,parentId:newSheet.id
  });
  stageJournal(dir,"SCRIPT_CREATED",{scriptId:newProject.scriptId});
- validateNewIdentity({r,newSheet,newProject,old,owner:old});
+ must(typeof newProject.scriptId==="string"&&newProject.scriptId.length>5,
+  "NEW_PROJECT_CREATE_RESPONSE_INVALID");
+ const newProjectRemote=await api(base(newProject.scriptId));
+ must(newProjectRemote.scriptId===newProject.scriptId,"NEW_PROJECT_CREATE_IDENTITY_MISMATCH");
+ validateNewIdentity({r,newSheet,newProject:newProjectRemote,old,owner:old});
  const existing=await api(base(newProject.scriptId)+"/content");
  must(Array.isArray(existing.files)&&existing.files.every(f=>
   f.name==="appsscript"||(f.name==="Code"&&/^\s*function myFunction\(\)\s*\{\s*\}\s*$/.test(f.source))),
