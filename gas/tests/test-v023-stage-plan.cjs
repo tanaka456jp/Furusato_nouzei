@@ -89,6 +89,9 @@ assert.equal(snapshotEqual(snap,structuredClone(snap)),true);
 assert.equal(snapshotEqual(snap,{...snap,identity:{...snap.identity,sourceDigest:"0".repeat(64)}}),false);
 assert.equal(snapshotEqual(snap,{...snap,identity:{...snap.identity,owner:"wrongOwner"}}),false);
 assert.equal(snapshotEqual(snap,{...snap,identity:{...snap.identity,privateAuthDigest:"d".repeat(64)}}),false);
+assert.equal(snapshotEqual({candidate:{ready:true},identity:{}},{candidate:{ready:true},identity:{}}),false);
+assert.equal(snapshotEqual({...snap,identity:{...snap.identity,privateAuthDigest:undefined}},snap),false);
+assert.equal(snapshotEqual(null,snap),false);
 const temp=fs.mkdtempSync(path.join(os.tmpdir(),"furusato-v023-plan-"));
 try{
  const missing=path.join(temp,"no-stage");
