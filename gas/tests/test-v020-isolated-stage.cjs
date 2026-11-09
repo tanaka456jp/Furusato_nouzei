@@ -109,7 +109,7 @@ async function run(){
    if(method==="POST"&&url.includes("drive/v3/files?"))recordedTitle=body.name;
    return origApi(url,method,body||{});
   };
-  const apiWithName=async(url,method,body)=>{
+  const apiWithName=async(url,method="GET",body)=>{
    if(method==="GET"&&url.includes("drive/v3/files/new-synthetic-sheet-id?"))
     return {id:oldNewSheet.id,name:recordedTitle,
      mimeType:"application/vnd.google-apps.spreadsheet",ownedByMe:true,
