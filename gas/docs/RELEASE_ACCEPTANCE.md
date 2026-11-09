@@ -19,6 +19,16 @@
 
 1. 作成済みの固定版v0.1.20と専用worktreeで、[通常Edgeでの所有者試験](V020_APPROVED_ISOLATED_STAGE.md)を実行します。PDF・PNG・JPEGの認識、原票未照合HOLD、再同意、各処理後のDrive残数を記録します。旧固定版v0.1.17の所有者受入は版別に管理します。
 2. 同じv0.1.20非公開GASをiPhone実機のSafariで確認します。Windowsのモバイルエミュレーションと別に記録します。v0.1.23はこの実Google環境と別の開発候補です。
+
+   所有者がWindows（PDF・PNG・JPEG）とiPhone（JPEG）の両方を完了したら、PC①の専用worktreeで次の**オフライン・読取専用**監査を実施します。旧v0.1.17の証跡とは別フォルダだけを読み、v0.1.20のレシートのSHA-256・元ソースコミットと受入記録を照合します。認証やGoogle APIへのアクセスは行いません。
+
+   ```powershell
+   cd $HOME\Development\Furusato_nouzei_GAS_OCR
+   git pull --ff-only origin feature/gas-workflow-20261106
+   node gas/scripts/audit-owner-ocr-evidence.cjs --stage-v020
+   ```
+
+   `structuralStatus: OWNER_ATTESTED_STRUCTURE_PASS` は所有者申告と専用OAuthのDrive残数記録が揃った意味に限られます。実Google固定版の独立GET再照合、OCR精度の第三者検証、OAuth可視範囲外の削除保証、v0.1.23の受入は**別の判定**です。監査結果の非機密ステータスのみ共有し、Google URL、レシート本文、OCR原票を公開しないでください。
 3. 次の候補へ更新する場合は、所有者の承認と既存の照合手順に沿い、固定版、所有者、保護対象を更新前後で確認します。最新候補でOCR、保存と再読込、印刷・PDFを再試験します。
 4. Windows配布ZIPの展開・起動、初回導入、更新、復旧を実運用から隔離して確認し、対象版と証跡を記録します。開発者以外が同じ候補で主要手順を再確認した後に販売・配布を判定します。
 
