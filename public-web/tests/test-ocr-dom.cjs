@@ -23,6 +23,7 @@ async function main(){
  const scan=doc.getElementById("slipScan");
  const transfer=doc.getElementById("slipTransfer");
  const check=doc.getElementById("slipConfirm");
+ assert.equal(check.disabled,true,"confirmation disabled until candidates appear");
  let recognized=0,terminated=0,networkAttempts=0;
  let holdRecognizer=false,releaseRecognition=null;
  win.fetch=function(){networkAttempts++;throw Error("NETWORK_FORBIDDEN");};
@@ -86,6 +87,9 @@ async function main(){
  assert.equal(doc.getElementById("result").hidden,true);
  assert.equal(calc().className,"result hold");
  assert.equal(transfer.disabled,true);
+ check.checked=true;
+ check.dispatchEvent(new win.Event("change",{bubbles:true}));
+ assert.equal(check.checked,false,"pre-approval is forbidden");
  scan.click();
  for(let i=0;i<100 && (scan.disabled||recognized<2);i++)
    await new Promise(resolve=>setImmediate(resolve));
@@ -93,6 +97,8 @@ async function main(){
  assert.equal(recognized,2);
  assert.equal(terminated,1);
  assert.equal(transfer.disabled,false);
+ assert.equal(check.disabled,false);
+ assert.equal(check.checked,false);
  assert.equal(field("salaryIncomeReference").value,"");
  // Candidate exists, but a manual edit made before transfer must invalidate
  // it without touching the user's newly typed value.
@@ -100,6 +106,7 @@ async function main(){
  field("salaryGross").dispatchEvent(new win.Event("input",{bubbles:true}));
  assert.equal(field("salaryGross").value,"7100000");
  assert.equal(transfer.disabled,true);
+ assert.equal(check.disabled,true);
  assert.equal(form.dataset.ocrReviewPending,"true");
  // The user may explicitly re-run OCR, then confirm a fresh candidate.
  scan.click();
@@ -118,6 +125,7 @@ async function main(){
  assert.equal(form.dataset.ocrYear,"2026");
  assert.equal(form.dataset.ocrReviewPending,"false");
  assert.equal(check.checked,false);
+ assert.equal(check.disabled,true);
  assert.equal(transfer.disabled,true);
  assert.equal(file.value,"");
  assert.equal(calc().className,"result hold"); // exclusions not acknowledged

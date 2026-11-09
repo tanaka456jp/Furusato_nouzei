@@ -19,6 +19,9 @@
   // Keep original OCR provenance even after a manual edit invalidates
   // dataset.ocrYear. Otherwise switching documents can retain stale amounts.
   var transferredSource=null;
+  // Confirmation is meaningful only AFTER the actual candidates are shown.
+  acceptCheck.disabled=true;
+  acceptCheck.checked=false;
   var MAX_BYTES=8*1024*1024;
   var ACCEPTED={"image/jpeg":true,"image/png":true,"application/pdf":true};
   function show(message){
@@ -37,7 +40,8 @@
     clearEstimate();
     review=null;reviewFile=null;reviewYear=null;reviewGeneration=-1;
     reviewManualRevision=-1;
-    acceptCheck.checked=false;acceptButton.disabled=true;
+    acceptCheck.checked=false;acceptCheck.disabled=true;
+    acceptButton.disabled=true;
     show(message);
   }
   function clearReview(){
@@ -51,7 +55,8 @@
     generation++;
     review=null;reviewFile=null;reviewYear=null;reviewGeneration=-1;
     reviewManualRevision=-1;
-    acceptCheck.checked=false;acceptButton.disabled=true;
+    acceptCheck.checked=false;acceptCheck.disabled=true;
+    acceptButton.disabled=true;
     report.replaceChildren();report.hidden=true;
     delete form.dataset.ocrYear;
     delete form.dataset.ocrReviewPending;
@@ -83,7 +88,8 @@
       generation++;
       review=null;reviewFile=null;reviewYear=null;reviewGeneration=-1;
       reviewManualRevision=-1;
-      acceptCheck.checked=false;acceptButton.disabled=true;
+      acceptCheck.checked=false;acceptCheck.disabled=true;
+      acceptButton.disabled=true;
       form.dataset.ocrReviewPending="true";
       clearEstimate();
       show("金額の手入力が変更されたため、以前のOCR候補を無効にしました。新しい原票で再読取するか、入力をクリアして手入力してください。");
@@ -301,6 +307,10 @@
     }
   }
   function displayReview(r){
+    // A pre-checked consent made during the asynchronous scan is invalid.
+    acceptCheck.checked=false;
+    acceptCheck.disabled=true;
+    acceptButton.disabled=true;
     report.replaceChildren();
     report.hidden=false;
     var title=document.createElement("p");
@@ -331,6 +341,7 @@
       report.appendChild(mismatch);
       return;
     }
+    acceptCheck.disabled=false;
     acceptButton.disabled=false;
   }
   runButton.addEventListener("click",async function(){
@@ -440,10 +451,15 @@
     }
   });
   acceptCheck.addEventListener("change",function(){
-    if(!review?.eligibleForManualTransfer)acceptCheck.checked=false;
+    if(acceptCheck.disabled||!review?.eligibleForManualTransfer||
+       reviewGeneration!==generation||
+       reviewManualRevision!==manualRevision||
+       reviewYear!==Number(taxYear.value)||
+       review.year!==Number(taxYear.value))acceptCheck.checked=false;
   });
   acceptButton.addEventListener("click",function(){
-    if(!review?.eligibleForManualTransfer||!acceptCheck.checked||
+    if(!review?.eligibleForManualTransfer||acceptCheck.disabled||
+      !acceptCheck.checked||
       reviewGeneration!==generation||
       reviewManualRevision!==manualRevision||
       reviewFile!==(fileInput.files&&fileInput.files[0])||
@@ -462,7 +478,8 @@
     transferredSource={values:previousValues,edited:{}};
     form.dataset.ocrYear=String(review.year);
     form.dataset.ocrReviewPending="false";
-    review=null;acceptCheck.checked=false;acceptButton.disabled=true;
+    review=null;acceptCheck.checked=false;acceptCheck.disabled=true;
+    acceptButton.disabled=true;
     fileInput.value="";
     show("原票確認済みの数値候補を転記しました。控除・扶養などの確認項目を入力してから試算してください。");
   });

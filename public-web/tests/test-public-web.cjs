@@ -34,6 +34,7 @@ assert.doesNotMatch(html+app,/adsbygoogle|googlesyndication|googletagmanager|goo
 assert.doesNotMatch(html,/https?:\/\/[^"']+\.js["']/);
 assert.match(html,/id="slipFile"/);
 assert.match(html,/id="slipTransfer"/);
+assert.match(html,/id="slipConfirm"[^>]*disabled/);
 assert.match(html,/src="\.\/ocr-review\.js"/);
 assert.match(html,/src="\.\/ocr-quality\.js"/);
 assert.match(html,/src="\.\/ocr-layout\.js"/);
