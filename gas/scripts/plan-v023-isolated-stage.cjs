@@ -68,13 +68,14 @@ function assessV023({candidate,attestation,stable=true,targetAbsent=true}={}){
 }
 function assessCandidate({workingFiles,committedFiles,packageVersion,head,
  remoteHead,origin,localBranch,trackedChanges,previousDigest,previousCommit,
- stageAbsent}={}){
+ previousCommitAncestor,stageAbsent}={}){
  const ready=exactFiles(workingFiles)&&exactFiles(committedFiles)&&
   appVersion(workingFiles)==="0.1.23"&&appVersion(committedFiles)==="0.1.23"&&
   packageVersion==="0.1.23"&&
   g.digest(workingFiles)===g.digest(committedFiles)&&
   isDigest(previousDigest)&&previousDigest!==g.digest(workingFiles)&&
-  isSha(previousCommit)&&isSha(head)&&isSha(remoteHead)&&head===remoteHead&&
+  isSha(previousCommit)&&previousCommitAncestor===true&&
+  isSha(head)&&isSha(remoteHead)&&head===remoteHead&&
   acceptedOrigins.has(origin)&&
   (localBranch===branch||localBranch==="")&&
   trackedChanges===""&&stageAbsent===true&&policy.release==="HOLD";
@@ -102,12 +103,22 @@ function getCandidate(){
  const changes=git(["status","--porcelain","--untracked-files=no"]);
  const localBranch=git(["branch","--show-current"]);
  const absent=targetPathAbsent();
+ // The attested v0.1.20 source commit must be a true ancestor of this
+ // candidate. A forged receipt commit or unrelated checkout cannot be used.
+ let previousCommitAncestor=false;
+ try{
+  cp.execFileSync("git",["merge-base","--is-ancestor",r.sourceCommit,head],{
+   cwd:root,stdio:["ignore","pipe","pipe"],timeout:12000
+  });
+  previousCommitAncestor=true;
+ }catch{}
  // This rejects detached checkouts except those exactly equal to the
  // trusted remote head, and rejects uncommitted tracked modifications.
  const candidate=assessCandidate({
   workingFiles,committedFiles:committed.files,packageVersion,
   head,remoteHead,origin,localBranch,trackedChanges:changes,
-  previousDigest:r.sourceDigest,previousCommit:r.sourceCommit,stageAbsent:absent
+  previousDigest:r.sourceDigest,previousCommit:r.sourceCommit,
+  previousCommitAncestor,stageAbsent:absent
  });
  return {candidate,identity:{head,sourceDigest:g.digest(workingFiles),
   previousCommit:r.sourceCommit,previousDigest:r.sourceDigest},
