@@ -39,6 +39,8 @@ jobs:
           node gas/tests/test-v020-stage-plan.cjs
           node gas/tests/test-v020-isolated-stage.cjs
           node gas/tests/test-v020-recovery-diagnostic.cjs
+          node gas/tests/test-v023-stage-plan.cjs
+          node --check gas/scripts/plan-v023-isolated-stage.cjs
           node --check gas/scripts/diagnose-v020-isolated-stage.cjs
           node --check gas/scripts/create-v020-isolated-stage.cjs
           node --check gas/scripts/plan-v020-private-stage.cjs
@@ -119,7 +121,7 @@ jobs:
       - name: Independent engine regression
         run: |
           $tests = @('test-engine', 'test-separate-tax', 'test-ocr', 'test-private-ocr-status',
-            'test-owner-ocr-evidence', 'test-installed-private-version', 'test-v020-stage-plan', 'test-v020-isolated-stage', 'test-v020-recovery-diagnostic', 'test-private-browser-probe', 'test-browser-runtime', 'test-system-browser',
+            'test-owner-ocr-evidence', 'test-installed-private-version', 'test-v020-stage-plan', 'test-v020-isolated-stage', 'test-v020-recovery-diagnostic', 'test-v023-stage-plan', 'test-private-browser-probe', 'test-browser-runtime', 'test-system-browser',
             'test-private-ocr-temporary-files', 'test-deployment', 'test-config-drift',
             'test-google-recovery', 'test-parity', 'test-observed')
           foreach ($test in $tests) {
@@ -127,6 +129,7 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Windows Node regression failed ($test)" }
           }
           foreach ($script in @('scripts/check-private-ocr-temporary-files', 'scripts/audit-owner-ocr-evidence', 'scripts/audit-installed-private-version', 'scripts/plan-v020-private-stage', 'scripts/create-v020-isolated-stage', 'scripts/diagnose-v020-isolated-stage', 'scripts/accept-owner-ocr',
+            'scripts/plan-v023-isolated-stage',
             'tests/test-real-browser', 'scripts/check-local-browser')) {
             node --check "gas/$script.cjs"
             if ($LASTEXITCODE -ne 0) { throw "Windows Node syntax check failed ($script)" }
