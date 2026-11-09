@@ -306,6 +306,41 @@ async function main(){
  file.dispatchEvent(new win.Event("change",{bubbles:true}));
  assert.equal(field("salaryIncomeReference").value,"5100000");
  assert.equal(field("deductionsReference").value,"1650000");
+ // After a fresh OCR transfer, manual edits invalidate the source year.
+ // Switching the income year *again* must still require source review;
+ // otherwise it could be mistaken for a purely manually entered record.
+ form.reset();
+ field("year").value="2026";
+ Object.defineProperty(file,"files",{configurable:true,value:[
+   syntheticRasterFile("synthetic-year-after-edit.png","image/png",1024)
+ ]});
+ file.dispatchEvent(new win.Event("change",{bubbles:true}));
+ scan.click();
+ for(let i=0;i<100&&scan.disabled;i++)
+   await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(scan.disabled,false);
+ assert.equal(transfer.disabled,false);
+ check.checked=true;
+ transfer.click();
+ assert.equal(form.dataset.ocrYear,"2026");
+ assert.equal(field("socialInsurance").value,"1000000");
+ field("salaryGross").value="7150000";
+ field("salaryGross").dispatchEvent(new win.Event("input",{bubbles:true}));
+ assert.equal(form.dataset.ocrYear,undefined);
+ assert.equal(form.dataset.ocrReviewPending,"true");
+ // At this point fileInput was cleared on transfer; the old guard looked
+ // only at dataset.ocrYear and the file chooser and silently un-HOLDed.
+ assert.equal(file.value,"");
+ field("year").value="2025";
+ field("year").dispatchEvent(new win.Event("change",{bubbles:true}));
+ assert.equal(form.dataset.ocrReviewPending,"true");
+ assert.equal(field("salaryGross").value,"7150000"); // edited input retained
+ assert.equal(field("socialInsurance").value,""); // old OCR source removed
+ assert.equal(field("salaryIncomeReference").value,"");
+ assert.equal(field("deductionsReference").value,"");
+ field("socialInsurance").value="1000000";
+ field("acknowledgedExclusions").checked=true;
+ assert.equal(calc().className,"result hold");
  assert.equal(networkAttempts,0);
  dom.window.close();
  console.log("PUBLIC_OCR_MANUAL_TRANSFER_DOM_PASS; synthetic; no network; not accuracy proof");

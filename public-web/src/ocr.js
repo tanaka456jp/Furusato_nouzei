@@ -115,7 +115,10 @@
   form.addEventListener("reset",function(){clearReview();fileInput.value="";});
   var taxYear=form.elements.namedItem("year");
   taxYear.addEventListener("change",function(){
-    var hadTransferredSource=!!form.dataset.ocrYear;
+    // The attestation flag was removed on manual edit, but the older OCR
+    // source still exists in memory until clearReview() disposes of it.
+    // A year change must not silently turn that situation into manual mode.
+    var hadTransferredSource=!!form.dataset.ocrYear||!!transferredSource;
     clearReview();
     if(hadTransferredSource||(fileInput.files&&fileInput.files.length)){
       form.dataset.ocrReviewPending="true";
