@@ -32,12 +32,15 @@ jobs:
           node --check public-web/tests/test-ocr-review.cjs
           node --check public-web/src/ocr-review.js
           node --check public-web/src/ocr.js
+          node --check public-web/src/ocr-quality.js
+          node --check public-web/tests/test-ocr-quality.cjs
           node --check public-web/tests/test-ocr-browser-smoke.cjs
           node --check public-web/tests/test-ocr-dom.cjs
       - name: Build private review site and run synthetic browser acceptance
         run: |
           node public-web/scripts/build.cjs
           node public-web/tests/test-ocr-review.cjs
+          node public-web/tests/test-ocr-quality.cjs
           node public-web/tests/test-public-web.cjs
           node public-web/tests/test-ocr-dom.cjs
       - name: Install isolated Chromium for on-device OCR WASM startup
@@ -69,6 +72,7 @@ jobs:
             public-web/dist/app.js
             public-web/dist/ocr.js
             public-web/dist/ocr-review.js
+            public-web/dist/ocr-quality.js
             public-web/dist/engine.js
             public-web/dist/style.css
             public-web/dist/robots.txt
