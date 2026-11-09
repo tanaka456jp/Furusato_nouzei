@@ -32,8 +32,12 @@
       incomeType: "salary",
       salaryGross: get("salaryGross").value.trim(),
       socialInsurance: get("socialInsurance").value.trim(),
+      salaryIncomeReference: get("salaryIncomeReference").value.trim(),
+      deductionsReference: get("deductionsReference").value.trim(),
       acknowledgedExclusions: get("acknowledgedExclusions").checked
     };
+    if(form.dataset.ocrYear)input.sourceYear=form.dataset.ocrYear;
+    if(form.dataset.ocrReviewPending==="true")input.sourceReviewPending=true;
     flags.forEach(function (name) {
       input[name] = get(name).checked === true;
     });
@@ -96,6 +100,8 @@
     }
   });
   form.addEventListener("reset", function () {
+    delete form.dataset.ocrYear;
+    delete form.dataset.ocrReviewPending;
     output.replaceChildren();
     output.hidden = true;
     output.className = "result";
