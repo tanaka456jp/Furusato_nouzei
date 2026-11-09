@@ -75,7 +75,7 @@ async function main(){
     ctx.fillStyle="black";ctx.font="48px sans-serif";
     ctx.fillText("令和8年分　給与所得の源泉徴収票",60,120);
     ctx.fillText("支払金額　7,000,000円",60,220);
-    const outcome=await worker.recognize(canvas);
+    const outcome=await worker.recognize(canvas,{}, {text:true,blocks:true});
     canvas.width=0;canvas.height=0;
     if(!window.FurusatoPerspective||
        typeof window.FurusatoPerspective.tryRectify!=="function")
@@ -99,11 +99,12 @@ async function main(){
       rectified.canvas.width=0;rectified.canvas.height=0;
     }
     return {textType:typeof outcome?.data?.text,
-      confidence:outcome?.data?.confidence,geometry};
+      confidence:outcome?.data?.confidence,blocksReturned:Array.isArray(outcome?.data?.blocks),geometry};
    }finally{await worker.terminate();}
   },{timeout:180000});
   assert.equal(status.textType,"string");
   assert.ok(Number.isFinite(status.confidence));
+  assert.equal(status.blocksReturned,true,"OCR word position output is unavailable");
   assert.equal(status.geometry.status,"APPLIED");
   assert.ok(status.geometry.width>=750&&status.geometry.height>=400);
   assert.ok(status.geometry.width*status.geometry.height<=3200000);
