@@ -112,6 +112,16 @@ async function main(){
  field("hasMortgage").checked=true;
  assert.equal(calc().className,"result hold");
  assert.doesNotMatch(calc().textContent,/109,000円/);
+ // A tax-year change after field transfer must not silently retain an
+ // apparent source verification for a different tax year.
+ field("hasMortgage").checked=false;
+ field("year").value="2025";
+ field("year").dispatchEvent(new win.Event("change",{bubbles:true}));
+ assert.equal(form.dataset.ocrReviewPending,"true");
+ assert.equal(form.dataset.ocrYear,undefined);
+ assert.equal(transfer.disabled,true);
+ assert.equal(field("salaryIncomeReference").value,"");
+ assert.equal(calc().className,"result hold");
  form.reset();
  assert.equal(form.dataset.ocrYear,undefined);
  assert.equal(form.dataset.ocrReviewPending,undefined);
