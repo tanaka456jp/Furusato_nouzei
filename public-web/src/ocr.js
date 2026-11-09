@@ -190,8 +190,14 @@
     canvas.width=Math.ceil(view.width);canvas.height=Math.ceil(view.height);
     var ctx=canvas.getContext("2d");
     if(!ctx)throw Error("PDF画像化に対応していません。");
-    await page.render({canvasContext:ctx,viewport:view}).promise;
-    return canvas;
+    try{
+      // PDF.js 6.x may require an explicit canvas in addition to its context.
+      await page.render({canvas:canvas,canvasContext:ctx,viewport:view}).promise;
+      return canvas;
+    }catch(error){
+      canvas.width=0;canvas.height=0;
+      throw error;
+    }
   }
   async function twoPass(image){
     if(typeof window.Tesseract==="undefined"||
@@ -407,7 +413,8 @@
     }finally{
       busy=false;runButton.disabled=false;
       if(canvas){canvas.width=0;canvas.height=0;}
-      if(pdf)await pdf.destroy().catch(function(){});
+      if(pdf&&typeof pdf.destroy==="function")
+        await pdf.destroy().catch(function(){});
     }
   });
   acceptCheck.addEventListener("change",function(){
