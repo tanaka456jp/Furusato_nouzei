@@ -23,6 +23,9 @@
   acceptCheck.disabled=true;
   acceptCheck.checked=false;
   var MAX_BYTES=8*1024*1024;
+  // PDF.js 6.x defaults maxImageSize to -1 (unlimited). A small PDF can
+  // contain an enormous compressed raster; never decode it without a cap.
+  var MAX_PDF_IMAGE_PIXELS=16*1024*1024;
   var ACCEPTED={"image/jpeg":true,"image/png":true,"application/pdf":true};
   function show(message){
     report.replaceChildren();
@@ -222,7 +225,8 @@
     pdfjs.GlobalWorkerOptions.workerSrc="./vendor/pdf.worker.mjs";
     var bytes=new Uint8Array(await file.arrayBuffer());
     var task=pdfjs.getDocument({data:bytes,disableAutoFetch:true,disableStream:true,
-      isEvalSupported:false,useSystemFonts:false,stopAtErrors:true});
+      isEvalSupported:false,useSystemFonts:false,stopAtErrors:true,
+      maxImageSize:MAX_PDF_IMAGE_PIXELS});
     try{
       var document=await task.promise;
       if(document.numPages!==1)

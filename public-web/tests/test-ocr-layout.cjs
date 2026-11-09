@@ -147,4 +147,7 @@ assert.equal(bounded([null]).status,"HOLD");
 assert.equal(bounded([item("OK",1,2),{type:"beginMarkedContent"}]).status,"OK");
 
 assert.match(runtime,/FurusatoPdfLayout\.boundedTextLayer\(content\.items\)/);
+const maxImage=/var MAX_PDF_IMAGE_PIXELS=16\*1024\*1024/.test(runtime);
+assert.equal(maxImage,true,"PDF image decoder must have a hard pixel cap");
+assert.match(runtime,/maxImageSize:MAX_PDF_IMAGE_PIXELS/);
 console.log("PUBLIC_OCR_PDF_POSITION_NEGATIVE_AND_SOURCE_CANDIDATE_AUDIT_SYNTHETIC_PASS; not accuracy proof");
