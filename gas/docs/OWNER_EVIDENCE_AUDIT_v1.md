@@ -167,3 +167,26 @@ node gas/scripts/plan-v020-private-stage.cjs
 ```
 
 **今回の制約の下では過去の共通認証原本をハッシュ値だけから復元することは不可能です。** 認証・レシート・保護スナップショットの書換え、`git reset --hard`、旧GAS上書き、合成環境の勝手な新規作成は行いません。現在の共通認証を隔離コピーで置き換えることも禁止です。所有者が変更履歴を確認するか、過去の信頼できるバックアップが別途見つからない限り、元の厳格な保護ゲートはHOLDのままです。この調査自体はGoogleへ接続しません。
+
+## 2026-11-09 PC① 11:12 — revision 6の実行結果とrevision 7の安全な切分け
+
+PC①でrevision 6を再実行した結果、`HISTORICAL_BYTES_NOT_MATCHED`、`pattern:UNVERIFIED` が再現しました。HousingERPの保護設定3件は `UNCHANGED`、`global-clasp-auth` のみ `CHANGED`、GitHubの開発先端SHAとの一致はPASSです。
+
+`UNVERIFIED` は既存の `oauthRefreshPattern` において多数の状況を一括した結果です。**不正変更・正常更新のいずれとも判定できない**ことを維持します。revision 7では「隔離コピー」と「現在の共通認証」の2ファイルだけをローカルで比較し、限定的な `globalAuthReview.pairDifference` を追加します。
+
+- `STABLE_CREDENTIAL_FIELDS_DIFFER`：比較した認証ペアのrefresh token・client ID・client secretのいずれかに差異。値そのものや識別子は表示しません。過去に保存された内容との比較とは別です。
+- `SCHEMA_OR_TOKEN_FIELDS_UNEXPECTED`：認証JSONが既存の想定形や必要な文字列・時刻値を満たしていない。
+- `OTHER_CREDENTIAL_METADATA_DIFFERS`：認証ペアで、一般的な短期トークン・有効期限以外のメタデータにも差異。差異の具体的なJSONキーは表示しません。
+- `TRANSIENT_TOKEN_FIELDS_NOT_VERIFIED`：固定的な認証項目とその他のメタデータは一致するが、トークン／期限欄に関する厳格な更新条件を満たしていない。
+- `KNOWN_REFRESH_FIELDS_COMPATIBLE`：比較対象の2ファイル間は既存のトークン更新パターンと一致する。ただし**保存時の認証原本や書込元を証明しない**。
+- `NOT_ASSESSED`：比較可能なファイルが得られなかった、または他の保護項目も変わっている。
+
+診断は**読取専用**で、認証本文・ハッシュ・パス・変更されたキー名・トークン・ID・Google URLを表示しません。すべての結果で `stage:PROTECTED_LOCAL_CONFIG`、`status:HOLD`、`snapshotWrite:PROHIBITED`、`writer:UNVERIFIED`、`historicalSnapshotReconstruction:NOT_PROVEN`、`realV020GoogleAcceptance:NOT_TESTED` を維持します。
+
+```powershell
+cd $HOME\Development\Furusato_nouzei_GAS_OCR
+git pull --ff-only origin feature/gas-workflow-20261106
+node gas/scripts/plan-v020-private-stage.cjs
+```
+
+これ以上この同じ2つの認証ファイルを読み直しても、保存時の実バイト列が別の信頼済み保管先に存在しなければ、過去のハッシュ一致を復元できません。**保護を解除するためのハッシュ再保存、認証ファイル上書き、資格情報の再初期化は行いません。** v0.1.20を検証するには、所有者の個別承認を得て、既存v0.1.17に触れない独立隔離ステージへ移るための別途設計・復旧手順が必要です。
