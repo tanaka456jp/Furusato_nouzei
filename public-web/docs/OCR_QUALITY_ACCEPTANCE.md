@@ -113,3 +113,7 @@ PDF.jsの `getTextContent()` の文字要素を連結する前に、要素数最
 ### 画像のみのスキャンPDFとPDF文字層異常の区別（追加）
 
 `boundedTextLayer` はPDF.js文字要素0件を**`EMPTY`**と判定する。これは破損を意味しないため、1ページPDFをブラウザ内で画像化して既存の画質判定とTesseract二回認識へ進む。文字要素数・長さ・座標の異常は従来どおりHOLDとし、OCRへ無条件フォールバックして異常を隠さない。PDF.jsが返す非テキストマーク要素だけの場合も、実文字要素0件として扱う。白紙PDFは画質検査でHOLD。合成RGB画像XObjectのみの1ページPDFを実Chromium・PDF.jsで開き、文字要素0件、画像OCR経路、明示確認前の転記禁止、白紙HOLD、外部通信0件を回帰する。**実原票OCRの精度評価ではない**。
+
+### PDF.js 6系と旧ブラウザのMap API互換性
+
+2026-11-09の実Chromium 141で、PDF.js 6.3.289による合成画像PDF描画時に `this[#methodPromises].getOrInsertComputed is not a function` を確認。PDFファイルの破損ではなく、ブラウザにES2026 Map補助APIが未実装であることが原因。公開Web内に `pdf-compat.js` を同梱し、`Map.prototype.getOrInsert` と `Map.prototype.getOrInsertComputed` が未実装の場合だけ非列挙で補完する。既存ブラウザ実装を上書きせず、通信・保存・原票処理は増やさない。Node単体合成契約とPDF.js実Chromium描画による検証を行う。実Safari・実Edgeでの確認および原票の精度実証は別途必要。
