@@ -57,4 +57,40 @@ const secrets="https://script.google.com/macros/s/SECRET/exec";
 const result=summarizeRecords([{...windows,credentials:secrets,rawException:secrets},iphone]);
 assert.ok(!JSON.stringify(result).includes(secrets));
 assert.ok(!JSON.stringify(result).includes(sha));
+// v0.1.20 owner evidence is protocol 2 and must never be mixed with the
+// v0.1.17 legacy directory, silently relabeled, or used as release approval.
+const digest = "c".repeat(64);
+const stageOptions = {stageV020:true,receiptFingerprint:digest,sourceCommit:sha};
+const stage = device => ({
+  ...record(device,device==="WINDOWS_EDGE_OWNER_OBSERVED"?["PDF","PNG","JPEG"]:["JPEG"]),
+  protocolRevision:2,candidateVersion:"v0.1.20",stageReceiptFingerprint:digest
+});
+const stageWin=stage("WINDOWS_EDGE_OWNER_OBSERVED");
+const stagePhone=stage("IPHONE_SAFARI_OWNER_OBSERVED");
+assert.equal(validateRecord(stageWin,stageOptions).status,"OWNER_ATTESTED_STRUCTURE_PASS");
+assert.ok(validateRecord(stageWin).reasons.includes("PROTOCOL_UNSUPPORTED"),
+  "Legacy mode must reject v0.1.20 stage evidence");
+assert.equal(summarizeRecords([stageWin,stagePhone],0,stageOptions).structuralStatus,
+  "OWNER_ATTESTED_STRUCTURE_PASS");
+assert.equal(summarizeRecords([stageWin,stagePhone],0,stageOptions).candidateVersion,"v0.1.20");
+assert.equal(summarizeRecords([stageWin,stagePhone],0,stageOptions).immutableDeploymentVersion,
+  "REQUIRES_INDEPENDENT_REMOTE_GET");
+for(const [bad,reason] of [
+ [{...stageWin,protocolRevision:1},"PROTOCOL_UNSUPPORTED"],
+ [{...stageWin,candidateVersion:"v0.1.23"},"STAGE_VERSION_INVALID"],
+ [{...stageWin,stageReceiptFingerprint:"b".repeat(64)},"STAGE_RECEIPT_BINDING_INVALID"],
+ [{...stageWin,sourceCommit:"b".repeat(40)},"STAGE_SOURCE_COMMIT_DIFFERS"]
+]){
+ const res=validateRecord(bad,stageOptions);
+ assert.equal(res.status,"HOLD",reason);
+ assert.ok(res.reasons.includes(reason),reason);
+}
+assert.equal(summarizeRecords([stageWin,stagePhone],1,stageOptions).structuralStatus,"HOLD");
+const stageLatestFailure={...stageWin,finishedAt:"2026-11-09T03:25:00.000Z",
+ results:[{...stageWin.results[0],candidates:"FAIL"},...stageWin.results.slice(1)]};
+assert.equal(summarizeRecords([stageWin,stagePhone,stageLatestFailure],0,stageOptions).structuralStatus,
+ "HOLD","Latest failed owner evidence must not be masked by an old PASS");
+const stageSummary=JSON.stringify(summarizeRecords([stageWin,stagePhone],0,stageOptions));
+assert.ok(!stageSummary.includes(digest),"Private stage receipt digest must not leave the audit");
+assert.ok(!stageSummary.includes(sha),"Private source revision must not leave the audit");
 console.log("OWNER_OCR_OFFLINE_AUDIT_TEST_PASS; synthetic only; version remains unverified; release HOLD");
