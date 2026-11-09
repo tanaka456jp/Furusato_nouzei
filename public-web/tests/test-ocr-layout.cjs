@@ -109,6 +109,13 @@ const fs=require("node:fs"),path=require("node:path");
 const runtime=fs.readFileSync(path.join(__dirname,"..","src","ocr.js"),"utf8");
 assert.match(runtime,/FurusatoPdfLayout\.crossCheckExtracted\(/);
 assert.match(runtime,/crossCheck\.status==="CONFLICT"/);
+assert.match(runtime,/digital\.yearConflict===true/);
+// A valid, unique positioned year cannot override two conflicting explicit
+// year references in the *same* PDF's full text layer.
+const {reviewDigitalPdf}=require("../src/ocr-review.js");
+const mixedYears=reviewDigitalPdf("令和8年分 給与所得の源泉徴収票\\n令和7年分");
+assert.equal(mixedYears.yearConflict,true);
+assert.equal(review.eligibleForManualTransfer,true);
 
 
 // A compressed PDF may produce a huge or malformed text layer even if the

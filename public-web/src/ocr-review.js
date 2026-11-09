@@ -76,6 +76,9 @@
       schema:"furusato-slip-field-review/v1",
       status:"REQUIRES_SOURCE_REVIEW",
       year:header&&yearCandidates.length===1?yearCandidates[0]:null,
+      // Explicit contradictory years must veto a positional PDF fallback.
+      // No text years is different: PDF.js may split the title/date cells.
+      yearConflict:yearCandidates.length>1,
       candidates:candidates,
       reasons:Array.from(new Set(reasons)),
       fullyExtracted:reasons.length===0&&FIELDS.every(function(f){return Number.isSafeInteger(candidates[f.key]);}),
@@ -120,6 +123,7 @@
       schema:"furusato-slip-digital-pdf-review/v1",
       status:"REQUIRES_SOURCE_REVIEW",
       year:r.fullyExtracted?r.year:null,
+      yearConflict:r.yearConflict===true,
       candidates:r.fullyExtracted?r.candidates:{},
       reasons:r.reasons,
       eligibleForManualTransfer:r.fullyExtracted,

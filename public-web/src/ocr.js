@@ -374,13 +374,15 @@
         var crossCheck=window.FurusatoPdfLayout.crossCheckExtracted(
           digital,positioned);
         if(positioned.positionStatus==="CONFLICT"||
-           hardTextFailure||conflictingYears||crossCheck.status==="CONFLICT"){
+           hardTextFailure||digital.yearConflict===true||
+           conflictingYears||crossCheck.status==="CONFLICT"){
           result={
             schema:"furusato-slip-pdf-cross-check/v1",
             status:"REQUIRES_SOURCE_REVIEW",year:null,candidates:{},
             reasons:positioned.positionStatus==="CONFLICT"
-              ?positioned.reasons:crossCheck.status==="CONFLICT"
-                ?crossCheck.reasons:["PDF_TEXT_OR_YEAR_CONFLICT"],
+              ?positioned.reasons:digital.yearConflict===true
+                ?["PDF_EXPLICIT_YEAR_CONFLICT"]:crossCheck.status==="CONFLICT"
+                  ?crossCheck.reasons:["PDF_TEXT_OR_YEAR_CONFLICT"],
             eligibleForManualTransfer:false,originalCompared:false,
             autoApproved:false
           };

@@ -23,6 +23,15 @@ const digital=review.reviewDigitalPdf(sample);
 assert.equal(digital.eligibleForManualTransfer,true);
 assert.equal(digital.originalCompared,false);
 assert.equal(digital.autoApproved,false);
+const mixedExplicitYears=review.reviewDigitalPdf(sample+"\n令和7年分");
+assert.equal(mixedExplicitYears.yearConflict,true);
+assert.equal(mixedExplicitYears.eligibleForManualTransfer,false);
+assert.deepEqual(mixedExplicitYears.candidates,{});
+assert.equal(review.reviewDigitalPdf(sample).yearConflict,false);
+// Distinguish malformed/missing separated text from a genuinely competing
+// second tax year: the former can be reviewed by PDF coordinate extraction.
+const splitYear=review.reviewDigitalPdf("給与所得の源泉徴収票\\n令和 8 年 分");
+assert.equal(splitYear.yearConflict,false);
 const pair=review.compareAttempts(sample,sample,96,89);
 assert.equal(pair.eligibleForManualTransfer,true);
 assert.equal(pair.status,"REQUIRES_SOURCE_REVIEW");
