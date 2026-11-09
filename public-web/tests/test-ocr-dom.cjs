@@ -97,7 +97,10 @@ async function main(){
    return doc.getElementById("result");
  }
  Object.defineProperty(file,"files",{configurable:true,value:[syntheticRasterFile("synthetic-slip.png","image/png",1024)]});
+ field("acknowledgedExclusions").checked=true;
  file.dispatchEvent(new win.Event("change",{bubbles:true}));
+ assert.equal(field("acknowledgedExclusions").checked,false,
+   "a new source must revoke a previous deductions review");
  assert.equal(form.dataset.ocrReviewPending,"true");
  assert.equal(doc.getElementById("result").hidden,true);
  assert.equal(calc().className,"result hold");
@@ -105,7 +108,10 @@ async function main(){
  check.checked=true;
  check.dispatchEvent(new win.Event("change",{bubbles:true}));
  assert.equal(check.checked,false,"pre-approval is forbidden");
+ field("acknowledgedExclusions").checked=true;
  scan.click();
+ assert.equal(field("acknowledgedExclusions").checked,false,
+   "reread must revoke deductions confirmation");
  for(let i=0;i<100 && (scan.disabled||recognized<2);i++)
    await new Promise(resolve=>setImmediate(resolve));
  assert.equal(scan.disabled,false);
@@ -131,8 +137,11 @@ async function main(){
  assert.equal(transfer.disabled,false);
  transfer.click();
  assert.equal(field("salaryIncomeReference").value,"");
+ field("acknowledgedExclusions").checked=true;
  check.checked=true;
  transfer.click();
+ assert.equal(field("acknowledgedExclusions").checked,false,
+   "new OCR amounts require a fresh exclusions review");
  assert.equal(field("salaryGross").value,"7000000");
  assert.equal(field("socialInsurance").value,"1000000");
  assert.equal(field("salaryIncomeReference").value,"5200000");
@@ -149,6 +158,8 @@ async function main(){
  assert.match(calc().textContent,/109,000円/);
  field("hasMortgage").checked=true;
  field("hasMortgage").dispatchEvent(new win.Event("change",{bubbles:true}));
+ assert.equal(field("acknowledgedExclusions").checked,false,
+   "a changed mortgage flag must invalidate prior attestation");
  assert.equal(doc.getElementById("result").hidden,true);
 
  assert.equal(calc().className,"result hold");

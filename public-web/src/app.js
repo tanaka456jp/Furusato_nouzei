@@ -86,6 +86,20 @@
     print.type = "button";
     print.addEventListener("click", function () { window.print(); });
   }
+  var conditionsConfirmation=form.elements.namedItem("acknowledgedExclusions");
+  // Every material input change requires a fresh exclusions/allowances review.
+  // OCR transfers change inputs programmatically and revoke this separately.
+  function revokeOldConditionsConfirmation(event){
+    var target=event.target;
+    if(!target||target===conditionsConfirmation)return;
+    var name=target.name;
+    if(name==="year"||name==="filing"||
+       name==="salaryGross"||name==="socialInsurance"||
+       name==="salaryIncomeReference"||name==="deductionsReference"||
+       flags.includes(name)){
+      if(conditionsConfirmation)conditionsConfirmation.checked=false;
+    }
+  }
   function invalidateEstimate(){
     output.replaceChildren();
     output.hidden=true;
@@ -95,6 +109,8 @@
   // exclusions, year, income figures and filing mode can change its validity.
   form.addEventListener("input",invalidateEstimate);
   form.addEventListener("change",invalidateEstimate);
+  form.addEventListener("input",revokeOldConditionsConfirmation);
+  form.addEventListener("change",revokeOldConditionsConfirmation);
   form.addEventListener("submit", function (event) {
     event.preventDefault();
     try {

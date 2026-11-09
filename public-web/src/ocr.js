@@ -46,6 +46,10 @@
   }
   function clearReview(){
     clearEstimate();
+    // A confirmation of deductions on the previous slip cannot be reused
+    // for a newly selected source or a different income year.
+    var confirmation=form.elements.namedItem("acknowledgedExclusions");
+    if(confirmation)confirmation.checked=false;
     // A new file (including a cancelled selection), reset or tax-year change
     // must not leave the four values copied from an older source slip.
     // Never erase unrelated manual inputs when OCR has not been transferred.
@@ -402,6 +406,10 @@
   }
   runButton.addEventListener("click",async function(){
     if(busy)return;
+    // An explicit reread may use another scan of the same file. Require the
+    // deduction/eligibility attestation again after the OCR is transferred.
+    var confirmation=form.elements.namedItem("acknowledgedExclusions");
+    if(confirmation)confirmation.checked=false;
     blocked("読み取り中です。画像や金額はサーバーへ送信しません。");
     var file=fileInput.files&&fileInput.files.length===1?fileInput.files[0]:null;
     if(!file||!ACCEPTED[file.type]||file.size<=0||file.size>MAX_BYTES){
@@ -535,6 +543,10 @@
       }
     });
     transferredSource={values:previousValues,edited:{}};
+    // The four OCR yen fields are not a declaration that spouse, dependent,
+    // mortgage and other deduction exclusions have been rechecked.
+    var confirmation=form.elements.namedItem("acknowledgedExclusions");
+    if(confirmation)confirmation.checked=false;
     form.dataset.ocrYear=String(review.year);
     form.dataset.ocrReviewPending="false";
     review=null;acceptCheck.checked=false;acceptCheck.disabled=true;
