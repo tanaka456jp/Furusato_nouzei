@@ -62,3 +62,34 @@
 入力はローカルの標準入力JSON（`{"records":[{"format":"digital-pdf","truth":{"year":2026,"salaryGross":7000000,"salaryIncomeReference":5200000,"deductionsReference":1670000,"socialInsurance":1000000},"result":{"eligibleForManualTransfer":true,"year":2026,"candidates":{"salaryGross":7000000,"salaryIncomeReference":5200000,"deductionsReference":1670000,"socialInsurance":1000000}}}]}` は**合成例**）。形式は `digital-pdf`, `scan-pdf`, `photo`。例：`node public-web/quality/score-private.cjs < PRIVATE_TRUTH.json`。実原票・真値ファイルは**Gitに追加しない**。出力は各形式の件数、一致件数、一致率、Wilson 95%下限、HOLD、誤候補の転記可能件数のみで、原文、ファイル名、個別金額は出さない。
 
 HOLDは一致に数えない。誤りが1件でも転記可能なら危険な候補として計上。1件の100%を99.5%実証とは扱わず、`accuracyCertified:false` と `release:HOLD...` を固定している。正解データの独立採録、形式別母数、端末/ブラウザ別実測と検証者の承認は別途必要。
+
+### 金額欄の拡大再認識と測定基盤（追加）
+
+- `ocr-regions.js` はTesseract.js v7の `blocks` 出力から**4項目の行と画像領域がすべて一意**のときだけ、合成的に矩形を選びます。全文の元画像・コントラスト補正画像が既に同じ4値を返す場合に限り、矩形を2倍の画素数へ拡大して追加OCRで再照合します。認識文字・信頼度（75未満）・候補値が一致しなければHOLD。`blocks` が得られない／矩形が曖昧な場合は追加読取をSKIPし、**既存の二回全文照合を上書きしません**。この処理は同じTesseractモデルの再認識であり、異なるAIモデルによる独立照合ではありません。
+- `test-ocr-regions.cjs` と `test-ocr-region-dom.cjs` は**架空の源泉徴収票と合成矩形**で、欄位置限定、明らかな誤額のHOLD、OCR信頼度、原票確認前転記禁止を検証。 `test-ocr-browser-smoke.cjs` では実Chromiumで `blocks` フォーマットの取得が可能かを確認。実物のOCR正答率は証明しません。
+- `scripts/ocr-accuracy-metrics.cjs` で実原票の正解値と**本人の端末内で得た候補結果**を照合するための匿名集計機能を追加。正解値・ファイル名・全文は標準出力に一切含まず、`digital_pdf`、`mfp_scan`、`mobile_photo`、`other`ごとのサンプル数、4項目完全一致率、帳票単位完全一致率、誤った候補の転記許可数、HOLD数、95% Wilson区間の下限だけを表示します。これは**試験基盤**であり、現時点の計測は架空データのみです。
+
+#### 実原票のローカル計測手順（公開データへの送信禁止）
+
+本人の端末だけに `public-web/.private/ocr-benchmark/` を作成し、手動で正解を照合した記録を `sample.json` として保存します。利用目的・保存期間と端末の保護を確認し、テスト後は安全に廃棄します。実原票画像やOCR全文をGitHub・Actions・Artifacts・相談チャットへ転送しないでください。
+
+```powershell
+node public-web/scripts/ocr-accuracy-metrics.cjs public-web/.private/ocr-benchmark/sample.json
+```
+
+入力JSONは、公開しても害がない**架空の構造例**として次の形式です。
+
+```json
+[
+  {
+    "kind": "digital_pdf",
+    "truth": {"year": 2026, "salaryGross": 7000000, "salaryIncomeReference": 5200000,
+              "deductionsReference": 1670000, "socialInsurance": 1000000},
+    "review": {"eligibleForManualTransfer": true, "year": 2026,
+               "candidates": {"salaryGross": 7000000, "salaryIncomeReference": 5200000,
+                              "deductionsReference": 1670000, "socialInsurance": 1000000}}
+  }
+]
+```
+
+**誤った値が転記可能だった件数は0件を目標**とし、項目正解率99.5%以上も検証しますが、統計上の信頼区間が広い少数例で「市販AIと同等」とは評価しません。個別の誤りの原因調査・原票確認は、一般公開データに変更せず私的環境で行います。これはAdSenseや税額計算エンジンの正式公開を許可するものではありません。
