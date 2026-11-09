@@ -22,20 +22,28 @@ jobs:
           node-version: '22'
       - name: Install pinned local browser test dependency
         run: npm ci --prefix gas --ignore-scripts --no-audit --no-fund
+      - name: Install pinned OCR build dependencies (review only)
+        run: npm install --prefix public-web --ignore-scripts --no-audit --no-fund --no-package-lock
       - name: Syntax and privacy contract
         run: |
           node --check public-web/scripts/build.cjs
           node --check public-web/src/app.js
           node --check public-web/tests/test-public-web.cjs
+          node --check public-web/tests/test-ocr-review.cjs
+          node --check public-web/src/ocr-review.js
+          node --check public-web/src/ocr.js
       - name: Build private review site and run synthetic browser acceptance
         run: |
           node public-web/scripts/build.cjs
+          node public-web/tests/test-ocr-review.cjs
           node public-web/tests/test-public-web.cjs
       - name: Confirm no deployment or ads
         run: |
           test -f public-web/dist/robots.txt
           grep -q 'Disallow: /' public-web/dist/robots.txt
-          grep -q "connect-src 'none'" public-web/dist/_headers
+          grep -q "connect-src 'self'" public-web/dist/_headers
+          test -s public-web/dist/vendor/tesseract/lang/jpn.traineddata.gz
+          test -s public-web/dist/vendor/pdf.worker.mjs
           if grep -R -E 'adsbygoogle|googlesyndication|googletagmanager' public-web/dist; then
             echo 'Unexpected advertising or analytics script detected'
             exit 1
@@ -49,5 +57,5 @@ jobs:
           retention-days: 14
       - name: Release boundary
         run: |
-          echo 'Static review artifact only. NO Cloudflare deployment, NO ads, NO indexing.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Local OCR review only. No source documents uploaded. NO Cloudflare deployment, NO ads, NO indexing.' >> "$GITHUB_STEP_SUMMARY"
           echo 'Supported tax cases still require independent real-device and legal acceptance. RELEASE=HOLD' >> "$GITHUB_STEP_SUMMARY"
