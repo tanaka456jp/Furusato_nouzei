@@ -68,6 +68,7 @@ async function main(){
  win.eval(script("app.js"));
  win.eval(script("ocr-review.js"));
  win.eval(script("ocr-quality.js"));
+ win.eval(script("ocr-perspective.js"));
  win.eval(script("ocr.js"));
  function field(name){return form.elements.namedItem(name);}
  field("year").value="2026";

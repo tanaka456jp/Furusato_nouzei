@@ -155,14 +155,26 @@
     if(typeof window.Tesseract==="undefined"||
       typeof window.Tesseract.createWorker!=="function")
       throw Error("端末内OCRエンジンを読み込めません。");
-    var original=image,enhanced=null,worker=null;
+    var original=image,enhanced=null,rectified=null,worker=null;
     try{
       if(typeof window.FurusatoImageQuality!=="object"||
          typeof window.FurusatoImageQuality.assessCanvas!=="function")
         throw Error("IMAGE_QUALITY_MODULE_MISSING");
       var quality=window.FurusatoImageQuality.assessCanvas(original);
       if(quality.status!=="REVIEW")throw Error("IMAGE_QUALITY_HOLD");
-      enhanced=contrastVariant(image);
+      // Only high-confidence page corners trigger perspective correction.
+      // An unverified silhouette retains the existing source image.
+      if(window.FurusatoPerspective&&
+         typeof window.FurusatoPerspective.tryRectify==="function"){
+        var correction=window.FurusatoPerspective.tryRectify(image);
+        if(correction.status==="APPLIED"){
+          rectified=correction.canvas;
+          if(window.FurusatoImageQuality.assessCanvas(rectified).status!=="REVIEW")
+            throw Error("RECTIFIED_IMAGE_QUALITY_HOLD");
+          original=rectified;
+        }
+      }
+      enhanced=contrastVariant(original);
       var paths={
         workerPath:new URL("./vendor/tesseract/worker.min.js",location.href).href,
         corePath:new URL("./vendor/tesseract/core",location.href).href,
@@ -177,6 +189,7 @@
     }finally{
       if(worker)await worker.terminate();
       if(enhanced){enhanced.width=0;enhanced.height=0;}
+      if(rectified){rectified.width=0;rectified.height=0;}
     }
   }
   function displayReview(r){
