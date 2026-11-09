@@ -54,3 +54,11 @@
 ### 限定的な写真四隅検出・遠近補正（追加）
 
 `ocr-perspective.js` は、**暗い背景の上に四隅まで写った明るい帳票**に限り、端末内の低解像度サンプルから最大連結明色領域の四隅を検出し、射影変換してから原画像／コントラスト補正画像の2回OCRへ供する。背景が明るい、四隅が隠れる、複数の白い物体が接する、輪郭が不明瞭などの場合は補正を行わず、従来の経路に戻す。補正成功は帳票・金額の正当性やOCR精度の保証ではない。補正後も画像品質、年分、重要4金額の二回一致、原票目視確認、税額計算HOLDを維持する。合成ピクセルのみの幾何学回帰をCIで実行するが、実写精度は未評価である。
+
+### 非公開原票の独立真値ベンチマーク集計
+
+`public-web/quality/score-private.cjs` は、所有者の端末でのみ真値（年分・重要4金額）と抽出結果を照合する**集計専用**ツール。公開リポジトリやCIには合成データのテストのみを登録する。
+
+入力はローカルの標準入力JSON（`{"records":[{"format":"digital-pdf","truth":{"year":2026,"salaryGross":7000000,"salaryIncomeReference":5200000,"deductionsReference":1670000,"socialInsurance":1000000},"result":{"eligibleForManualTransfer":true,"year":2026,"candidates":{"salaryGross":7000000,"salaryIncomeReference":5200000,"deductionsReference":1670000,"socialInsurance":1000000}}}]}` は**合成例**）。形式は `digital-pdf`, `scan-pdf`, `photo`。例：`node public-web/quality/score-private.cjs < PRIVATE_TRUTH.json`。実原票・真値ファイルは**Gitに追加しない**。出力は各形式の件数、一致件数、一致率、Wilson 95%下限、HOLD、誤候補の転記可能件数のみで、原文、ファイル名、個別金額は出さない。
+
+HOLDは一致に数えない。誤りが1件でも転記可能なら危険な候補として計上。1件の100%を99.5%実証とは扱わず、`accuracyCertified:false` と `release:HOLD...` を固定している。正解データの独立採録、形式別母数、端末/ブラウザ別実測と検証者の承認は別途必要。

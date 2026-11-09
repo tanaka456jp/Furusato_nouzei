@@ -36,6 +36,8 @@ jobs:
           node --check public-web/src/ocr-layout.js
           node --check public-web/src/ocr-perspective.js
           node --check public-web/tests/test-ocr-perspective.cjs
+          node --check public-web/quality/score-private.cjs
+          node --check public-web/tests/test-ocr-benchmark.cjs
           node --check public-web/tests/test-ocr-layout.cjs
           node --check public-web/tests/test-ocr-quality.cjs
           node --check public-web/tests/test-ocr-browser-smoke.cjs
@@ -47,6 +49,7 @@ jobs:
           node public-web/tests/test-ocr-quality.cjs
           node public-web/tests/test-ocr-layout.cjs
           node public-web/tests/test-ocr-perspective.cjs
+          node public-web/tests/test-ocr-benchmark.cjs
           node public-web/tests/test-public-web.cjs
           node public-web/tests/test-ocr-dom.cjs
       - name: Install isolated Chromium for on-device OCR WASM startup
