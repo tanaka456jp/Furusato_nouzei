@@ -77,12 +77,36 @@ async function main(){
     ctx.fillText("支払金額　7,000,000円",60,220);
     const outcome=await worker.recognize(canvas);
     canvas.width=0;canvas.height=0;
+    if(!window.FurusatoPerspective||
+       typeof window.FurusatoPerspective.tryRectify!=="function")
+      throw Error("PERSPECTIVE_MODULE_NOT_LOADED");
+    // A real Chromium Canvas path, but still a purely SYNTHETIC dark-background
+    // photo. No tax information or private documents are used.
+    const photo=document.createElement("canvas");
+    photo.width=1200;photo.height=900;
+    const pctx=photo.getContext("2d");
+    pctx.fillStyle="#181818";pctx.fillRect(0,0,1200,900);
+    pctx.beginPath();
+    pctx.moveTo(180,80);pctx.lineTo(1080,120);
+    pctx.lineTo(1000,850);pctx.lineTo(220,800);
+    pctx.closePath();
+    pctx.fillStyle="#f7f7f7";pctx.fill();
+    const rectified=window.FurusatoPerspective.tryRectify(photo);
+    photo.width=0;photo.height=0;
+    const geometry={status:rectified.status,
+      width:rectified.canvas?.width||0,height:rectified.canvas?.height||0};
+    if(rectified.canvas){
+      rectified.canvas.width=0;rectified.canvas.height=0;
+    }
     return {textType:typeof outcome?.data?.text,
-      confidence:outcome?.data?.confidence};
+      confidence:outcome?.data?.confidence,geometry};
    }finally{await worker.terminate();}
   },{timeout:180000});
   assert.equal(status.textType,"string");
   assert.ok(Number.isFinite(status.confidence));
+  assert.equal(status.geometry.status,"APPLIED");
+  assert.ok(status.geometry.width>=750&&status.geometry.height>=400);
+  assert.ok(status.geometry.width*status.geometry.height<=3200000);
   assert.deepEqual(external,[],"External network request attempted");
   assert.ok(requestCount>=8,"OCR assets not fetched");
   console.log("PUBLIC_OCR_CHROMIUM_LOCAL_WASM_BOOT_PASS; synthetic only; OCR accuracy NOT CERTIFIED");
