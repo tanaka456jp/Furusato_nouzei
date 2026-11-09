@@ -1,12 +1,14 @@
 # v0.1.20 — 新規非公開合成GASステージの承認済み実行手順
 
+現行の復旧診断は `node gas/scripts/diagnose-v020-isolated-stage.cjs --check-remote` です。専用OAuthの可視範囲でゴミ箱を含めて、合成用シートの名前の接頭辞とアプリ識別マーカーを照合します。ジャーナルがある場合は、親シート、所有者、登録ソース、固定版、非公開デプロイの判明済み段階をGETで確認します。作成結果が不明な段階では診断を続け、書き込みを再送しません。
+
 2026-11-09に所有者が**既存v0.1.17を変更せず、新しい非公開合成スプレッドシート・GAS・固定バージョン・Webアプリのデプロイに限り**承認したことに基づきます。これはv0.1.20の正式公開・一般ユーザーへの配布・OCR受入GOの承認ではありません。
 
 ## 設計・作用範囲
 
 - 実行プログラム: \`gas/scripts/create-v020-isolated-stage.cjs\`
 - モード \`--preflight\`: Google APIのGET照合のみ（OAuthトークン取得リクエストを除く）、リソース作成なし
-- モード \`--create-approved FURUSATO_V020_NEW_PRIVATE_SYNTHETIC_ONLY\`: 書込み先を**この実行で生成する新規Sheet・その親を指定して作成した新規GAS・新規固定版・新規デプロイ**に限定。既存GASへPUT/POSTしない
+- モード `--create-reconciled FURUSATO_V020_NEW_PRIVATE_SYNTHETIC_ONLY` は、ローカル記録がなく、専用OAuthの検索で既存ステージが0件の場合に限り、この実行で生成する新規Sheet・その親に紐づけるGAS・固定版・デプロイを作成します。旧 `--create-approved` は停止します。
 - 専用OAuth: 以前v0.1.17で使用した \`gas/.private/furusato/auth.json\` を**読み取りだけ**で利用。共通 \`~/.clasprc.json\` は認証に使わない
 - 元の \`gas/.private/furusato/{auth.json,receipt.json,project/.clasp.json}\`、保存済み保護スナップショット、HousingERP、既存v0.1.17の固定版/Web URL/親Sheet、Excel正式版、mainは変更禁止
 - 新規ローカル証跡の保管先 \`gas/.private/furusato-v020-stage/\`。Git無視対象。ここだけ新しい \`journal.json\`, \`receipt.json\` を作成
@@ -33,7 +35,7 @@ node gas/scripts/create-v020-isolated-stage.cjs --preflight
 \`READY_TO_CREATE_ONLY_NEW_PRIVATE_STAGE\` の場合だけ、所有者が既に承認済みの新規合成環境を**一度だけ**作成：
 
 \`\`\`powershell
-node gas/scripts/create-v020-isolated-stage.cjs --create-approved FURUSATO_V020_NEW_PRIVATE_SYNTHETIC_ONLY
+node gas/scripts/create-v020-isolated-stage.cjs --create-reconciled FURUSATO_V020_NEW_PRIVATE_SYNTHETIC_ONLY
 \`\`\`
 
 **重要: 成功/失敗を問わず、作成コマンドを自動で再実行しないこと。** 初回実行は作業開始前に新規privateディレクトリを作り、各Google API作成リクエスト直前にジャーナルを保存します。リクエスト後にネットワークが切れた場合もGoogle側の作成有無を自動判断せずに停止します。ステージディレクトリがすでに存在する場合、再実行は \`STAGE_ALREADY_EXISTS_DO_NOT_RETRY\` で拒否。環境作成が途中で止まった場合はジャーナルを**非公開のまま**専門家に照合させ、未確認のGoogleリソースを推測で削除・再作成しません。ローカルフォルダを手動削除して繰り返さないでください。
@@ -89,5 +91,7 @@ node gas/scripts/diagnose-v020-isolated-stage.cjs --check-prerequisites
 ```
 
 このモードは専用Furusato OAuthでトークン発行リクエストを行い、Google APIへのGETだけで既存v0.1.17・HousingERP保護・旧一時OCR残数を検証します。出力は `failedAt`（検査段階）と固定の `reason`（非機密エラーコード）のみです。新規Googleリソース作成、既存デプロイ変更、認証・レシート・スナップショットの書換えは行いません。**事前診断がPASSでも、新規作成の再実行は自動許可しません。**
+
+`--check-remote` の `NO_STAGE_SHEET_VISIBLE` は、ローカル記録がなく、専用OAuthから対象のシートが見つからなかった結果です。Googleアカウント全体や永久削除履歴までは確認できません。`UNKNOWN_SCRIPT_ID_REQUIRES_OWNER_RECONCILIATION` の場合、Apps Script APIには親シートからプロジェクトを検索するAPIがないため、所有者による対象確認が必要です。`OWNER_ACCEPTANCE_READY` は完成レシートとリモートの照合結果であり、OCRの合格は別に記録します。
 
 `journal.json`・`receipt.json`・認証情報をGitHubやチャットへ提出せず、診断結果の固定ステータスだけを共有してください。v0.1.20実Google OCRは未受入、正式リリースHOLD・PR Draft維持。

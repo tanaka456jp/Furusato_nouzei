@@ -7,6 +7,9 @@ const assert=require("node:assert/strict");
 const fs=require("node:fs"),os=require("node:os"),path=require("node:path");
 const crypto=require("node:crypto");
 const {classifyState,inspectLocal}=require("../scripts/diagnose-v020-isolated-stage.cjs");
+const g=require("../deployment/private-gas.cjs");
+const {titlePrefix,listStageSheets,inspectRecordedStage,versionDescription,deploymentDescription}=
+ require("../scripts/v020-stage-inventory.cjs");
 const hash=x=>crypto.createHash("sha256").update(x).digest("hex");
 const journal={
  schema:"furusato-v020-stage/v1",appVersion:"0.1.20",
@@ -104,7 +107,60 @@ try {
  fs.unlinkSync(path.join(target,"unapproved.txt"));
  fs.unlinkSync(path.join(target,"receipt.json"));
  fs.unlinkSync(d);
- fs.symlinkSync(path.join(root,"missing"),d);
- assert.notEqual(inspectLocal(target).journal,"STRUCTURE_PASS");
+ if(process.platform==="win32"){
+  const junctionTarget=fs.mkdirSync(path.join(root,"junction-target"),{recursive:true});
+  fs.symlinkSync(junctionTarget,d,"junction");
+ }else fs.symlinkSync(path.join(root,"missing"),d);
+ assert.equal(inspectLocal(target).journal,"BLOCKED_LINK");
 }finally{fs.rmSync(root,{recursive:true,force:true})}
-console.log("V020_RECOVERY_LOCAL_READONLY_SYNTHETIC_PASS; no Google; no auth; release HOLD");
+
+async function verifyRemoteRecovery(){
+ const files=g.source();
+ const j={...journal,step:"COMPLETE",...aliases,
+  title:titlePrefix+"00000000-0000-0000-0000-000000000001",sourceDigest:g.digest(files)};
+ const old={owner:"fixture-owner",email:"fixture@example.invalid",protectedParent:"fixture-protected-parent"};
+ const r={spreadsheetId:"fixture-old-sheet",scriptId:"fixture-old-script",protectedScriptId:"fixture-housing-script",
+  deploymentId:"fixture-old-deployment",webAppUrl:"https://script.google.com/macros/s/FIXTURE_OLD/exec"};
+ const sheet={id:j.spreadsheetId,name:j.title,mimeType:"application/vnd.google-apps.spreadsheet",
+  ownedByMe:true,owners:[{permissionId:old.owner}],trashed:false,shared:false,capabilities:{canEdit:true},
+  appProperties:{furusatoInstaller:"v1",furusatoStage:"v020-private"}};
+ const completedReceipt={...receipt,owner:old.owner,title:j.title,sourceCommit:j.sourceCommit,
+  sourceDigest:j.sourceDigest,previousReceiptDigest:j.oldReceiptDigest,previousAuthDigest:j.oldAuthDigest};
+ const deployed={deploymentId:j.deploymentId,deploymentConfig:{scriptId:j.scriptId,versionNumber:1,description:deploymentDescription},
+  entryPoints:[{entryPointType:"WEB_APP",webApp:{url:receipt.webAppUrl,entryPointConfig:{access:"MYSELF",executeAs:"USER_DEPLOYING"}}}]};
+ const head={deploymentConfig:{scriptId:j.scriptId},deploymentId:"HEAD_FIXTURE"};
+ const responses={
+  "":{scriptId:j.scriptId,parentId:j.spreadsheetId,title:j.title,creator:{email:old.email}},
+  "/content":{files},"/content?versionNumber=1":{files},
+  "/versions":{versions:[{scriptId:j.scriptId,versionNumber:1,description:versionDescription}]},
+  "/deployments":{deployments:[head,deployed]},["/deployments/"+j.deploymentId]:deployed
+ };
+ const api=async(url,method)=>{
+  assert.equal(method,"GET");
+  const u=new URL(url);
+  if(u.hostname==="www.googleapis.com"){
+   assert.equal(u.searchParams.get("corpora"),"user");
+   assert.match(u.searchParams.get("q"),/furusatoStage/);
+   assert.doesNotMatch(u.searchParams.get("q"),/trashed/);
+   return u.searchParams.has("pageToken")?{files:[sheet]}:{files:[],nextPageToken:"SECOND"};
+  }
+  assert.equal(u.hostname,"script.googleapis.com");
+  const key=u.pathname.replace("/v1/projects/"+j.scriptId,"")+u.search;
+  assert.ok(Object.hasOwn(responses,key));
+  return responses[key];
+ };
+ const sheets=await listStageSheets(api);
+ assert.equal(sheets.length,1);
+ const completed=await inspectRecordedStage(api,{sheets,journal:j,receipt:completedReceipt,r,old});
+ assert.equal(completed.resume,"OWNER_ACCEPTANCE_READY");
+ safe(completed);
+ assert.equal((await inspectRecordedStage(api,{sheets,journal:{...j,scriptId:undefined,step:"SCRIPT_CREATE_REQUESTED"},r,old})).resume,
+  "UNKNOWN_SCRIPT_ID_REQUIRES_OWNER_RECONCILIATION");
+ assert.equal((await inspectRecordedStage(api,{sheets,journal:{...j,deploymentId:undefined,step:"DEPLOYMENT_CREATE_REQUESTED"},r,old})).resume,
+  "PRIVATE_DEPLOYMENT_VERIFIED_RECORD_INCOMPLETE");
+ await assert.rejects(()=>inspectRecordedStage(api,{sheets:[{...sheet,shared:true}],journal:j,r,old}),/NEW_SHEET_NOT_PRIVATE/);
+ await assert.rejects(()=>listStageSheets(async()=>({files:[],incompleteSearch:true})),/STAGE_INVENTORY_INCOMPLETE/);
+ await assert.rejects(()=>listStageSheets(async()=>({files:[],nextPageToken:"REPEATED"})),/STAGE_INVENTORY_INCOMPLETE/);
+ console.log("V020_RECOVERY_LOCAL_AND_GET_ONLY_SYNTHETIC_PASS; no Google; no auth; release HOLD");
+}
+verifyRemoteRecovery().catch(error=>{console.error(error.message);process.exitCode=1;});

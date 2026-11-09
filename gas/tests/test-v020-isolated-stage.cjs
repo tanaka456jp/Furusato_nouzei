@@ -65,7 +65,7 @@ function mock(options={}){
     return uploaded?{files}:initial;
   }
   if(method==="POST"&&url===base+newId+"/versions")
-    return {versionNumber:1};
+    return {scriptId:newId,versionNumber:1};
   if(method==="GET"&&url===base+newId+"/content?versionNumber=1")
     return {files};
   if(method==="POST"&&url===base+newId+"/deployments"){

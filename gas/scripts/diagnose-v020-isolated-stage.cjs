@@ -9,11 +9,13 @@
  * original checks step by step with Google GET requests (OAuth refresh only).
  * This is NOT authority to retry the creation command.
  */
-const fs=require("node:fs"),path=require("node:path");
+const fs=require("node:fs"),path=require("node:path"),cp=require("node:child_process");
 const g=require("../deployment/private-gas.cjs");
 const policy=require("../deployment/policy.json");
 const original=require("./create-v020-isolated-stage.cjs");
-const {recordCheck}=require("./audit-installed-private-version.cjs");
+const {recordCheck,historicalFiles}=require("./audit-installed-private-version.cjs");
+const {liveTrustedBranchTip}=require("./plan-v020-private-stage.cjs");
+const {scope,listStageSheets,matchesCandidate,inspectRecordedStage}=require("./v020-stage-inventory.cjs");
 const {countTemporaryDocuments}=require("./check-private-ocr-temporary-files.cjs");
 const root=path.resolve(__dirname,"..");
 const protectedRoot=path.resolve(root,"..","..","HousingERP");
@@ -152,57 +154,88 @@ function inspectLocal(d=dir){
   return {...classifyState({directory}),journal:"STRUCTURE_UNVERIFIED",privateReceipt:receiptStatus};
  return classifyState({directory,journal:j,receipt});
 }
-async function checkPrerequisites(){
+async function checkPrerequisites({reconcile=false}={}){
  const local=inspectLocal();
- if(local.stageDirectory!=="ABSENT")return local; // NEVER reconcile by overwriting
+ if(local.stageDirectory!=="ABSENT"&&(!reconcile||local.journal!=="STRUCTURE_PASS"||
+    !["STRUCTURE_PASS","ABSENT"].includes(local.privateReceipt)))return local;
+ const recorded=local.stageDirectory==="PRESENT";
  let phase="LOCAL_PATHS";
  const fail=e=>({
   ...local,preflight:"HOLD",failedAt:phase,
-  reason:safeCode.has(e?.message)?e.message:"PRIVATE_OR_GOOGLE_READ_UNVERIFIED",
+  reason:safeCode.has(e?.message)?e.message:original.failureCode(e),
   existingStage:"NOT_RECREATED"
  });
  try {
-  original.verifyPaths();
+  original.verifyPaths({allowRecordedStage:recorded});
   phase="LOCAL_GAS_MANIFEST";
   g.preflight();
   phase="OLD_RECEIPT";
   const r=readPrivateJson(oldReceipt);
   recordCheck(r);
   phase="GIT_AND_SOURCE";
-  const candidate=original.currentCandidate();
+  let candidate,journal,receipt;
+  if(recorded){
+   journal=readPrivateJson(path.join(dir,"journal.json"));
+   if(local.privateReceipt==="STRUCTURE_PASS")receipt=readPrivateJson(path.join(dir,"receipt.json"));
+   if(journal.step!==local.journalStep||!matchesCandidate(historicalFiles(journal.sourceCommit),journal.sourceDigest))
+    throw Error("STAGE_JOURNAL_INVALID");
+   cp.execFileSync("git",["merge-base","--is-ancestor",journal.sourceCommit,liveTrustedBranchTip()],{
+    cwd:root,stdio:"pipe",timeout:12000
+   });
+  }else candidate=original.currentCandidate();
   phase="PROTECTED_LOCAL_CONFIG";
   const drift=g.configDriftReport(r,protectedRoot);
   original.localGate(r,drift,{status:"CANDIDATE_SOURCE_READY"});
   phase="LOCAL_FINGERPRINT";
   const before=original.snapshotReadOnly();
+  if(recorded&&(journal.oldReceiptDigest!==before.oldReceipt||journal.oldAuthDigest!==before.oldAuth||
+     journal.oldDeploymentId!==r.deploymentId))throw Error("STAGE_JOURNAL_INVALID");
   phase="DEDICATED_OAUTH";
   const api=g.googleApi(await g.accessToken());
   phase="OLD_REMOTE_IMMUTABLE_VERSION";
-  await original.auditOldLive(api,r);
+  const old=await original.auditOldLive(api,r);
   phase="TEMPORARY_OCR_DRIVE";
   const drive=await countTemporaryDocuments(api);
   if(drive.status!=="PASS"||drive.temporaryOcrFiles!==0||
    drive.coverage!=="FURUSATO_DEDICATED_OAUTH_SCOPE_ONLY")
    throw Error("OLD_DRIVE_AUDIT_HOLD");
+  let remote;
+  if(reconcile){
+   phase="STAGE_INVENTORY";
+   const sheets=await listStageSheets(api);
+   phase="RECORDED_STAGE_ATTESTATION";
+   const proof=recorded?await inspectRecordedStage(api,{sheets,journal,receipt,r,old}):{
+    resume:sheets.length===0?"NO_STAGE_SHEET_VISIBLE":"VISIBLE_STAGE_WITHOUT_TRUSTED_JOURNAL"
+   };
+   remote={stageSheetCount:sheets.length,inventoryScope:scope,...proof};
+  }
   phase="OLD_LOCAL_FILES_RECHECK";
   original.unchangedAll(before);
-  phase="GIT_RECHECK";
-  const repeat=original.currentCandidate();
-  if(repeat.sha!==candidate.sha||repeat.digest!==candidate.digest)
-   throw Error("TRUSTED_CANDIDATE_CHECK_FAILED");
+  phase="GIT_AND_JOURNAL_RECHECK";
+  if(recorded){
+   if(JSON.stringify(journal)!==JSON.stringify(readPrivateJson(path.join(dir,"journal.json")))||
+      (receipt&&JSON.stringify(receipt)!==JSON.stringify(readPrivateJson(path.join(dir,"receipt.json")))))
+    throw Error("STAGE_JOURNAL_INVALID");
+  }else{
+   const repeat=original.currentCandidate();
+   if(repeat.sha!==candidate.sha||repeat.digest!==candidate.digest||inspectLocal().stageDirectory!=="ABSENT")
+    throw Error("TRUSTED_CANDIDATE_CHECK_FAILED");
+  }
   return {...local,preflight:"PASS_READONLY",failedAt:"NONE",
+   ...(remote?{remote}:{}),
    existingStage:"NOT_RECREATED",authorization:"NO_CREATION_FROM_DIAGNOSTIC",
    oldVersion:"v0.1.17",candidateVersion:"v0.1.20"};
  }catch(e){return fail(e);}
 }
 async function main(){
  const mode=process.argv[2]||"--local";
- if(process.env.CI||!["--local","--check-prerequisites"].includes(mode)||
+ if(process.env.CI||!["--local","--check-prerequisites","--check-remote"].includes(mode)||
   process.argv.length>3)throw Error("OWNER_ONLY_READONLY");
- const report=mode==="--local"?inspectLocal():await checkPrerequisites();
+ const report=mode==="--local"?inspectLocal():await checkPrerequisites({reconcile:mode==="--check-remote"});
  console.log(JSON.stringify(report));
  // A diagnostic never establishes real v0.1.20 acceptance / release.
- if(report.preflight!=="PASS_READONLY")process.exitCode=2;
+ if(report.preflight!=="PASS_READONLY"||(mode==="--check-remote"&&
+    !["NO_STAGE_SHEET_VISIBLE","OWNER_ACCEPTANCE_READY"].includes(report.remote?.resume)))process.exitCode=2;
 }
 module.exports={classifyState,inspectLocal,checkPrerequisites};
 if(require.main===module)main().catch(()=>{

@@ -14,6 +14,8 @@ const {recordCheck,historicalFiles,auditVersion,protectedDigest,appVersion,exact
 const {liveTrustedBranchTip,committedSources,checkCandidate}=
  require("./plan-v020-private-stage.cjs");
 const {countTemporaryDocuments}=require("./check-private-ocr-temporary-files.cjs");
+const {titlePrefix,sheetFields,scope,isId,versionDescription,deploymentDescription,
+ listStageSheets,verifyStageSheet,matchesCandidate,isEmptyProject}=require("./v020-stage-inventory.cjs");
 const root=path.resolve(__dirname,"..");
 const oldDir=path.join(root,".private","furusato");
 const stageDir=path.join(root,".private","furusato-v020-stage");
@@ -31,7 +33,7 @@ function readPrivate(file){
 }
 function jsonPrivate(file){return JSON.parse(readPrivate(file).toString("utf8").replace(/^\uFEFF/,""));}
 function exists(file){try{fs.lstatSync(file);return true;}catch(e){if(e.code==="ENOENT")return false;throw e;}}
-function verifyPaths(){
+function verifyPaths({allowRecordedStage=false}={}){
  for(const p of [root,path.join(root,".private"),oldDir,path.join(oldDir,"project")]){
   const st=fs.lstatSync(p);
   must(st.isDirectory()&&!st.isSymbolicLink(),"PRIVATE_PARENT_UNSAFE");
@@ -39,7 +41,7 @@ function verifyPaths(){
  for(const p of [oldReceiptFile,oldAuthFile,oldClaspFile]){
   readPrivate(p);
  }
- must(!exists(stageDir),"STAGE_ALREADY_EXISTS_DO_NOT_RETRY");
+ if(!allowRecordedStage)must(!exists(stageDir),"STAGE_ALREADY_EXISTS_DO_NOT_RETRY");
 }
 function snapshotReadOnly(){
  return {
@@ -87,7 +89,8 @@ function currentCandidate(){
    ["status","--porcelain","--untracked-files=no"],
    {cwd:root,encoding:"utf8",stdio:["ignore","pipe","pipe"]}).trim()
  });
- must(candidate.status==="CANDIDATE_SOURCE_READY"&&
+ must(candidate.status==="CANDIDATE_SOURCE_READY",candidate.reasons[0]||"TRUSTED_CANDIDATE_CHECK_FAILED");
+ must(
   appVersion(g.source())==="0.1.20"&&exactFiles(g.source()),
   "TRUSTED_CANDIDATE_CHECK_FAILED");
  return {sha:commit.head,digest:g.digest(g.source())};
@@ -136,6 +139,7 @@ function validateNewIdentity({r,newSheet,newProject,old,owner}){
  must(newProject&&typeof newProject.scriptId==="string"&&
   newProject.scriptId.length>5&&newProject.scriptId!==r.scriptId&&
   newProject.scriptId!==r.protectedScriptId&&newProject.scriptId!==newSheet.id&&
+  newProject.scriptId!==r.spreadsheetId&&newProject.scriptId!==old.protectedParent&&
   newProject.parentId===newSheet.id&&
   newProject.creator?.email===owner.email&&
   newProject.title?.startsWith(policy.projectPrefix),
@@ -175,7 +179,7 @@ async function createStage({api,r,old,files,candidate,before,dir=stageDir,
  must(!exists(dir),"STAGE_ALREADY_EXISTS_DO_NOT_RETRY");
  fs.mkdirSync(dir,{mode:0o700});
  const journal=path.join(dir,"journal.json");
- const name=policy.projectPrefix+"V020_STAGE_"+crypto.randomUUID();
+ const name=titlePrefix+crypto.randomUUID();
  writeJson(journal,{schema:"furusato-v020-stage/v1",appVersion:"0.1.20",
   sourceCommit:candidate.sha,sourceDigest:candidate.digest,
   oldReceiptDigest:before.oldReceipt,oldAuthDigest:before.oldAuth,
@@ -190,67 +194,66 @@ async function createStage({api,r,old,files,candidate,before,dir=stageDir,
   name, mimeType:"application/vnd.google-apps.spreadsheet",
   appProperties:{furusatoInstaller:"v1",furusatoStage:"v020-private"}
  });
+ must(isId(newSheet?.id),"NEW_SHEET_CREATE_RESPONSE_INVALID");
  stageJournal(dir,"SHEET_CREATED",{spreadsheetId:newSheet.id});
- must(newSheet.id&&newSheet.id!==r.spreadsheetId&&
+ must(newSheet.id!==r.spreadsheetId&&
   newSheet.id!==r.scriptId&&newSheet.id!==r.protectedScriptId&&
   newSheet.id!==old.protectedParent,"NEW_SHEET_COLLISION");
  const sheet=await api("https://www.googleapis.com/drive/v3/files/"+
   encodeURIComponent(newSheet.id)+
-  "?fields=id,name,mimeType,ownedByMe,owners(permissionId),trashed,shared,capabilities(canEdit),appProperties");
- must(sheet.id===newSheet.id&&sheet.name===name&&
-  sheet.appProperties?.furusatoInstaller==="v1"&&
-  sheet.appProperties?.furusatoStage==="v020-private","NEW_SHEET_MARKER_MISMATCH");
- must(sheet.ownedByMe&&sheet.trashed===false&&!sheet.shared&&
-  sheet.capabilities?.canEdit&&sheet.owners?.length===1&&
-  sheet.owners[0].permissionId===old.owner,"NEW_SHEET_NOT_PRIVATE");
+  "?fields="+sheetFields);
+ verifyStageSheet(sheet,newSheet.id,name,r,old);
  assertStable();
  stageJournal(dir,"SCRIPT_CREATE_REQUESTED");
  const newProject=await api("https://script.googleapis.com/v1/projects","POST",{
   title:name,parentId:newSheet.id
  });
- stageJournal(dir,"SCRIPT_CREATED",{scriptId:newProject.scriptId});
- must(typeof newProject.scriptId==="string"&&newProject.scriptId.length>5,
+ must(isId(newProject?.scriptId),
   "NEW_PROJECT_CREATE_RESPONSE_INVALID");
+ stageJournal(dir,"SCRIPT_CREATED",{scriptId:newProject.scriptId});
+ must(![r.scriptId,r.spreadsheetId,r.protectedScriptId,old.protectedParent,newSheet.id].includes(newProject.scriptId),
+  "NEW_PROJECT_IDENTITY_FAILED");
  const newProjectRemote=await api(base(newProject.scriptId));
- must(newProjectRemote.scriptId===newProject.scriptId,"NEW_PROJECT_CREATE_IDENTITY_MISMATCH");
+ must(newProjectRemote?.scriptId===newProject.scriptId&&newProjectRemote.title===name,"NEW_PROJECT_CREATE_IDENTITY_MISMATCH");
  validateNewIdentity({r,newSheet,newProject:newProjectRemote,old,owner:old});
  const existing=await api(base(newProject.scriptId)+"/content");
- must(Array.isArray(existing.files)&&existing.files.every(f=>
-  f.name==="appsscript"||(f.name==="Code"&&/^\s*function myFunction\(\)\s*\{\s*\}\s*$/.test(f.source))),
+ must(isEmptyProject(existing?.files),
   "NEW_PROJECT_CONTAINS_UNKNOWN_SOURCE");
  assertStable();
  stageJournal(dir,"SOURCE_UPLOAD_REQUESTED");
  await api(base(newProject.scriptId)+"/content","PUT",{files});
  stageJournal(dir,"SOURCE_UPLOADED");
  const uploaded=await api(base(newProject.scriptId)+"/content");
- must(exactFiles(uploaded.files)&&
-  g.digest(uploaded.files)===candidate.digest&&
-  appVersion(uploaded.files)==="0.1.20","NEW_SOURCE_VERIFY_FAILED");
+ must(matchesCandidate(uploaded?.files,candidate.digest),"NEW_SOURCE_VERIFY_FAILED");
  g.manifestCheck(JSON.parse(uploaded.files.find(f=>f.name==="appsscript").source));
  assertStable();
  stageJournal(dir,"VERSION_CREATE_REQUESTED");
  const version=await api(base(newProject.scriptId)+"/versions","POST",{
-  description:"Furusato synthetic v0.1.20; release HOLD"
+  description:versionDescription
  });
- stageJournal(dir,"VERSION_CREATED",{versionNumber:version.versionNumber});
- must(Number.isSafeInteger(version.versionNumber)&&version.versionNumber>=1,
+ must(Number.isSafeInteger(version?.versionNumber)&&version.versionNumber>=1&&
+  version.scriptId===newProject.scriptId,
   "NEW_VERSION_INVALID");
+ stageJournal(dir,"VERSION_CREATED",{versionNumber:version.versionNumber});
  const frozen=await api(base(newProject.scriptId)+"/content?versionNumber="+
   version.versionNumber);
- must(exactFiles(frozen.files)&&g.digest(frozen.files)===candidate.digest,
+ must(matchesCandidate(frozen?.files,candidate.digest),
   "NEW_FROZEN_SOURCE_MISMATCH");
  assertStable();
  stageJournal(dir,"DEPLOYMENT_CREATE_REQUESTED");
  const deployment=await api(base(newProject.scriptId)+"/deployments","POST",{
   versionNumber:version.versionNumber,manifestFileName:"appsscript",
-  description:"Furusato NEW PRIVATE synthetic v0.1.20; release HOLD"
+  description:deploymentDescription
  });
+ must(isId(deployment?.deploymentId)&&deployment.deploymentId!==r.deploymentId,
+  "NEW_DEPLOYMENT_CREATE_RESPONSE_INVALID");
  stageJournal(dir,"DEPLOYMENT_CREATED",{deploymentId:deployment.deploymentId});
  const finalDeployment=await api(base(newProject.scriptId)+"/deployments/"+
   encodeURIComponent(deployment.deploymentId));
- must(finalDeployment.deploymentId===deployment.deploymentId,"NEW_DEPLOYMENT_NOT_FOUND");
+ must(finalDeployment?.deploymentId===deployment.deploymentId,"NEW_DEPLOYMENT_NOT_FOUND");
  const webAppUrl=g.deploymentCheck(finalDeployment,newProject.scriptId,
   version.versionNumber);
+ must(webAppUrl!==r.webAppUrl,"STAGE_RECEIPT_INVALID");
  assertStable();
  const receipt={
   schema:"furusato-v020-stage/v1",appVersion:"v0.1.20",
@@ -275,40 +278,52 @@ function preflightResult(candidate){
   consent:"EXPLICIT_OWNER_APPROVAL_2026-11-09",
   release:"HOLD"};
 }
+let phase="ARGUMENTS";
 async function main(){
  const mode=process.argv[2]||"--preflight";
  must(!process.env.CI&&
   (mode==="--preflight"&&process.argv.length===3 ||
-   mode==="--create-approved"&&process.argv.length===4&&
+   mode==="--create-reconciled"&&process.argv.length===4&&
    process.argv[3]===stageMarker),"LOCAL_EXPLICIT_STAGE_ONLY");
+ phase="LOCAL_PATHS";
  verifyPaths();
+ phase="LOCAL_MANIFEST_AND_RECEIPT";
  g.preflight();
  const r=jsonPrivate(oldReceiptFile);
+ phase="GIT_AND_SOURCE";
  const candidate=currentCandidate();
+ phase="LOCAL_PROTECTION";
  const drift=g.configDriftReport(r,protectedRoot);
  localGate(r,drift,{status:"CANDIDATE_SOURCE_READY"});
  const before=snapshotReadOnly();
  const files=g.source();
+ phase="DEDICATED_OAUTH";
  const api=g.googleApi(await g.accessToken());
+ phase="OLD_REMOTE_ATTESTATION";
  const old=await auditOldLive(api,r);
+ phase="TEMPORARY_OCR_DRIVE";
  const drive=await countTemporaryDocuments(api);
  must(drive.status==="PASS"&&drive.temporaryOcrFiles===0&&
   drive.coverage==="FURUSATO_DEDICATED_OAUTH_SCOPE_ONLY","OLD_DRIVE_AUDIT_HOLD");
  unchangedAll(before);
  const stable=()=>{
   unchangedAll(before);
-  must(currentCandidate().sha===candidate.sha&&
-   currentCandidate().digest===candidate.digest,"SOURCE_CHANGED_DURING_STAGE");
+  const observed=currentCandidate();
+  must(observed.sha===candidate.sha&&observed.digest===candidate.digest,"SOURCE_CHANGED_DURING_STAGE");
  };
+ phase="STAGE_INVENTORY";
+ const visible=await listStageSheets(api);
+ must(visible.length===0,"STAGE_SHEET_ALREADY_VISIBLE");
  stable();
  if(mode==="--preflight"){
-  console.log(JSON.stringify(preflightResult(candidate)));return;
+  console.log(JSON.stringify({...preflightResult(candidate),stageSheetCount:0,inventoryScope:scope}));return;
  }
  // Also guard against changes after all read-only checks.
- stable();
+ phase="STAGE_WRITE";
  const result=await createStage({
   api,r,old,files,candidate,before,assertStable:stable
  });
+ phase="POST_WRITE_PROTECTION";
  const rechecked=await auditOldLive(api,r);
  must(rechecked.verified==="PASS","OLD_GOOGLE_CHANGED_AFTER_STAGE");
  unchangedAll(before);
@@ -316,9 +331,19 @@ async function main(){
 }
 module.exports={localGate,validateNewIdentity,createStage,stageReport,
  preflightResult,unchangedAll,verifyPaths,snapshotReadOnly,currentCandidate,auditOldLive};
-if(require.main===module)main().catch(()=>{
+function failureCode(error){
+ const message=String(error?.message||"").split(":",1)[0];
+ const known=/^(?:LOCAL_EXPLICIT_STAGE_ONLY|STAGE_(?:ALREADY_EXISTS_DO_NOT_RETRY|INVENTORY_INCOMPLETE|SHEET_ALREADY_VISIBLE|JOURNAL_INVALID|RECEIPT_INVALID)|PRIVATE_(?:FILE_UNSAFE|PARENT_UNSAFE)|UNTRUSTED_GIT_ORIGIN|TRUSTED_(?:CANDIDATE_CHECK_FAILED|REMOTE_READ_FAILED|REMOTE_TIP_UNVERIFIED)|REMOTE_TIP_DIFFERS_FROM_CHECKOUT|TRACKED_WORKTREE_DIRTY|CANDIDATE_(?:SOURCE_SET_INVALID|VERSION_INVALID)|WORKTREE_SOURCE_DIFFERS_FROM_COMMIT|HOUSING_LOCAL_DRIFT|SHARED_AUTH_UNSAFE|OLD_(?:DRIVE_AUDIT_HOLD|GOOGLE_CHANGED_AFTER_STAGE|OWNER_NOT_VERIFIED|PROJECT_IDENTITY_FAILED|SHEET_IDENTITY_FAILED)|SOURCE_CHANGED_DURING_STAGE|NEW_(?:SHEET_(?:COLLISION|MARKER_MISMATCH|NOT_PRIVATE|CREATE_RESPONSE_INVALID)|PROJECT_(?:IDENTITY_FAILED|CREATE_RESPONSE_INVALID|CREATE_IDENTITY_MISMATCH|CONTAINS_UNKNOWN_SOURCE)|SOURCE_VERIFY_FAILED|VERSION_INVALID|FROZEN_SOURCE_MISMATCH|DEPLOYMENT_(?:NOT_FOUND|CREATE_RESPONSE_INVALID))|SAFE-GOOGLE-(?:TIMEOUT|NETWORK|AUTH-CONFIG|AUTH-EXPIRED|AUTH-REJECTED|AUTH-TEMPORARY|AUTH-RESPONSE|SERVICE-DISABLED|PERMISSION|TEMPORARY|API|API-RESPONSE))$/;
+ return known.test(message)?message:"PRIVATE_OR_GOOGLE_CHECK_UNVERIFIED";
+}
+module.exports.failureCode=failureCode;
+if(require.main===module)main().catch(error=>{
  // The private journal, if created, is intentionally preserved for manual
  // reconciliation. Never retry automatically, delete resources or print IDs.
- console.error("V020_NEW_PRIVATE_STAGE_HOLD: LOCAL_OR_GOOGLE_CHECK_UNVERIFIED; NO_AUTOMATIC_RETRY");
+ let journalStep="NOT_RECORDED";
+ if(phase==="STAGE_WRITE"||phase==="POST_WRITE_PROTECTION"){
+  try{const state=require("./diagnose-v020-isolated-stage.cjs").inspectLocal();journalStep=state.journalStep;}catch{}
+ }
+ console.error("V020_NEW_PRIVATE_STAGE_HOLD: "+phase+"; "+failureCode(error)+"; "+journalStep+"; NO_AUTOMATIC_RETRY");
  process.exitCode=2;
 });
