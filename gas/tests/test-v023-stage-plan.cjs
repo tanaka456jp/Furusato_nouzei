@@ -5,6 +5,7 @@ const fs=require("node:fs"),os=require("node:os"),path=require("node:path");
 const cp=require("node:child_process");
 const {assessV023,assessCandidate,snapshotEqual,targetPathAbsent}=
  require("../scripts/plan-v023-isolated-stage.cjs");
+const {scope}=require("../scripts/v023-stage-inventory.cjs");
 const g=require("../deployment/private-gas.cjs");
 const files=[
  {name:"Code",type:"SERVER_JS",source:"function doGet() {}"},
@@ -43,11 +44,14 @@ for(const patch of [
  assert.equal(assessCandidate({...good,...patch}).ready,false,JSON.stringify(Object.keys(patch)));
 }
 assert.equal(assessCandidate({...good,localBranch:""}).ready,true);
+const zeroInventory={status:"PASS",scope,matchingResources:0,
+ reason:"NO_V023_MATCH_VISIBLE_IN_DEDICATED_OAUTH_SCOPE"};
 const original={
  candidate:{ready:true},
  attestation:{status:"LIMITED_V020_OWNER_EVIDENCE_AND_GOOGLE_GET_PASS",
   version:"v0.1.20",release:"HOLD",googleWrites:"NONE_FROM_THIS_GATE"},
- stable:true,targetAbsent:true
+ stable:true,targetAbsent:true,inventory:zeroInventory,
+ inventoryAfter:{...zeroInventory}
 };
 const pass=assessV023(original);
 assert.equal(pass.status,"READY_FOR_SEPARATE_V023_STAGE_APPROVAL");
@@ -55,7 +59,8 @@ assert.equal(pass.googleWrites,"NONE_FROM_THIS_PLAN");
 assert.equal(pass.release,"HOLD");
 assert.equal(pass.ownerAuthorization,"SEPARATE_EXPLICIT_APPROVAL_REQUIRED_FOR_ANY_GOOGLE_WRITE");
 assert.equal(pass.v023ActualOCR,"NOT_TESTED");
-assert.equal(pass.v023RemoteExists,"NOT_CHECKED");
+assert.equal(pass.v023RemoteInventory,"ZERO_VISIBLE_WITHIN_DEDICATED_OAUTH_SCOPE");
+assert.equal(pass.v023OrphanedAppsScriptExistence,"NOT_ENUMERABLE_BY_PARENT_SHEET");
 for(const [patch,reason] of [
  [{candidate:{ready:false}},"CANDIDATE_SOURCE_NOT_VERIFIED"],
  [{attestation:null},"V020_OWNER_AND_GOOGLE_READONLY_ATTESTATION_NOT_PASS"],
@@ -63,7 +68,12 @@ for(const [patch,reason] of [
  [{attestation:{...original.attestation,version:"v0.1.23"}},"V020_OWNER_AND_GOOGLE_READONLY_ATTESTATION_NOT_PASS"],
  [{attestation:{...original.attestation,googleWrites:"PRESENT"}},"V020_OWNER_AND_GOOGLE_READONLY_ATTESTATION_NOT_PASS"],
  [{stable:false},"CANDIDATE_CHANGED_DURING_CHECK"],
- [{targetAbsent:false},"V023_TARGET_ALREADY_PRESENT"]
+ [{targetAbsent:false},"V023_TARGET_ALREADY_PRESENT"],
+ [{inventory:null},"V023_REMOTE_INVENTORY_NOT_ZERO_OR_UNVERIFIED"],
+ [{inventory:{...zeroInventory,matchingResources:1,status:"HOLD"}},"V023_REMOTE_INVENTORY_NOT_ZERO_OR_UNVERIFIED"],
+ [{inventory:{...zeroInventory,scope:"ACCOUNT_WIDE"}},"V023_REMOTE_INVENTORY_NOT_ZERO_OR_UNVERIFIED"],
+ [{inventoryAfter:null},"V023_REMOTE_INVENTORY_RECHECK_FAILED"],
+ [{inventoryAfter:{...zeroInventory,matchingResources:1}},"V023_REMOTE_INVENTORY_RECHECK_FAILED"]
 ]){
  const x=assessV023({...original,...patch});
  assert.equal(x.status,"HOLD",reason);
