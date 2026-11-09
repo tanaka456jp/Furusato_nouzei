@@ -402,6 +402,14 @@ test("complete OCR permits explicit original review and clears approval on edits
   p.confirmOthers();p.next();
   assert.equal(p.el("reportAmount").textContent,"計算停止");
   p.click("edit");p.click("back");p.click("back");
+  p.type("salaryIncomeReference","");
+  assert.equal(p.el("sourceConfirmBox").style.display,"none");
+  p.el("sourceConfirmed").checked=true;
+  p.confirmOthers();p.next();
+  assert.equal(p.el("reportAmount").textContent,"計算停止");
+  p.click("edit");p.click("back");p.click("back");
+  p.type("salaryIncomeReference",5200000);
+  assert.equal(p.el("sourceConfirmBox").style.display,"flex");
   p.el("sourceConfirmed").checked=true;p.type("salaryGross",7000000);
   assert.equal(p.el("sourceConfirmed").checked,false);
   p.el("sourceConfirmed").checked=true;

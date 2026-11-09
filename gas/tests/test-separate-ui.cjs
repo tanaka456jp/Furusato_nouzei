@@ -49,8 +49,6 @@ const profiles = [
       await page.close();
     }
     const draftPage = await browser.newPage();
-    let approveDraftChange=true;
-    draftPage.on("dialog",dialog=>approveDraftChange?dialog.accept():dialog.dismiss());
     await draftPage.goto(source);
     await draftPage.locator("#draftPanel summary").click();
     const downloadDraft = async mode => {
@@ -78,14 +76,17 @@ const profiles = [
     await restoreDraft({...salaryDraft,values:{...salaryDraft.values,ack:true}});
     await draftPage.locator("#draftStatus").getByText(/不明な項目/).waitFor();
     assert.equal(await draftPage.locator("#salaryGross").inputValue(),"5000000");
-    approveDraftChange=false;
     await restoreDraft(salaryDraft);
+    await draftPage.locator("#draftConfirmNo").click();
     await draftPage.locator("#draftStatus").getByText(/取り消しました/).waitFor();
     assert.equal(await draftPage.locator("#salaryGross").inputValue(),"5000000");
     await draftPage.locator("#newDraft").click();
-    assert.equal(await draftPage.locator("#salaryGross").inputValue(),"5000000");
-    approveDraftChange=true;
+    await draftPage.locator("#salaryGross").fill("5100000");
+    await draftPage.locator("#draftConfirmYes").click();
+    assert.equal(await draftPage.locator("#salaryGross").inputValue(),"5100000");
+    await draftPage.locator("#draftStatus").getByText(/確認待ちの間に入力が変わりました/).waitFor();
     await draftPage.locator("#newDraft").click();
+    await draftPage.locator("#draftConfirmYes").click();
     assert.equal(await draftPage.locator("#salaryGross").inputValue(),"");
     await restoreDraft(salaryDraft);
     await draftPage.locator("#draftStatus").getByText(/読み込みました/).waitFor();
@@ -98,6 +99,7 @@ const profiles = [
     const splitDraft = await downloadDraft("separate");
     await draftPage.locator("#salaryMode").click();
     await restoreDraft(splitDraft);
+    await draftPage.locator("#draftConfirmYes").click();
     await draftPage.locator("#splitScreen").waitFor();
     assert.equal(await draftPage.locator("#split-listedStock").inputValue(),"5000000");
     assert.equal(await draftPage.locator("#splitReviewed").isChecked(),false);

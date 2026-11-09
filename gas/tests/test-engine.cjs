@@ -204,9 +204,20 @@ test("special-relative 2026 slip must not be silently estimated",()=>{
   assert.equal(x.status,"HOLD");assert.equal(x.donationLimitYen,null);
 });
 test("all unsupported scenarios are fail-closed",()=>{
-  ["hasSpouse","hasDependents","hasLifeInsurance","hasEarthquakeInsurance","hasMortgage",
-   "hasOtherIncome","hasMedical","hasSplitIncome","hasIncomeAdjustment","sourceReviewPending"]
-   .forEach(k=>{const x=tax.calculate({...base,[k]:true});assert.equal(x.status,"HOLD",k);assert.equal(x.donationLimitYen,null);});
+  const flags=["hasSpouse","hasDependents","hasLifeInsurance","hasEarthquakeInsurance","hasMortgage",
+    "hasOtherIncome","hasMedical","hasSplitIncome","hasIncomeAdjustment","hasNonstandardConditions","sourceReviewPending"];
+  for(const year of [2025,2026]){
+    for(const flag of flags){
+      const x=tax.calculate({...base,year,[flag]:true});
+      assert.equal(x.status,"HOLD",year+" "+flag);
+      assert.equal(x.donationLimitYen,null);
+      assert.ok(x.reasons[0]);
+    }
+    const combined=tax.calculate({...base,year,hasSpouse:true,hasDependents:true,hasLifeInsurance:true,hasMedical:true});
+    assert.equal(combined.status,"HOLD");
+    assert.equal(combined.donationLimitYen,null);
+    assert.equal(combined.reasons.length,4);
+  }
 });
 test("unacknowledged exclusions, wrong income type and filing fail closed",()=>{
   for(const invalid of [{acknowledgedExclusions:false},{incomeType:"mixed"},{filing:"unknown"}]){

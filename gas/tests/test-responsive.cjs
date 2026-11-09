@@ -11,6 +11,9 @@ const profiles=[
  ["tablet-768",768,1024,2,true],["desktop-1280",1280,800,1,false],
  ["desktop-1920-100",1920,1080,1,false],
  ["desktop-1920-125-equivalent",1536,864,1.25,false],
+ ["desktop-1920-150-equivalent",1280,720,1.5,false],
+ ["desktop-1366-100",1366,768,1,false],
+ ["desktop-1366-125-equivalent",1092,614,1.25,false],
  ["desktop-1366-150-equivalent",910,512,1.5,false]
 ];
 async function measure(page,name,width,mobile){
