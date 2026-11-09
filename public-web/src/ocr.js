@@ -2,7 +2,7 @@
 /**
  * Client-only, fail-closed OCR review. NO user file ever enters a request.
  * npm-built runtime assets (Tesseract/PDF.js/ja models) are SELF-HOSTED.
- * Image OCR is 2 independent attempts (original vs contrast-enhanced);
+ * Image OCR uses 2 correlated attempts (original vs contrast-enhanced);
  * agreement is a candidate, NEVER tax assessment or source verification.
  */
 (function(){
@@ -182,10 +182,51 @@
         workerBlobURL:false,cacheMethod:"none"
       };
       worker=await window.Tesseract.createWorker("jpn",window.Tesseract.OEM.LSTM_ONLY,paths);
-      var a=await worker.recognize(original);
+      var a=await worker.recognize(original,{}, {text:true,blocks:true});
       var b=await worker.recognize(enhanced);
-      return window.FurusatoSlipReview.compareAttempts(
+      var compared=window.FurusatoSlipReview.compareAttempts(
         a?.data?.text,b?.data?.text,a?.data?.confidence,b?.data?.confidence);
+      // Do not use regional reads to invent fields or override global HOLD.
+      // If the original OCR returns exact positions for all four labels,
+      // re-read the four crops at 2x size and VETO disagreement.
+      if(compared.eligibleForManualTransfer&&
+         window.FurusatoOcrRegions&&
+         typeof window.FurusatoOcrRegions.plan==="function"&&
+         typeof window.FurusatoOcrRegions.assessRechecks==="function"){
+        var plan=window.FurusatoOcrRegions.plan(
+          a?.data?.blocks,original.width,original.height,compared.candidates);
+        if(plan.status==="CONFLICT")return {
+          schema:"furusato-slip-region-review/v1",status:"REQUIRES_SOURCE_REVIEW",
+          year:null,candidates:{},reasons:plan.reasons,
+          eligibleForManualTransfer:false,autoApproved:false,originalCompared:false
+        };
+        if(plan.status==="READY"){
+          var values=[];
+          for(const region of plan.rectangles){
+            var crop=document.createElement("canvas");
+            try{
+              crop.width=region.width*2;crop.height=region.height*2;
+              var ctx=crop.getContext("2d");
+              if(!ctx)throw Error("FIELD_REGION_CANVAS_UNAVAILABLE");
+              ctx.fillStyle="#fff";ctx.fillRect(0,0,crop.width,crop.height);
+              ctx.drawImage(original,
+                region.left,region.top,region.width,region.height,
+                0,0,crop.width,crop.height);
+              var rec=await worker.recognize(crop);
+              values.push({key:region.key,text:rec?.data?.text,
+                confidence:rec?.data?.confidence});
+            }finally{crop.width=0;crop.height=0;}
+          }
+          var checked=window.FurusatoOcrRegions.assessRechecks(
+            values,compared.candidates);
+          if(checked.status!=="CORROBORATED")return {
+            schema:"furusato-slip-region-review/v1",status:"REQUIRES_SOURCE_REVIEW",
+            year:null,candidates:{},reasons:checked.reasons,
+            eligibleForManualTransfer:false,autoApproved:false,originalCompared:false
+          };
+        }
+      }
+      return compared;
     }finally{
       if(worker)await worker.terminate();
       if(enhanced){enhanced.width=0;enhanced.height=0;}
