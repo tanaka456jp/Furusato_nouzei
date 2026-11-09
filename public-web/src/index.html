@@ -9,6 +9,9 @@
   <link rel="stylesheet" href="./style.css">
   <script src="./engine.js" defer></script>
   <script src="./app.js" defer></script>
+  <script src="./ocr-review.js" defer></script>
+  <script src="./vendor/tesseract/tesseract.min.js" defer></script>
+  <script src="./ocr.js" defer></script>
 </head>
 <body>
   <a class="skip" href="#main">本文へ移動</a>
@@ -30,8 +33,23 @@
         <div class="panel-head">
           <p class="eyebrow">STEP 01</p>
           <h2 id="calc-title">基本情報を入力</h2>
-          <p>すべて円単位です。源泉徴収票の読み取り・アップロードはこの公開前版では利用できません。</p>
+          <p>すべて円単位です。源泉徴収票の試験的な端末内OCRを選べます。結果は原票照合が必要です。</p>
         </div>
+        <section class="ocr-panel" aria-labelledby="ocr-title">
+          <p class="eyebrow">OPTIONAL · LOCAL OCR</p>
+          <h3 id="ocr-title">源泉徴収票から読み取る（試験機能）</h3>
+          <p>画像・PDFはこの端末で処理し、サーバーにアップロードしません。読み取りには時間がかかることがあります。原票照合なしでは自動確定しません。</p>
+          <label>源泉徴収票（JPEG・PNG・1ページPDF、8MB以下）
+            <input id="slipFile" type="file" accept="image/jpeg,image/png,application/pdf">
+          </label>
+          <div class="ocr-actions">
+            <button id="slipScan" type="button" class="secondary">端末内で読み取る</button>
+            <label class="ocr-confirm"><input id="slipConfirm" type="checkbox"> 原票と年分・4金額・その他控除の有無を確認しました</label>
+            <button id="slipTransfer" type="button" class="secondary" disabled>確認済み候補を入力欄へ反映</button>
+          </div>
+          <div id="slipReview" class="ocr-report" role="status" aria-live="polite" hidden></div>
+          <p class="smallprint">源泉徴収票は個人情報です。OCRには日本語言語モデルを端末へ読み込む必要があります。認識に相違がある場合はHOLDとして手入力してください。</p>
+        </section>
         <form id="calculator" novalidate>
           <div class="fields">
             <label>所得年
@@ -45,6 +63,12 @@
             </label>
             <label>社会保険料等の金額
               <input type="text" inputmode="numeric" autocomplete="off" spellcheck="false" name="socialInsurance" placeholder="例：1000000" maxlength="12" required>
+            </label>
+            <label>給与所得控除後の金額 <small>OCRから転記した場合の検証値（手入力可）</small>
+              <input type="text" inputmode="numeric" autocomplete="off" spellcheck="false" name="salaryIncomeReference" placeholder="任意：源泉徴収票の記載額" maxlength="12">
+            </label>
+            <label>所得控除の額の合計額 <small>OCRから転記した場合の検証値（手入力可）</small>
+              <input type="text" inputmode="numeric" autocomplete="off" spellcheck="false" name="deductionsReference" placeholder="任意：源泉徴収票の記載額" maxlength="12">
             </label>
           </div>
           <fieldset class="conditions">
@@ -72,7 +96,7 @@
         <section class="aside-card">
           <p class="eyebrow">プライバシー</p>
           <h2>所得情報をサーバーに送信しない</h2>
-          <p>この検証版は入力を端末内で計算します。アカウント登録、入力履歴のサーバー保存、外部OCRや広告の読み込みは行いません。</p>
+          <p>この検証版は入力を端末内で計算します。アカウント登録、入力履歴のサーバー保存、外部OCRや広告の読み込みは行いません。OCRのコードと言語モデルはこのサイトから読み込みます。</p>
         </section>
         <section class="aside-card">
           <p class="eyebrow">適用範囲</p>
