@@ -138,9 +138,15 @@
   async function imageToCanvas(file){
     var image;
     if(typeof createImageBitmap==="function"){
-      image=await createImageBitmap(file,{imageOrientation:"from-image"});
-      try{return safeCanvas(image,image.width,image.height);}
-      finally{if(typeof image.close==="function")image.close();}
+      // Some Safari versions expose createImageBitmap but reject particular
+      // JPEG decodes/options. A failed decode must not block the safe native
+      // image-element path (which still undergoes the same quality gates).
+      try{image=await createImageBitmap(file,{imageOrientation:"from-image"});}
+      catch(_){image=null;}
+      if(image){
+        try{return safeCanvas(image,image.width,image.height);}
+        finally{if(typeof image.close==="function")image.close();}
+      }
     }
     var url=URL.createObjectURL(file);
     try{

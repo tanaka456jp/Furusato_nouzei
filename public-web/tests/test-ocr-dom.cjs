@@ -223,6 +223,43 @@ async function main(){
  assert.equal(field("deductionsReference").value,"");
  field("acknowledgedExclusions").checked=true;
  assert.equal(calc().className,"result hold");
+ // Safari compatibility: some implementations expose createImageBitmap
+ // but reject a JPEG or imageOrientation option. Native <img> decoding is
+ // allowed, is local-only, and still goes through the same OCR/quality gates.
+ let revoked=0,objectUrls=0;
+ const oldBitmap=win.createImageBitmap,oldImage=win.Image;
+ const oldMakeUrl=win.URL.createObjectURL,oldRevokeUrl=win.URL.revokeObjectURL;
+ win.createImageBitmap=async()=>{throw Error("SYNTHETIC_BITMAP_DECODE_REJECTED");};
+ win.URL.createObjectURL=()=>{objectUrls++;return "blob:offline-synthetic-jpeg";};
+ win.URL.revokeObjectURL=()=>{revoked++;};
+ win.Image=class SyntheticLocalImage{
+   constructor(){this.naturalWidth=1200;this.naturalHeight=800;}
+   set src(url){
+     assert.match(url,/^blob:offline-synthetic-jpeg$/);
+     Promise.resolve().then(()=>this.onload());
+   }
+ };
+ try{
+   Object.defineProperty(file,"files",{configurable:true,value:[{
+     name:"synthetic-safari.jpg",type:"image/jpeg",size:1024
+   }]});
+   file.dispatchEvent(new win.Event("change",{bubbles:true}));
+   const beforeFallback=recognized;
+   scan.click();
+   for(let i=0;i<100&&(scan.disabled||recognized<beforeFallback+2);i++)
+     await new Promise(resolve=>setImmediate(resolve));
+   assert.equal(scan.disabled,false);
+   assert.equal(recognized,beforeFallback+2);
+   assert.equal(transfer.disabled,false);
+   assert.equal(objectUrls,1);
+   assert.equal(revoked,1);
+   assert.equal(networkAttempts,0);
+ }finally{
+   win.createImageBitmap=oldBitmap;
+   win.Image=oldImage;
+   win.URL.createObjectURL=oldMakeUrl;
+   win.URL.revokeObjectURL=oldRevokeUrl;
+ }
  assert.equal(networkAttempts,0);
  dom.window.close();
  console.log("PUBLIC_OCR_MANUAL_TRANSFER_DOM_PASS; synthetic; no network; not accuracy proof");
