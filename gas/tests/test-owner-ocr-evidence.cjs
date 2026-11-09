@@ -93,4 +93,32 @@ assert.equal(summarizeRecords([stageWin,stagePhone,stageLatestFailure],0,stageOp
 const stageSummary=JSON.stringify(summarizeRecords([stageWin,stagePhone],0,stageOptions));
 assert.ok(!stageSummary.includes(digest),"Private stage receipt digest must not leave the audit");
 assert.ok(!stageSummary.includes(sha),"Private source revision must not leave the audit");
+// Fail closed when an invalid clock/date masks an older valid owner record.
+for(const opts of [{},{...stageOptions}]){
+ const win = opts.stageV020 ? stageWin : windows;
+ const phone = opts.stageV020 ? stagePhone : iphone;
+ const malformed = {...win,finishedAt:"NOT_A_TIMESTAMP"};
+ const invalidCalendar = {...win,finishedAt:"2026-02-30T02:25:00.000Z"};
+ for(const invalid of [malformed,invalidCalendar]){
+  assert.ok(validateRecord(invalid,opts).reasons.includes("TIME_UNVERIFIED"));
+  const a=summarizeRecords([win,phone,invalid],0,opts);
+  const b=summarizeRecords([invalid,win,phone],0,opts);
+  assert.equal(a.structuralStatus,"HOLD");
+  assert.equal(b.structuralStatus,"HOLD");
+  assert.ok(a.windows.reasons.includes("UNORDERABLE_EVIDENCE_TIME"));
+ }
+ // Same-millisecond records may disagree and readdir ordering must not
+ // choose a winner; both orders must HOLD.
+ const simultaneousFail = {...win,
+  results:[{...win.results[0],candidates:"FAIL"},...win.results.slice(1)]};
+ for(const rows of [[win,phone,simultaneousFail],[simultaneousFail,win,phone]]){
+  const a=summarizeRecords(rows,0,opts);
+  assert.equal(a.structuralStatus,"HOLD");
+  assert.ok(a.windows.reasons.includes("DUPLICATE_LATEST_FINISHED_AT"));
+ }
+ // A later valid owner re-test can supersede a past same-time conflict.
+ const recovered={...win,finishedAt:"2026-11-09T04:25:00.000Z"};
+ assert.equal(summarizeRecords([win,simultaneousFail,phone,recovered],0,opts).structuralStatus,
+  "OWNER_ATTESTED_STRUCTURE_PASS");
+}
 console.log("OWNER_OCR_OFFLINE_AUDIT_TEST_PASS; synthetic only; version remains unverified; release HOLD");
