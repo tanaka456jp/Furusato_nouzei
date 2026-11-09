@@ -1,0 +1,53 @@
+name: Public web offline review (NO DEPLOY)
+on:
+  pull_request:
+    paths:
+      - 'public-web/**'
+      - 'gas/Engine.gs'
+      - '.github/workflows/public-web-review.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  public-web:
+    name: Static build and offline browser privacy acceptance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned local browser test dependency
+        run: npm ci --prefix gas --ignore-scripts --no-audit --no-fund
+      - name: Syntax and privacy contract
+        run: |
+          node --check public-web/scripts/build.cjs
+          node --check public-web/src/app.js
+          node --check public-web/tests/test-public-web.cjs
+      - name: Build private review site and run synthetic browser acceptance
+        run: |
+          node public-web/scripts/build.cjs
+          node public-web/tests/test-public-web.cjs
+      - name: Confirm no deployment or ads
+        run: |
+          test -f public-web/dist/robots.txt
+          grep -q 'Disallow: /' public-web/dist/robots.txt
+          grep -q "connect-src 'none'" public-web/dist/_headers
+          if grep -R -E 'adsbygoogle|googlesyndication|googletagmanager' public-web/dist; then
+            echo 'Unexpected advertising or analytics script detected'
+            exit 1
+          fi
+      - name: Upload NOINDEX build for offline inspection only
+        uses: actions/upload-artifact@v4
+        with:
+          name: Furusato_Public_Web_REVIEW_ONLY_${{ github.run_id }}
+          path: public-web/dist/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Release boundary
+        run: |
+          echo 'Static review artifact only. NO Cloudflare deployment, NO ads, NO indexing.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Supported tax cases still require independent real-device and legal acceptance. RELEASE=HOLD' >> "$GITHUB_STEP_SUMMARY"
