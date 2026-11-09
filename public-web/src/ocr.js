@@ -44,7 +44,7 @@
       show("原票の読取前です。読取結果を確認するか「入力をクリア」で解除してください。");
     }
   });
-  form.addEventListener("reset",function(){clearReview();});
+  form.addEventListener("reset",function(){clearReview();fileInput.value="";});
   function safeCanvas(source,width,height){
     var factor=Math.min(1,2600/Math.max(width,height));
     var w=Math.max(1,Math.floor(width*factor));
@@ -97,7 +97,7 @@
     pdfjs.GlobalWorkerOptions.workerSrc="./vendor/pdf.worker.mjs";
     var bytes=new Uint8Array(await file.arrayBuffer());
     var task=pdfjs.getDocument({data:bytes,disableAutoFetch:true,disableStream:true,
-      useSystemFonts:false,stopAtErrors:true});
+      isEvalSupported:false,useSystemFonts:false,stopAtErrors:true});
     var pdf=await task.promise;
     if(pdf.numPages!==1){await pdf.destroy();throw Error("PDFは1ページのみ対応しています。");}
     return pdf;
@@ -208,8 +208,7 @@
       review=result;
       displayReview(result);
     }catch(error){
-      blocked("OCRを完了できませんでした。"+String(error?.message||"")+
-        " 個人情報の誤読を避けるため手入力に切り替えてください。");
+      blocked("OCRを完了できませんでした。入力原票は送信されません。個人情報の誤読を避けるため手入力に切り替えてください。");
     }finally{
       busy=false;runButton.disabled=false;
       if(canvas){canvas.width=0;canvas.height=0;}
