@@ -24,7 +24,7 @@ function auditDrive(row) {
 }
 function validTimestamp(s) {
   return typeof s === "string" && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(s) &&
-    Number.isFinite(Date.parse(s));
+    Number.isFinite(Date.parse(s)) && new Date(s).toISOString() === s;
 }
 function validateRecord(data, options = {}) {
   const errors = [];
@@ -73,15 +73,39 @@ function validateRecord(data, options = {}) {
 function summarizeRecords(records, rejected = 0, options = {}) {
   const byDevice = {};
   const chosen = {};
+  const unorderable = new Set();
+  const tiedLatest = new Set();
   for (const record of records) {
     const r = validateRecord(record, options);
-    if (r.device === "UNRECOGNIZED") rejected++;
-    else if (!chosen[r.device] || (r.finishedAt || "") >= (chosen[r.device].finishedAt || ""))
+    if (r.device === "UNRECOGNIZED") {
+      rejected++;
+      continue;
+    }
+    // Failed records with missing or invalid timestamps cannot be ordered
+    // relative to an older PASS. Treat the entire device as HOLD rather
+    // than silently preferring whichever record happens to be readable.
+    if (!r.finishedAt) {
+      unorderable.add(r.device);
+      continue;
+    }
+    const previous = chosen[r.device];
+    if (!previous || r.finishedAt > previous.finishedAt) {
       chosen[r.device] = r;
+      tiedLatest.delete(r.device);
+    } else if (r.finishedAt === previous.finishedAt) {
+      // Distinct owner evidence files can have equal millisecond timestamps.
+      // Never let read order decide a PASS/FAIL conflict.
+      tiedLatest.add(r.device);
+    }
   }
   for (const device of Object.keys(devices)) {
     const r = chosen[device];
+    const uncertainty = [
+      ...(unorderable.has(device) ? ["UNORDERABLE_EVIDENCE_TIME"] : []),
+      ...(tiedLatest.has(device) ? ["DUPLICATE_LATEST_FINISHED_AT"] : [])
+    ];
     byDevice[device === "WINDOWS_EDGE_OWNER_OBSERVED" ? "windows" : "iphone"] =
+      uncertainty.length ? {status:"HOLD",reasons:uncertainty,formats:devices[device]} :
       r ? {status:r.status,reasons:r.reasons,formats:devices[device]} :
         {status:"HOLD",reasons:["EVIDENCE_NOT_FOUND"],formats:devices[device]};
   }
@@ -110,9 +134,10 @@ function summarizeRecords(records, rejected = 0, options = {}) {
   };
 }
 function loadRecords(directory = evidenceDir) {
-  for (const folder of [path.join(root, ".private"),
-    path.join(root, ".private", "furusato"),
-    ...(directory === stageEvidenceDir ? [stageRoot] : []), directory]) {
+  const folders = directory === stageEvidenceDir ?
+    [path.join(root, ".private"), stageRoot, directory] :
+    [path.join(root, ".private"), path.join(root, ".private", "furusato"), directory];
+  for (const folder of folders) {
     const st = fs.lstatSync(folder);
     if (!st.isDirectory() || st.isSymbolicLink()) throw Error("UNSAFE_PRIVATE_DIRECTORY");
   }
