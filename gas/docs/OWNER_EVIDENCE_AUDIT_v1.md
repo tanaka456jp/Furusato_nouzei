@@ -150,3 +150,20 @@ node gas/scripts/plan-v020-private-stage.cjs
 ```
 
 ハッシュ・OAuthトークン本文・認証JSON・Google Script ID・URL・ローカル絶対パスは表示しません。隔離認証コピー、共通認証ファイル、既存レシート、保護スナップショット、HousingERP、Google側の設定には書き込みません。**トークン更新パターンが一致してもHOLDを自動解除しません。** 未確認の書込元を推測で承認したり、保護ハッシュを差し替えたり、認証ファイルを再初期化したりしないでください。今回の検査はGoogle APIに接続する前に停止するため、v0.1.20の実Google OCRの受入を証明しません。
+
+
+## 2026-11-09：HISTORICAL_BYTES_NOT_MATCHED の原因分析（revision 6）
+
+実PC①の結果は `global-clasp-auth:CHANGED` かつ `globalAuthReview.baseline:HISTORICAL_BYTES_NOT_MATCHED`、`pattern:UNVERIFIED` でした。この結果は**隔離認証コピーが既存レシートの過去共通認証ハッシュと一致しない**という事実だけを示します。改ざん・不正利用・通常トークン更新のいずれも断定できません。
+
+コード上の作成時点を確認すると、`reuse-auth` は共通 `~/.clasprc.json` の内容を隔離 `.private/furusato/auth.json` にコピーし、その**後**、`install` が保護スナップショットに共通認証のSHA-256を保存します。したがって、隔離コピーは保存時の共通認証の真正な原本だと保証できず、時間差・認証更新・別の書込元などによる差異をこの2ファイルだけで再構成することはできません。
+
+revision 6では、この不確実性を保持したまま、**隔離コピーと現在の共通認証の間**の限定的なOAuthトークン更新パターンを、歴史的ハッシュ不一致でもオフラインで独立比較します。出力の `pattern` はこの現在の2ファイル間の差分のみで、`comparisonScope: ISOLATED_COPY_VS_CURRENT_GLOBAL_ONLY`、`historicalSnapshotReconstruction: NOT_PROVEN`、`writer: UNVERIFIED` と明示します。`TOKEN_REFRESH_COMPATIBLE` でも過去の共通認証との同一性や書込元が証明されたことにはならず、**常に status:HOLD / ownerReview:REQUIRED / snapshotWrite:PROHIBITED** とします。
+
+```powershell
+cd $HOME\Development\Furusato_nouzei_GAS_OCR
+git pull --ff-only origin feature/gas-workflow-20261106
+node gas/scripts/plan-v020-private-stage.cjs
+```
+
+**今回の制約の下では過去の共通認証原本をハッシュ値だけから復元することは不可能です。** 認証・レシート・保護スナップショットの書換え、`git reset --hard`、旧GAS上書き、合成環境の勝手な新規作成は行いません。現在の共通認証を隔離コピーで置き換えることも禁止です。所有者が変更履歴を確認するか、過去の信頼できるバックアップが別途見つからない限り、元の厳格な保護ゲートはHOLDのままです。この調査自体はGoogleへ接続しません。
