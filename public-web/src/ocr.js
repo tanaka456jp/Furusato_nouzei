@@ -117,9 +117,9 @@
   }
   async function digitalPdfText(page){
     var content=await page.getTextContent();
-    return content.items.map(function(item){
+    return {text:content.items.map(function(item){
       return String(item.str||"")+(item.hasEOL?"\n":" ");
-    }).join("");
+    }).join(""),items:content.items};
   }
   async function rasterizePdf(page){
     var viewport=page.getViewport({scale:1});
@@ -211,9 +211,21 @@
       if(file.type==="application/pdf"){
         pdf=await openPdf(file);
         var page=await pdf.getPage(1);
-        var text=await digitalPdfText(page);
-        var digital=window.FurusatoSlipReview.reviewDigitalPdf(text);
-        if(digital.eligibleForManualTransfer)result=digital;
+        var extracted=await digitalPdfText(page);
+        var digital=window.FurusatoSlipReview.reviewDigitalPdf(extracted.text);
+        if(digital.eligibleForManualTransfer){
+          if(typeof window.FurusatoPdfLayout!=="object"||
+             typeof window.FurusatoPdfLayout.audit!=="function")
+            throw Error("PDF_POSITION_AUDIT_MISSING");
+          var positions=window.FurusatoPdfLayout.audit(
+            extracted.items,digital.candidates);
+          result=positions.status==="CONFLICT"?{
+            schema:digital.schema,status:"REQUIRES_SOURCE_REVIEW",
+            year:null,candidates:{},
+            reasons:positions.reasons,
+            eligibleForManualTransfer:false,originalCompared:false,autoApproved:false
+          }:digital;
+        }
         else if((digital.reasons||[]).some(function(reason){return reason.startsWith("FIELD_CONFLICT_");})){
           result=digital;
         }else{
