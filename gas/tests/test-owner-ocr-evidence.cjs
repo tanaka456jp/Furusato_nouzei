@@ -121,4 +121,63 @@ for(const opts of [{},{...stageOptions}]){
  assert.equal(summarizeRecords([win,simultaneousFail,phone,recovered],0,opts).structuralStatus,
   "OWNER_ATTESTED_STRUCTURE_PASS");
 }
+// Combined v0.1.20 owner + independent immutable Google GET gate.
+// The fixture below is entirely synthetic; it cannot prove actual OCR,
+// physical Safari use, remote resource existence, or public release.
+const {evaluate}=require("../scripts/attest-v020-owner-acceptance.cjs");
+const completeOwner=summarizeRecords([stageWin,stagePhone],0,stageOptions);
+const remoteFixture={
+ status:"HOLD",release:"HOLD",stageDirectory:"PRESENT",
+ journal:"STRUCTURE_PASS",journalStep:"COMPLETE",privateReceipt:"STRUCTURE_PASS",
+ preflight:"PASS_READONLY",failedAt:"NONE",existingStage:"NOT_RECREATED",
+ authorization:"NO_CREATION_FROM_DIAGNOSTIC",candidateVersion:"v0.1.20",
+ oldVersion:"v0.1.17",
+ remote:{resume:"OWNER_ACCEPTANCE_READY",stageSheetCount:1,
+  inventoryScope:"DEDICATED_OAUTH_USER_CORPUS_INCLUDING_TRASH",
+  sheetIdentity:"PASS",projectIdentity:"PASS",projectSource:"PASS",
+  immutableVersion:"PASS",privateDeployment:"PASS"},
+ drive:{status:"PASS",temporaryOcrFiles:0,pages:1,
+  coverage:"FURUSATO_DEDICATED_OAUTH_SCOPE_ONLY"}
+};
+const expected={
+ owner:completeOwner,remote:remoteFixture,
+ receiptUnchanged:true,evidenceUnchanged:true
+};
+const full=evaluate(expected);
+assert.equal(full.status,"LIMITED_V020_OWNER_EVIDENCE_AND_GOOGLE_GET_PASS");
+assert.equal(full.release,"HOLD");
+assert.equal(full.v023SameVersionGoogleAcceptance,"NOT_TESTED");
+assert.equal(full.independentOcrAccuracy,"NOT_VERIFIED");
+assert.equal(full.googleWrites,"NONE_FROM_THIS_GATE");
+for(const [patch,reason] of [
+ [{owner:summarizeRecords([stageWin],0,stageOptions)},"OWNER_EVIDENCE_NOT_ATTESTED"],
+ [{owner:{...completeOwner,release:"GO"}},"OWNER_EVIDENCE_NOT_ATTESTED"],
+ [{owner:{...completeOwner,iphone:{status:"HOLD"}}},"OWNER_EVIDENCE_NOT_ATTESTED"],
+ [{remote:{...remoteFixture,preflight:"HOLD"}},"STAGE_LOCAL_OR_PROTECTED_ENV_UNVERIFIED"],
+ [{remote:{...remoteFixture,stageDirectory:"ABSENT"}},"STAGE_LOCAL_OR_PROTECTED_ENV_UNVERIFIED"],
+ [{remote:{...remoteFixture,remote:{...remoteFixture.remote,
+   resume:"PRIVATE_DEPLOYMENT_VERIFIED_RECORD_INCOMPLETE"}}},
+  "REMOTE_IMMUTABLE_PRIVATE_STAGE_UNVERIFIED"],
+ [{remote:{...remoteFixture,remote:{...remoteFixture.remote,immutableVersion:"HOLD"}}},
+  "REMOTE_IMMUTABLE_PRIVATE_STAGE_UNVERIFIED"],
+ [{remote:{...remoteFixture,remote:{...remoteFixture.remote,stageSheetCount:2}}},
+  "REMOTE_IMMUTABLE_PRIVATE_STAGE_UNVERIFIED"],
+ [{remote:{...remoteFixture,drive:{...remoteFixture.drive,temporaryOcrFiles:1}}},
+  "DEDICATED_OAUTH_DRIVE_CLEANUP_UNVERIFIED"],
+ [{receiptUnchanged:false},"STAGE_RECEIPT_CHANGED_DURING_AUDIT"],
+ [{evidenceUnchanged:false},"OWNER_EVIDENCE_CHANGED_DURING_AUDIT"],
+ [{remote:null},"STAGE_LOCAL_OR_PROTECTED_ENV_UNVERIFIED"]
+]){
+ const got=evaluate({...expected,...patch});
+ assert.equal(got.status,"HOLD",reason);
+ assert.ok(got.reasons.includes(reason),reason);
+ assert.equal(got.release,"HOLD",reason);
+}
+const secret="https://script.google.com/macros/s/PRIVATE_TEST_TOKEN/exec";
+const secretProof=evaluate({...expected,remote:{...remoteFixture,privateUrl:secret,
+ remote:{...remoteFixture.remote,privateUrl:secret,projectSource:"DIFFERS"}}});
+assert.equal(secretProof.status,"HOLD");
+assert.ok(!JSON.stringify(secretProof).includes(secret));
+assert.ok(!JSON.stringify(full).includes(sha));
+assert.ok(!JSON.stringify(full).includes(digest));
 console.log("OWNER_OCR_OFFLINE_AUDIT_TEST_PASS; synthetic only; version remains unverified; release HOLD");
