@@ -234,6 +234,7 @@ async function main(){
  assert.equal(field("salaryGross").value,"7000000");
  Object.defineProperty(file,"files",{configurable:true,value:[]});
  file.dispatchEvent(new win.Event("change",{bubbles:true}));
+ assert.equal(form.dataset.ocrReviewPending,"true");
  assert.equal(field("salaryGross").value,"");
  assert.equal(field("socialInsurance").value,"");
  assert.equal(field("salaryIncomeReference").value,"");
@@ -306,6 +307,15 @@ async function main(){
  file.dispatchEvent(new win.Event("change",{bubbles:true}));
  assert.equal(field("salaryIncomeReference").value,"5100000");
  assert.equal(field("deductionsReference").value,"1650000");
+ assert.equal(form.dataset.ocrReviewPending,"true");
+ // Cancelling after a selected (but unconfirmed) OCR file must keep HOLD
+ // even if the user finishes filling all nominally required manual fields.
+ field("year").value="2026";
+ field("salaryGross").value="7000000";
+ field("socialInsurance").value="1000000";
+ field("acknowledgedExclusions").checked=true;
+ assert.equal(calc().className,"result hold");
+ assert.doesNotMatch(calc().textContent,/109,000円/);
  // After a fresh OCR transfer, manual edits invalidate the source year.
  // Switching the income year *again* must still require source review;
  // otherwise it could be mistaken for a purely manually entered record.
@@ -360,6 +370,39 @@ async function main(){
  win.createImageBitmap=normalBitmap;
  field("socialInsurance").value="1000000";
  field("acknowledgedExclusions").checked=true;
+ assert.equal(calc().className,"result hold");
+ // Async OCR may complete AFTER a cancelled source selection. Its late
+ // result must not clear HOLD or restore an old candidate.
+ form.reset();
+ field("year").value="2026";
+ field("salaryGross").value="7000000";
+ field("socialInsurance").value="1000000";
+ field("acknowledgedExclusions").checked=true;
+ Object.defineProperty(file,"files",{configurable:true,value:[
+   syntheticRasterFile("synthetic-cancel-in-flight.png","image/png",1024)
+ ]});
+ file.dispatchEvent(new win.Event("change",{bubbles:true}));
+ holdRecognizer=true;
+ releaseRecognition=null;
+ const cancelBefore=recognized;
+ scan.click();
+ for(let i=0;i<100&&!releaseRecognition;i++)
+   await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(recognized,cancelBefore+1);
+ const finishCancelled=releaseRecognition;
+ releaseRecognition=null;
+ Object.defineProperty(file,"files",{configurable:true,value:[]});
+ file.dispatchEvent(new win.Event("change",{bubbles:true}));
+ assert.equal(form.dataset.ocrReviewPending,"true");
+ assert.equal(calc().className,"result hold");
+ holdRecognizer=false;
+ finishCancelled();
+ for(let i=0;i<100&&scan.disabled;i++)
+   await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(scan.disabled,false);
+ assert.equal(transfer.disabled,true);
+ assert.equal(check.disabled,true);
+ assert.equal(form.dataset.ocrReviewPending,"true");
  assert.equal(calc().className,"result hold");
  assert.equal(networkAttempts,0);
  dom.window.close();

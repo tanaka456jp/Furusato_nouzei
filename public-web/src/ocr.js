@@ -106,10 +106,18 @@
   form.addEventListener("change",amountWasEdited);
 
   fileInput.addEventListener("change",function(){
+    // File picker cancellation must NOT convert an unverified OCR session
+    // into a normal manual calculation. In particular, a previously
+    // transferred slip may no longer have dataset.ocrYear after an edit.
+    var wasPending=form.dataset.ocrReviewPending==="true";
+    var hadTransferredSource=!!transferredSource||!!form.dataset.ocrYear;
     clearReview();
     if(fileInput.files&&fileInput.files.length){
       form.dataset.ocrReviewPending="true";
       show("原票の読取前です。読取結果を確認するか「入力をクリア」で解除してください。");
+    }else if(wasPending||hadTransferredSource){
+      form.dataset.ocrReviewPending="true";
+      show("原票選択が取り消されました。未確認の読取結果は使えません。入力をクリアして手入力するか、原票を再選択してください。");
     }
   });
   form.addEventListener("reset",function(){clearReview();fileInput.value="";});
