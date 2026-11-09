@@ -98,6 +98,10 @@ function currentCandidate(){
 function url(id){return "https://script.googleapis.com/v1/projects/"+encodeURIComponent(id);}
 async function auditOldLive(api,r){
  recordCheck(r);
+ const protectedConfig=path.join(protectedRoot,".clasp.json");
+ g.rejectLinks([protectedRoot,protectedConfig]);
+ const protectedId=jsonPrivate(protectedConfig).scriptId;
+ must(isId(protectedId)&&r.protectedScriptId===protectedId,"PROTECTED_TARGET_MISMATCH");
  const oldBase=url(r.scriptId);
  const [user,project,sheet,protectedProject,frozen,head,deployment,protectedHash]=
  await Promise.all([
@@ -105,15 +109,15 @@ async function auditOldLive(api,r){
   api(oldBase),
   api("https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(r.spreadsheetId)+
    "?fields=id,name,mimeType,ownedByMe,owners(permissionId),trashed,shared,capabilities(canEdit),appProperties"),
-  api(url(r.protectedScriptId)),
+  api(url(protectedId)),
   api(oldBase+"/content?versionNumber="+r.versionNumber),
   api(oldBase+"/content"),
   api(oldBase+"/deployments/"+encodeURIComponent(r.deploymentId)),
-  protectedDigest(api,r.protectedScriptId)
+  protectedDigest(api,protectedId)
  ]);
  must(user?.user?.permissionId===r.owner&&user.user.emailAddress,
   "OLD_OWNER_NOT_VERIFIED");
- must(protectedProject.scriptId===r.protectedScriptId&&protectedProject.parentId,
+ must(protectedProject.scriptId===protectedId&&protectedProject.parentId,
   "HOUSING_REMOTE_IDENTITY_FAILED");
  must(project.scriptId===r.scriptId&&project.parentId===r.spreadsheetId&&
   project.title===r.title&&project.creator?.email===user.user.emailAddress,
@@ -129,7 +133,7 @@ async function auditOldLive(api,r){
  auditVersion(r,{historical:historicalFiles(r.sourceCommit),frozen:frozen.files,
   projectHead:head.files,deployment,protectedRemoteHash:protectedHash});
  return {owner:user.user.permissionId,email:user.user.emailAddress,
-  protectedId:r.protectedScriptId,protectedParent:protectedProject.parentId,
+  protectedId,protectedParent:protectedProject.parentId,
   verified:"PASS"};
 }
 function validateNewIdentity({r,newSheet,newProject,old,owner}){
@@ -177,6 +181,8 @@ async function createStage({api,r,old,files,candidate,before,dir=stageDir,
  must(dir===stageDir||(process.env.NODE_ENV==="test" &&
   path.resolve(dir).startsWith(os.tmpdir()+path.sep)),"STAGE_PATH_NOT_ALLOWED");
  must(!exists(dir),"STAGE_ALREADY_EXISTS_DO_NOT_RETRY");
+ must(matchesCandidate(files,candidate.digest),"SOURCE_CHANGED_DURING_STAGE");
+ g.manifestCheck(JSON.parse(files.find(file=>file.name==="appsscript").source));
  fs.mkdirSync(dir,{mode:0o700});
  const journal=path.join(dir,"journal.json");
  const name=titlePrefix+crypto.randomUUID();
@@ -333,6 +339,9 @@ module.exports={localGate,validateNewIdentity,createStage,stageReport,
  preflightResult,unchangedAll,verifyPaths,snapshotReadOnly,currentCandidate,auditOldLive};
 function failureCode(error){
  const message=String(error?.message||"").split(":",1)[0];
+ const protection=new Set(["PROTECTED_TARGET_MISMATCH","STAGE_HEAD_DEPLOYMENT_UNSAFE","SAFE-GOOGLE-PRIVATE","SAFE-GOOGLE-VERSION",
+  "SAFE-GOOGLE-TARGET","SAFE-GOOGLE-CLASP-TARGET","SAFE-GOOGLE-PROTECTED-CONFIG"]);
+ if(protection.has(message))return message;
  const known=/^(?:LOCAL_EXPLICIT_STAGE_ONLY|STAGE_(?:ALREADY_EXISTS_DO_NOT_RETRY|INVENTORY_INCOMPLETE|SHEET_ALREADY_VISIBLE|JOURNAL_INVALID|RECEIPT_INVALID)|PRIVATE_(?:FILE_UNSAFE|PARENT_UNSAFE)|UNTRUSTED_GIT_ORIGIN|TRUSTED_(?:CANDIDATE_CHECK_FAILED|REMOTE_READ_FAILED|REMOTE_TIP_UNVERIFIED)|REMOTE_TIP_DIFFERS_FROM_CHECKOUT|TRACKED_WORKTREE_DIRTY|CANDIDATE_(?:SOURCE_SET_INVALID|VERSION_INVALID)|WORKTREE_SOURCE_DIFFERS_FROM_COMMIT|HOUSING_LOCAL_DRIFT|SHARED_AUTH_UNSAFE|OLD_(?:DRIVE_AUDIT_HOLD|GOOGLE_CHANGED_AFTER_STAGE|OWNER_NOT_VERIFIED|PROJECT_IDENTITY_FAILED|SHEET_IDENTITY_FAILED)|SOURCE_CHANGED_DURING_STAGE|NEW_(?:SHEET_(?:COLLISION|MARKER_MISMATCH|NOT_PRIVATE|CREATE_RESPONSE_INVALID)|PROJECT_(?:IDENTITY_FAILED|CREATE_RESPONSE_INVALID|CREATE_IDENTITY_MISMATCH|CONTAINS_UNKNOWN_SOURCE)|SOURCE_VERIFY_FAILED|VERSION_INVALID|FROZEN_SOURCE_MISMATCH|DEPLOYMENT_(?:NOT_FOUND|CREATE_RESPONSE_INVALID))|SAFE-GOOGLE-(?:TIMEOUT|NETWORK|AUTH-CONFIG|AUTH-EXPIRED|AUTH-REJECTED|AUTH-TEMPORARY|AUTH-RESPONSE|SERVICE-DISABLED|PERMISSION|TEMPORARY|API|API-RESPONSE))$/;
  return known.test(message)?message:"PRIVATE_OR_GOOGLE_CHECK_UNVERIFIED";
 }

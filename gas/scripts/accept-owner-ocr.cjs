@@ -3,11 +3,10 @@
 // records owner observations, and runs the independent read-only Drive audit.
 const cp=require("node:child_process"),fs=require("node:fs"),path=require("node:path");
 const readline=require("node:readline/promises");
-const {randomUUID}=require("node:crypto");
+const {createHash,randomUUID}=require("node:crypto");
 const {rejectLinks}=require("../deployment/private-gas.cjs");
 const root=path.resolve(__dirname,"..");
 const privateDir=path.join(root,".private","furusato");
-const evidenceDir=path.join(privateDir,"evidence");
 const fixtureDir=path.join(privateDir,"owner-fixtures");
 
 function localNode(name,args=[]){
@@ -16,34 +15,54 @@ function localNode(name,args=[]){
  });
 }
 
-function auditDrive(){
- const run=localNode("check-private-ocr-temporary-files.cjs");
+function auditDrive(stage){
+ const run=stage?localNode("diagnose-v020-isolated-stage.cjs",["--check-remote"]):
+  localNode("check-private-ocr-temporary-files.cjs");
  try {
-  const row=JSON.parse(run.stdout);
+  const report=JSON.parse(run.stdout),row=stage?report.drive:report;
   if(row.coverage!=="FURUSATO_DEDICATED_OAUTH_SCOPE_ONLY"||
     !Number.isSafeInteger(row.temporaryOcrFiles)||row.temporaryOcrFiles<0||
     !Number.isSafeInteger(row.pages)||row.pages<1)throw Error();
-  if(run.status===0&&row.status==="PASS"&&row.temporaryOcrFiles===0)
+  if(run.status===0&&row.status==="PASS"&&row.temporaryOcrFiles===0&&(!stage||
+     report.remote?.resume==="OWNER_ACCEPTANCE_READY"&&stage.read().digest===stage.digest))
    return {status:"PASS",temporaryOcrFiles:0,pages:row.pages,protection:"PASS"};
   if(run.status===2&&row.status==="HOLD"&&row.temporaryOcrFiles>0)
-   return {status:"HOLD",temporaryOcrFiles:row.temporaryOcrFiles,pages:row.pages,protection:"PASS"};
+   return {status:"HOLD",temporaryOcrFiles:row.temporaryOcrFiles,pages:row.pages,protection:stage?"UNVERIFIED":"PASS"};
  } catch {}
  return {status:"HOLD",temporaryOcrFiles:null,protection:"UNVERIFIED"};
 }
 
+function readStageReceipt(file){
+ rejectLinks([file]);
+ const stat=fs.lstatSync(file);
+ if(!stat.isFile()||stat.size<3||stat.size>1024*1024)throw Error("OWNER_STAGE_RECEIPT_UNVERIFIED");
+ const bytes=fs.readFileSync(file);
+ const receipt=JSON.parse(bytes.toString("utf8"));
+ if(receipt?.appVersion!=="v0.1.20"||!(/^[a-f0-9]{40}$/.test(receipt.sourceCommit||"")))
+  throw Error("OWNER_STAGE_RECEIPT_UNVERIFIED");
+ return {receipt,digest:createHash("sha256").update(bytes).digest("hex")};
+}
+
 async function main(){
- const args=process.argv.slice(2),iphone=args.length===1&&args[0]==="--iphone";
- if((args.length&&!iphone)||process.env.CI||process.platform!=="win32"||!process.stdin.isTTY)
+ const args=process.argv.slice(2),iphone=args.includes("--iphone"),newStage=args.includes("--stage-v020");
+ if(args.length!==new Set(args).size||args.some(arg=>!["--iphone","--stage-v020"].includes(arg))||
+    process.env.CI||process.platform!=="win32"||!process.stdin.isTTY)
   throw Error("OWNER_WINDOWS_INTERACTIVE_ONLY");
  const formats=iphone?["jpeg"]:["pdf","png","jpeg"];
  const revision=cp.execFileSync("git",["rev-parse","HEAD"],{cwd:root,encoding:"utf8",windowsHide:true}).trim();
  if(!/^[a-f0-9]{40}$/.test(revision))throw Error("GIT_HEAD_UNVERIFIED");
- rejectLinks([privateDir,evidenceDir,fixtureDir,...formats.map(ext=>path.join(fixtureDir,"synthetic-slip."+ext))]);
+ const targetDir=newStage?path.join(root,".private","furusato-v020-stage"):privateDir;
+ const evidenceDir=path.join(targetDir,"evidence");
+ rejectLinks([path.join(root,".private"),privateDir,targetDir,evidenceDir,fixtureDir,
+  ...formats.map(ext=>path.join(fixtureDir,"synthetic-slip."+ext))]);
+ const read=()=>readStageReceipt(path.join(targetDir,"receipt.json"));
+ const stage=newStage?{...read(),read}:null;
  if(!formats.every(ext=>fs.existsSync(path.join(fixtureDir,"synthetic-slip."+ext))))
   throw Error("OWNER_SYNTHETIC_FIXTURES_MISSING");
  fs.mkdirSync(evidenceDir,{recursive:true});
  const evidencePath=path.join(evidenceDir,"owner-ocr-"+randomUUID()+".json");
- const record={protocolRevision:1,release:"HOLD",status:"HOLD",sourceCommit:revision,
+ const record={protocolRevision:stage?2:1,release:"HOLD",status:"HOLD",sourceCommit:stage?.receipt.sourceCommit||revision,
+  ...(stage?{candidateVersion:"v0.1.20",stageReceiptFingerprint:stage.digest}:{}),
   startedAt:new Date().toISOString(),device:iphone?"IPHONE_SAFARI_OWNER_OBSERVED":"WINDOWS_EDGE_OWNER_OBSERVED",
   driveCoverage:"FURUSATO_DEDICATED_OAUTH_SCOPE_ONLY_INCLUDING_TRASH",results:[]};
  const terminal=readline.createInterface({input:process.stdin,output:process.stdout});
@@ -57,16 +76,20 @@ async function main(){
  };
  try{
   console.log("専用Google Driveと保護対象の照合中です。");
-  record.before=auditDrive();
+  record.before=auditDrive(stage);
   console.log("OCR前の診断 "+JSON.stringify(record.before));
   if(record.before.status!=="PASS")return;
   if(iphone){
-   console.log("iPhone実機のSafariで、所有者アカウントを使い既存の非公開GASを開いてください。");
+   console.log("iPhone実機のSafariで、所有者アカウントを使い受入対象の非公開GASを開いてください。");
   }else{
-   if(localNode("check-live-ocr-readiness.cjs",["--authorize-owner"]).status!==0)
+   const opened=stage?cp.spawnSync("powershell.exe",["-NoProfile","-NonInteractive","-File",
+    path.join(__dirname,"open-v020-stage.ps1")],{cwd:root,stdio:"pipe",windowsHide:true,timeout:180000}).status===0:
+    localNode("check-live-ocr-readiness.cjs",["--authorize-owner"]).status===0;
+   if(!opened)
     throw Error("OWNER_SYSTEM_BROWSER_OPEN_FAILED");
    console.log("通常のMicrosoft Edgeで操作してください。必要な場合は所有者としてログインします。");
   }
+  if(stage&&await ask("画面にGAS検証版 v0.1.20と表示されていますか？")!=="PASS")return;
   console.log("合成ファイルの場所 "+fixtureDir);
   for(const format of formats){
    const row={format:format.toUpperCase()};
@@ -81,7 +104,7 @@ async function main(){
     console.log("原票照合は行わず、控除・扶養の該当有無だけを確認し、計算を実行してください。");
     row.unreviewedHold=await ask("結果は計算停止で、原票未照合の理由が表示されていますか？");
    }
-   row.after=auditDrive();
+   row.after=auditDrive(stage);
    console.log("OCR後の診断 "+JSON.stringify(row.after));
    if(row.after.status!=="PASS"||row.candidates==="NOT_TESTED"||row.unreviewedHold==="NOT_TESTED")break;
    console.log("次の形式がある場合は、入力を修正して給与入力画面に戻ります。");
@@ -100,7 +123,7 @@ async function main(){
 
 main().catch(error=>{
  const safe=new Set(["OWNER_WINDOWS_INTERACTIVE_ONLY","GIT_HEAD_UNVERIFIED","OWNER_SYNTHETIC_FIXTURES_MISSING",
-  "OWNER_SYSTEM_BROWSER_OPEN_FAILED"]);
+  "OWNER_SYSTEM_BROWSER_OPEN_FAILED","OWNER_STAGE_RECEIPT_UNVERIFIED"]);
  console.error("OWNER_OCR_HOLD: "+(safe.has(error.message)?error.message:"LOCAL_ACCEPTANCE_FAILED"));
  process.exitCode=1;
 });

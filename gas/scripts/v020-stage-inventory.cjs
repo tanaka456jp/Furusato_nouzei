@@ -11,6 +11,7 @@ const versionDescription="Furusato synthetic v0.1.20; release HOLD";
 const deploymentDescription="Furusato NEW PRIVATE synthetic v0.1.20; release HOLD";
 const scope="DEDICATED_OAUTH_USER_CORPUS_INCLUDING_TRASH";
 const isId=value=>typeof value==="string"&&/^[A-Za-z0-9_-]{6,512}$/.test(value);
+const webAppUrl=/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/;
 const projectUrl=id=>"https://script.googleapis.com/v1/projects/"+encodeURIComponent(id);
 
 async function readPages(api,url,key,{optionalList=false}={}){
@@ -99,16 +100,26 @@ async function inspectRecordedStage(api,{sheets,journal:j,receipt,r,old}){
  google.manifestCheck(JSON.parse(frozen.files.find(file=>file.name==="appsscript").source));
  proof.immutableVersion="PASS";
  const deployments=await readPages(api,new URL(base+"/deployments"),"deployments",{optionalList:true});
- // Google also lists the unversioned HEAD entry, with no entry points.
- const versioned=deployments.filter(item=>!(item?.deploymentConfig?.scriptId===j.scriptId&&
-  [undefined,0].includes(item.deploymentConfig.versionNumber)&&(!item.entryPoints||item.entryPoints.length===0)));
+ // Google may list an unversioned HEAD with its own owner-only web entry.
+ const headEntries=deployments.filter(item=>[undefined,0].includes(item?.deploymentConfig?.versionNumber));
+ if(headEntries.length>1||headEntries.some(item=>{
+  const config=item?.deploymentConfig,entries=item?.entryPoints??[];
+  if(!isId(item?.deploymentId)||item.deploymentId===j.deploymentId||config?.scriptId!==j.scriptId||
+     config.manifestFileName!=="appsscript"||config.description||!Array.isArray(entries))return true;
+  if(entries.length===0)return false;
+  const entry=entries[0],web=entry?.webApp;
+  return entries.length!==1||entry?.entryPointType!=="WEB_APP"||!webAppUrl.test(web?.url||"")||
+   web.entryPointConfig?.access!=="MYSELF"||web.entryPointConfig?.executeAs!=="USER_DEPLOYING";
+ }))throw Error("STAGE_HEAD_DEPLOYMENT_UNSAFE");
+ const versioned=deployments.filter(item=>!headEntries.includes(item));
  const deployed=versioned.length===1?versioned[0]:null;
  if(!deployed||!isId(deployed.deploymentId)||deployed.deploymentId===r.deploymentId||
     deployed.deploymentConfig?.description!==deploymentDescription||
     (j.deploymentId&&j.deploymentId!==deployed.deploymentId))
   return {...proof,resume:versioned.length?"DEPLOYMENT_NOT_UNIQUELY_ATTESTED":"NO_PRIVATE_DEPLOYMENT_VISIBLE"};
  const reread=await api(base+"/deployments/"+encodeURIComponent(deployed.deploymentId),"GET");
- if(reread?.deploymentId!==deployed.deploymentId)throw Error("NEW_DEPLOYMENT_NOT_FOUND");
+ if(reread?.deploymentId!==deployed.deploymentId||reread.deploymentConfig?.manifestFileName!=="appsscript"||
+    reread.deploymentConfig?.description!==deploymentDescription)throw Error("NEW_DEPLOYMENT_NOT_FOUND");
  const url=google.deploymentCheck(reread,j.scriptId,version.versionNumber);
  if(url===r.webAppUrl||receipt&&(receipt.webAppUrl!==url||receipt.owner!==old.owner||
     receipt.title!==j.title||receipt.sourceCommit!==j.sourceCommit||receipt.sourceDigest!==j.sourceDigest||

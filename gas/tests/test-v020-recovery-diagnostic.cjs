@@ -126,9 +126,12 @@ async function verifyRemoteRecovery(){
   appProperties:{furusatoInstaller:"v1",furusatoStage:"v020-private"}};
  const completedReceipt={...receipt,owner:old.owner,title:j.title,sourceCommit:j.sourceCommit,
   sourceDigest:j.sourceDigest,previousReceiptDigest:j.oldReceiptDigest,previousAuthDigest:j.oldAuthDigest};
- const deployed={deploymentId:j.deploymentId,deploymentConfig:{scriptId:j.scriptId,versionNumber:1,description:deploymentDescription},
+ const deployed={deploymentId:j.deploymentId,deploymentConfig:{scriptId:j.scriptId,versionNumber:1,
+  manifestFileName:"appsscript",description:deploymentDescription},
   entryPoints:[{entryPointType:"WEB_APP",webApp:{url:receipt.webAppUrl,entryPointConfig:{access:"MYSELF",executeAs:"USER_DEPLOYING"}}}]};
- const head={deploymentConfig:{scriptId:j.scriptId},deploymentId:"HEAD_FIXTURE"};
+ const head={deploymentConfig:{scriptId:j.scriptId,manifestFileName:"appsscript"},deploymentId:"HEAD_FIXTURE",
+  entryPoints:[{entryPointType:"WEB_APP",webApp:{url:"https://script.google.com/macros/s/HEAD_FIXTURE/exec",
+   entryPointConfig:{access:"MYSELF",executeAs:"USER_DEPLOYING"}}}]};
  const responses={
   "":{scriptId:j.scriptId,parentId:j.spreadsheetId,title:j.title,creator:{email:old.email}},
   "/content":{files},"/content?versionNumber=1":{files},
@@ -159,6 +162,8 @@ async function verifyRemoteRecovery(){
  assert.equal((await inspectRecordedStage(api,{sheets,journal:{...j,deploymentId:undefined,step:"DEPLOYMENT_CREATE_REQUESTED"},r,old})).resume,
   "PRIVATE_DEPLOYMENT_VERIFIED_RECORD_INCOMPLETE");
  await assert.rejects(()=>inspectRecordedStage(api,{sheets:[{...sheet,shared:true}],journal:j,r,old}),/NEW_SHEET_NOT_PRIVATE/);
+ head.entryPoints[0].webApp.entryPointConfig.access="ANYONE";
+ await assert.rejects(()=>inspectRecordedStage(api,{sheets,journal:j,r,old}),/STAGE_HEAD_DEPLOYMENT_UNSAFE/);
  await assert.rejects(()=>listStageSheets(async()=>({files:[],incompleteSearch:true})),/STAGE_INVENTORY_INCOMPLETE/);
  await assert.rejects(()=>listStageSheets(async()=>({files:[],nextPageToken:"REPEATED"})),/STAGE_INVENTORY_INCOMPLETE/);
  console.log("V020_RECOVERY_LOCAL_AND_GET_ONLY_SYNTHETIC_PASS; no Google; no auth; release HOLD");

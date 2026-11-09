@@ -21,8 +21,13 @@ function Read-ProtectedJson([string]$path) {
     return (Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json)
 }
 try {
+    $private = Get-Item -LiteralPath (Join-Path $gas '.private') -Force
+    if (($private.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw 'STAGE_PATH_UNSAFE'
+    }
     $stage = Read-ProtectedJson $newPath
     $old = Read-ProtectedJson $oldPath
+    $before = (Get-FileHash -LiteralPath $newPath -Algorithm SHA256).Hash
     if ($stage.schema -ne 'furusato-v020-stage/v1' -or
         $stage.appVersion -ne 'v0.1.20' -or
         $stage.release -ne 'HOLD' -or
@@ -37,6 +42,14 @@ try {
     if ($CheckOnly) {
         Write-Output 'V020_PRIVATE_STAGE_LOCAL_RECEIPT_PASS; GOOGLE_NOT_RECHECKED; RELEASE=HOLD'
         return
+    }
+    $diagnosis = & node (Join-Path $PSScriptRoot 'diagnose-v020-isolated-stage.cjs') --check-remote
+    if ($LASTEXITCODE -ne 0) { throw 'STAGE_REMOTE_CHECK_HOLD' }
+    $proof = $diagnosis | ConvertFrom-Json
+    if ($proof.remote.resume -ne 'OWNER_ACCEPTANCE_READY' -or
+        $proof.remote.privateDeployment -ne 'PASS' -or
+        (Get-FileHash -LiteralPath $newPath -Algorithm SHA256).Hash -cne $before) {
+        throw 'STAGE_REMOTE_CHECK_HOLD'
     }
     Start-Process -FilePath 'msedge.exe' -ArgumentList @('--new-window', $stage.webAppUrl)
     Write-Output 'V020_PRIVATE_EDGE_OPENED; OWNER_LOGIN_MANUAL; OCR_NOT_TESTED; RELEASE=HOLD'

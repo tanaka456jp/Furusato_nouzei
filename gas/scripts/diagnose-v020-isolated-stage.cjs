@@ -138,8 +138,12 @@ function inspectLocal(d=dir){
  }catch(e){if(e.code!=="ENOENT")directory="UNREADABLE";}
  if(directory!=="PRESENT")return classifyState({directory});
  const children=fs.readdirSync(d);
- if(children.some(name=>!["journal.json","receipt.json",".journal.tmp"].includes(name)))
+ if(children.some(name=>!["journal.json","receipt.json",".journal.tmp","evidence"].includes(name)))
   return {...classifyState({directory}),journal:"UNEXPECTED_PRIVATE_ENTRIES"};
+ if(children.includes("evidence")){
+  const st=fs.lstatSync(path.join(d,"evidence"));
+  if(!st.isDirectory()||st.isSymbolicLink())return {...classifyState({directory}),journal:"UNEXPECTED_PRIVATE_ENTRIES"};
+ }
  const journalStatus=fileState(path.join(d,"journal.json"));
  if(journalStatus!=="PRESENT")
   return {...classifyState({directory}),journal:journalStatus};
@@ -160,9 +164,11 @@ async function checkPrerequisites({reconcile=false}={}){
     !["STRUCTURE_PASS","ABSENT"].includes(local.privateReceipt)))return local;
  const recorded=local.stageDirectory==="PRESENT";
  let phase="LOCAL_PATHS";
+ let drive;
  const fail=e=>({
   ...local,preflight:"HOLD",failedAt:phase,
   reason:safeCode.has(e?.message)?e.message:original.failureCode(e),
+  ...(reconcile&&drive?{drive}:{}),
   existingStage:"NOT_RECREATED"
  });
  try {
@@ -195,7 +201,7 @@ async function checkPrerequisites({reconcile=false}={}){
   phase="OLD_REMOTE_IMMUTABLE_VERSION";
   const old=await original.auditOldLive(api,r);
   phase="TEMPORARY_OCR_DRIVE";
-  const drive=await countTemporaryDocuments(api);
+  drive=await countTemporaryDocuments(api);
   if(drive.status!=="PASS"||drive.temporaryOcrFiles!==0||
    drive.coverage!=="FURUSATO_DEDICATED_OAUTH_SCOPE_ONLY")
    throw Error("OLD_DRIVE_AUDIT_HOLD");
@@ -222,7 +228,7 @@ async function checkPrerequisites({reconcile=false}={}){
     throw Error("TRUSTED_CANDIDATE_CHECK_FAILED");
   }
   return {...local,preflight:"PASS_READONLY",failedAt:"NONE",
-   ...(remote?{remote}:{}),
+   ...(remote?{remote,drive}:{}),
    existingStage:"NOT_RECREATED",authorization:"NO_CREATION_FROM_DIAGNOSTIC",
    oldVersion:"v0.1.17",candidateVersion:"v0.1.20"};
  }catch(e){return fail(e);}

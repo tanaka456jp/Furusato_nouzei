@@ -104,6 +104,11 @@ async function run(){
  const rootOfTests=fs.mkdtempSync(path.join(os.tmpdir(),"furusato-v020-stage-tests-"));
  const prev=process.env.NODE_ENV;process.env.NODE_ENV="test";
  try{
+  const altered=path.join(rootOfTests,"altered-in-memory");
+  const changed=files.map(file=>file.name==="Index"?{...file,source:file.source+"\n<!-- changed -->"}:file);
+  await assert.rejects(()=>createStage({api:()=>assert.fail("Google write before source check"),r,old,
+   files:changed,candidate,before,dir:altered}),/SOURCE_CHANGED_DURING_STAGE/);
+  assert.equal(fs.existsSync(altered),false);
   const newDir=path.join(rootOfTests,"created");
   const sim=mock();
   let title="";
