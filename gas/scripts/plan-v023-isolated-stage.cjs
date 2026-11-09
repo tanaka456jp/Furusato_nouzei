@@ -12,6 +12,7 @@
  * recovery diagnosis. No credentials, IDs, hashes or private URLs are emitted.
  */
 const fs=require("node:fs"),path=require("node:path"),cp=require("node:child_process");
+const {createHash}=require("node:crypto");
 const root=path.resolve(__dirname,"..");
 const g=require("../deployment/private-gas.cjs");
 const policy=require("../deployment/policy.json");
@@ -49,10 +50,11 @@ function assessV023({candidate,attestation,stable=true,targetAbsent=true,
   attestation?.googleWrites!=="NONE_FROM_THIS_GATE");
  fail("CANDIDATE_CHANGED_DURING_CHECK",stable!==true);
  fail("V023_TARGET_ALREADY_PRESENT",targetAbsent!==true);
- const visibleZero=inventory?.status==="PASS"&&inventory?.scope===inventoryScope&&
+ const visibleZero=inventory?.status==="PASS"&&inventory?.ownerIdentity==="PASS"&&
+  inventory?.scope===inventoryScope&&
   inventory?.matchingResources===0&&
   inventory?.reason==="NO_V023_MATCH_VISIBLE_IN_DEDICATED_OAUTH_SCOPE";
- const visibleZeroAgain=inventoryAfter?.status==="PASS"&&
+ const visibleZeroAgain=inventoryAfter?.status==="PASS"&&inventoryAfter?.ownerIdentity==="PASS"&&
   inventoryAfter?.scope===inventoryScope&&inventoryAfter?.matchingResources===0&&
   inventoryAfter?.reason==="NO_V023_MATCH_VISIBLE_IN_DEDICATED_OAUTH_SCOPE";
  fail("V023_REMOTE_INVENTORY_NOT_ZERO_OR_UNVERIFIED",!visibleZero);
@@ -93,6 +95,13 @@ function assessCandidate({workingFiles,committedFiles,packageVersion,head,
   trackedChanges===""&&stageAbsent===true&&policy.release==="HOLD";
  return {ready};
 }
+function privateAuthFingerprint(){
+ const file=path.join(root,".private","furusato","auth.json");
+ const st=fs.lstatSync(file);
+ if(!st.isFile()||st.isSymbolicLink()||st.size<3||st.size>1024*1024)
+  throw Error("PRIVATE_AUTH_UNVERIFIED");
+ return createHash("sha256").update(fs.readFileSync(file)).digest("hex");
+}
 function getCandidate(){
  g.preflight();
  const committed=committedSources(),workingFiles=g.source();
@@ -106,7 +115,8 @@ function getCandidate(){
   throw Error("V020_RECEIPT_NOT_TRUSTED");
  const r=JSON.parse(fs.readFileSync(receiptFile,"utf8"));
  if(r.schema!=="furusato-v020-stage/v1"||r.appVersion!=="v0.1.20"||
-    r.release!=="HOLD"||!isDigest(r.sourceDigest)||!isSha(r.sourceCommit))
+    r.release!=="HOLD"||!isDigest(r.sourceDigest)||!isSha(r.sourceCommit)||
+    typeof r.owner!=="string"||!/^[A-Za-z0-9_-]{6,512}$/.test(r.owner))
   throw Error("V020_RECEIPT_NOT_TRUSTED");
  const origin=git(["remote","get-url","origin"]);
  if(!acceptedOrigins.has(origin))throw Error("UNTRUSTED_GIT_ORIGIN");
@@ -133,7 +143,8 @@ function getCandidate(){
   previousCommitAncestor,stageAbsent:absent
  });
  return {candidate,identity:{head,sourceDigest:g.digest(workingFiles),
-  previousCommit:r.sourceCommit,previousDigest:r.sourceDigest},
+  previousCommit:r.sourceCommit,previousDigest:r.sourceDigest,
+  owner:r.owner,privateAuthDigest:privateAuthFingerprint()},
   targetAbsent:absent};
 }
 function snapshotEqual(before,after){
@@ -141,7 +152,9 @@ function snapshotEqual(before,after){
   before.identity.head===after.identity.head&&
   before.identity.sourceDigest===after.identity.sourceDigest&&
   before.identity.previousCommit===after.identity.previousCommit&&
-  before.identity.previousDigest===after.identity.previousDigest;
+  before.identity.previousDigest===after.identity.previousDigest&&
+  before.identity.owner===after.identity.owner&&
+  before.identity.privateAuthDigest===after.identity.privateAuthDigest;
 }
 async function main(){
  if(process.env.CI||process.platform!=="win32"||
@@ -174,8 +187,9 @@ async function main(){
   // Independently search this OAuth-visible Drive corpus, including trash.
   // Nonzero or incomplete results can never authorize another create.
   const api=g.googleApi(await g.accessToken());
-  inventory=await auditV023Inventory(api);
-  inventoryAfter=await auditV023Inventory(api);
+  inventory=await auditV023Inventory(api,{expectedOwner:before.identity.owner});
+  if(inventory.status==="PASS")
+   inventoryAfter=await auditV023Inventory(api,{expectedOwner:before.identity.owner});
  }
  const after=getCandidate();
  const result=assessV023({
