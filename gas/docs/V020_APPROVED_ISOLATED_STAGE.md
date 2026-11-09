@@ -57,3 +57,37 @@ iPhone Safari: 同じ**新規デプロイ版**でJPEGを試験。OCRの認識値
 このコマンドはGoogleの新規作成だけを許可し、既存リソースの\`deployments.update\`、\`files.delete\`、\`projects.updateContent\`（旧ID宛て）を認めません。実行中に保護状態、Git HEAD、リモート先端SHAが変わった場合はHOLDして途中記録を残します。旧認証や旧保護スナップショットの上書き・再計算・復元はしません。
 
 Googleに作成した新ステージが不要になった場合も、削除前に所有者・レシートの一致と対象限定承認を別途取得してください。
+
+
+## 2026-11-09 PC①: 作成コマンドが安全停止した場合の状態確認
+
+PC①の11:51の実行では、Gitの更新が成功した後、新規作成コマンドが
+`V020_NEW_PRIVATE_STAGE_HOLD: LOCAL_OR_GOOGLE_CHECK_UNVERIFIED; NO_AUTOMATIC_RETRY`
+で停止しました。これは原因やGoogle作成済み状態を表すコードではありません。**繰り返し作成コマンドを実行しないこと。**
+
+まず、GitHub最新版を取得後、**ローカル・ネットワーク不使用の読取専用**診断を行います。
+
+```powershell
+cd $HOME\Development\Furusato_nouzei_GAS_OCR
+git pull --ff-only origin feature/gas-workflow-20261106
+node gas/scripts/diagnose-v020-isolated-stage.cjs --local
+```
+
+この診断は新規ステージ `gas/.private/furusato-v020-stage/` の有無、秘密のジャーナルの記録ステップ、レシートの構造一致のみを調べます。作成先のID、WebアプリURL、認証、旧ソースハッシュ、旧デプロイIDを表示しません。
+
+- `stageDirectory:ABSENT` / `journalStep:NO_LOCAL_JOURNAL`：この作業ツリーにステージ記録がないことを意味します。プログラムの実行経路上、初回のGoogle作成要求より前にローカルのジャーナルが必要ですが、フォルダが過去に移動・削除されていないことまで証明しません。**作成を再試行してよいという判定ではありません。**
+- `journalStep:PREPARED`：Google作成要求をジャーナルに記録する前の状態です。
+- `journalStep:SHEET_CREATE_REQUESTED` 等の `*_REQUESTED`：HTTP応答が失われた可能性があるため、Google側のリソース作成有無は不明です。**自動再実行しません。**
+- `journalStep:SHEET_CREATED` 以降：少なくともジャーナルに新規リソース情報が記録されています。新しいGoogle資源の可視状態と所有者を別途GETのみで監査するまで、成功とは判定しません。
+- `journalStep:COMPLETE` / `privateReceipt:STRUCTURE_PASS`：ローカル作成処理が完了した記録です。別途、Googleの現在の固定版と所有者を独立再確認します。
+- `INVALID_OR_UNREADABLE` / `INCONSISTENT` 等：非公開原本を保持したままHOLD。推測で復元しません。
+
+もし `stageDirectory:ABSENT` の場合に限り、失敗箇所を読取専用で切り分ける追加診断が可能です。
+
+```powershell
+node gas/scripts/diagnose-v020-isolated-stage.cjs --check-prerequisites
+```
+
+このモードは専用Furusato OAuthでトークン発行リクエストを行い、Google APIへのGETだけで既存v0.1.17・HousingERP保護・旧一時OCR残数を検証します。出力は `failedAt`（検査段階）と固定の `reason`（非機密エラーコード）のみです。新規Googleリソース作成、既存デプロイ変更、認証・レシート・スナップショットの書換えは行いません。**事前診断がPASSでも、新規作成の再実行は自動許可しません。**
+
+`journal.json`・`receipt.json`・認証情報をGitHubやチャットへ提出せず、診断結果の固定ステータスだけを共有してください。v0.1.20実Google OCRは未受入、正式リリースHOLD・PR Draft維持。
