@@ -24,12 +24,22 @@ async function main(){
  const transfer=doc.getElementById("slipTransfer");
  const check=doc.getElementById("slipConfirm");
  let recognized=0,terminated=0,networkAttempts=0;
+ let holdRecognizer=false,releaseRecognition=null;
  win.fetch=function(){networkAttempts++;throw Error("NETWORK_FORBIDDEN");};
  win.createImageBitmap=async()=>({width:1200,height:800,close(){}});
  win.HTMLCanvasElement.prototype.getContext=function(){
    return {
     fillStyle:"white",drawImage(){},fillRect(){},
-    getImageData(){return {data:new Uint8ClampedArray(1200*800*4)};},
+    getImageData(x,y,width,height){
+      const w=width||1200,h=height||800;
+      const data=new Uint8ClampedArray(w*h*4);
+      for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+        let i=(y*w+x)*4;
+        let v=(x%29<4||y%41<3)?38:247;
+        data[i]=data[i+1]=data[i+2]=v;data[i+3]=255;
+      }
+      return {data};
+    },
     putImageData(){}
    };
  };
@@ -45,6 +55,9 @@ async function main(){
      return {
        recognize:async()=>{
          recognized++;
+         if(holdRecognizer)return await new Promise(resolve=>{
+           releaseRecognition=()=>resolve({data:{text:text,confidence:96}});
+         });
          return {data:{text:text,confidence:96}};
        },
        terminate:async()=>{terminated++;}
@@ -54,6 +67,7 @@ async function main(){
  win.eval(script("engine.js"));
  win.eval(script("app.js"));
  win.eval(script("ocr-review.js"));
+ win.eval(script("ocr-quality.js"));
  win.eval(script("ocr.js"));
  function field(name){return form.elements.namedItem(name);}
  field("year").value="2026";
@@ -102,6 +116,36 @@ async function main(){
  assert.equal(form.dataset.ocrYear,undefined);
  assert.equal(form.dataset.ocrReviewPending,undefined);
  assert.equal(field("salaryIncomeReference").value,"");
+ // A file swap WHILE the asynchronous OCR task is in flight must not
+ // re-enable transfer of the previous source's amounts.
+ Object.defineProperty(file,"files",{configurable:true,value:[{
+   name:"older-synthetic.png",type:"image/png",size:1024
+ }]});
+ file.dispatchEvent(new win.Event("change",{bubbles:true}));
+ holdRecognizer=true;
+ let oldCount=recognized;
+ scan.click();
+ for(let i=0;i<100&&!releaseRecognition;i++)
+   await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(recognized,oldCount+1);
+ const oldRelease=releaseRecognition;releaseRecognition=null;
+ Object.defineProperty(file,"files",{configurable:true,value:[{
+   name:"newer-synthetic.png",type:"image/png",size:1024
+ }]});
+ file.dispatchEvent(new win.Event("change",{bubbles:true}));
+ assert.equal(form.dataset.ocrReviewPending,"true");
+ oldRelease();
+ for(let i=0;i<100 && scan.disabled;i++)
+   await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(scan.disabled,false);
+ assert.equal(transfer.disabled,true);
+ assert.equal(field("salaryIncomeReference").value,"");
+ assert.equal(doc.getElementById("slipReview").textContent.includes("older-synthetic"),false);
+ holdRecognizer=false;
+ // Reset must invalidate any old source data even when no result exists.
+ form.reset();
+ assert.equal(form.dataset.ocrReviewPending,undefined);
+ assert.equal(transfer.disabled,true);
  assert.equal(networkAttempts,0);
  dom.window.close();
  console.log("PUBLIC_OCR_MANUAL_TRANSFER_DOM_PASS; synthetic; no network; not accuracy proof");
