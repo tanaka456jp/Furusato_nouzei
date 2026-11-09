@@ -152,6 +152,16 @@
     return alternate;
   }
   async function imageToCanvas(file){
+    // Inspect only bounded header bytes BEFORE decoding compressed pixels.
+    if(!window.FurusatoImageHeader||
+       typeof window.FurusatoImageHeader.inspect!=="function"||
+       !file||typeof file.slice!=="function")
+      throw Error("IMAGE_HEADER_PREFLIGHT_UNAVAILABLE");
+    var headerBytes=await file.slice(0,
+      window.FurusatoImageHeader.MAX_HEADER_BYTES).arrayBuffer();
+    var imageInfo=window.FurusatoImageHeader.inspect(
+      new Uint8Array(headerBytes),file.type);
+    if(imageInfo.status!=="ACCEPT")throw Error("IMAGE_HEADER_PREFLIGHT_HOLD");
     var image;
     if(typeof createImageBitmap==="function"){
       // Some Safari versions expose createImageBitmap but reject particular

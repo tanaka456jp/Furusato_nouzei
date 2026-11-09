@@ -255,6 +255,24 @@ async function main(){
   assert.equal(await page.locator("#result").isVisible(),false);
   // PDF.js loading-task worker cleanup applies on both success and HOLD paths.
 
+  // An extremely small forged PNG advertising 50,000 x 50,000 pixels
+  // must be rejected before any decode or OCR, with no source upload.
+  const oversizedHeader=Buffer.from([
+    137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,
+    0,0,195,80,0,0,195,80
+  ]);
+  const beforeOversize=await page.evaluate(()=>window.__syntheticPdfOcrCalls);
+  await page.locator("#slipFile").setInputFiles({
+    name:"synthetic-oversize.png",mimeType:"image/png",buffer:oversizedHeader
+  });
+  await page.locator("#slipScan").click();
+  await page.waitForFunction(()=>
+    document.getElementById("slipScan").disabled===false &&
+    document.getElementById("slipReview").textContent.includes("OCRを完了できません"),
+    null,{timeout:30000});
+  assert.equal(await page.evaluate(()=>window.__syntheticPdfOcrCalls),beforeOversize);
+  assert.equal(await page.locator("#slipTransfer").isEnabled(),false);
+  assert.equal(await page.locator("#slipConfirm").isEnabled(),false);
   assert.deepEqual(external,[],"External network request attempted");
   assert.ok(requestCount>=8,"OCR assets not fetched");
   console.log("PUBLIC_OCR_CHROMIUM_LOCAL_WASM_BOOT_PASS; synthetic only; OCR accuracy NOT CERTIFIED");

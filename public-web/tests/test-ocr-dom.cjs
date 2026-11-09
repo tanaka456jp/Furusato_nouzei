@@ -14,6 +14,22 @@ const text=[
  "所得控除の額の合計額 1,670,000円",
  "社会保険料等の金額 1,000,000円"
 ].join("\n");
+// Minimal binary headers for synthetic JPEG/PNG file objects.
+const pngHeader=Uint8Array.from([
+ 137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,4,176,0,0,3,32
+]);
+const jpegHeader=Uint8Array.from([
+ 255,216,255,224,0,4,1,1,255,192,0,7,8,3,32,4,176,255,218
+]);
+function syntheticRasterFile(name,type="image/png",size=1024){
+ return {name,type,size,slice(){
+  return {arrayBuffer:async()=>{
+   const data=type==="image/jpeg"?jpegHeader:pngHeader;
+   return data.buffer.slice(data.byteOffset,data.byteOffset+data.byteLength);
+  }};
+ }};
+}
+
 async function main(){
  const dom=new JSDOM(html,{url:"https://offline-review.invalid/index.html",
   runScripts:"outside-only"});
@@ -69,6 +85,7 @@ async function main(){
  win.eval(script("app.js"));
  win.eval(script("ocr-review.js"));
  win.eval(script("ocr-quality.js"));
+ win.eval(script("ocr-image-header.js"));
  win.eval(script("ocr-perspective.js"));
  win.eval(script("ocr.js"));
  function field(name){return form.elements.namedItem(name);}
@@ -79,9 +96,7 @@ async function main(){
    form.dispatchEvent(new win.Event("submit",{bubbles:true,cancelable:true}));
    return doc.getElementById("result");
  }
- Object.defineProperty(file,"files",{configurable:true,value:[{
-   name:"synthetic-slip.png",type:"image/png",size:1024
- }]});
+ Object.defineProperty(file,"files",{configurable:true,value:[syntheticRasterFile("synthetic-slip.png","image/png",1024)]});
  file.dispatchEvent(new win.Event("change",{bubbles:true}));
  assert.equal(form.dataset.ocrReviewPending,"true");
  assert.equal(doc.getElementById("result").hidden,true);
@@ -157,9 +172,7 @@ async function main(){
  assert.equal(field("salaryIncomeReference").value,"");
  // A file swap WHILE the asynchronous OCR task is in flight must not
  // re-enable transfer of the previous source's amounts.
- Object.defineProperty(file,"files",{configurable:true,value:[{
-   name:"older-synthetic.png",type:"image/png",size:1024
- }]});
+ Object.defineProperty(file,"files",{configurable:true,value:[syntheticRasterFile("older-synthetic.png","image/png",1024)]});
  file.dispatchEvent(new win.Event("change",{bubbles:true}));
  holdRecognizer=true;
  let oldCount=recognized;
@@ -168,9 +181,7 @@ async function main(){
    await new Promise(resolve=>setImmediate(resolve));
  assert.equal(recognized,oldCount+1);
  const oldRelease=releaseRecognition;releaseRecognition=null;
- Object.defineProperty(file,"files",{configurable:true,value:[{
-   name:"newer-synthetic.png",type:"image/png",size:1024
- }]});
+ Object.defineProperty(file,"files",{configurable:true,value:[syntheticRasterFile("newer-synthetic.png","image/png",1024)]});
  file.dispatchEvent(new win.Event("change",{bubbles:true}));
  assert.equal(form.dataset.ocrReviewPending,"true");
  holdRecognizer=false;
@@ -211,9 +222,7 @@ async function main(){
  // A cancelled second file chooser must NOT silently restore the earlier
  // source amounts and permit a new estimate on the old income figures.
  field("year").value="2026";
- Object.defineProperty(file,"files",{configurable:true,value:[{
-   name:"synthetic-replacement.png",type:"image/png",size:1024
- }]});
+ Object.defineProperty(file,"files",{configurable:true,value:[syntheticRasterFile("synthetic-replacement.png","image/png",1024)]});
  file.dispatchEvent(new win.Event("change",{bubbles:true}));
  scan.click();
  for(let i=0;i<100&&(scan.disabled||recognized<oldCount+4);i++)
@@ -248,9 +257,7 @@ async function main(){
    }
  };
  try{
-   Object.defineProperty(file,"files",{configurable:true,value:[{
-     name:"synthetic-safari.jpg",type:"image/jpeg",size:1024
-   }]});
+   Object.defineProperty(file,"files",{configurable:true,value:[syntheticRasterFile("synthetic-safari.jpg","image/jpeg",1024)]});
    file.dispatchEvent(new win.Event("change",{bubbles:true}));
    const beforeFallback=recognized;
    scan.click();
@@ -279,9 +286,7 @@ async function main(){
  field("salaryGross").dispatchEvent(new win.Event("input",{bubbles:true}));
  assert.equal(form.dataset.ocrYear,undefined);
  assert.equal(form.dataset.ocrReviewPending,"true");
- Object.defineProperty(file,"files",{configurable:true,value:[{
-   name:"replacement-after-manual-edit.png",type:"image/png",size:1024
- }]});
+ Object.defineProperty(file,"files",{configurable:true,value:[syntheticRasterFile("replacement-after-manual-edit.png","image/png",1024)]});
  file.dispatchEvent(new win.Event("change",{bubbles:true}));
  assert.equal(field("salaryGross").value,"7150000"); // manual edit retained
  assert.equal(field("socialInsurance").value,""); // stale OCR removed
@@ -293,9 +298,7 @@ async function main(){
  form.reset();
  field("salaryIncomeReference").value="5100000";
  field("deductionsReference").value="1650000";
- Object.defineProperty(file,"files",{configurable:true,value:[{
-   name:"manual-reference-preservation.png",type:"image/png",size:1024
- }]});
+ Object.defineProperty(file,"files",{configurable:true,value:[syntheticRasterFile("manual-reference-preservation.png","image/png",1024)]});
  file.dispatchEvent(new win.Event("change",{bubbles:true}));
  assert.equal(field("salaryIncomeReference").value,"5100000");
  assert.equal(field("deductionsReference").value,"1650000");

@@ -5,6 +5,22 @@ const fs=require("node:fs"),path=require("node:path");
 const {JSDOM}=require("../../gas/node_modules/jsdom");
 const dir=path.join(__dirname,"..","dist");
 const html=fs.readFileSync(path.join(dir,"index.html"),"utf8");
+// Minimal binary headers for synthetic JPEG/PNG file objects.
+const pngHeader=Uint8Array.from([
+ 137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,4,176,0,0,3,32
+]);
+const jpegHeader=Uint8Array.from([
+ 255,216,255,224,0,4,1,1,255,192,0,7,8,3,32,4,176,255,218
+]);
+function syntheticRasterFile(name,type="image/png",size=1024){
+ return {name,type,size,slice(){
+  return {arrayBuffer:async()=>{
+   const data=type==="image/jpeg"?jpegHeader:pngHeader;
+   return data.buffer.slice(data.byteOffset,data.byteOffset+data.byteLength);
+  }};
+ }};
+}
+
 const doc=new JSDOM(html,{url:"https://local-review.invalid/",runScripts:"outside-only"});
 const win=doc.window,dom=win.document;
 function evaluate(name){win.eval(fs.readFileSync(path.join(dir,name),"utf8"));}
@@ -48,7 +64,7 @@ win.Tesseract={OEM:{LSTM_ONLY:1},createWorker:async()=>{
   return {data:{text:value,confidence:94}};
  },terminate:async()=>{closed++;}};
 }};
-for(const name of ["engine.js","app.js","ocr-review.js","ocr-regions.js","ocr.js"])
+for(const name of ["engine.js","app.js","ocr-review.js","ocr-regions.js","ocr-image-header.js","ocr.js"])
  evaluate(name);
 const form=dom.getElementById("calculator");
 const input=dom.getElementById("slipFile");
@@ -56,7 +72,7 @@ const scan=dom.getElementById("slipScan");
 const transfer=dom.getElementById("slipTransfer");
 function file(name){
  Object.defineProperty(input,"files",{configurable:true,
-  value:[{name,type:"image/png",size:4096}]});
+  value:[syntheticRasterFile(name,"image/png",4096)]});
  input.dispatchEvent(new win.Event("change",{bubbles:true}));
 }
 async function run(){

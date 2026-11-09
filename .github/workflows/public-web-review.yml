@@ -33,6 +33,8 @@ jobs:
           node --check public-web/src/ocr-review.js
           node --check public-web/src/ocr.js
           node --check public-web/src/ocr-quality.js
+          node --check public-web/src/ocr-image-header.js
+          node --check public-web/tests/test-ocr-image-header.cjs
           node --check public-web/src/ocr-layout.js
           node --check public-web/src/pdf-compat.js
           node --check public-web/tests/test-ocr-pdf-compat.cjs
@@ -54,6 +56,7 @@ jobs:
           node public-web/scripts/build.cjs
           node public-web/tests/test-ocr-review.cjs
           node public-web/tests/test-ocr-quality.cjs
+          node public-web/tests/test-ocr-image-header.cjs
           node public-web/tests/test-ocr-layout.cjs
           node public-web/tests/test-ocr-pdf-compat.cjs
           node public-web/tests/test-ocr-perspective.cjs
@@ -93,6 +96,7 @@ jobs:
             public-web/dist/ocr.js
             public-web/dist/ocr-review.js
             public-web/dist/ocr-quality.js
+            public-web/dist/ocr-image-header.js
             public-web/dist/ocr-layout.js
             public-web/dist/pdf-compat.js
             public-web/dist/ocr-perspective.js
