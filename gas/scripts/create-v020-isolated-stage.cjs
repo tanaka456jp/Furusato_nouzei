@@ -315,7 +315,7 @@ async function main(){
  console.log(JSON.stringify(result));
 }
 module.exports={localGate,validateNewIdentity,createStage,stageReport,
- preflightResult,unchangedAll};
+ preflightResult,unchangedAll,verifyPaths,snapshotReadOnly,currentCandidate,auditOldLive};
 if(require.main===module)main().catch(()=>{
  // The private journal, if created, is intentionally preserved for manual
  // reconciliation. Never retry automatically, delete resources or print IDs.
