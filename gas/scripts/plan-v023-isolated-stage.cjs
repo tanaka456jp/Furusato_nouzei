@@ -148,8 +148,14 @@ function getCandidate(){
   targetAbsent:absent};
 }
 function snapshotEqual(before,after){
- return before.candidate.ready&&after.candidate.ready&&
-  before.identity.head===after.identity.head&&
+ if(before?.candidate?.ready!==true||after?.candidate?.ready!==true||
+    !before.identity||!after.identity||
+    !isSha(before.identity.head)||!isDigest(before.identity.sourceDigest)||
+    !isSha(before.identity.previousCommit)||!isDigest(before.identity.previousDigest)||
+    typeof before.identity.owner!=="string"||
+    !/^[A-Za-z0-9_-]{6,512}$/.test(before.identity.owner)||
+    !isDigest(before.identity.privateAuthDigest))return false;
+ return before.identity.head===after.identity.head&&
   before.identity.sourceDigest===after.identity.sourceDigest&&
   before.identity.previousCommit===after.identity.previousCommit&&
   before.identity.previousDigest===after.identity.previousDigest&&
