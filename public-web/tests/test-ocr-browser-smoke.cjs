@@ -163,6 +163,32 @@ async function main(){
    }finally{if(typeof instance.destroy==="function")await instance.destroy();}
   },Array.from(sample));
   assert.deepEqual(pdfSnapshot,{pages:1,count:0});
+
+  // A synthetic-only direct PDF.js rendering probe. Show the exception
+  // name/message for THIS GENERATED PDF only, never for a real upload.
+  const renderProbe=await page.evaluate(async raw=>{
+   const pdfjs=await import("./vendor/pdf.mjs");
+   pdfjs.GlobalWorkerOptions.workerSrc="./vendor/pdf.worker.mjs";
+   const task=pdfjs.getDocument({data:new Uint8Array(raw),
+    disableAutoFetch:true,disableStream:true,
+    isEvalSupported:false,useSystemFonts:false,stopAtErrors:true});
+   const document=await task.promise;
+   try{
+    const page=await document.getPage(1);
+    const viewport=page.getViewport({scale:1});
+    const scale=Math.min(3,2600/Math.max(viewport.width,viewport.height));
+    const view=page.getViewport({scale});
+    const canvas=window.document.createElement("canvas");
+    canvas.width=Math.ceil(view.width);canvas.height=Math.ceil(view.height);
+    try{
+     await page.render({canvas,canvasContext:canvas.getContext("2d"),viewport:view}).promise;
+     return {status:"OK",width:canvas.width,height:canvas.height};
+    }catch(err){
+     return {status:"FAIL",name:String(err?.name||""),message:String(err?.message||"").slice(0,250)};
+    }finally{canvas.width=0;canvas.height=0;}
+   }finally{if(typeof task.destroy==="function")await task.destroy();}
+  },Array.from(sample));
+  assert.equal(renderProbe.status,"OK",JSON.stringify(renderProbe));
   const fixture=[
    "令和8年分 給与所得の源泉徴収票",
    "支払金額 7,000,000円",
