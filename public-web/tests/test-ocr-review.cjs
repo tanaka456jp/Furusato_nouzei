@@ -6,7 +6,7 @@ const sample=[
  "令和8年分　給与所得の源泉徴収票",
  "支払金額 7,000,000円",
  "給与所得控除後の金額 5,200,000円",
- "所得控除の額の合計額 1,620,000円",
+ "所得控除の額の合計額 1,670,000円",
  "社会保険料等の金額 1,000,000円"
 ].join("\n");
 const a=review.reviewText(sample);
@@ -15,7 +15,7 @@ assert.equal(a.year,2026);
 assert.equal(a.fullyExtracted,true);
 assert.deepEqual(a.candidates,{
  salaryGross:7000000,salaryIncomeReference:5200000,
- deductionsReference:1620000,socialInsurance:1000000
+ deductionsReference:1670000,socialInsurance:1000000
 });
 assert.equal(a.autoApproved,false);
 assert.equal(a.sourceTextPersisted,false);
@@ -33,7 +33,7 @@ const invalid=[
  sample.replace("社会保険料等の金額 1,000,000円","社会保険料等の金額 1,100,000円"),
  sample.replace("令和8年分","令和7年分"),
  sample.replace("給与所得の源泉徴収票","年末調整資料"),
- sample.replace("所得控除の額の合計額 1,620,000円",""),
+ sample.replace("所得控除の額の合計額 1,670,000円",""),
  sample.replace("支払金額 7,000,000円","支払金額 7,0O0,000円"),
  sample+" \n支払金額 8,000,000円",
  sample+"\n令和7年分",
