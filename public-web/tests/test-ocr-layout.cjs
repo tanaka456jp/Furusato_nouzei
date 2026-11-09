@@ -132,6 +132,6 @@ assert.equal(bounded(Array.from({length:600},()=>item("X".repeat(220),1,2))).sta
 assert.equal(bounded([]).status,"HOLD");
 assert.equal(bounded([null]).status,"HOLD");
 assert.equal(bounded([item("OK",1,2),{type:"beginMarkedContent"}]).status,"OK");
-const runtime=fs.readFileSync(path.join(__dirname,"..","src","ocr.js"),"utf8");
+
 assert.match(runtime,/FurusatoPdfLayout\.boundedTextLayer\(content\.items\)/);
 console.log("PUBLIC_OCR_PDF_POSITION_NEGATIVE_AND_SOURCE_CANDIDATE_AUDIT_SYNTHETIC_PASS; not accuracy proof");
