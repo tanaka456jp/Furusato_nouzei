@@ -39,12 +39,39 @@ async function test(){
  assert.equal(found.scope,scope);
  assert.equal(classifyV023Inventory([trashed]).status,"HOLD");
  assert.equal(classifyV023Inventory(null).status,"HOLD");
- const zero=await auditV023Inventory(async(_url,method)=>{
-  assert.equal(method,"GET");return {files:[]};
- });
+ const owner="trustedOwner_001";
+ const verifiedApi=async(url,method)=>{
+  assert.equal(method,"GET");
+  if(url==="https://www.googleapis.com/drive/v3/about?fields=user(permissionId,emailAddress)")
+   return {user:{permissionId:owner,emailAddress:"owner@example.invalid"}};
+  assert.equal(new URL(url).pathname,"/drive/v3/files");
+  return {files:[]};
+ };
+ const zero=await auditV023Inventory(verifiedApi,{expectedOwner:owner});
  assert.equal(zero.status,"PASS");
  assert.equal(zero.matchingResources,0);
+ assert.equal(zero.ownerIdentity,"PASS");
  assert.equal(zero.reason,"NO_V023_MATCH_VISIBLE_IN_DEDICATED_OAUTH_SCOPE");
+ for(const invalidOwner of [undefined,"", "bad id with spaces"]){
+  const failure=await auditV023Inventory(async()=>{throw Error("Unexpected Google access")},{expectedOwner:invalidOwner});
+  assert.equal(failure.status,"HOLD");
+  assert.equal(failure.reason,"DEDICATED_GOOGLE_OWNER_UNVERIFIED");
+ }
+ const wrong=await auditV023Inventory(async(url,method)=>{
+  assert.equal(method,"GET");
+  assert.match(url,/drive\/v3\/about/);
+  return {user:{permissionId:"OTHER_GOOGLE_ID",emailAddress:"other@example.invalid"}};
+ },{expectedOwner:owner});
+ assert.equal(wrong.status,"HOLD");
+ assert.equal(wrong.ownerIdentity,"HOLD");
+ const missingEmail=await auditV023Inventory(async()=>{
+  return {user:{permissionId:owner}};
+ },{expectedOwner:owner});
+ assert.equal(missingEmail.status,"HOLD");
+ // A malformed incompleteSearch flag cannot be treated as a complete inventory.
+ await assert.rejects(()=>listV023StageCandidates(async()=>({
+  files:[],incompleteSearch:"false"
+ })),/V023_REMOTE_INVENTORY_UNVERIFIED/);
  for(const reply of [
   {files:[],incompleteSearch:true},{files:null},
   {files:[{...sheet,id:"x"}]},{files:[sheet,sheet]},
