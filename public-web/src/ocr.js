@@ -140,27 +140,37 @@
     if(w<750||h<400||w*h>10000000)throw Error("解像度が不適切です。より鮮明な画像で再試行してください。");
     var canvas=document.createElement("canvas");
     canvas.width=w;canvas.height=h;
-    var context=canvas.getContext("2d",{willReadFrequently:true});
-    if(!context)throw Error("画像処理に対応していません。");
-    context.fillStyle="#fff";context.fillRect(0,0,w,h);
-    context.drawImage(source,0,0,w,h);
-    return canvas;
+    try{
+      var context=canvas.getContext("2d",{willReadFrequently:true});
+      if(!context)throw Error("画像処理に対応していません。");
+      context.fillStyle="#fff";context.fillRect(0,0,w,h);
+      context.drawImage(source,0,0,w,h);
+      return canvas;
+    }catch(error){
+      canvas.width=0;canvas.height=0;
+      throw error;
+    }
   }
   function contrastVariant(original){
     var alternate=document.createElement("canvas");
     alternate.width=original.width;alternate.height=original.height;
-    var context=alternate.getContext("2d",{willReadFrequently:true});
-    if(!context)throw Error("画像補正に対応していません。");
-    context.drawImage(original,0,0);
-    var pixels=context.getImageData(0,0,alternate.width,alternate.height);
-    var data=pixels.data;
-    for(var i=0;i<data.length;i+=4){
-      var grey=.299*data[i]+.587*data[i+1]+.114*data[i+2];
-      var adjusted=Math.max(0,Math.min(255,Math.round((grey-128)*1.35+139)));
-      data[i]=data[i+1]=data[i+2]=adjusted;
+    try{
+      var context=alternate.getContext("2d",{willReadFrequently:true});
+      if(!context)throw Error("画像補正に対応していません。");
+      context.drawImage(original,0,0);
+      var pixels=context.getImageData(0,0,alternate.width,alternate.height);
+      var data=pixels.data;
+      for(var i=0;i<data.length;i+=4){
+        var grey=.299*data[i]+.587*data[i+1]+.114*data[i+2];
+        var adjusted=Math.max(0,Math.min(255,Math.round((grey-128)*1.35+139)));
+        data[i]=data[i+1]=data[i+2]=adjusted;
+      }
+      context.putImageData(pixels,0,0);
+      return alternate;
+    }catch(error){
+      alternate.width=0;alternate.height=0;
+      throw error;
     }
-    context.putImageData(pixels,0,0);
-    return alternate;
   }
   async function imageToCanvas(file){
     // Inspect only bounded header bytes BEFORE decoding compressed pixels.
@@ -241,9 +251,9 @@
     var view=page.getViewport({scale:scale});
     var canvas=document.createElement("canvas");
     canvas.width=Math.ceil(view.width);canvas.height=Math.ceil(view.height);
-    var ctx=canvas.getContext("2d");
-    if(!ctx)throw Error("PDF画像化に対応していません。");
     try{
+      var ctx=canvas.getContext("2d");
+      if(!ctx)throw Error("PDF画像化に対応していません。");
       // PDF.js 6.x may require an explicit canvas in addition to its context.
       await page.render({canvas:canvas,canvasContext:ctx,viewport:view}).promise;
       return canvas;
@@ -329,9 +339,14 @@
       }
       return compared;
     }finally{
-      if(worker)await worker.terminate();
-      if(enhanced){enhanced.width=0;enhanced.height=0;}
-      if(rectified){rectified.width=0;rectified.height=0;}
+      // Termination can itself reject, e.g. a worker process crash. Never
+      // skip release of large intermediate canvases in that case.
+      try{
+        if(worker)await worker.terminate();
+      }finally{
+        if(enhanced){enhanced.width=0;enhanced.height=0;}
+        if(rectified){rectified.width=0;rectified.height=0;}
+      }
     }
   }
   function displayReview(r){

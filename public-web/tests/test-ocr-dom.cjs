@@ -404,6 +404,45 @@ async function main(){
  assert.equal(check.disabled,true);
  assert.equal(form.dataset.ocrReviewPending,"true");
  assert.equal(calc().className,"result hold");
+ // A failed worker.terminate() must not prevent the OCR source canvas or
+ // the high-contrast intermediate canvas from being released.
+ form.reset();
+ field("year").value="2026";
+ Object.defineProperty(file,"files",{configurable:true,value:[
+   syntheticRasterFile("synthetic-worker-exit-error.png","image/png",1024)
+ ]});
+ file.dispatchEvent(new win.Event("change",{bubbles:true}));
+ const originalCreate=doc.createElement.bind(doc);
+ const createdCanvases=[];
+ const originalWorkerFactory=win.Tesseract.createWorker;
+ let failedTerminateCount=0;
+ doc.createElement=function(tag,options){
+   const element=originalCreate(tag,options);
+   if(tag==="canvas")createdCanvases.push(element);
+   return element;
+ };
+ win.Tesseract.createWorker=async()=>({
+   recognize:async()=>({data:{text,confidence:98}}),
+   terminate:async()=>{failedTerminateCount++;throw Error("SYNTHETIC_WORKER_TERMINATION_FAILURE");}
+ });
+ try{
+   scan.click();
+   for(let i=0;i<100&&scan.disabled;i++)
+     await new Promise(resolve=>setImmediate(resolve));
+   assert.equal(scan.disabled,false);
+   assert.equal(failedTerminateCount,1);
+   assert.ok(createdCanvases.length>=2);
+   for(const canvas of createdCanvases){
+     assert.equal(canvas.width,0,"canvas retained after failed worker exit");
+     assert.equal(canvas.height,0,"canvas retained after failed worker exit");
+   }
+   assert.equal(transfer.disabled,true);
+   assert.equal(check.disabled,true);
+   assert.equal(form.dataset.ocrReviewPending,"true");
+ }finally{
+   doc.createElement=originalCreate;
+   win.Tesseract.createWorker=originalWorkerFactory;
+ }
  assert.equal(networkAttempts,0);
  dom.window.close();
  console.log("PUBLIC_OCR_MANUAL_TRANSFER_DOM_PASS; synthetic; no network; not accuracy proof");
