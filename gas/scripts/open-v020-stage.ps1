@@ -36,11 +36,10 @@ try {
     }
     if ($CheckOnly) {
         Write-Output 'V020_PRIVATE_STAGE_LOCAL_RECEIPT_PASS; GOOGLE_NOT_RECHECKED; RELEASE=HOLD'
-        exit 0
+        return
     }
     Start-Process -FilePath 'msedge.exe' -ArgumentList @('--new-window', $stage.webAppUrl)
     Write-Output 'V020_PRIVATE_EDGE_OPENED; OWNER_LOGIN_MANUAL; OCR_NOT_TESTED; RELEASE=HOLD'
 } catch {
-    Write-Error 'V020_PRIVATE_EDGE_HOLD: STAGE_NOT_READY_OR_UNSAFE'
-    exit 2
+    throw 'V020_PRIVATE_EDGE_HOLD: STAGE_NOT_READY_OR_UNSAFE'
 }
