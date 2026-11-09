@@ -146,7 +146,9 @@ function writeJson(file,value,first=false){
  const body=JSON.stringify(value,null,2)+"\n";
  if(first){fs.writeFileSync(file,body,{flag:"wx",mode:0o600});return;}
  // Never overwrite a credential, old receipt or snapshot. Only new journal.
- must(file===path.join(stageDir,"journal.json"),"STAGE_WRITE_OUT_OF_SCOPE");
+ must(file===path.join(stageDir,"journal.json") ||
+  (process.env.NODE_ENV==="test" && path.basename(file)==="journal.json" &&
+   path.dirname(file).startsWith(os.tmpdir()+path.sep)), "STAGE_WRITE_OUT_OF_SCOPE");
  const temp=path.join(stageDir,".journal.tmp");
  fs.writeFileSync(temp,body,{flag:"wx",mode:0o600});
  fs.renameSync(temp,file);
@@ -168,7 +170,8 @@ function stageReport(stage="DEPLOYED_PENDING_OWNER_ACCEPTANCE"){
 }
 async function createStage({api,r,old,files,candidate,before,dir=stageDir,
  assertStable=()=>{}}){
- must(dir===stageDir||process.env.NODE_ENV==="test","STAGE_PATH_NOT_ALLOWED");
+ must(dir===stageDir||(process.env.NODE_ENV==="test" &&
+  path.resolve(dir).startsWith(os.tmpdir()+path.sep)),"STAGE_PATH_NOT_ALLOWED");
  must(!exists(dir),"STAGE_ALREADY_EXISTS_DO_NOT_RETRY");
  fs.mkdirSync(dir,{mode:0o700});
  const journal=path.join(dir,"journal.json");
