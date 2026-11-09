@@ -105,7 +105,7 @@ function assess({candidate,old,drive,oldDigest,newDigest}){
  }
  return {
   status:issues.length?"HOLD":"READY_FOR_SEPARATE_STAGE_APPROVAL",
-  stagePreflightRevision:6,
+  stagePreflightRevision:7,
   stage:!candidateReady?"LOCAL_CANDIDATE":issues.length?"REMOTE_READONLY_ATTESTATION":"APPROVAL_GATE",
   problems:issues,
   candidateChecks:!candidateReady&&Array.isArray(candidate?.reasons)?candidate.reasons:[],
@@ -130,13 +130,42 @@ function assess({candidate,old,drive,oldDigest,newDigest}){
  * ignore protected snapshot drift: we cannot verify the actual writer.
  * Do not output raw JSON, hashes, credentials, paths, time or OAuth claims.
  */
+/**
+ * Classify the CURRENT isolated/global credential pair without revealing
+ * identities, token contents, keys, paths, timestamps, or hashes.
+ * This cannot validate the historic installation snapshot or who wrote auth.
+ */
+function classifyAuthPair(oldAuth,currentAuth,pattern){
+ const value=x=>x&&typeof x==="object"&&!Array.isArray(x)?x:null;
+ const a=value(value(oldAuth)?.tokens?.default);
+ const b=value(value(currentAuth)?.tokens?.default);
+ const required=x=>x&&["refresh_token","client_id","client_secret",
+  "access_token"].every(k=>typeof x[k]==="string"&&x[k].length>0)&&
+  Number.isSafeInteger(x.expiry_date);
+ if(!required(a)||!required(b))return "SCHEMA_OR_TOKEN_FIELDS_UNEXPECTED";
+ if(["refresh_token","client_id","client_secret"].some(k=>a[k]!==b[k]))
+  return "STABLE_CREDENTIAL_FIELDS_DIFFER";
+ if(pattern==="TOKEN_REFRESH_COMPATIBLE")return "KNOWN_REFRESH_FIELDS_COMPATIBLE";
+ const canonical=x=>Array.isArray(x)?x.map(canonical):
+   x&&typeof x==="object"?Object.fromEntries(
+    Object.keys(x).sort().map(k=>[k,canonical(x[k])])):x;
+ const stripped=x=>{
+  const out=structuredClone(x);
+  for(const key of ["access_token","expiry_date","id_token"]){
+   if(out?.tokens?.default)delete out.tokens.default[key];
+  }
+  return canonical(out);
+ };
+ return JSON.stringify(stripped(oldAuth))===JSON.stringify(stripped(currentAuth))?
+  "TRANSIENT_TOKEN_FIELDS_NOT_VERIFIED":"OTHER_CREDENTIAL_METADATA_DIFFERS";
+}
 function inspectGlobalAuthRefresh({receipt,drift,isolatedAuthFile,globalAuthFile}){
  // The installer snapshots global clasp at INSTALL time, but reuse-auth copies
  // it earlier. The isolated copy is NOT automatically a historical baseline.
  // A token-rotation shaped difference between two CURRENT files does not prove
  // what global auth contained when the snapshot was made.
- const report=(baseline,pattern="UNVERIFIED")=>({
-  status:"HOLD",baseline,pattern,
+ const report=(baseline,pattern="UNVERIFIED",pairDifference="NOT_ASSESSED")=>({
+  status:"HOLD",baseline,pattern,pairDifference,
   comparisonScope:"ISOLATED_COPY_VS_CURRENT_GLOBAL_ONLY",
   historicalSnapshotReconstruction:"NOT_PROVEN",
   writer:"UNVERIFIED",snapshotWrite:"PROHIBITED",ownerReview:"REQUIRED"
@@ -167,11 +196,11 @@ function inspectGlobalAuthRefresh({receipt,drift,isolatedAuthFile,globalAuthFile
   if(currentHash===oldHash)return report("GLOBAL_FILE_NOT_CHANGED_NOW");
   // Even when copyHash != historical hash, this comparison is useful as a
   // strictly limited offline *shape* check. Never raise stage readiness.
-  const pattern=google.oauthRefreshPattern(
-   JSON.parse(oldCopy.toString("utf8").replace(/^\uFEFF/,"")),
-   JSON.parse(now.toString("utf8").replace(/^\uFEFF/,""))
-  );
-  return report(baseline,pattern);
+  const isolated=JSON.parse(oldCopy.toString("utf8").replace(/^\uFEFF/,""));
+  const global=JSON.parse(now.toString("utf8").replace(/^\uFEFF/,""));
+  const pattern=google.oauthRefreshPattern(isolated,global);
+  const pairDifference=classifyAuthPair(isolated,global,pattern);
+  return report(baseline,pattern,pairDifference);
  }catch{return report("HISTORICAL_COMPARISON_UNAVAILABLE");}
 }
 
@@ -190,7 +219,7 @@ function protectedConfigHold(candidate,drift,authReview=null){
   });
  const checks=valid?drift.checks.map(row=>({name:row.name,state:row.state})):[];
  return {
-  status:"HOLD",stagePreflightRevision:6,stage:"PROTECTED_LOCAL_CONFIG",
+  status:"HOLD",stagePreflightRevision:7,stage:"PROTECTED_LOCAL_CONFIG",
   problems:[valid?"PROTECTED_CONFIG_DRIFT":"PROTECTED_DRIFT_REPORT_INVALID"],
   candidateChecks:[],candidateCheckoutIdentity:candidate?.checkoutIdentity||"NOT_VERIFIED",
   protectedConfiguration:{status:"HOLD",checks},
@@ -267,7 +296,7 @@ async function main(){
  console.log(JSON.stringify(report));
  if(report.status!=="READY_FOR_SEPARATE_STAGE_APPROVAL")process.exitCode=2;
 }
-module.exports={checkCandidate,assess,committedSources,liveTrustedBranchTip,protectedConfigHold,inspectGlobalAuthRefresh};
+module.exports={checkCandidate,assess,committedSources,liveTrustedBranchTip,protectedConfigHold,inspectGlobalAuthRefresh,classifyAuthPair};
 if(require.main===module)main().catch(error=>{
  const allowed=new Set(["UNTRUSTED_GIT_ORIGIN","TRUSTED_REMOTE_READ_FAILED",
   "TRUSTED_REMOTE_TIP_UNVERIFIED","PROTECTED_CONFIG_DRIFT"]);
