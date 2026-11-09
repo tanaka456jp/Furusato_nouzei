@@ -1,0 +1,25 @@
+"use strict";
+const assert=require("node:assert/strict");
+const path=require("node:path");
+const {chooseBrowser}=require("../deployment/browser-runtime.cjs");
+const env={ProgramFiles:"C:\\Programs",["PROGRAMFILES(X86)"]:"C:\\Programs86",LOCALAPPDATA:"C:\\User\\AppData"};
+const mock={executablePath:()=>"C:\\Playwright\\chromium.exe"};
+const edge=path.join(env["PROGRAMFILES(X86)"],"Microsoft","Edge","Application","msedge.exe");
+const chrome=path.join(env.ProgramFiles,"Google","Chrome","Application","chrome.exe");
+const choose=(files,change={})=>chooseBrowser({chromium:mock,env:{...env,...change},platform:"win32",exists:p=>files.includes(p)});
+assert.deepEqual(choose(["C:\\Playwright\\chromium.exe"]),{status:"PASS",engine:"chromium",launch:{}});
+assert.deepEqual(choose([edge]),{status:"PASS",engine:"msedge",launch:{channel:"msedge"}});
+assert.deepEqual(choose([chrome]),{status:"PASS",engine:"chrome",launch:{channel:"chrome"}});
+assert.equal(choose([]).reason,"NO_LOCAL_CHROMIUM_EDGE_OR_CHROME");
+assert.equal(choose([edge],{FURUSATO_BROWSER_CHANNEL:"chromium"}).reason,"REQUESTED_BROWSER_NOT_INSTALLED");
+assert.equal(choose([edge],{FURUSATO_BROWSER_CHANNEL:"chrome"}).reason,"REQUESTED_BROWSER_NOT_INSTALLED");
+assert.deepEqual(choose([edge],{FURUSATO_BROWSER_CHANNEL:"msedge"}),{status:"PASS",engine:"msedge",launch:{channel:"msedge"}});
+assert.equal(choose([edge],{FURUSATO_BROWSER_CHANNEL:"untrusted-executable"}).reason,"UNSUPPORTED_BROWSER_CHANNEL");
+assert.equal(chooseBrowser({chromium:mock,env,platform:"linux",exists:()=>false}).status,"HOLD");
+assert.equal(chooseBrowser({chromium:null,env,platform:"win32",exists:()=>true}).reason,"BROWSER_ENGINE_UNAVAILABLE");
+// Preflight must remain pure even if given a malicious environment variable.
+let seen=[];
+const fake=(p)=>{seen.push(p);return false;};
+chooseBrowser({chromium:mock,env:{...env,FURUSATO_BROWSER_CHANNEL:"../unauthorized"},platform:"win32",exists:fake});
+assert.deepEqual(seen,[],"Unknown browser channel must not even probe paths");
+console.log("PRIVATE_LOCAL_BROWSER_SELECTION_PASS: synthetic only, no Google, no launch");

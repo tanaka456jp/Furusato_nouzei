@@ -1,0 +1,191 @@
+name: GAS workflow regression
+on:
+  pull_request:
+    paths:
+      - 'gas/**'
+      - '.github/workflows/gas.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'gas/**'
+      - '.github/workflows/gas.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gas-engine:
+    name: Node static and independent tax-model smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated browser DOM test dependency
+        run: npm install --no-save --ignore-scripts --no-audit --no-fund jsdom@26.1.0
+      - name: Verify source-reader/GAS field and clasp publish contracts
+        run: node gas/tests/test-contract.cjs
+      - name: Independent engine regression
+        run: |
+          node gas/tests/test-engine.cjs
+          node gas/tests/test-separate-tax.cjs
+          node gas/tests/test-ocr.cjs
+          node gas/tests/test-private-ocr-status.cjs
+          node gas/tests/test-owner-ocr-evidence.cjs
+          node gas/tests/test-installed-private-version.cjs
+          node gas/tests/test-v020-stage-plan.cjs
+          node gas/tests/test-v020-isolated-stage.cjs
+          node gas/tests/test-v020-recovery-diagnostic.cjs
+          node gas/tests/test-v023-stage-plan.cjs
+          node gas/tests/test-v023-stage-inventory.cjs
+          node --check gas/scripts/plan-v023-isolated-stage.cjs
+          node --check gas/scripts/diagnose-v020-isolated-stage.cjs
+          node --check gas/scripts/create-v020-isolated-stage.cjs
+          node --check gas/scripts/plan-v020-private-stage.cjs
+          node --check gas/scripts/audit-installed-private-version.cjs
+          node --check gas/scripts/audit-owner-ocr-evidence.cjs
+          node gas/tests/test-private-browser-probe.cjs
+          node gas/tests/test-browser-runtime.cjs
+          node gas/tests/test-system-browser.cjs
+          node gas/tests/test-private-ocr-temporary-files.cjs
+          node --check gas/scripts/check-private-ocr-temporary-files.cjs
+          node --check gas/tests/test-real-browser.cjs
+          node --check gas/scripts/check-local-browser.cjs
+          node gas/tests/test-deployment.cjs
+          node gas/tests/test-config-drift.cjs
+          node gas/tests/test-google-recovery.cjs
+          node gas/tests/test-parity.cjs
+          node gas/tests/test-observed.cjs
+      - name: Workflow and source import simulated browser regression
+        run: node gas/tests/test-browser.cjs
+      - name: Build local standalone review preview
+        run: node gas/scripts/build-preview.cjs
+      - name: Verify preview with simulated browser
+        run: node gas/tests/test-preview.cjs
+      - name: Upload offline local preview (no Google deployment)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Furusato_GAS_Offline_Preview_${{ github.run_id }}
+          path: gas/dist/Furusato_GAS_LocalPreview.html
+          if-no-files-found: error
+          retention-days: 14
+      - name: Package audited GAS source files for private test deployment
+        shell: bash
+        run: |
+          cd gas
+          zip -q dist/Furusato_GAS_DeploySources.zip Code.gs Engine.gs SourceOCR.gs Index.html appsscript.json .claspignore
+          unzip -Z1 dist/Furusato_GAS_DeploySources.zip | LC_ALL=C sort > dist/actual-files.txt
+          printf '%s\n' .claspignore Code.gs Engine.gs SourceOCR.gs Index.html appsscript.json | LC_ALL=C sort > dist/expected-files.txt
+          diff -u dist/expected-files.txt dist/actual-files.txt
+      - name: Upload audited private-deployment source kit (not deployed)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Furusato_GAS_DeploySources_${{ github.run_id }}
+          path: gas/dist/Furusato_GAS_DeploySources.zip
+          if-no-files-found: error
+          retention-days: 14
+      - name: Package Windows private setup kit (not deployed)
+        shell: bash
+        run: |
+          cd gas
+          zip -q dist/Furusato_GAS_Windows_Private_Setup.zip Code.gs Engine.gs SourceOCR.gs Index.html appsscript.json .claspignore .gitignore README.md scripts/setup-private-gas.ps1 deployment/private-gas.cjs deployment/policy.json deployment/README.md package.json package-lock.json
+          unzip -Z1 dist/Furusato_GAS_Windows_Private_Setup.zip | LC_ALL=C sort > dist/setup-actual-files.txt
+          printf '%s\n' .claspignore .gitignore Code.gs Engine.gs SourceOCR.gs Index.html README.md appsscript.json scripts/setup-private-gas.ps1 deployment/private-gas.cjs deployment/policy.json deployment/README.md package.json package-lock.json | LC_ALL=C sort > dist/setup-expected-files.txt
+          diff -u dist/setup-expected-files.txt dist/setup-actual-files.txt
+      - name: Upload Windows private GAS setup (no OAuth tokens)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Furusato_GAS_Windows_Private_Setup_${{ github.run_id }}
+          path: gas/dist/Furusato_GAS_Windows_Private_Setup.zip
+          if-no-files-found: error
+          retention-days: 14
+      - name: Explicit validation boundary
+        run: |
+          echo "GAS JavaScript regression: PASS if previous step passed." >> "$GITHUB_STEP_SUMMARY"
+          echo "Not a GAS deployment, Google account auth test, PDF OCR, or full Excel parity acceptance." >> "$GITHUB_STEP_SUMMARY"
+  gas-windows:
+    name: Windows Node portability smoke
+    runs-on: windows-2022
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated browser DOM test dependency
+        run: npm install --no-save --ignore-scripts --no-audit --no-fund jsdom@26.1.0
+      - name: Verify source-reader/GAS field and clasp publish contracts
+        run: node gas/tests/test-contract.cjs
+      - name: Independent engine regression
+        run: |
+          $tests = @('test-engine', 'test-separate-tax', 'test-ocr', 'test-private-ocr-status',
+            'test-owner-ocr-evidence', 'test-installed-private-version', 'test-v020-stage-plan', 'test-v020-isolated-stage', 'test-v020-recovery-diagnostic', 'test-v023-stage-plan', 'test-v023-stage-inventory', 'test-private-browser-probe', 'test-browser-runtime', 'test-system-browser',
+            'test-private-ocr-temporary-files', 'test-deployment', 'test-config-drift',
+            'test-google-recovery', 'test-parity', 'test-observed')
+          foreach ($test in $tests) {
+            node "gas/tests/$test.cjs"
+            if ($LASTEXITCODE -ne 0) { throw "Windows Node regression failed ($test)" }
+          }
+          foreach ($script in @('scripts/check-private-ocr-temporary-files', 'scripts/audit-owner-ocr-evidence', 'scripts/audit-installed-private-version', 'scripts/plan-v020-private-stage', 'scripts/create-v020-isolated-stage', 'scripts/diagnose-v020-isolated-stage', 'scripts/accept-owner-ocr',
+            'scripts/plan-v023-isolated-stage', 'scripts/v023-stage-inventory',
+            'tests/test-real-browser', 'scripts/check-local-browser')) {
+            node --check "gas/$script.cjs"
+            if ($LASTEXITCODE -ne 0) { throw "Windows Node syntax check failed ($script)" }
+          }
+      - name: Validate normal Edge owner launcher syntax (offline)
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path 'gas/scripts/open-v020-stage.ps1'), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { throw 'Owner Edge launcher syntax invalid' }
+          Write-Host 'V020_EDGE_LAUNCHER_SYNTAX_PASS; NO_GOOGLE_LOGIN_OR_NETWORK'
+      - name: Workflow and source import simulated browser regression
+        run: node gas/tests/test-browser.cjs
+      - name: Official Excel parity script preflight (no Excel or Google)
+        shell: powershell
+        run: .\gas\parity\run-excel-oracle.ps1 -PreflightOnly
+      - name: Readonly Windows GAS installation preflight
+        shell: powershell
+        run: |
+          .\gas\scripts\setup-private-gas.ps1
+      - name: Owner-approved live OCR launcher preflight only (never creates Google files)
+        shell: powershell
+        run: |
+          .\gas\scripts\accept-private-live-ocr.ps1 -PreflightOnly
+      - name: Detached Git worktree guard on actual PowerShell (no Google authentication)
+        shell: powershell
+        run: |
+          git fetch --no-tags origin feature/gas-workflow-20261106
+          if ($LASTEXITCODE -ne 0) { throw 'Synthetic Git fetch failed' }
+          git checkout --detach refs/remotes/origin/feature/gas-workflow-20261106
+          if ($LASTEXITCODE -ne 0) { throw 'Synthetic detached checkout failed' }
+          .\gas\scripts\accept-private-live-ocr.ps1 -GitCheckOnly
+          if ($LASTEXITCODE -ne 0 -or !$?) { throw 'Safe detached worktree guard failed' }
+      - name: Unicode-path detached worktree guard on Windows (no Google access)
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Keep inline PowerShell ASCII: Windows PowerShell 5.1 parses its
+          # generated script without requiring a UTF-8 BOM.
+          $unicodeSuffix = ([string][char]0x6F22) + ([string][char]0x5B57) + '_worktree'
+          $unicode = Join-Path $env:RUNNER_TEMP $unicodeSuffix
+          if (Test-Path -LiteralPath $unicode) { throw 'Unsafe existing Unicode test path' }
+          try {
+            git worktree add --detach "$unicode" HEAD
+            if ($LASTEXITCODE -ne 0) { throw 'Unicode test worktree creation failed' }
+            & (Join-Path $unicode 'gas\scripts\accept-private-live-ocr.ps1') -GitCheckOnly
+            if ($LASTEXITCODE -ne 0 -or !$?) { throw 'Unicode path Git guard failed' }
+            'UNICODE_WORKTREE_GIT_GUARD=PASS; no Google access' >> $env:GITHUB_STEP_SUMMARY
+          } finally {
+            if (Test-Path -LiteralPath $unicode) {
+              git worktree remove --force "$unicode"
+              if ($LASTEXITCODE -ne 0) { throw 'Unicode test worktree cleanup failed' }
+            }
+          }
+
+
+

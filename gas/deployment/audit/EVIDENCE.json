@@ -1,0 +1,26 @@
+{
+  "schema": "furusato-acceptance-summary/v1",
+  "data": "SYNTHETIC_ONLY",
+  "release": "HOLD",
+  "sourceDigest": "079258437307dd18630a9e5d5c5720db24ea0d68878334ec868025e6e400fe90",
+  "realGoogleRunAt": "2026-11-07T00:59:30.424Z",
+  "candidateBaseCommit": "4225046848441977adf78ebec09f1bf8c0eb04c1",
+  "candidateHadUncommittedChanges": true,
+  "actualGoogle": {
+    "privateDeployment": "PASS",
+    "taxCalculation": "PASS",
+    "driveApi": "PASS",
+    "pngOcrAndCleanup": "PASS",
+    "pdfOcrAndCleanup": "PASS",
+    "ocrRemainsHold": "PASS",
+    "chromiumPrintPdf": "PASS",
+    "mobileWidth": "PASS"
+  },
+  "protectedHousingLocalConfigAndGlobalAuth": "UNCHANGED",
+  "protectedHousingGoogleSourceAndDeployments": "UNCHANGED",
+  "physicalPrinter": "HOLD",
+  "fullExcelTaxParity": "HOLD",
+  "independentActualGoogleRerun": "HOLD",
+  "privateOriginalEvidence": ".private/furusato/evidence/browser-evidence.json",
+  "finalCommitCi": "See Draft PR 2 for exact final SHA and Actions links"
+}
