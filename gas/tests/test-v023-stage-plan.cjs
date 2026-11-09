@@ -44,7 +44,7 @@ for(const patch of [
  assert.equal(assessCandidate({...good,...patch}).ready,false,JSON.stringify(Object.keys(patch)));
 }
 assert.equal(assessCandidate({...good,localBranch:""}).ready,true);
-const zeroInventory={status:"PASS",scope,matchingResources:0,
+const zeroInventory={status:"PASS",scope,matchingResources:0,ownerIdentity:"PASS",
  reason:"NO_V023_MATCH_VISIBLE_IN_DEDICATED_OAUTH_SCOPE"};
 const original={
  candidate:{ready:true},
@@ -70,9 +70,11 @@ for(const [patch,reason] of [
  [{stable:false},"CANDIDATE_CHANGED_DURING_CHECK"],
  [{targetAbsent:false},"V023_TARGET_ALREADY_PRESENT"],
  [{inventory:null},"V023_REMOTE_INVENTORY_NOT_ZERO_OR_UNVERIFIED"],
+ [{inventory:{...zeroInventory,ownerIdentity:"HOLD"}},"V023_REMOTE_INVENTORY_NOT_ZERO_OR_UNVERIFIED"],
  [{inventory:{...zeroInventory,matchingResources:1,status:"HOLD"}},"V023_REMOTE_INVENTORY_NOT_ZERO_OR_UNVERIFIED"],
  [{inventory:{...zeroInventory,scope:"ACCOUNT_WIDE"}},"V023_REMOTE_INVENTORY_NOT_ZERO_OR_UNVERIFIED"],
  [{inventoryAfter:null},"V023_REMOTE_INVENTORY_RECHECK_FAILED"],
+ [{inventoryAfter:{...zeroInventory,ownerIdentity:"HOLD"}},"V023_REMOTE_INVENTORY_RECHECK_FAILED"],
  [{inventoryAfter:{...zeroInventory,matchingResources:1}},"V023_REMOTE_INVENTORY_RECHECK_FAILED"]
 ]){
  const x=assessV023({...original,...patch});
@@ -81,9 +83,12 @@ for(const [patch,reason] of [
  assert.equal(x.release,"HOLD");
 }
 const snap={candidate:{ready:true},identity:{head:sha,sourceDigest:"f".repeat(64),
- previousCommit:prior,previousDigest:good.previousDigest}};
+ previousCommit:prior,previousDigest:good.previousDigest,
+ owner:"trustedOwner_001",privateAuthDigest:"c".repeat(64)}};
 assert.equal(snapshotEqual(snap,structuredClone(snap)),true);
 assert.equal(snapshotEqual(snap,{...snap,identity:{...snap.identity,sourceDigest:"0".repeat(64)}}),false);
+assert.equal(snapshotEqual(snap,{...snap,identity:{...snap.identity,owner:"wrongOwner"}}),false);
+assert.equal(snapshotEqual(snap,{...snap,identity:{...snap.identity,privateAuthDigest:"d".repeat(64)}}),false);
 const temp=fs.mkdtempSync(path.join(os.tmpdir(),"furusato-v023-plan-"));
 try{
  const missing=path.join(temp,"no-stage");
