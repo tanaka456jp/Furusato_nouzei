@@ -262,12 +262,19 @@
       throw error;
     }
   }
-  async function twoPass(image){
+  async function twoPass(image,isStale){
+    function ensureCurrent(){
+      // A stale OCR result is never used. Stop expensive follow-up passes
+      // as soon as the current recognition returns control to JavaScript.
+      if(typeof isStale==="function"&&isStale())
+        throw Error("OCR_SOURCE_CANCELLED");
+    }
     if(typeof window.Tesseract==="undefined"||
       typeof window.Tesseract.createWorker!=="function")
       throw Error("端末内OCRエンジンを読み込めません。");
     var original=image,enhanced=null,rectified=null,worker=null;
     try{
+      ensureCurrent();
       if(typeof window.FurusatoImageQuality!=="object"||
          typeof window.FurusatoImageQuality.assessCanvas!=="function")
         throw Error("IMAGE_QUALITY_MODULE_MISSING");
@@ -286,6 +293,7 @@
         }
       }
       enhanced=contrastVariant(original);
+      ensureCurrent();
       var paths={
         workerPath:new URL("./vendor/tesseract/worker.min.js",location.href).href,
         corePath:new URL("./vendor/tesseract/core",location.href).href,
@@ -293,8 +301,11 @@
         workerBlobURL:false,cacheMethod:"none"
       };
       worker=await window.Tesseract.createWorker("jpn",window.Tesseract.OEM.LSTM_ONLY,paths);
+      ensureCurrent();
       var a=await worker.recognize(original,{}, {text:true,blocks:true});
+      ensureCurrent();
       var b=await worker.recognize(enhanced);
+      ensureCurrent();
       var compared=window.FurusatoSlipReview.compareAttempts(
         a?.data?.text,b?.data?.text,a?.data?.confidence,b?.data?.confidence);
       // Do not use regional reads to invent fields or override global HOLD.
@@ -314,6 +325,7 @@
         if(plan.status==="READY"){
           var values=[];
           for(const region of plan.rectangles){
+            ensureCurrent();
             var crop=document.createElement("canvas");
             try{
               crop.width=region.width*2;crop.height=region.height*2;
@@ -324,6 +336,7 @@
                 region.left,region.top,region.width,region.height,
                 0,0,crop.width,crop.height);
               var rec=await worker.recognize(crop);
+              ensureCurrent();
               values.push({key:region.key,text:rec?.data?.text,
                 confidence:rec?.data?.confidence});
             }finally{crop.width=0;crop.height=0;}
@@ -399,6 +412,12 @@
     var requestedGeneration=generation,requestedYear=Number(taxYear.value);
     var requestedManualRevision=manualRevision;
     var canvas=null,pdf=null,pdfTask=null,stage="SOURCE_PREPARE";
+    function isStale(){
+      return generation!==requestedGeneration||
+        manualRevision!==requestedManualRevision||
+        (fileInput.files&&fileInput.files[0])!==file||
+        Number(taxYear.value)!==requestedYear;
+    }
     try{
       var result;
       if(file.type==="application/pdf"){
@@ -410,7 +429,7 @@
           // No PDF text operators: scanned image-only single-page PDF.
           // This is the only fallback for EMPTY, not for malformed layers.
           stage="PDF_RASTER";canvas=await rasterizePdf(page);
-          stage="PDF_OCR";result=await twoPass(canvas);
+          stage="PDF_OCR";result=await twoPass(canvas,isStale);
         }else{
         var digital=window.FurusatoSlipReview.reviewDigitalPdf(extracted.text);
         if(typeof window.FurusatoPdfLayout!=="object"||
@@ -466,19 +485,16 @@
           result=positioned;
         }else{
           stage="PDF_RASTER";canvas=await rasterizePdf(page);
-          stage="PDF_OCR";result=await twoPass(canvas);
+          stage="PDF_OCR";result=await twoPass(canvas,isStale);
         }
         }
       }else{
         stage="IMAGE_DECODE";canvas=await imageToCanvas(file);
-        stage="IMAGE_OCR";result=await twoPass(canvas);
+        stage="IMAGE_OCR";result=await twoPass(canvas,isStale);
       }
       // A source swap, form reset or year change during async OCR invalidates
       // the old attempt, even if the two text recognitions both succeeded.
-      if(generation!==requestedGeneration||
-         manualRevision!==requestedManualRevision||
-         (fileInput.files&&fileInput.files[0])!==file||
-         Number(taxYear.value)!==requestedYear)return;
+      if(isStale())return;
       review=result;reviewFile=file;reviewYear=requestedYear;
       reviewGeneration=requestedGeneration;
       reviewManualRevision=requestedManualRevision;

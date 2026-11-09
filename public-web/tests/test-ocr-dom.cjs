@@ -189,6 +189,8 @@ async function main(){
  for(let i=0;i<100 && scan.disabled;i++)
    await new Promise(resolve=>setImmediate(resolve));
  assert.equal(scan.disabled,false);
+ assert.equal(recognized,oldCount+1,
+   "cancelled old file must not run a second full-page OCR pass");
  assert.equal(transfer.disabled,true);
  assert.equal(field("salaryIncomeReference").value,"");
  assert.equal(doc.getElementById("slipReview").textContent.includes("older-synthetic"),false);
@@ -213,6 +215,8 @@ async function main(){
  for(let i=0;i<100&&scan.disabled;i++)
    await new Promise(resolve=>setImmediate(resolve));
  assert.equal(scan.disabled,false);
+ assert.equal(recognized,duringManualBefore+1,
+   "an edit during the first pass must stop subsequent OCR passes");
  assert.equal(field("salaryGross").value,"7150000");
  assert.equal(transfer.disabled,true);
  // Reset must invalidate any old source data even when no result exists.
@@ -400,6 +404,8 @@ async function main(){
  for(let i=0;i<100&&scan.disabled;i++)
    await new Promise(resolve=>setImmediate(resolve));
  assert.equal(scan.disabled,false);
+ assert.equal(recognized,cancelBefore+1,
+   "cancellation must stop after the currently running OCR recognition");
  assert.equal(transfer.disabled,true);
  assert.equal(check.disabled,true);
  assert.equal(form.dataset.ocrReviewPending,"true");
