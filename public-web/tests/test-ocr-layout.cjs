@@ -40,4 +40,44 @@ const distant=spans.map(x=>({...x}));
 distant[4]=item("7,200,000円",5000,100);
 assert.notEqual(audit(distant,expected).status,"CONFLICT");
 assert.equal(audit(spans,{...expected,salaryGross:7200000}).status,"CONFLICT");
-console.log("PUBLIC_OCR_PDF_POSITION_NEGATIVE_AUDIT_SYNTHETIC_PASS; not accuracy proof");
+const extract=require("../src/ocr-layout.js").extract;
+const separateLabelAndValuePdf=spans.concat([
+ item("給与所得の源泉徴収票",24,790),
+ item("令和",24,750),item("8",62,750),item("年分",92,750)
+]);
+const review=extract(separateLabelAndValuePdf);
+assert.equal(review.status,"REQUIRES_SOURCE_REVIEW");
+assert.equal(review.positionStatus,"COMPLETE_CANDIDATES");
+assert.equal(review.eligibleForManualTransfer,true);
+assert.equal(review.autoApproved,false);
+assert.equal(review.originalCompared,false);
+assert.equal(review.year,2026);
+assert.deepEqual(review.candidates,expected);
+const duplicateAmount=extract(separateLabelAndValuePdf.concat([
+ item("7,000,000円",28,679)
+]));
+assert.equal(duplicateAmount.eligibleForManualTransfer,false);
+assert.equal(duplicateAmount.positionStatus,"CONFLICT");
+assert.ok(duplicateAmount.reasons.includes("LAYOUT_AMBIGUOUS_AMOUNT_salaryGross"));
+const duplicateYear=extract(separateLabelAndValuePdf.concat([
+ item("令和8年分",600,750)
+]));
+assert.equal(duplicateYear.positionStatus,"CONFLICT");
+assert.equal(duplicateYear.eligibleForManualTransfer,false);
+const noTitle=extract(spans.concat([
+ item("令和",24,750),item("8",62,750),item("年分",92,750)
+]));
+assert.equal(noTitle.eligibleForManualTransfer,false);
+assert.equal(noTitle.positionStatus,"UNVERIFIED");
+const missingSalary=extract(separateLabelAndValuePdf.filter(
+ x=>x.str!=="7,000,000円"));
+assert.equal(missingSalary.positionStatus,"UNVERIFIED");
+assert.equal(missingSalary.eligibleForManualTransfer,false);
+const heldAmbiguousField=extract(separateLabelAndValuePdf.concat([
+ item("支払金額",24,700)
+]));
+assert.equal(heldAmbiguousField.positionStatus,"CONFLICT");
+const adjusted=separateLabelAndValuePdf.map(x=>x.str==="給与所得控除後の金額"?
+ item("給与所得控除後の金額（調整控除後）",x.transform[4],x.transform[5]):x);
+assert.equal(extract(adjusted).eligibleForManualTransfer,true);
+console.log("PUBLIC_OCR_PDF_POSITION_NEGATIVE_AND_SOURCE_CANDIDATE_AUDIT_SYNTHETIC_PASS; not accuracy proof");
