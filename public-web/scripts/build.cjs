@@ -78,6 +78,30 @@ copy(path.join(readNpm("pdfjs-dist"),"build","pdf.mjs"),
  path.join(vendor,"pdf.mjs"));
 copy(path.join(readNpm("pdfjs-dist"),"build","pdf.worker.mjs"),
  path.join(vendor,"pdf.worker.mjs"));
+const notices=[
+  {name:"tesseract.js",version:"7.0.0",license:"Apache-2.0",folder:"tesseract-js"},
+  {name:"tesseract.js-core",version:"7.0.0",license:"Apache-2.0",folder:"tesseract-core"},
+  {name:"@tesseract.js-data/jpn",version:"1.0.0",license:"MIT",folder:"tesseract-jpn"},
+  {name:"pdfjs-dist",version:"6.3.289",license:"Apache-2.0",folder:"pdfjs"}
+];
+const legal=path.join(dest,"licenses");
+fs.mkdirSync(legal,{recursive:true});
+for(const p of notices){
+ const metadata=JSON.parse(fs.readFileSync(path.join(readNpm(p.name),"package.json"),"utf8"));
+ if(metadata.version!==p.version||String(metadata.license).toUpperCase()!==p.license.toUpperCase())
+  throw Error("OCR_LICENSE_METADATA_UNVERIFIED");
+ for(const filename of fs.readdirSync(readNpm(p.name)).filter(
+   x=>/^(?:LICENSE|LICENCE|NOTICE)(?:[.\w-]*)?$/i.test(x))){
+   const source=path.join(readNpm(p.name),filename);
+   if(fs.statSync(source).isFile())
+    fs.copyFileSync(source,path.join(legal,p.folder+"-"+filename));
+ }
+}
+fs.writeFileSync(path.join(legal,"THIRD_PARTY_NOTICES.txt"),
+ "OCR components and licenses (review build)\\n"+
+ notices.map(p=>p.name+" "+p.version+" "+p.license).join("\\n")+
+ "\\nSource: https://github.com/naptha/tesseract.js and https://github.com/mozilla/pdf.js\\n",
+ "utf8");
 fs.writeFileSync(path.join(dest,"engine.js"),engine,"utf8");
 const headers=`/*
   Content-Security-Policy: default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'none'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
