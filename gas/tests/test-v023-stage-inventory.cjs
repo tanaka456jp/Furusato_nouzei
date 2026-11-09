@@ -43,7 +43,7 @@ async function test(){
  const verifiedApi=async(url,method)=>{
   assert.equal(method,"GET");
   if(url==="https://www.googleapis.com/drive/v3/about?fields=user(permissionId,emailAddress)")
-   return {user:{permissionId:owner,emailAddress:"owner@example.invalid"}};
+   return {user:{permissionId:owner,emailAddress:"sales@example.invalid"}};
   assert.equal(new URL(url).pathname,"/drive/v3/files");
   return {files:[]};
  };
