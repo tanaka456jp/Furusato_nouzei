@@ -20,6 +20,7 @@ const {committedSources,liveTrustedBranchTip}=require("./plan-v020-private-stage
 const owner=require("./audit-owner-ocr-evidence.cjs");
 const {fingerprintEvidence,evaluate}=require("./attest-v020-owner-acceptance.cjs");
 const {checkPrerequisites}=require("./diagnose-v020-isolated-stage.cjs");
+const {auditV023Inventory,scope:inventoryScope}=require("./v023-stage-inventory.cjs");
 const targetDir=path.join(root,".private","furusato-v023-stage");
 const branch="feature/gas-workflow-20261106";
 const acceptedOrigins=new Set([
@@ -37,7 +38,8 @@ function targetPathAbsent(dir=targetDir){
  try{fs.lstatSync(dir);return false;}
  catch(e){if(e?.code==="ENOENT")return true;throw e;}
 }
-function assessV023({candidate,attestation,stable=true,targetAbsent=true}={}){
+function assessV023({candidate,attestation,stable=true,targetAbsent=true,
+ inventory=null,inventoryAfter=null}={}){
  const reasons=[];
  const fail=(reason,condition)=>{if(condition)reasons.push(reason);};
  fail("CANDIDATE_SOURCE_NOT_VERIFIED",candidate?.ready!==true);
@@ -47,6 +49,14 @@ function assessV023({candidate,attestation,stable=true,targetAbsent=true}={}){
   attestation?.googleWrites!=="NONE_FROM_THIS_GATE");
  fail("CANDIDATE_CHANGED_DURING_CHECK",stable!==true);
  fail("V023_TARGET_ALREADY_PRESENT",targetAbsent!==true);
+ const visibleZero=inventory?.status==="PASS"&&inventory?.scope===inventoryScope&&
+  inventory?.matchingResources===0&&
+  inventory?.reason==="NO_V023_MATCH_VISIBLE_IN_DEDICATED_OAUTH_SCOPE";
+ const visibleZeroAgain=inventoryAfter?.status==="PASS"&&
+  inventoryAfter?.scope===inventoryScope&&inventoryAfter?.matchingResources===0&&
+  inventoryAfter?.reason==="NO_V023_MATCH_VISIBLE_IN_DEDICATED_OAUTH_SCOPE";
+ fail("V023_REMOTE_INVENTORY_NOT_ZERO_OR_UNVERIFIED",!visibleZero);
+ fail("V023_REMOTE_INVENTORY_RECHECK_FAILED",!visibleZeroAgain);
  return {
   schema:"furusato-v023-private-stage-plan/v1",
   status:reasons.length?"HOLD":"READY_FOR_SEPARATE_V023_STAGE_APPROVAL",
@@ -55,7 +65,9 @@ function assessV023({candidate,attestation,stable=true,targetAbsent=true}={}){
   verifiedSourceFiles:candidate?.ready?5:0,
   oldV020:attestation?.status==="LIMITED_V020_OWNER_EVIDENCE_AND_GOOGLE_GET_PASS"?
    "READONLY_ATTESTED":"UNVERIFIED",
-  v023RemoteExists:"NOT_CHECKED",
+  v023RemoteInventory:visibleZero&&visibleZeroAgain?
+   "ZERO_VISIBLE_WITHIN_DEDICATED_OAUTH_SCOPE":"HOLD",
+  v023OrphanedAppsScriptExistence:"NOT_ENUMERABLE_BY_PARENT_SHEET",
   v023ActualOCR:"NOT_TESTED",
   v023IphoneSafari:"NOT_TESTED",
   proposedTarget:"NEW_ISOLATED_PRIVATE_SYNTHETIC_PROJECT_ONLY",
@@ -157,12 +169,21 @@ async function main(){
    ownerBefore.sourceCommit===ownerAfter.sourceCommit,
   evidenceUnchanged:evidenceBefore===evidenceAfter
  });
+ let inventory=null,inventoryAfter=null;
+ if(accepted.status==="LIMITED_V020_OWNER_EVIDENCE_AND_GOOGLE_GET_PASS"){
+  // Independently search this OAuth-visible Drive corpus, including trash.
+  // Nonzero or incomplete results can never authorize another create.
+  const api=g.googleApi(await g.accessToken());
+  inventory=await auditV023Inventory(api);
+  inventoryAfter=await auditV023Inventory(api);
+ }
  const after=getCandidate();
  const result=assessV023({
   candidate:after.candidate,
   attestation:accepted,
   stable:snapshotEqual(before,after),
-  targetAbsent:before.targetAbsent&&after.targetAbsent
+  targetAbsent:before.targetAbsent&&after.targetAbsent,
+  inventory,inventoryAfter
  });
  console.log(JSON.stringify(result));
  if(result.status!=="READY_FOR_SEPARATE_V023_STAGE_APPROVAL")
