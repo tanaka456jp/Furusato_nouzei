@@ -184,11 +184,22 @@ async function main(){
    name:"synthetic-image-only.pdf",mimeType:"application/pdf",buffer:sample
   });
   await page.locator("#slipScan").click();
-  await page.waitForFunction(()=>
-    document.getElementById("slipScan").disabled===false &&
-    (document.getElementById("slipReview").textContent.includes("候補") ||
-     document.getElementById("slipReview").textContent.includes("保留")),
-    {timeout:30000});
+  try{
+    await page.waitForFunction(()=>
+      document.getElementById("slipScan").disabled===false &&
+      (document.getElementById("slipReview").textContent.includes("候補") ||
+       document.getElementById("slipReview").textContent.includes("保留")),
+      null,{timeout:30000});
+  }catch(_){
+    // These strings come exclusively from generated synthetic PDFs and
+    // generic UI messages, never from real documents or uploaded data.
+    const state=await page.evaluate(()=>({
+      disabled:document.getElementById("slipScan").disabled,
+      reason:document.getElementById("slipReview").textContent.slice(0,220),
+      ocrCalls:window.__syntheticPdfOcrCalls
+    }));
+    throw Error("SYNTHETIC_IMAGE_ONLY_PDF_ROUTE_FAILED:"+JSON.stringify(state));
+  }
   const route=await page.evaluate(()=>({
    calls:window.__syntheticPdfOcrCalls,
    transferable:!document.getElementById("slipTransfer").disabled,
