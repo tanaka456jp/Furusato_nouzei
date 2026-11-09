@@ -51,6 +51,7 @@ jobs:
           node public-web/tests/test-ocr-quality.cjs
           node public-web/tests/test-ocr-layout.cjs
           node public-web/tests/test-ocr-perspective.cjs
+          node public-web/tests/test-ocr-regions.cjs
           node public-web/tests/test-ocr-benchmark.cjs
           node public-web/tests/test-public-web.cjs
           node public-web/tests/test-ocr-dom.cjs
@@ -86,6 +87,7 @@ jobs:
             public-web/dist/ocr-quality.js
             public-web/dist/ocr-layout.js
             public-web/dist/ocr-perspective.js
+            public-web/dist/ocr-regions.js
             public-web/dist/engine.js
             public-web/dist/style.css
             public-web/dist/robots.txt
