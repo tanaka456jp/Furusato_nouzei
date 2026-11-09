@@ -410,8 +410,17 @@
   }
   runButton.addEventListener("click",async function(){
     if(busy)return;
-    // An explicit reread may use another scan of the same file. Require the
-    // deduction/eligibility attestation again after the OCR is transferred.
+    // A reread supersedes all prior source attestations. A missing/invalid
+    // file must not leave the old OCR values, which could otherwise be
+    // calculated after the user re-checks the exclusions confirmation.
+    // Do not force purely manual users into OCR HOLD for an empty click.
+    var hadSource=!!transferredSource||!!form.dataset.ocrYear||
+      form.dataset.ocrReviewPending==="true"||review!==null;
+    if(hadSource){
+      clearReview();
+      form.dataset.ocrReviewPending="true";
+    }
+    // The deductions attestation must be renewed even on a failed scan.
     var confirmation=form.elements.namedItem("acknowledgedExclusions");
     if(confirmation)confirmation.checked=false;
     blocked("読み取り中です。画像や金額はサーバーへ送信しません。");

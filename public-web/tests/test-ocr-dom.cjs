@@ -460,6 +460,51 @@ async function main(){
    doc.createElement=originalCreate;
    win.Tesseract.createWorker=originalWorkerFactory;
  }
+ // A reread with no file AFTER a completed transfer must invalidate
+ // the old source. It must not resurrect an estimate when exclusions are
+ // checked again. A reset intentionally restores normal manual input.
+ form.reset();
+ field("year").value="2026";
+ Object.defineProperty(file,"files",{configurable:true,value:[
+   syntheticRasterFile("synthetic-before-empty-retry.png","image/png",1024)
+ ]});
+ file.dispatchEvent(new win.Event("change",{bubbles:true}));
+ scan.click();
+ for(let i=0;i<100&&scan.disabled;i++)
+   await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(scan.disabled,false);
+ assert.equal(transfer.disabled,false);
+ check.checked=true;
+ transfer.click();
+ assert.equal(form.dataset.ocrYear,"2026");
+ assert.equal(field("salaryGross").value,"7000000");
+ Object.defineProperty(file,"files",{configurable:true,value:[]});
+ field("acknowledgedExclusions").checked=true;
+ assert.equal(calc().className,"result");
+ scan.click(); // no file: invalid retry
+ assert.equal(scan.disabled,false);
+ assert.equal(form.dataset.ocrYear,undefined);
+ assert.equal(form.dataset.ocrReviewPending,"true");
+ assert.equal(field("salaryGross").value,"");
+ assert.equal(field("socialInsurance").value,"");
+ assert.equal(field("salaryIncomeReference").value,"");
+ assert.equal(field("deductionsReference").value,"");
+ assert.equal(field("acknowledgedExclusions").checked,false);
+ assert.equal(transfer.disabled,true);
+ assert.equal(check.disabled,true);
+ field("salaryGross").value="7000000";
+ field("socialInsurance").value="1000000";
+ field("acknowledgedExclusions").checked=true;
+ assert.equal(calc().className,"result hold");
+ assert.doesNotMatch(calc().textContent,/109,000円/);
+ form.reset();
+ field("year").value="2026";
+ field("salaryGross").value="7000000";
+ field("socialInsurance").value="1000000";
+ field("acknowledgedExclusions").checked=true;
+ assert.equal(form.dataset.ocrReviewPending,undefined);
+ assert.equal(calc().className,"result",
+   "explicit reset may return to regular manual input");
  assert.equal(networkAttempts,0);
  dom.window.close();
  console.log("PUBLIC_OCR_MANUAL_TRANSFER_DOM_PASS; synthetic; no network; not accuracy proof");
