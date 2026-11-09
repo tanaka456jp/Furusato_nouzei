@@ -60,8 +60,12 @@
         values.push(amount);
       });
       var different=Array.from(new Set(values));
-      if(different.length>1)duplicates.push(field.key);
-      else if(different.length===1)candidates[field.key]=different[0];
+      // Repeating a label, even with the SAME number, may indicate mixed
+      // pages or a duplicated section. Never silently pick one occurrence.
+      if(values.length>1){
+        duplicates.push(field.key);
+        reasons.push("FIELD_DUPLICATE_"+field.key);
+      }else if(values.length===1)candidates[field.key]=values[0];
       if(!values.length)reasons.push("FIELD_MISSING_"+field.key);
     });
     duplicates.forEach(function(key){
