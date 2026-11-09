@@ -218,10 +218,15 @@
            typeof window.FurusatoPdfLayout.extract!=="function")
           throw Error("PDF_POSITION_AUDIT_MISSING");
         var positioned=window.FurusatoPdfLayout.extract(extracted.items);
+        // A PDF text layer can concatenate several separate table cells into
+        // one text line: FIELD_INVALID alone is not decisive if all four
+        // independent positioned cell anchors were uniquely verified.
+        // A real duplicate/conflict always blocks even that layout fallback.
         var hardTextFailure=(digital.reasons||[]).some(function(reason){
           return reason.startsWith("FIELD_CONFLICT_")||
                  reason.startsWith("FIELD_DUPLICATE_")||
-                 reason.startsWith("FIELD_INVALID_");
+                 (reason.startsWith("FIELD_INVALID_")&&
+                  !positioned.eligibleForManualTransfer);
         });
         var conflictingYears=positioned.year!==null&&digital.year!==null&&
           positioned.year!==digital.year;
