@@ -82,6 +82,7 @@ async function main(){
  }]});
  file.dispatchEvent(new win.Event("change",{bubbles:true}));
  assert.equal(form.dataset.ocrReviewPending,"true");
+ assert.equal(doc.getElementById("result").hidden,true);
  assert.equal(calc().className,"result hold");
  assert.equal(transfer.disabled,true);
  scan.click();
@@ -110,6 +111,9 @@ async function main(){
  assert.equal(calc().className,"result");
  assert.match(calc().textContent,/109,000円/);
  field("hasMortgage").checked=true;
+ field("hasMortgage").dispatchEvent(new win.Event("change",{bubbles:true}));
+ assert.equal(doc.getElementById("result").hidden,true);
+
  assert.equal(calc().className,"result hold");
  assert.doesNotMatch(calc().textContent,/109,000円/);
  // A tax-year change after field transfer must not silently retain an
