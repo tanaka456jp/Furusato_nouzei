@@ -44,6 +44,8 @@ node gas/scripts/create-v020-isolated-stage.cjs --create-approved FURUSATO_V020_
 
 新規レシートはPC①ローカルの \`gas/.private/furusato-v020-stage/receipt.json\` に保管されます。ユーザーはPC①の通常Microsoft Edgeで、新しいレシート内の非公開WebアプリURLを開きます。自動ログイン／Playwrightログインは使用しません。
 
+**新しいWebアプリURLを端末の出力へ表示せず通常のMicrosoft Edgeで開く**には、PC①のPowerShellで、成功後に `./gas/scripts/open-v020-stage.ps1` を実行してください。新旧レシート・所有者・固定版・異なるデプロイIDと非公開URLを検査し、Playwrightでのログインを行いません。事前照合だけをするなら `./gas/scripts/open-v020-stage.ps1 -CheckOnly` を実行します。実Google APIの再照合ではなく、非公開レシートのローカル整合検査です。
+
 Windows Edge: PDF → PNG → JPEGの順に**v0.1.20**の実Google OCRを実施。給与700万円、社会保険料100万円、給与所得控除後520万円の値を原票と照合して、仮転記と未照合HOLD、ファイル変更による転送同意解除を再確認。その都度、専用OAuthのDrive APIでOCR一時ファイル残数0件を確認。
 
 iPhone Safari: 同じ**新規デプロイ版**でJPEGを試験。OCRの認識値、仮転記、未照合HOLD、ファイル切替、タッチ操作、削除結果を確認。利用するGoogleアカウントは作成者本人に限定し、旧版URLと取り違えない。
