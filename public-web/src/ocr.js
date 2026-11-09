@@ -301,13 +301,21 @@
         });
         var conflictingYears=positioned.year!==null&&digital.year!==null&&
           positioned.year!==digital.year;
+        // Distinct complete extraction routes must agree on ALL four yen
+        // values, not just the year. A position audit may return PARTIAL;
+        // that must not mask a conflicting complete positioned candidate.
+        if(typeof window.FurusatoPdfLayout.crossCheckExtracted!=="function")
+          throw Error("PDF_CROSS_SOURCE_AUDIT_MISSING");
+        var crossCheck=window.FurusatoPdfLayout.crossCheckExtracted(
+          digital,positioned);
         if(positioned.positionStatus==="CONFLICT"||
-           hardTextFailure||conflictingYears){
+           hardTextFailure||conflictingYears||crossCheck.status==="CONFLICT"){
           result={
             schema:"furusato-slip-pdf-cross-check/v1",
             status:"REQUIRES_SOURCE_REVIEW",year:null,candidates:{},
             reasons:positioned.positionStatus==="CONFLICT"
-              ?positioned.reasons:["PDF_TEXT_OR_YEAR_CONFLICT"],
+              ?positioned.reasons:crossCheck.status==="CONFLICT"
+                ?crossCheck.reasons:["PDF_TEXT_OR_YEAR_CONFLICT"],
             eligibleForManualTransfer:false,originalCompared:false,
             autoApproved:false
           };

@@ -80,4 +80,34 @@ assert.equal(heldAmbiguousField.positionStatus,"CONFLICT");
 const adjusted=separateLabelAndValuePdf.map(x=>x.str==="給与所得控除後の金額"?
  item("給与所得控除後の金額（調整控除後）",x.transform[4],x.transform[5]):x);
 assert.equal(extract(adjusted).eligibleForManualTransfer,true);
+
+// Two complete extraction methods must agree exactly. An ordinary negative
+// position audit can be PARTIAL if the field coordinates fall just outside
+// its narrow band, so direct cross-checking is a distinct safety boundary.
+const crossCheck=require("../src/ocr-layout.js").crossCheckExtracted;
+const digital={eligibleForManualTransfer:true,year:2026,candidates:{...expected}};
+const positioned={eligibleForManualTransfer:true,year:2026,candidates:{...expected}};
+assert.equal(crossCheck(digital,positioned).status,"MATCH");
+assert.equal(crossCheck(digital,positioned).autoApproved,false);
+for(const key of keys){
+ const changed={...positioned,candidates:{...expected,[key]:expected[key]+1}};
+ const disagreement=crossCheck(digital,changed);
+ assert.equal(disagreement.status,"CONFLICT");
+ assert.ok(disagreement.reasons.includes(
+   "PDF_TEXT_COORDINATE_AMOUNT_MISMATCH_"+key));
+ assert.equal(disagreement.autoApproved,false);
+}
+const wrongYear=crossCheck(digital,{...positioned,year:2025});
+assert.equal(wrongYear.status,"CONFLICT");
+assert.ok(wrongYear.reasons.includes("PDF_TEXT_COORDINATE_YEAR_MISMATCH"));
+assert.equal(crossCheck(digital,{...positioned,
+ candidates:{...expected,socialInsurance:undefined}}).status,"CONFLICT");
+assert.equal(crossCheck({...digital,eligibleForManualTransfer:false},positioned).status,"NOT_COMPARABLE");
+assert.equal(crossCheck(digital,{...positioned,eligibleForManualTransfer:false}).status,"NOT_COMPARABLE");
+// Contract: actual digital PDF orchestration must use the result as HOLD.
+const fs=require("node:fs"),path=require("node:path");
+const runtime=fs.readFileSync(path.join(__dirname,"..","src","ocr.js"),"utf8");
+assert.match(runtime,/FurusatoPdfLayout\.crossCheckExtracted\(/);
+assert.match(runtime,/crossCheck\.status==="CONFLICT"/);
+
 console.log("PUBLIC_OCR_PDF_POSITION_NEGATIVE_AND_SOURCE_CANDIDATE_AUDIT_SYNTHETIC_PASS; not accuracy proof");

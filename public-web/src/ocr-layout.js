@@ -155,5 +155,28 @@
    autoApproved:false,originalCompared:false
   };
  }
- return {audit:audit,extract:extract};
+
+ // A complete text-layer extraction and a complete coordinate extraction
+ // must NEVER disagree silently. Only supplies negative evidence. Neither
+ // view is an independent reading of the rendered/printed source image.
+ function crossCheckExtracted(digital,positioned){
+  var unavailable={status:"NOT_COMPARABLE",reasons:[],autoApproved:false};
+  if(!digital||!positioned||
+     digital.eligibleForManualTransfer!==true||
+     positioned.eligibleForManualTransfer!==true)
+   return unavailable;
+  var reasons=[];
+  if(![2025,2026].includes(digital.year)||digital.year!==positioned.year)
+   reasons.push("PDF_TEXT_COORDINATE_YEAR_MISMATCH");
+  for(const field of LABELS){
+   var a=digital.candidates&&digital.candidates[field.key];
+   var b=positioned.candidates&&positioned.candidates[field.key];
+   if(!Number.isSafeInteger(a)||!Number.isSafeInteger(b)||a!==b)
+    reasons.push("PDF_TEXT_COORDINATE_AMOUNT_MISMATCH_"+field.key);
+  }
+  return {status:reasons.length?"CONFLICT":"MATCH",reasons,
+   autoApproved:false};
+ }
+
+ return {audit:audit,extract:extract,crossCheckExtracted:crossCheckExtracted};
 }));
