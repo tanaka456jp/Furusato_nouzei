@@ -175,8 +175,10 @@
        typeof window.FurusatoPdfLayout.boundedTextLayer!=="function")
       throw Error("PDF_TEXT_LAYER_GUARD_MISSING");
     var checked=window.FurusatoPdfLayout.boundedTextLayer(content.items);
-    if(checked.status!=="OK")throw Error("PDF_TEXT_LAYER_HOLD");
-    return {text:checked.text,items:checked.items};
+    if(checked.status!=="OK"&&checked.status!=="EMPTY")
+      throw Error("PDF_TEXT_LAYER_HOLD");
+    return {text:checked.text,items:checked.items,
+      emptyTextLayer:checked.status==="EMPTY"};
   }
   async function rasterizePdf(page){
     var viewport=page.getViewport({scale:1});
@@ -324,6 +326,12 @@
         pdf=await openPdf(file);
         var page=await pdf.getPage(1);
         var extracted=await digitalPdfText(page);
+        if(extracted.emptyTextLayer){
+          // No PDF text operators: scanned image-only single-page PDF.
+          // This is the only fallback for EMPTY, not for malformed layers.
+          canvas=await rasterizePdf(page);
+          result=await twoPass(canvas);
+        }else{
         var digital=window.FurusatoSlipReview.reviewDigitalPdf(extracted.text);
         if(typeof window.FurusatoPdfLayout!=="object"||
            typeof window.FurusatoPdfLayout.audit!=="function"||
@@ -377,6 +385,7 @@
         }else{
           canvas=await rasterizePdf(page);
           result=await twoPass(canvas);
+        }
         }
       }else{
         canvas=await imageToCanvas(file);

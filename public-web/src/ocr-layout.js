@@ -186,8 +186,13 @@
   const fail=function(reason){
    return {status:"HOLD",text:"",items:[],reasons:[reason],sourcePersisted:false};
   };
-  if(!Array.isArray(items)||items.length===0||items.length>4000)
+  if(!Array.isArray(items)||items.length>4000)
    return fail("PDF_TEXT_ITEM_COUNT_INVALID");
+  // A true scanned PDF has no selectable text. This is not corruption;
+  // it must be passed to image rasterization + the full OCR HOLD gates.
+  if(items.length===0)return {
+   status:"EMPTY",text:"",items:[],reasons:[],sourcePersisted:false
+  };
   var count=0,valid=[],chunks=[];
   for(const item of items){
    if(!item||typeof item!=="object")return fail("PDF_TEXT_ITEM_INVALID");
@@ -205,7 +210,9 @@
    valid.push(item);
    chunks.push(item.str+(item.hasEOL?"\n":" "));
   }
-  if(!valid.length)return fail("PDF_TEXT_NOT_AVAILABLE");
+  if(!valid.length)return {
+   status:"EMPTY",text:"",items:[],reasons:[],sourcePersisted:false
+  };
   return {status:"OK",text:chunks.join(""),items:valid,
    reasons:[],sourcePersisted:false};
  }

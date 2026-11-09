@@ -8,6 +8,7 @@ const assert=require("node:assert/strict");
 const fs=require("node:fs");
 const http=require("node:http");
 const path=require("node:path");
+const zlib=require("node:zlib");
 const {chromium}=require("../../gas/node_modules/playwright");
 const root=path.resolve(__dirname,"..","dist");
 const types={".js":"text/javascript; charset=utf-8",
@@ -15,6 +16,44 @@ const types={".js":"text/javascript; charset=utf-8",
  ".html":"text/html; charset=utf-8",
  ".css":"text/css; charset=utf-8",
  ".wasm":"application/wasm",".gz":"application/gzip"};
+
+// A one-page PDF with ONLY an RGB image XObject, no BT/Tj/Text operators.
+// All pixels are synthetic. The PDF is assembled in memory and never
+// uploaded to GitHub, an artifact or any remote server.
+function imageOnlyPdf(blank=false){
+ const w=1100,h=800,pixels=Buffer.alloc(w*h*3,255);
+ if(!blank){
+  for(let y=80;y<730;y++)for(let x=60;x<1020;x++){
+   const stroke=(y%91<5&&x%37<26)||(x%131<4&&y%41<27);
+   if(stroke){
+    const i=(y*w+x)*3;
+    pixels[i]=pixels[i+1]=pixels[i+2]=30;
+   }
+  }
+ }
+ const encoded=zlib.deflateSync(pixels,{level:6});
+ const objects=[
+  Buffer.from("<< /Type /Catalog /Pages 2 0 R >>"),
+  Buffer.from("<< /Type /Pages /Count 1 /Kids [3 0 R] >>"),
+  Buffer.from("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1100 800] /Resources << /XObject << /Im0 5 0 R >> >> /Contents 4 0 R >>"),
+  Buffer.from("<< /Length 31 >>\nstream\nq 1100 0 0 800 0 0 cm /Im0 Do Q\nendstream"),
+  Buffer.concat([Buffer.from("<< /Type /XObject /Subtype /Image /Width 1100 /Height 800 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /Length "+encoded.length+" >>\nstream\n"),encoded,Buffer.from("\nendstream")])
+ ];
+ const blocks=[Buffer.from("%PDF-1.4\n%\xE2\xE3\xCF\xD3\n","binary")],offsets=[0];
+ let length=blocks[0].length;
+ for(let i=0;i<objects.length;i++){
+  offsets.push(length);
+  const obj=Buffer.concat([Buffer.from((i+1)+" 0 obj\n"),objects[i],Buffer.from("\nendobj\n")]);
+  blocks.push(obj);length+=obj.length;
+ }
+ const start=length;
+ const xref=["xref","0 "+(objects.length+1),"0000000000 65535 f "];
+ for(let i=1;i<offsets.length;i++)xref.push(String(offsets[i]).padStart(10,"0")+" 00000 n ");
+ const trailer=Buffer.from(xref.join("\n")+"\ntrailer\n<< /Size "+(objects.length+1)+" /Root 1 0 R >>\nstartxref\n"+start+"\n%%EOF\n");
+ blocks.push(trailer);
+ return Buffer.concat(blocks);
+}
+
 async function main(){
  const csp=fs.readFileSync(path.join(root,"_headers"),"utf8")
    .split("\n").find(x=>x.trim().startsWith("Content-Security-Policy:"))
@@ -108,6 +147,76 @@ async function main(){
   assert.equal(status.geometry.status,"APPLIED");
   assert.ok(status.geometry.width>=750&&status.geometry.height>=400);
   assert.ok(status.geometry.width*status.geometry.height<=3200000);
+
+  // PDF.js must see an actual single-page image-only PDF, report no text,
+  // rasterize it locally and call two-pass OCR. The fake OCR result below
+  // proves routing and review gates, NOT real Japanese text accuracy.
+  const sample=imageOnlyPdf();
+  const pdfSnapshot=await page.evaluate(async raw=>{
+   const pdfjs=await import("./vendor/pdf.mjs");
+   pdfjs.GlobalWorkerOptions.workerSrc="./vendor/pdf.worker.mjs";
+   const instance=await pdfjs.getDocument({data:new Uint8Array(raw)}).promise;
+   try{
+    const one=await instance.getPage(1);
+    const layer=await one.getTextContent();
+    return {pages:instance.numPages,count:layer.items.length};
+   }finally{await instance.destroy();}
+  },Array.from(sample));
+  assert.deepEqual(pdfSnapshot,{pages:1,count:0});
+  const fixture=[
+   "令和8年分 給与所得の源泉徴収票",
+   "支払金額 7,000,000円",
+   "給与所得控除後の金額 5,200,000円",
+   "所得控除の額の合計額 1,670,000円",
+   "社会保険料等の金額 1,000,000円"
+  ].join("\n");
+  await page.evaluate(ocrText=>{
+   window.__syntheticPdfOcrCalls=0;
+   Tesseract.createWorker=async()=>({
+    recognize:async()=>{
+     window.__syntheticPdfOcrCalls++;
+     return {data:{text:ocrText,confidence:97}};
+    },
+    terminate:async()=>{}
+   });
+  },fixture);
+  await page.locator("#slipFile").setInputFiles({
+   name:"synthetic-image-only.pdf",mimeType:"application/pdf",buffer:sample
+  });
+  await page.locator("#slipScan").click();
+  await page.waitForFunction(()=>
+    document.getElementById("slipScan").disabled===false &&
+    (document.getElementById("slipReview").textContent.includes("候補") ||
+     document.getElementById("slipReview").textContent.includes("保留")),
+    {timeout:30000});
+  const route=await page.evaluate(()=>({
+   calls:window.__syntheticPdfOcrCalls,
+   transferable:!document.getElementById("slipTransfer").disabled,
+   before:document.querySelector('[name="salaryGross"]').value
+  }));
+  assert.equal(route.calls,2,"image-only PDF must take the two-pass OCR path");
+  assert.equal(route.transferable,true,"mocked matching OCR still requires manual confirmation");
+  assert.equal(route.before,"");
+  await page.locator("#slipTransfer").click();
+  assert.equal(await page.locator('[name="salaryGross"]').inputValue(),"");
+  await page.locator("#slipConfirm").check();
+  await page.locator("#slipTransfer").click();
+  assert.equal(await page.locator('[name="salaryGross"]').inputValue(),"7000000");
+  // A completely blank one-page PDF is also image-only but fails quality
+  // screening, not promoted into a transfer candidate by the mocked OCR.
+  await page.locator("#slipFile").setInputFiles({
+   name:"synthetic-blank-page.pdf",mimeType:"application/pdf",
+   buffer:imageOnlyPdf(true)
+  });
+  await page.locator("#slipScan").click();
+  await page.waitForFunction(()=>
+   document.getElementById("slipScan").disabled===false &&
+   document.getElementById("slipReview").textContent.includes("OCRを完了できません"),
+   {timeout:30000});
+  assert.equal(await page.locator("#slipTransfer").isEnabled(),false);
+  assert.equal(await page.locator('[name="salaryGross"]').inputValue(),"");
+  assert.equal(await page.locator("#result").isVisible(),false);
+
   assert.deepEqual(external,[],"External network request attempted");
   assert.ok(requestCount>=8,"OCR assets not fetched");
   console.log("PUBLIC_OCR_CHROMIUM_LOCAL_WASM_BOOT_PASS; synthetic only; OCR accuracy NOT CERTIFIED");

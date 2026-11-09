@@ -129,7 +129,13 @@ badTransform[0]={...badTransform[0],transform:[1,0,0,1,NaN,700]};
 assert.equal(bounded(badTransform).status,"HOLD");
 assert.equal(bounded(Array.from({length:4001},()=>item("abc",1,2))).status,"HOLD");
 assert.equal(bounded(Array.from({length:600},()=>item("X".repeat(220),1,2))).status,"HOLD");
-assert.equal(bounded([]).status,"HOLD");
+assert.deepEqual(bounded([]),{
+ status:"EMPTY",text:"",items:[],reasons:[],sourcePersisted:false
+});
+assert.equal(bounded([{type:"beginMarkedContent"}]).status,"EMPTY");
+assert.equal(bounded([{str:"X".repeat(241),
+ transform:[1,0,0,1,0,0]}]).status,"HOLD");
+assert.equal(bounded(Array.from({length:4001},()=>({type:"beginMarkedContent"}))).status,"HOLD");
 assert.equal(bounded([null]).status,"HOLD");
 assert.equal(bounded([item("OK",1,2),{type:"beginMarkedContent"}]).status,"OK");
 
