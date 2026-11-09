@@ -13,7 +13,7 @@ assert.equal(result.ads,"NOT_ENABLED");
 assert.equal(result.ocr,"LOCAL_ONLY_REVIEW");
 assert.equal(result.deployment,"NOT_RUN");
 for(const name of ["index.html","style.css","app.js","about.html","privacy.html",
- "engine.js","robots.txt","_headers", "ocr.js","ocr-review.js",
+ "engine.js","robots.txt","_headers", "ocr.js","ocr-review.js","ocr-quality.js",
  "vendor/tesseract/tesseract.min.js","vendor/tesseract/worker.min.js",
  "vendor/tesseract/lang/jpn.traineddata.gz","vendor/pdf.mjs","vendor/pdf.worker.mjs",
  "licenses/THIRD_PARTY_NOTICES.txt"])
@@ -35,6 +35,7 @@ assert.doesNotMatch(html,/https?:\/\/[^"']+\.js["']/);
 assert.match(html,/id="slipFile"/);
 assert.match(html,/id="slipTransfer"/);
 assert.match(html,/src="\.\/ocr-review\.js"/);
+assert.match(html,/src="\.\/ocr-quality\.js"/);
 assert.match(html,/src="\.\/vendor\/tesseract\/tesseract\.min\.js"/);
 const {JSDOM}=require("../../gas/node_modules/jsdom");
 const dom=new JSDOM(html,{url:"https://review.invalid/",runScripts:"outside-only"});
