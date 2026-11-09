@@ -15,7 +15,8 @@ assert.equal(result.deployment,"NOT_RUN");
 for(const name of ["index.html","style.css","app.js","about.html","privacy.html",
  "engine.js","robots.txt","_headers", "ocr.js","ocr-review.js",
  "vendor/tesseract/tesseract.min.js","vendor/tesseract/worker.min.js",
- "vendor/tesseract/lang/jpn.traineddata.gz","vendor/pdf.mjs","vendor/pdf.worker.mjs"])
+ "vendor/tesseract/lang/jpn.traineddata.gz","vendor/pdf.mjs","vendor/pdf.worker.mjs",
+ "licenses/THIRD_PARTY_NOTICES.txt"])
  assert.ok(fs.statSync(path.join(out,name)).size>10,name);
 const engine=fs.readFileSync(path.join(out,"engine.js"),"utf8");
 assert.equal(engine,fs.readFileSync(path.join(root,"..","gas","Engine.gs"),"utf8"));
