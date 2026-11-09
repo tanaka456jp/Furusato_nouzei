@@ -86,6 +86,15 @@
     print.type = "button";
     print.addEventListener("click", function () { window.print(); });
   }
+  function invalidateEstimate(){
+    output.replaceChildren();
+    output.hidden=true;
+    output.className="result";
+  }
+  // Never continue displaying an amount calculated for previous inputs:
+  // exclusions, year, income figures and filing mode can change its validity.
+  form.addEventListener("input",invalidateEstimate);
+  form.addEventListener("change",invalidateEstimate);
   form.addEventListener("submit", function (event) {
     event.preventDefault();
     try {
