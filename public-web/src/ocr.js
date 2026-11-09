@@ -325,18 +325,18 @@
     busy=true;runButton.disabled=true;acceptButton.disabled=true;
     var requestedGeneration=generation,requestedYear=Number(taxYear.value);
     var requestedManualRevision=manualRevision;
-    var canvas=null,pdf=null;
+    var canvas=null,pdf=null,stage="SOURCE_PREPARE";
     try{
       var result;
       if(file.type==="application/pdf"){
-        pdf=await openPdf(file);
-        var page=await pdf.getPage(1);
-        var extracted=await digitalPdfText(page);
+        stage="PDF_OPEN";pdf=await openPdf(file);
+        stage="PDF_PAGE";var page=await pdf.getPage(1);
+        stage="PDF_TEXT";var extracted=await digitalPdfText(page);
         if(extracted.emptyTextLayer){
           // No PDF text operators: scanned image-only single-page PDF.
           // This is the only fallback for EMPTY, not for malformed layers.
-          canvas=await rasterizePdf(page);
-          result=await twoPass(canvas);
+          stage="PDF_RASTER";canvas=await rasterizePdf(page);
+          stage="PDF_OCR";result=await twoPass(canvas);
         }else{
         var digital=window.FurusatoSlipReview.reviewDigitalPdf(extracted.text);
         if(typeof window.FurusatoPdfLayout!=="object"||
@@ -389,13 +389,13 @@
           // verification and full tax-engine checks before any estimate.
           result=positioned;
         }else{
-          canvas=await rasterizePdf(page);
-          result=await twoPass(canvas);
+          stage="PDF_RASTER";canvas=await rasterizePdf(page);
+          stage="PDF_OCR";result=await twoPass(canvas);
         }
         }
       }else{
-        canvas=await imageToCanvas(file);
-        result=await twoPass(canvas);
+        stage="IMAGE_DECODE";canvas=await imageToCanvas(file);
+        stage="IMAGE_OCR";result=await twoPass(canvas);
       }
       // A source swap, form reset or year change during async OCR invalidates
       // the old attempt, even if the two text recognitions both succeeded.
@@ -409,7 +409,7 @@
       displayReview(result);
     }catch(error){
       if(generation===requestedGeneration)
-        blocked("OCRを完了できませんでした。入力原票は送信されません。画質・ページ構成を確認し、必要なら撮影し直すか手入力してください。");
+        blocked("OCRを完了できませんでした（処理区分："+stage+"）。入力原票は送信されません。画質・ページ構成を確認し、必要なら撮影し直すか手入力してください。");
     }finally{
       busy=false;runButton.disabled=false;
       if(canvas){canvas.width=0;canvas.height=0;}
