@@ -180,4 +180,29 @@ assert.equal(secretProof.status,"HOLD");
 assert.ok(!JSON.stringify(secretProof).includes(secret));
 assert.ok(!JSON.stringify(full).includes(sha));
 assert.ok(!JSON.stringify(full).includes(digest));
+const {fingerprintEvidence}=require("../scripts/attest-v020-owner-acceptance.cjs");
+const fs=require("node:fs"),os=require("node:os"),path=require("node:path"),cp=require("node:child_process");
+const tmp=fs.mkdtempSync(path.join(os.tmpdir(),"furusato-v020-evidence-readonly-"));
+try{
+ const name="owner-ocr-00000000-0000-0000-0000-000000000001.json";
+ const file=path.join(tmp,name);
+ fs.writeFileSync(file,JSON.stringify(stageWin));
+ const before=fingerprintEvidence(tmp);
+ assert.equal(before,fingerprintEvidence(tmp),"Read-only fingerprint deterministic");
+ fs.writeFileSync(file,JSON.stringify(stagePhone));
+ assert.notEqual(before,fingerprintEvidence(tmp),"Changed owner evidence must be detected");
+ fs.unlinkSync(file);
+ assert.notEqual(before,fingerprintEvidence(tmp),"Missing owner evidence must be detected");
+ fs.mkdirSync(file);
+ assert.throws(()=>fingerprintEvidence(tmp),/EVIDENCE_FILE_UNSAFE/);
+}finally{fs.rmSync(tmp,{recursive:true,force:true})}
+// Never attempt OAuth or remote operations from CI: owner-only wrapper must
+// stop before importing private local receipt contents or using network.
+const cli=cp.spawnSync(process.execPath,[
+ path.join(__dirname,"..","scripts","attest-v020-owner-acceptance.cjs"),
+ "--verify-readonly"
+],{encoding:"utf8",env:{...process.env,CI:"true"},timeout:5000});
+assert.equal(cli.status,2);
+assert.match(cli.stderr,/V020_OWNER_READONLY_GATE_HOLD/);
+assert.ok(!cli.stdout.includes("PRIVATE_TEST_TOKEN"));
 console.log("OWNER_OCR_OFFLINE_AUDIT_TEST_PASS; synthetic only; version remains unverified; release HOLD");
