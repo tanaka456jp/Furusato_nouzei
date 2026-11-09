@@ -149,7 +149,7 @@ function writeJson(file,value,first=false){
  must(file===path.join(stageDir,"journal.json") ||
   (process.env.NODE_ENV==="test" && path.basename(file)==="journal.json" &&
    path.dirname(file).startsWith(os.tmpdir()+path.sep)), "STAGE_WRITE_OUT_OF_SCOPE");
- const temp=path.join(stageDir,".journal.tmp");
+ const temp=path.join(path.dirname(file),".journal.tmp");
  fs.writeFileSync(temp,body,{flag:"wx",mode:0o600});
  fs.renameSync(temp,file);
 }
