@@ -173,8 +173,12 @@
       try{image=await createImageBitmap(file,{imageOrientation:"from-image"});}
       catch(_){image=null;}
       if(image){
-        try{return safeCanvas(image,image.width,image.height);}
-        finally{if(typeof image.close==="function")image.close();}
+        try{
+          if(window.FurusatoImageHeader.verifyDecodedSize(
+              imageInfo,image.width,image.height).status!=="ACCEPT")
+            throw Error("IMAGE_HEADER_DECODED_DIMENSION_HOLD");
+          return safeCanvas(image,image.width,image.height);
+        }finally{if(typeof image.close==="function")image.close();}
       }
     }
     var url=URL.createObjectURL(file);
@@ -185,6 +189,9 @@
         img.onerror=function(){reject(Error("画像を表示できません。"));};
         img.src=url;
       });
+      if(window.FurusatoImageHeader.verifyDecodedSize(
+          imageInfo,image.naturalWidth,image.naturalHeight).status!=="ACCEPT")
+        throw Error("IMAGE_HEADER_DECODED_DIMENSION_HOLD");
       return safeCanvas(image,image.naturalWidth,image.naturalHeight);
     }finally{URL.revokeObjectURL(url);}
   }

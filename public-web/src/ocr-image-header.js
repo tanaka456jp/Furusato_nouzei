@@ -53,5 +53,17 @@
   }
   return hold("IMAGE_MEDIA_TYPE_NOT_SUPPORTED");
  }
- return Object.freeze({inspect,MAX_HEADER_BYTES,MAX_PIXELS,MAX_EDGE});
+ // Ensure browser decoded bitmap dimensions match the compressed header.
+ // EXIF quarter-turn may swap the two dimensions, but may not alter area.
+ function verifyDecodedSize(preflight,width,height){
+  if(!preflight||preflight.status!=="ACCEPT")
+   return hold("IMAGE_PREFLIGHT_MISSING");
+  const decoded=checkDimensions(width,height);
+  if(decoded.status!=="ACCEPT")return decoded;
+  if(!((width===preflight.width&&height===preflight.height)||
+       (width===preflight.height&&height===preflight.width)))
+   return hold("IMAGE_DECODED_HEADER_DIMENSION_MISMATCH");
+  return decoded;
+ }
+ return Object.freeze({inspect,verifyDecodedSize,MAX_HEADER_BYTES,MAX_PIXELS,MAX_EDGE});
 }));

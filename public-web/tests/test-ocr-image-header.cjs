@@ -34,4 +34,16 @@ const duplicate=Uint8Array.from([...jpeg(1000,1000).slice(0,-2),
  ...jpeg(1000,1000).slice(2)]);
 assert.equal(h.inspect(duplicate,"image/jpeg").status,"HOLD");
 assert.equal(h.inspect(null,"image/png").status,"HOLD");
+// The browser-reported dimensions must agree with the file header,
+// apart from EXIF orientation swapping width and height.
+const good=h.inspect(jpeg(1200,800),"image/jpeg");
+assert.equal(h.verifyDecodedSize(good,1200,800).status,"ACCEPT");
+assert.equal(h.verifyDecodedSize(good,800,1200).status,"ACCEPT");
+for(const [w,ht] of [[20000,800],[1200,801],[0,800],
+ [1000,1000],[NaN,800],[-1,1200],[Infinity,800]]){
+ assert.equal(h.verifyDecodedSize(good,w,ht).status,"HOLD");
+}
+assert.equal(h.verifyDecodedSize(null,1200,800).status,"HOLD");
+assert.equal(h.verifyDecodedSize(h.inspect(png(0,800),"image/png"),1200,800).status,"HOLD");
+assert.equal(h.verifyDecodedSize(h.inspect(png(4000,12000),"image/png"),4000,12000).status,"ACCEPT");
 console.log("PUBLIC_OCR_IMAGE_HEADER_PREFLIGHT_SYNTHETIC_PASS; no real source data");

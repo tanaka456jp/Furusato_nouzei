@@ -338,6 +338,26 @@ async function main(){
  assert.equal(field("socialInsurance").value,""); // old OCR source removed
  assert.equal(field("salaryIncomeReference").value,"");
  assert.equal(field("deductionsReference").value,"");
+ // Header claims 1200x800, browser bitmap claims 20000x800.
+ const beforeCorrupt=recognized;
+ const normalBitmap=win.createImageBitmap;
+ let closedCorrupt=0;
+ win.createImageBitmap=async()=>({width:20000,height:800,
+   close(){closedCorrupt++;}});
+ Object.defineProperty(file,"files",{configurable:true,value:[
+   syntheticRasterFile("synthetic-size-mismatch.png","image/png",1024)
+ ]});
+ file.dispatchEvent(new win.Event("change",{bubbles:true}));
+ scan.click();
+ for(let i=0;i<100&&scan.disabled;i++)
+   await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(scan.disabled,false);
+ assert.equal(transfer.disabled,true);
+ assert.equal(check.disabled,true);
+ assert.equal(recognized,beforeCorrupt);
+ assert.equal(closedCorrupt,1);
+ assert.equal(form.dataset.ocrReviewPending,"true");
+ win.createImageBitmap=normalBitmap;
  field("socialInsurance").value="1000000";
  field("acknowledgedExclusions").checked=true;
  assert.equal(calc().className,"result hold");
