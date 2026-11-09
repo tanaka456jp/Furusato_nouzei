@@ -191,7 +191,7 @@ function main() {
   console.log(JSON.stringify(result));
   if (result.structuralStatus !== "OWNER_ATTESTED_STRUCTURE_PASS") process.exitCode = 2;
 }
-module.exports = {auditDrive,validateRecord,summarizeRecords,loadRecords};
+module.exports = {auditDrive,validateRecord,summarizeRecords,loadRecords,readStageContext,stageEvidenceDir};
 if (require.main === module) {
   try { main(); }
   catch { console.error("OWNER_OCR_EVIDENCE_AUDIT_HOLD: PRIVATE_RECORDS_UNAVAILABLE_OR_UNSAFE"); process.exitCode = 2; }
