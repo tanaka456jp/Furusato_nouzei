@@ -253,6 +253,7 @@ async function main(){
   assert.equal(await page.locator("#slipTransfer").isEnabled(),false);
   assert.equal(await page.locator('[name="salaryGross"]').inputValue(),"");
   assert.equal(await page.locator("#result").isVisible(),false);
+  // PDF.js loading-task worker cleanup applies on both success and HOLD paths.
 
   assert.deepEqual(external,[],"External network request attempted");
   assert.ok(requestCount>=8,"OCR assets not fetched");

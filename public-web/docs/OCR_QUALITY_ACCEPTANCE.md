@@ -117,3 +117,7 @@ PDF.jsの `getTextContent()` の文字要素を連結する前に、要素数最
 ### PDF.js 6系と旧ブラウザのMap API互換性
 
 2026-11-09の実Chromium 141で、PDF.js 6.3.289による合成画像PDF描画時に `this[#methodPromises].getOrInsertComputed is not a function` を確認。PDFファイルの破損ではなく、ブラウザにES2026 Map補助APIが未実装であることが原因。公開Web内に `pdf-compat.js` を同梱し、`Map.prototype.getOrInsert` と `Map.prototype.getOrInsertComputed` が未実装の場合だけ非列挙で補完する。既存ブラウザ実装を上書きせず、通信・保存・原票処理は増やさない。Node単体合成契約とPDF.js実Chromium描画による検証を行う。実Safari・実Edgeでの確認および原票の精度実証は別途必要。
+
+### PDF.js読込タスクの終了・メモリ解放
+
+PDF.js 6.3.289の `getDocument()` が生成する `PDFDocumentLoadingTask` と、その `.promise` により得られるPDF文書プロキシを区別する。後者が `destroy()` を持つとは限らないため、成功・読取失敗・複数ページ拒否のすべてで**読込タスクの `destroy()`** を呼び、WorkerやPDFデコード資源の解放を試行する。生の画像・テキストは保存しない。大量連続スキャンにおける実端末メモリ増減は未測定であり、正式公開前に実測する。

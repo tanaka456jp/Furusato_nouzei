@@ -165,9 +165,18 @@
     var bytes=new Uint8Array(await file.arrayBuffer());
     var task=pdfjs.getDocument({data:bytes,disableAutoFetch:true,disableStream:true,
       isEvalSupported:false,useSystemFonts:false,stopAtErrors:true});
-    var pdf=await task.promise;
-    if(pdf.numPages!==1){await pdf.destroy();throw Error("PDFは1ページのみ対応しています。");}
-    return pdf;
+    try{
+      var document=await task.promise;
+      if(document.numPages!==1)
+        throw Error("PDFは1ページのみ対応しています。");
+      return {document:document,task:task};
+    }catch(error){
+      // PDF.js 6 owns its worker through the loading task. The document
+      // proxy is not guaranteed to expose .destroy().
+      if(typeof task.destroy==="function")
+        await task.destroy().catch(function(){});
+      throw error;
+    }
   }
   async function digitalPdfText(page){
     var content=await page.getTextContent();
@@ -325,11 +334,12 @@
     busy=true;runButton.disabled=true;acceptButton.disabled=true;
     var requestedGeneration=generation,requestedYear=Number(taxYear.value);
     var requestedManualRevision=manualRevision;
-    var canvas=null,pdf=null,stage="SOURCE_PREPARE";
+    var canvas=null,pdf=null,pdfTask=null,stage="SOURCE_PREPARE";
     try{
       var result;
       if(file.type==="application/pdf"){
-        stage="PDF_OPEN";pdf=await openPdf(file);
+        stage="PDF_OPEN";var opened=await openPdf(file);
+        pdf=opened.document;pdfTask=opened.task;
         stage="PDF_PAGE";var page=await pdf.getPage(1);
         stage="PDF_TEXT";var extracted=await digitalPdfText(page);
         if(extracted.emptyTextLayer){
@@ -413,8 +423,8 @@
     }finally{
       busy=false;runButton.disabled=false;
       if(canvas){canvas.width=0;canvas.height=0;}
-      if(pdf&&typeof pdf.destroy==="function")
-        await pdf.destroy().catch(function(){});
+      if(pdfTask&&typeof pdfTask.destroy==="function")
+        await pdfTask.destroy().catch(function(){});
     }
   });
   acceptCheck.addEventListener("change",function(){
