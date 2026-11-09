@@ -72,7 +72,7 @@ async function auditV023Inventory(api,{expectedOwner}={}){
   "https://www.googleapis.com/drive/v3/about?fields=user(permissionId,emailAddress)","GET");
  if(about?.user?.permissionId!==expectedOwner||
    typeof about?.user?.emailAddress!=="string"||
-   !/^[^\\s@]+@[^\\s@]+$/.test(about.user.emailAddress))
+   !/^[^\s@]+@[^\s@]+$/.test(about.user.emailAddress))
   return {status:"HOLD",scope,reason:"DEDICATED_GOOGLE_OWNER_UNVERIFIED",
    matchingResources:null,ownerIdentity:"HOLD"};
  const inventory=classifyV023Inventory(await listV023StageCandidates(api));
