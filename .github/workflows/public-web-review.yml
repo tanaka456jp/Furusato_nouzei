@@ -36,6 +36,8 @@ jobs:
           node --check public-web/src/ocr-layout.js
           node --check public-web/src/ocr-perspective.js
           node --check public-web/tests/test-ocr-perspective.cjs
+          node --check public-web/src/ocr-regions.js
+          node --check public-web/tests/test-ocr-regions.cjs
           node --check public-web/quality/score-private.cjs
           node --check public-web/tests/test-ocr-benchmark.cjs
           node --check public-web/tests/test-ocr-layout.cjs
