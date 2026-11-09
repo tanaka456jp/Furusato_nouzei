@@ -15,6 +15,7 @@
   if(!form||!fileInput||!runButton||!acceptButton||!acceptCheck||!report)return;
   var review=null, busy=false;
   var generation=0,reviewFile=null,reviewYear=null,reviewGeneration=-1;
+  var manualRevision=0,reviewManualRevision=-1;
   var MAX_BYTES=8*1024*1024;
   var ACCEPTED={"image/jpeg":true,"image/png":true,"application/pdf":true};
   function show(message){
@@ -32,6 +33,7 @@
   function blocked(message){
     clearEstimate();
     review=null;reviewFile=null;reviewYear=null;reviewGeneration=-1;
+    reviewManualRevision=-1;
     acceptCheck.checked=false;acceptButton.disabled=true;
     show(message);
   }
@@ -43,6 +45,7 @@
     var hadTransferredSource=!!form.dataset.ocrYear;
     generation++;
     review=null;reviewFile=null;reviewYear=null;reviewGeneration=-1;
+    reviewManualRevision=-1;
     acceptCheck.checked=false;acceptButton.disabled=true;
     report.replaceChildren();report.hidden=true;
     delete form.dataset.ocrYear;
@@ -58,6 +61,34 @@
     if(form.elements.namedItem("deductionsReference"))
       form.elements.namedItem("deductionsReference").value="";
   }
+  // User edits take priority over an OCR candidate, including edits made
+  // while the async worker is running and after the candidate is displayed.
+  // Programmatic transfers set .value without dispatching an input event.
+  function amountWasEdited(event){
+    var target=event.target;
+    if(!target||!["salaryGross","salaryIncomeReference",
+       "deductionsReference","socialInsurance"].includes(target.name))return;
+    manualRevision++;
+    if(busy||review!==null){
+      generation++;
+      review=null;reviewFile=null;reviewYear=null;reviewGeneration=-1;
+      reviewManualRevision=-1;
+      acceptCheck.checked=false;acceptButton.disabled=true;
+      form.dataset.ocrReviewPending="true";
+      clearEstimate();
+      show("金額の手入力が変更されたため、以前のOCR候補を無効にしました。新しい原票で再読取するか、入力をクリアして手入力してください。");
+    }else if(form.dataset.ocrYear){
+      // A source/year attestation from a prior OCR transfer can no longer
+      // authenticate manually modified amounts.
+      delete form.dataset.ocrYear;
+      form.dataset.ocrReviewPending="true";
+      clearEstimate();
+      show("OCR転記後の金額が変更されました。原票照合済みの状態を解除しました。再読取するか、入力をクリアして手入力してください。");
+    }
+  }
+  form.addEventListener("input",amountWasEdited);
+  form.addEventListener("change",amountWasEdited);
+
   fileInput.addEventListener("change",function(){
     clearReview();
     if(fileInput.files&&fileInput.files.length){
@@ -276,6 +307,7 @@
     }
     busy=true;runButton.disabled=true;acceptButton.disabled=true;
     var requestedGeneration=generation,requestedYear=Number(taxYear.value);
+    var requestedManualRevision=manualRevision;
     var canvas=null,pdf=null;
     try{
       var result;
@@ -344,10 +376,12 @@
       // A source swap, form reset or year change during async OCR invalidates
       // the old attempt, even if the two text recognitions both succeeded.
       if(generation!==requestedGeneration||
+         manualRevision!==requestedManualRevision||
          (fileInput.files&&fileInput.files[0])!==file||
          Number(taxYear.value)!==requestedYear)return;
       review=result;reviewFile=file;reviewYear=requestedYear;
       reviewGeneration=requestedGeneration;
+      reviewManualRevision=requestedManualRevision;
       displayReview(result);
     }catch(error){
       if(generation===requestedGeneration)
@@ -364,6 +398,7 @@
   acceptButton.addEventListener("click",function(){
     if(!review?.eligibleForManualTransfer||!acceptCheck.checked||
       reviewGeneration!==generation||
+      reviewManualRevision!==manualRevision||
       reviewFile!==(fileInput.files&&fileInput.files[0])||
       reviewYear!==Number(taxYear.value)||
       Number(taxYear.value)!==review.year){

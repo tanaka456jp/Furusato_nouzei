@@ -94,6 +94,19 @@ async function main(){
  assert.equal(terminated,1);
  assert.equal(transfer.disabled,false);
  assert.equal(field("salaryIncomeReference").value,"");
+ // Candidate exists, but a manual edit made before transfer must invalidate
+ // it without touching the user's newly typed value.
+ field("salaryGross").value="7100000";
+ field("salaryGross").dispatchEvent(new win.Event("input",{bubbles:true}));
+ assert.equal(field("salaryGross").value,"7100000");
+ assert.equal(transfer.disabled,true);
+ assert.equal(form.dataset.ocrReviewPending,"true");
+ // The user may explicitly re-run OCR, then confirm a fresh candidate.
+ scan.click();
+ for(let i=0;i<100&&scan.disabled;i++)
+   await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(scan.disabled,false);
+ assert.equal(transfer.disabled,false);
  transfer.click();
  assert.equal(field("salaryIncomeReference").value,"");
  check.checked=true;
@@ -127,6 +140,9 @@ async function main(){
  assert.equal(transfer.disabled,true);
  assert.equal(field("salaryIncomeReference").value,"");
  assert.equal(calc().className,"result hold");
+ // Any later direct edit of an OCR-transferred amount invalidates the
+ // source attestation, so the previous amount is not silently reused.
+ // (This case is checked on a fresh transfer before resetting below.)
  form.reset();
  assert.equal(form.dataset.ocrYear,undefined);
  assert.equal(form.dataset.ocrReviewPending,undefined);
