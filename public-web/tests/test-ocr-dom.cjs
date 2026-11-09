@@ -260,6 +260,41 @@ async function main(){
    win.URL.createObjectURL=oldMakeUrl;
    win.URL.revokeObjectURL=oldRevokeUrl;
  }
+ // The Safari fallback yielded a manually gated OCR candidate. Transferring
+ // it, then editing one amount invalidates the source attestation, but must
+ // not lose provenance of the OTHER three old OCR values.
+ check.checked=true;
+ transfer.click();
+ assert.equal(form.dataset.ocrYear,"2026");
+ assert.equal(field("socialInsurance").value,"1000000");
+ field("salaryGross").value="7150000";
+ field("salaryGross").dispatchEvent(new win.Event("input",{bubbles:true}));
+ assert.equal(form.dataset.ocrYear,undefined);
+ assert.equal(form.dataset.ocrReviewPending,"true");
+ Object.defineProperty(file,"files",{configurable:true,value:[{
+   name:"replacement-after-manual-edit.png",type:"image/png",size:1024
+ }]});
+ file.dispatchEvent(new win.Event("change",{bubbles:true}));
+ assert.equal(field("salaryGross").value,"7150000"); // manual edit retained
+ assert.equal(field("socialInsurance").value,""); // stale OCR removed
+ assert.equal(field("salaryIncomeReference").value,"");
+ assert.equal(field("deductionsReference").value,"");
+ assert.equal(form.dataset.ocrReviewPending,"true");
+ // Completely manual reference fields are unrelated to a cancelled OCR
+ // picker; they must never be silently erased by clearReview().
+ form.reset();
+ field("salaryIncomeReference").value="5100000";
+ field("deductionsReference").value="1650000";
+ Object.defineProperty(file,"files",{configurable:true,value:[{
+   name:"manual-reference-preservation.png",type:"image/png",size:1024
+ }]});
+ file.dispatchEvent(new win.Event("change",{bubbles:true}));
+ assert.equal(field("salaryIncomeReference").value,"5100000");
+ assert.equal(field("deductionsReference").value,"1650000");
+ Object.defineProperty(file,"files",{configurable:true,value:[]});
+ file.dispatchEvent(new win.Event("change",{bubbles:true}));
+ assert.equal(field("salaryIncomeReference").value,"5100000");
+ assert.equal(field("deductionsReference").value,"1650000");
  assert.equal(networkAttempts,0);
  dom.window.close();
  console.log("PUBLIC_OCR_MANUAL_TRANSFER_DOM_PASS; synthetic; no network; not accuracy proof");

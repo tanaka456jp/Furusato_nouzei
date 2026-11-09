@@ -16,6 +16,9 @@
   var review=null, busy=false;
   var generation=0,reviewFile=null,reviewYear=null,reviewGeneration=-1;
   var manualRevision=0,reviewManualRevision=-1;
+  // Keep original OCR provenance even after a manual edit invalidates
+  // dataset.ocrYear. Otherwise switching documents can retain stale amounts.
+  var transferredSource=null;
   var MAX_BYTES=8*1024*1024;
   var ACCEPTED={"image/jpeg":true,"image/png":true,"application/pdf":true};
   function show(message){
@@ -42,7 +45,9 @@
     // A new file (including a cancelled selection), reset or tax-year change
     // must not leave the four values copied from an older source slip.
     // Never erase unrelated manual inputs when OCR has not been transferred.
-    var hadTransferredSource=!!form.dataset.ocrYear;
+    var oldTransferred=transferredSource;
+    var hadTransferredSource=!!oldTransferred||!!form.dataset.ocrYear;
+    transferredSource=null;
     generation++;
     review=null;reviewFile=null;reviewYear=null;reviewGeneration=-1;
     reviewManualRevision=-1;
@@ -51,15 +56,17 @@
     delete form.dataset.ocrYear;
     delete form.dataset.ocrReviewPending;
     if(hadTransferredSource){
-      ["salaryGross","socialInsurance"].forEach(function(name){
+      // Remove the *unchanged* OCR fields from the old source, preserving
+      // anything deliberately edited by the user (including reference fields).
+      ["salaryGross","salaryIncomeReference",
+       "deductionsReference","socialInsurance"].forEach(function(name){
         var input=form.elements.namedItem(name);
-        if(input)input.value="";
+        if(input&&(!oldTransferred||(!oldTransferred.edited[name]&&
+           input.value===oldTransferred.values[name])))input.value="";
       });
     }
-    if(form.elements.namedItem("salaryIncomeReference"))
-      form.elements.namedItem("salaryIncomeReference").value="";
-    if(form.elements.namedItem("deductionsReference"))
-      form.elements.namedItem("deductionsReference").value="";
+    // When no OCR transfer happened, these optional verification fields
+    // are manual input and must not be silently cleared on a file change.
   }
   // User edits take priority over an OCR candidate, including edits made
   // while the async worker is running and after the candidate is displayed.
@@ -69,6 +76,9 @@
     if(!target||!["salaryGross","salaryIncomeReference",
        "deductionsReference","socialInsurance"].includes(target.name))return;
     manualRevision++;
+    if(transferredSource&&Object.prototype.hasOwnProperty.call(
+       transferredSource.values,target.name))
+      transferredSource.edited[target.name]=true;
     if(busy||review!==null){
       generation++;
       review=null;reviewFile=null;reviewYear=null;reviewGeneration=-1;
@@ -441,10 +451,15 @@
       Number(taxYear.value)!==review.year){
       show("原票の4金額・年分と控除状況を確認してから反映してください。");return;
     }
+    var previousValues={};
     window.FurusatoSlipReview.FIELDS.forEach(function(field){
       var input=form.elements.namedItem(field.key);
-      if(input)input.value=String(review.candidates[field.key]);
+      if(input){
+        input.value=String(review.candidates[field.key]);
+        previousValues[field.key]=input.value;
+      }
     });
+    transferredSource={values:previousValues,edited:{}};
     form.dataset.ocrYear=String(review.year);
     form.dataset.ocrReviewPending="false";
     review=null;acceptCheck.checked=false;acceptButton.disabled=true;
