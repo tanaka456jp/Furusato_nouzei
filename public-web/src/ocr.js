@@ -165,9 +165,12 @@
   }
   async function digitalPdfText(page){
     var content=await page.getTextContent();
-    return {text:content.items.map(function(item){
-      return String(item.str||"")+(item.hasEOL?"\n":" ");
-    }).join(""),items:content.items};
+    if(!window.FurusatoPdfLayout||
+       typeof window.FurusatoPdfLayout.boundedTextLayer!=="function")
+      throw Error("PDF_TEXT_LAYER_GUARD_MISSING");
+    var checked=window.FurusatoPdfLayout.boundedTextLayer(content.items);
+    if(checked.status!=="OK")throw Error("PDF_TEXT_LAYER_HOLD");
+    return {text:checked.text,items:checked.items};
   }
   async function rasterizePdf(page){
     var viewport=page.getViewport({scale:1});

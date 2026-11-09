@@ -110,4 +110,28 @@ const runtime=fs.readFileSync(path.join(__dirname,"..","src","ocr.js"),"utf8");
 assert.match(runtime,/FurusatoPdfLayout\.crossCheckExtracted\(/);
 assert.match(runtime,/crossCheck\.status==="CONFLICT"/);
 
+
+// A compressed PDF may produce a huge or malformed text layer even if the
+// uploaded file is under 8 MB. Refuse to construct a candidate in that case.
+const bounded=require("../src/ocr-layout.js").boundedTextLayer;
+const layer=bounded(separateLabelAndValuePdf);
+assert.equal(layer.status,"OK");
+assert.equal(layer.items.length,separateLabelAndValuePdf.length);
+assert.equal(layer.sourcePersisted,false);
+assert.equal(layer.text.includes("支払金額"),true);
+const badItem=separateLabelAndValuePdf.map(x=>({...x}));
+badItem[0]={...badItem[0],str:"X".repeat(241)};
+assert.equal(bounded(badItem).status,"HOLD");
+assert.equal(bounded(badItem).text,"");
+assert.equal(bounded(badItem).items.length,0);
+const badTransform=separateLabelAndValuePdf.map(x=>({...x}));
+badTransform[0]={...badTransform[0],transform:[1,0,0,1,NaN,700]};
+assert.equal(bounded(badTransform).status,"HOLD");
+assert.equal(bounded(Array.from({length:4001},()=>item("abc",1,2))).status,"HOLD");
+assert.equal(bounded(Array.from({length:600},()=>item("X".repeat(220),1,2))).status,"HOLD");
+assert.equal(bounded([]).status,"HOLD");
+assert.equal(bounded([null]).status,"HOLD");
+assert.equal(bounded([item("OK",1,2),{type:"beginMarkedContent"}]).status,"OK");
+const runtime=fs.readFileSync(path.join(__dirname,"..","src","ocr.js"),"utf8");
+assert.match(runtime,/FurusatoPdfLayout\.boundedTextLayer\(content\.items\)/);
 console.log("PUBLIC_OCR_PDF_POSITION_NEGATIVE_AND_SOURCE_CANDIDATE_AUDIT_SYNTHETIC_PASS; not accuracy proof");

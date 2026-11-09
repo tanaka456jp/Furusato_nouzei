@@ -178,5 +178,37 @@
    autoApproved:false};
  }
 
- return {audit:audit,extract:extract,crossCheckExtracted:crossCheckExtracted};
+
+ // PDF.js may encounter compact files containing a huge text layer.
+ // Reject malformed/oversized text BEFORE concatenation or candidate review;
+ // nothing from such a file is shown or passed to the tax calculation.
+ function boundedTextLayer(items){
+  const fail=function(reason){
+   return {status:"HOLD",text:"",items:[],reasons:[reason],sourcePersisted:false};
+  };
+  if(!Array.isArray(items)||items.length===0||items.length>4000)
+   return fail("PDF_TEXT_ITEM_COUNT_INVALID");
+  var count=0,valid=[],chunks=[];
+  for(const item of items){
+   if(!item||typeof item!=="object")return fail("PDF_TEXT_ITEM_INVALID");
+   if(typeof item.str!=="string"){
+    // PDF.js may include non-text marked content; never try to parse it.
+    if(item.str!==undefined)return fail("PDF_TEXT_ITEM_INVALID");
+    continue;
+   }
+   if(item.str.length>240||!Array.isArray(item.transform)||
+      item.transform.length!==6||
+      item.transform.some(v=>typeof v!=="number"||!Number.isFinite(v)))
+    return fail("PDF_TEXT_ITEM_MALFORMED");
+   count+=item.str.length+1;
+   if(count>120000)return fail("PDF_TEXT_TOTAL_LIMIT");
+   valid.push(item);
+   chunks.push(item.str+(item.hasEOL?"\n":" "));
+  }
+  if(!valid.length)return fail("PDF_TEXT_NOT_AVAILABLE");
+  return {status:"OK",text:chunks.join(""),items:valid,
+   reasons:[],sourcePersisted:false};
+ }
+
+ return {audit:audit,extract:extract,crossCheckExtracted:crossCheckExtracted,boundedTextLayer:boundedTextLayer};
 }));
