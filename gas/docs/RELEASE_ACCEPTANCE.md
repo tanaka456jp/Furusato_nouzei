@@ -29,6 +29,20 @@
    ```
 
    証跡に不正な日付や時刻がある場合、古い合格記録で上書きせず **HOLD** にします。同じミリ秒の複数証跡も読込順で合格とせず **HOLD** にします。後から実施した正常な再試験は、過去の同時刻競合を置き換えられます（ただし不正日時の記録が残る場合は安全のため引き続きHOLD）。証跡原本の削除・変更は自動実行しません。\n\n   `structuralStatus: OWNER_ATTESTED_STRUCTURE_PASS` は所有者申告と専用OAuthのDrive残数記録が揃った意味に限られます。実Google固定版の独立GET再照合、OCR精度の第三者検証、OAuth可視範囲外の削除保証、v0.1.23の受入は**別の判定**です。監査結果の非機密ステータスのみ共有し、Google URL、レシート本文、OCR原票を公開しないでください。
+### v0.1.20 所有者報告PASS後の一括・読取専用照合
+
+所有者からWindows / iPhoneの試験項目がPASSだった旨の報告を受けています。ただし、オフライン証跡の機械集計と、Google側の新規隔離固定版・保護対象・一時ファイル残数を照合したことは別の判定です。**過去のOCRを繰り返す必要はありません。** 既存の所有者PC①の専用worktreeから次を一度実行します。
+
+```powershell
+cd $HOME\Development\Furusato_nouzei_GAS_OCR
+git pull --ff-only origin feature/gas-workflow-20261106
+node gas/scripts/attest-v020-owner-acceptance.cjs --verify-readonly
+```
+
+このプログラムはローカルの非公開受入記録（Windows: PDF/PNG/JPEG、iPhone: JPEG）とv0.1.20隔離レシートを検査した後、**Google APIへのGETとOAuthトークン取得のみ**で、旧v0.1.17の保護、隔離シート所有者、5ソース、固定版、非公開デプロイ（MYSELF / USER_DEPLOYING）、専用OAuth範囲のDrive一時OCR残数0件を再照合します。照合中のレシート・受入証跡の変更も検出します。
+
+`status: LIMITED_V020_OWNER_EVIDENCE_AND_GOOGLE_GET_PASS` は、限定的に「所有者申告の記録と独立したリモート読取照合が一致」の意味です。**Safari直接操作・OCR正確性の第三者検証・専用OAuth可視範囲外の削除・v0.1.23の受入・正式販売許可を意味しません。** 出力は許可済みの状態コードだけです。非公開URL、レシート・認証情報の本文、源泉徴収票の実データは共有しないでください。失敗は `HOLD` で終了します。修復目的でも旧GASや共有claspを更新せず、Google作成要求の再試行もしません。
+
 3. 次の候補へ更新する場合は、所有者の承認と既存の照合手順に沿い、固定版、所有者、保護対象を更新前後で確認します。最新候補でOCR、保存と再読込、印刷・PDFを再試験します。
 4. Windows配布ZIPの展開・起動、初回導入、更新、復旧を実運用から隔離して確認し、対象版と証跡を記録します。開発者以外が同じ候補で主要手順を再確認した後に販売・配布を判定します。
 
