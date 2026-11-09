@@ -36,7 +36,7 @@ const deployment={deploymentId:"new-private-deployment-id",
 const initial={files:[{name:"appsscript",type:"JSON",source:"{}"}]};
 function mock(options={}){
  const calls=[];
- let uploaded=false;
+ let uploaded=false,createdTitle="";
  const api=async(url,method="GET",body)=>{
   calls.push({url,method});
   if(options.failAt && url.includes(options.failAt) &&
@@ -49,8 +49,13 @@ function mock(options={}){
      trashed:false,shared:false,capabilities:{canEdit:true},
      owners:[{permissionId:old.owner}],
      appProperties:{furusatoInstaller:"v1",furusatoStage:"v020-private"}};
-  if(method==="POST"&&url==="https://script.googleapis.com/v1/projects")
-    return {scriptId:newId,parentId:oldNewSheet.id,title:body.title,
+  if(method==="POST"&&url==="https://script.googleapis.com/v1/projects"){
+    createdTitle=body.title;
+    return {scriptId:newId,parentId:oldNewSheet.id,title:createdTitle,
+      creator:{email:old.email}};
+  }
+  if(method==="GET"&&url===base+newId)
+    return {scriptId:newId,parentId:oldNewSheet.id,title:createdTitle,
       creator:{email:old.email}};
   if(url===base+newId+"/content"){
     if(method==="PUT"){
