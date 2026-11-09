@@ -29,7 +29,8 @@ async function listV023StageCandidates(api){
  for(let i=0;i<100;i++){
   const response=await api(url.toString(),"GET");
   if(!response||typeof response!=="object"||Array.isArray(response)||
-   response.incompleteSearch===true||!Array.isArray(response.files))
+   (response.incompleteSearch!==undefined&&response.incompleteSearch!==false)||
+   !Array.isArray(response.files))
    throw Error("V023_REMOTE_INVENTORY_UNVERIFIED");
   for(const file of response.files){
    if(!isId(file?.id)||typeof file.name!=="string"||
@@ -60,8 +61,22 @@ function classifyV023Inventory(rows){
   reason:"NO_V023_MATCH_VISIBLE_IN_DEDICATED_OAUTH_SCOPE",
   matchingResources:0};
 }
-async function auditV023Inventory(api){
- return classifyV023Inventory(await listV023StageCandidates(api));
+// Bind this GET-only inventory to the already attested v0.1.20 owner
+// (itself bound to the older v0.1.17 protected owner). An empty query
+// against a different account must never authorize a new stage.
+async function auditV023Inventory(api,{expectedOwner}={}){
+ if(typeof expectedOwner!=="string"||!/^[A-Za-z0-9_-]{6,512}$/.test(expectedOwner))
+  return {status:"HOLD",scope,reason:"DEDICATED_GOOGLE_OWNER_UNVERIFIED",
+   matchingResources:null,ownerIdentity:"HOLD"};
+ const about=await api(
+  "https://www.googleapis.com/drive/v3/about?fields=user(permissionId,emailAddress)","GET");
+ if(about?.user?.permissionId!==expectedOwner||
+   typeof about?.user?.emailAddress!=="string"||
+   !/^[^\\s@]+@[^\\s@]+$/.test(about.user.emailAddress))
+  return {status:"HOLD",scope,reason:"DEDICATED_GOOGLE_OWNER_UNVERIFIED",
+   matchingResources:null,ownerIdentity:"HOLD"};
+ const inventory=classifyV023Inventory(await listV023StageCandidates(api));
+ return {...inventory,ownerIdentity:"PASS"};
 }
 module.exports={
  scope,titlePrefix,markerKey,markerValue,listV023StageCandidates,
