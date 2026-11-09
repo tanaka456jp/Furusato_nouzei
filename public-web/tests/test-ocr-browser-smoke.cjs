@@ -160,7 +160,7 @@ async function main(){
     const one=await instance.getPage(1);
     const layer=await one.getTextContent();
     return {pages:instance.numPages,count:layer.items.length};
-   }finally{await instance.destroy();}
+   }finally{if(typeof instance.destroy==="function")await instance.destroy();}
   },Array.from(sample));
   assert.deepEqual(pdfSnapshot,{pages:1,count:0});
   const fixture=[
