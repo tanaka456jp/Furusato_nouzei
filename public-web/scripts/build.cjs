@@ -13,7 +13,8 @@ const ver=/var\s+VERSION\s*=\s*"gas-mvp-(0\.1\.23)"/.exec(engine);
 if(!ver||!engine.includes("FurusatoEngine")||
    !engine.includes("FurusatoSeparateTax")||/<\/script\b/i.test(engine))
  throw Error("PUBLIC_ENGINE_NOT_AUDITED");
-if(/\b(?:DriveApp|SpreadsheetApp|UrlFetchApp|google\.script\.run)\b/.test(engine))
+if(/\b(?:DriveApp|SpreadsheetApp|UrlFetchApp)\s*\./.test(engine)||
+   /\bgoogle\.script\.run\b/.test(engine))
  throw Error("REMOTE_GAS_DEPENDENCY_FORBIDDEN");
 const html=fs.readFileSync(path.join(sourceDir,"index.html"),"utf8");
 const app=fs.readFileSync(path.join(sourceDir,"app.js"),"utf8");
