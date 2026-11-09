@@ -115,7 +115,7 @@ try {
 }finally{fs.rmSync(root,{recursive:true,force:true})}
 
 async function verifyRemoteRecovery(){
- const files=g.source();
+ const files=require("./fixtures/v020-sources.cjs");
  const j={...journal,step:"COMPLETE",...aliases,
   title:titlePrefix+"00000000-0000-0000-0000-000000000001",sourceDigest:g.digest(files)};
  const old={owner:"fixture-owner",email:"fixture@example.invalid",protectedParent:"fixture-protected-parent"};

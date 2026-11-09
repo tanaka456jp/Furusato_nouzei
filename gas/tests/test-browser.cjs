@@ -375,6 +375,77 @@ test("revoked consent during deferred photo load blocks upload",async()=>{
  }finally{p.w.close();}
 });
 
+async function startSyntheticOcr(p){
+ const callbacks={};
+ p.w.google.script.run.extractWithholdingOcr=function(){callbacks.success=this.ok;callbacks.failure=this.fail;};
+ p.w.FileReader=class{
+  readAsDataURL(){this.result="data:image/jpeg;base64,/9j/2Q==";this.onload();}
+ };
+ const doc=new p.w.File(["synthetic"],"camera.jpg",{type:"image/jpeg"});
+ Object.defineProperty(p.el("ocrCamera"),"files",{configurable:true,value:[doc]});
+ p.el("ocrCamera").dispatchEvent(new p.w.Event("change",{bubbles:true}));
+ p.el("ocrConsent").checked=true;p.click("ocrRun");
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(typeof callbacks.success,"function");
+ return callbacks;
+}
+const completeOcr={schema:"furusato-ocr-review/v1",status:"REQUIRES_REVIEW",year:2026,
+ candidates:{salary_gross:7000000,social_insurance:1000000,salary_reference:5200000},warnings:["OCR_REVIEW_REQUIRED"]};
+
+test("complete OCR permits explicit original review and clears approval on edits",async()=>{
+ const p=createPage();
+ try{
+  p.next();const {success}=await startSyntheticOcr(p);success(completeOcr);
+  assert.equal(p.el("salaryIncomeReference").value,"5200000");
+  assert.equal(p.el("sourceConfirmBox").style.display,"flex");
+  assert.equal(p.el("sourceConfirmed").checked,false);
+  p.confirmOthers();p.next();
+  assert.equal(p.el("reportAmount").textContent,"計算停止");
+  p.click("edit");p.click("back");p.click("back");
+  p.el("sourceConfirmed").checked=true;p.type("salaryGross",7000000);
+  assert.equal(p.el("sourceConfirmed").checked,false);
+  p.el("sourceConfirmed").checked=true;
+  p.confirmOthers();p.next();
+  assert.equal(p.el("reportAmount").textContent,"109,000 円");
+ }finally{p.w.close();}
+});
+
+test("ambiguous OCR remains HOLD even if the original-review checkbox is set",async()=>{
+ const p=createPage();
+ try{
+  p.next();const {success}=await startSyntheticOcr(p);
+  success({...completeOcr,warnings:["OCR_REVIEW_REQUIRED","MULTIPLE_SALARY_REFERENCE"]});
+  assert.equal(p.el("sourceConfirmBox").style.display,"none");
+  p.el("sourceConfirmed").checked=true;
+  p.confirmOthers();p.next();
+  assert.equal(p.el("reportAmount").textContent,"計算停止");
+ }finally{p.w.close();}
+});
+
+test("OCR timeout discards late success and requires new consent after failure",async()=>{
+ const p=createPage();
+ try{
+  p.next();
+  const schedule=p.w.setTimeout;
+  let fireTimeout;
+  p.w.setTimeout=(callback,delay)=>{
+   if(delay===120000){fireTimeout=callback;return 0;}
+   return schedule(callback,delay);
+  };
+  const {success}=await startSyntheticOcr(p);
+  fireTimeout();success(completeOcr);
+  assert.equal(p.el("ocrConsent").checked,false);
+  assert.equal(p.el("ocrRun").disabled,false);
+  assert.equal(p.el("salaryGross").value,"");
+  assert.match(p.el("ocrResult").textContent,/タイムアウト.*HOLD/);
+  const {failure}=await startSyntheticOcr(p);
+  failure();
+  assert.equal(p.el("ocrConsent").checked,false);
+  assert.equal(p.el("salaryGross").value,"");
+  assert.match(p.el("flash").textContent,/OCR失敗・計算HOLD/);
+ }finally{p.w.close();}
+});
+
 (async()=>{
  let failed=0;
  for(const item of tests){

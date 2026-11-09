@@ -9,7 +9,7 @@ const fs=require("node:fs"),os=require("node:os"),path=require("node:path");
 const google=require("../deployment/private-gas.cjs");
 const {localGate,validateNewIdentity,createStage,stageReport,preflightResult}=
  require("../scripts/create-v020-isolated-stage.cjs");
-const files=google.source();
+const files=require("./fixtures/v020-sources.cjs");
 const candidate={sha:"a".repeat(40),digest:google.digest(files)};
 const r={scriptId:"old-script-id",spreadsheetId:"old-sheet-id",
  protectedScriptId:"housing-script-id",deploymentId:"old-deploy-id"};

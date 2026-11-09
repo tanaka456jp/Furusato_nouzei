@@ -49,6 +49,8 @@ const profiles = [
       await page.close();
     }
     const draftPage = await browser.newPage();
+    let approveDraftChange=true;
+    draftPage.on("dialog",dialog=>approveDraftChange?dialog.accept():dialog.dismiss());
     await draftPage.goto(source);
     await draftPage.locator("#draftPanel summary").click();
     const downloadDraft = async mode => {
@@ -76,6 +78,15 @@ const profiles = [
     await restoreDraft({...salaryDraft,values:{...salaryDraft.values,ack:true}});
     await draftPage.locator("#draftStatus").getByText(/不明な項目/).waitFor();
     assert.equal(await draftPage.locator("#salaryGross").inputValue(),"5000000");
+    approveDraftChange=false;
+    await restoreDraft(salaryDraft);
+    await draftPage.locator("#draftStatus").getByText(/取り消しました/).waitFor();
+    assert.equal(await draftPage.locator("#salaryGross").inputValue(),"5000000");
+    await draftPage.locator("#newDraft").click();
+    assert.equal(await draftPage.locator("#salaryGross").inputValue(),"5000000");
+    approveDraftChange=true;
+    await draftPage.locator("#newDraft").click();
+    assert.equal(await draftPage.locator("#salaryGross").inputValue(),"");
     await restoreDraft(salaryDraft);
     await draftPage.locator("#draftStatus").getByText(/読み込みました/).waitFor();
     assert.equal(await draftPage.locator("#screen0").isVisible(),true);

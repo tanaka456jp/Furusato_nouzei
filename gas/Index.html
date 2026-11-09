@@ -112,15 +112,16 @@ main{margin:0;padding:0;max-width:none}.panel{border:0;box-shadow:none;padding:0
 </style></head>
 <body>
 <header><h1>ふるさと納税 限度額シミュレーター</h1>
-<p>質問に答えるだけで計算結果と根拠を表示｜GAS検証版 v0.1.20</p></header>
+<p>質問に答えるだけで計算結果と根拠を表示｜GAS検証版 v0.1.21</p></header>
 <main><div class="panel">
 <div class="actions mode-switch" aria-label="入力モード">
 <button type="button" id="salaryMode" aria-pressed="true">給与の入力</button>
 <button type="button" id="splitMode" aria-pressed="false">詳細設定・分離課税と税額控除</button>
 </div>
-<details id="draftPanel"><summary>入力の保存・再読込</summary>
+<details id="draftPanel"><summary>新規入力・保存・再読込</summary>
 <p class="hint">入力中の金額を端末にJSONで保存します。保存ファイルには所得や控除の金額が含まれます。読み込むと対象モードの入力が置き換わり、確認チェックは解除されます。</p>
 <button type="button" id="saveDraft">表示中の入力を保存</button>
+<button type="button" id="newDraft">表示中の入力をリセット</button>
 <div class="field"><label for="draftFile">保存済みの入力ファイル</label><input id="draftFile" type="file" accept=".json,application/json"></div>
 <button type="button" id="loadDraft">選択した入力を読み込む</button>
 <p class="hint" id="draftStatus" role="status"></p>
@@ -256,13 +257,14 @@ function checked(key){var node=document.querySelector('[data-key="'+key+'"]');re
 function yen(value){return Number(value).toLocaleString("ja-JP")+" 円";}
 function tableRow(table,key,value){var tr=document.createElement("tr"),th=document.createElement("th"),td=document.createElement("td");th.textContent=key;td.textContent=value;tr.appendChild(th);tr.appendChild(td);table.appendChild(tr);}
 function formData(){
+ var sourceReviewReady=["READY_FOR_EXCEL_CROSSCHECK","OCR_READY_FOR_REVIEW"].includes(state.sourceStatus);
  var obj={year:fieldValue("year"),incomeType:fieldValue("incomeType"),filing:fieldValue("filing"),
  salaryGross:fieldValue("salaryGross"), socialInsurance:fieldValue("socialInsurance"),
  salaryIncomeReference:fieldValue("salaryIncomeReference"),
  deductionsReference:fieldValue("deductionsReference"),
  acknowledgedExclusions:byId("ack").checked,
  sourceReviewPending:state.sourceStatus!==""&&
-  (state.sourceStatus!=="READY_FOR_EXCEL_CROSSCHECK"||!byId("sourceConfirmed").checked)};
+  (!sourceReviewReady||!byId("sourceConfirmed").checked)};
  if(state.sourceYear!==null)obj.sourceYear=state.sourceYear;
  if(state.sourceBasicReference!==null)obj.sourceBasicReference=state.sourceBasicReference;
  if(state.sourceStatus)obj.sourceIndicators=Object.assign({},state.sourceIndicators);
@@ -548,9 +550,8 @@ function clearSourceIndicators(){
 function clearImportedState(clearAmounts){
  ++ocrSequence;
  ++sourceFileSequence;
- ocrInProgress=false;byId("ocrConsent").checked=false;
+ finishOcr();byId("ocrConsent").checked=false;
  byId("ocrResult").textContent="OCR情報を破棄しました。";
- byId("ocrRun").disabled=false;
  state.sourceStatus="";state.sourceYear=null;state.sourceBasicReference=null;state.sourceIndicators={};
  byId("sourceConfirmed").checked=false;
  byId("sourceConfirmBox").style.display="none";
@@ -630,7 +631,7 @@ byId("file").addEventListener("change",function(ev){
  var file=ev.target.files[0]; if(!file)return;
  var seq=++sourceFileSequence;
  ++ocrSequence; // A newer JSON/TSV must also invalidate a pending OCR response.
- ocrInProgress=false;byId("ocrRun").disabled=false;byId("ocrConsent").checked=false;
+ finishOcr();byId("ocrConsent").checked=false;
  byId("ocrFile").value="";byId("ocrCamera").value="";
  byId("ack").checked=false;
  byId("sourceMessage").textContent="新しい読取ファイルの照合待ちです（HOLD）。";
@@ -692,11 +693,16 @@ byId("file").addEventListener("change",function(ev){
  reader.readAsText(file,"UTF-8");
 });
 
-var ocrSequence=0,ocrInProgress=false;
+var ocrSequence=0,ocrInProgress=false,ocrTimer=null;
+var OCR_TIMEOUT_MS=120000;
+function finishOcr(){
+ clearTimeout(ocrTimer);ocrTimer=null;ocrInProgress=false;
+ byId("ocrRun").disabled=false;
+}
 function cancelPendingOcr(message){
  if(!ocrInProgress)return;
- ++ocrSequence;ocrInProgress=false;
- byId("ocrRun").disabled=false;byId("ocrResult").textContent=message;
+ ++ocrSequence;finishOcr();
+ byId("ocrResult").textContent=message;
 }
 byId("ocrConsent").addEventListener("change",function(){
  if(!this.checked)cancelPendingOcr("Google転送への同意を解除しました。以後のOCR結果は破棄します（HOLD）。");
@@ -761,7 +767,7 @@ function prepareOcrUpload(file){
   // Do not let an old source-review checkbox or pending JSON reader authorize it.
   if(!this.files.length)return;
   ++ocrSequence;++sourceFileSequence;
-  ocrInProgress=false;byId("ocrConsent").checked=false;
+  finishOcr();byId("ocrConsent").checked=false;
   byId(id==="ocrFile"?"ocrCamera":"ocrFile").value="";
   byId("file").value="";
   clearSourceIndicators();
@@ -773,12 +779,12 @@ function prepareOcrUpload(file){
   byId("clearImportedFile").style.display="block";
   byId("ack").checked=false;
   byId("sourceMessage").textContent="新しい写真・PDFを選択しました。OCR前・原票未照合のため計算停止（HOLD）。";
-  byId("ocrRun").disabled=false;
   byId("ocrResult").textContent="新しい画像・PDFを選択しました。OCRは未実行です。";
   notify("");
  });
 });
 byId("ocrRun").addEventListener("click",function(){
+ if(ocrInProgress)return;
  var f=byId("ocrCamera").files[0]||byId("ocrFile").files[0];
  if(!f){notify("PDF・画像を選択してください");return;}
  if(!byId("ocrConsent").checked){notify("Google Driveへの一時転送に同意してください");return;}
@@ -800,6 +806,11 @@ byId("ocrRun").addEventListener("click",function(){
  byId("clearImportedFile").style.display="block";
  byId("ocrRun").disabled=true;byId("ocrResult").textContent="写真の送信準備中です…";
  ocrInProgress=true;
+ ocrTimer=setTimeout(function(){
+  if(nonce!==ocrSequence)return;
+  byId("ocrConsent").checked=false;
+  cancelPendingOcr("OCRの応答待ちがタイムアウトしました（HOLD）。Google Driveで一時ファイルの残数を確認してから、改めて転送に同意してください。");
+ },OCR_TIMEOUT_MS);
  prepareOcrUpload(f).then(function(upload){
   if(nonce!==ocrSequence)return;
   if(!byId("ocrConsent").checked){
@@ -809,10 +820,11 @@ byId("ocrRun").addEventListener("click",function(){
   byId("ocrResult").textContent="一時ドキュメントでOCR処理中です…";
   google.script.run.withSuccessHandler(function(result){
    if(nonce!==ocrSequence)return;
-   ocrInProgress=false;
-   byId("ocrRun").disabled=false;
+   finishOcr();
    if(!result||result.schema!=="furusato-ocr-review/v1"||
-      result.status!=="REQUIRES_REVIEW"){
+      result.status!=="REQUIRES_REVIEW"||!result.candidates||
+      typeof result.candidates!=="object"||Array.isArray(result.candidates)){
+     byId("ocrConsent").checked=false;
      byId("ocrResult").textContent="不正なOCR応答。HOLD";return;
    }
    if(result.year===2025||result.year===2026){
@@ -828,21 +840,30 @@ byId("ocrRun").addEventListener("click",function(){
    });
    state.sourceBasicReference=Number.isSafeInteger(candidates.basic_reference)?candidates.basic_reference:null;
    byId("ack").checked=false;
-   byId("ocrResult").textContent="OCR完了（原票照合待ち・HOLD）。候補"+count+"項目。認識値は仮転記のみで計算に使えません。";
+   var canReview=state.sourceYear!==null&&Array.isArray(result.warnings)&&result.warnings.length===1&&
+    result.warnings[0]==="OCR_REVIEW_REQUIRED"&&fieldValue("salaryGross")!==""&&
+    fieldValue("socialInsurance")!==""&&fieldValue("salaryIncomeReference")!==""&&
+    candidates.salary_gross>0&&candidates.social_insurance<=candidates.salary_gross&&
+    candidates.salary_reference<=candidates.salary_gross;
+   if(canReview){
+    state.sourceStatus="OCR_READY_FOR_REVIEW";
+    byId("sourceConfirmBox").style.display="flex";
+   }
+   byId("ocrResult").textContent="OCR完了（原票照合待ち・HOLD）。候補"+count+"項目。"+
+    (canReview?"原票を照合し、確認欄にチェックを入れると計算できます。":
+    "年分・必須金額・警告を解消できません。原票を確認し、読取データを破棄して手入力してください。");
    var detectedYear=state.sourceYear===null?"所得年を認識できませんでした。":"認識した所得年は"+state.sourceYear+"年です。";
    byId("sourceMessage").textContent=detectedYear+" 金額欄はPDF・画像からの仮転記です。手元の原票を確認してください（HOLD）。";
    notify("");
   }).withFailureHandler(function(){
    if(nonce!==ocrSequence)return;
-   ocrInProgress=false;
-   byId("ocrRun").disabled=false;
+   finishOcr();byId("ocrConsent").checked=false;
    byId("ocrResult").textContent="OCR処理または一時ファイル削除に失敗した可能性があります。Google DriveでFurusato_OCR_TEMP_を検索してください。";
    notify("OCR失敗・計算HOLD。Google認可、Drive API、一時ファイル削除を確認してください");
   }).extractWithholdingOcr({consent:true,mimeType:upload.mimeType,base64:upload.base64});
  }).catch(function(error){
   if(nonce!==ocrSequence)return;
-  ocrInProgress=false;
-  byId("ocrRun").disabled=false;
+  finishOcr();byId("ocrConsent").checked=false;
   byId("ocrResult").textContent="写真の準備に失敗しました（HOLD）。";
   notify(String(error&&error.message||"入力画像を確認してください"));
  });
@@ -861,11 +882,27 @@ function validDraftValue(field,value){
  return value===""||/^(0|[1-9][0-9]{0,11})$/.test(value);
 }
 function draftStatus(message){byId("draftStatus").textContent=message;}
+function draftMode(){return byId("splitMode").getAttribute("aria-pressed")==="true"?"separate":"salary";}
+function hasDraftInput(mode){
+ if(mode==="salary"&&(state.sourceStatus||byId("ack").checked))return true;
+ if(mode==="separate"&&byId("splitReviewed").checked)return true;
+ return draftFields(mode).some(function(field){
+  if(field.type==="checkbox")return field.checked!==field.defaultChecked;
+  if(field.tagName!=="SELECT")return field.value!==field.defaultValue;
+  var initial=Array.from(field.options).find(function(option){return option.defaultSelected;})||field.options[0];
+  return field.value!==initial.value;
+ });
+}
+function allowDraftReplacement(mode,message){
+ if(!hasDraftInput(mode)||window.confirm(message+" 残しておく場合は先に保存してください。"))return true;
+ draftStatus("操作を取り消しました。現在の入力を保持しています。");
+ return false;
+}
 ["input","change"].forEach(function(type){
  document.querySelector("main").addEventListener(type,function(){draftRevision++;});
 });
 byId("saveDraft").addEventListener("click",function(){
- var mode=byId("splitMode").getAttribute("aria-pressed")==="true"?"separate":"salary";
+ var mode=draftMode();
  if(mode==="salary"&&state.sourceStatus){
   draftStatus("取込中の原票があるため保存できません。原票と照合し、読取データを破棄してから手入力した内容を保存できます。");return;
  }
@@ -881,6 +918,20 @@ byId("saveDraft").addEventListener("click",function(){
  document.body.appendChild(link);link.click();link.remove();
  setTimeout(function(){URL.revokeObjectURL(url);},1000);
  draftStatus("保存ファイルはブラウザのダウンロード先で確認できます。");
+});
+byId("newDraft").addEventListener("click",function(){
+ var mode=draftMode();
+ if(!allowDraftReplacement(mode,"表示中の入力を消去して新規入力に戻りますか？"))return;
+ ++draftReadSequence;byId("draftFile").value="";
+ if(mode==="separate"){
+  splitForm.reset();
+  splitForm.dispatchEvent(new Event("input",{bubbles:true}));
+ }else{
+  clearImportedState(true);
+  ["year","incomeType","filing"].forEach(function(id){byId(id).selectedIndex=0;});
+  showStep(0);
+ }
+ draftStatus("新規入力を開始できます。");
 });
 byId("loadDraft").addEventListener("click",function(){
  var picker=byId("draftFile"),file=picker.files[0],revision=draftRevision,sequence=++draftReadSequence;
@@ -907,6 +958,7 @@ byId("loadDraft").addEventListener("click",function(){
    draftStatus("保存ファイルに不明な項目、欠けている項目、または不正な値があります。");return;
   }
   var advanced=data.mode==="separate";
+  if(!allowDraftReplacement(data.mode,"保存ファイルの内容で対象の入力を置き換えますか？"))return;
   if(advanced){
    byId("splitReviewed").checked=false;
    splitForm.dispatchEvent(new Event("input",{bubbles:true}));

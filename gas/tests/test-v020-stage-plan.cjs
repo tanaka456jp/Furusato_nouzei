@@ -9,11 +9,10 @@ const policy=require("../deployment/policy.json");
 const {checkCandidate,assess,committedSources,protectedConfigHold,inspectGlobalAuthRefresh,classifyAuthPair} = require("../scripts/plan-v020-private-stage.cjs");
 const sha="a".repeat(40);
 const origin="https://github.com/tanaka456jp/Furusato_nouzei.git";
-const files=google.source();
+const files=require("./fixtures/v020-sources.cjs");
 const pkg=require("../package.json");
-assert.equal(pkg.version,"0.1.20");
 const valid=()=>({files,committed:files.map(f=>({...f})),
-  packageVersion:pkg.version,branch:"feature/gas-workflow-20261106",
+  packageVersion:"0.1.20",branch:"feature/gas-workflow-20261106",
   origin,dirty:"",currentHead:sha,expectedHead:sha,remoteHead:sha});
 const pass=checkCandidate(valid());
 assert.equal(pass.status,"CANDIDATE_SOURCE_READY");
@@ -22,9 +21,9 @@ const realCheckout=committedSources();
 // Never substitute a copied worktree file for the actual committed sources.
 // This catches Windows line-ending/encoding mismatches missed by mock-only CI.
 const realCandidate=checkCandidate({...valid(),files:google.source(),committed:realCheckout.files,
- currentHead:realCheckout.head,expectedHead:realCheckout.head,remoteHead:realCheckout.head});
-assert.equal(realCandidate.status,"CANDIDATE_SOURCE_READY",
- `Actual Git checkout source mismatch: ${realCandidate.reasons.join(",")}`);
+ packageVersion:pkg.version,currentHead:realCheckout.head,expectedHead:realCheckout.head,remoteHead:realCheckout.head});
+assert.deepEqual(realCandidate.reasons,pkg.version==="0.1.20"?[]:["CANDIDATE_VERSION_INVALID"],
+ `Unexpected Git checkout state: ${realCandidate.reasons.join(",")}`);
 // Different local branch/detached HEAD is safe if and only if GitHub HEAD matches.
 for (const branch of ["", "owner-ocr-worktree", "main"]) {
  const alternative=checkCandidate({...valid(),branch});
