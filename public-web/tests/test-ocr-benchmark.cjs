@@ -37,4 +37,51 @@ assert.throws(()=>summarize([{format:"photo",truth:{...truth,
 assert.throws(()=>summarize([{format:"unknown",truth,
  result:correct}]),/BENCHMARK_SCHEMA_INVALID/);
 assert.throws(()=>summarize([]),/BENCHMARK_RECORD_COUNT_INVALID/);
+
+// An unaudited small set cannot be represented as statistically proven,
+// even when the OCR outputs themselves happen to match the fixture.
+assert.equal(summary.overall.statisticalTargetMet,false);
+assert.equal(summary.overall.independentlyCheckedRealCount,0);
+assert.equal(summary.byDevice["iphone-safari"].slipCount,0);
+assert.throws(()=>summarize([{format:"photo",truth,
+ result:{eligibleForManualTransfer:"false"}}]),/BENCHMARK_RESULT_INVALID/);
+function auditFor(i,device="windows-edge",sourceKind="real"){
+ return {caseId:"00000000-0000-4000-8000-"+i.toString(16).padStart(12,"0"),
+  sourceFingerprint:i.toString(16).padStart(64,"0"),
+  device,sourceKind,independentTruthVerified:true,
+  secondEntry:{...truth}};
+}
+const audited={format:"digital-pdf",truth,result:correct,
+ audit:auditFor(1)};
+assert.throws(()=>summarize([audited,{...audited}]),/BENCHMARK_DUPLICATE_CASE/);
+assert.throws(()=>summarize([audited,{...audited,
+ audit:{...auditFor(2),sourceFingerprint:audited.audit.sourceFingerprint}}]),
+ /BENCHMARK_DUPLICATE_SOURCE/);
+assert.throws(()=>summarize([{...audited,
+ audit:{...auditFor(3),secondEntry:{...truth,salaryGross:1}}}]),
+ /BENCHMARK_TRUTH_DISAGREEMENT/);
+assert.equal(summarize([{...audited,
+ audit:{...auditFor(4),sourceKind:"synthetic"}}]).overall.statisticalTargetMet,false);
+// Model a *hypothetically attested* large sample using synthetic rows.
+// It tests only coverage arithmetic, NOT source identity or OCR accuracy.
+const large=[];
+let seq=100;
+for(const format of ["digital-pdf","scan-pdf","photo"])
+ for(const device of ["windows-edge","iphone-safari"])
+  for(let k=0;k<800;k++)
+   large.push({format,truth,result:correct,audit:auditFor(seq++,device)});
+const ideal=summarize(large);
+assert.equal(ideal.overall.statisticalTargetMet,true);
+assert.equal(ideal.accuracyCertified,false);
+assert.equal(ideal.release.startsWith("HOLD"),true);
+assert.equal(ideal.byDevice["iphone-safari"].slipCount,2400);
+assert.equal(ideal.byFormat.photo.slipCount,1600);
+assert.equal(JSON.stringify(ideal).includes("sourceFingerprint"),false);
+assert.equal(JSON.stringify(ideal).includes("caseId"),false);
+// Lack of either iOS or scanned-format evidence blocks the overall target.
+assert.equal(summarize(large.filter(r=>r.audit.device==="windows-edge"))
+ .overall.statisticalTargetMet,false);
+assert.equal(summarize(large.filter(r=>r.format==="digital-pdf"))
+ .overall.statisticalTargetMet,false);
+
 console.log("PUBLIC_OCR_AGGREGATE_ONLY_BENCHMARK_SYNTHETIC_PASS; private records NOT included");
