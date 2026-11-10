@@ -9,7 +9,7 @@ const fs=require("node:fs");
 const http=require("node:http");
 const path=require("node:path");
 const zlib=require("node:zlib");
-const {chromium}=require("../../gas/node_modules/playwright");
+const {chromium,webkit}=require("../../gas/node_modules/playwright");
 const root=path.resolve(__dirname,"..","dist");
 const types={".js":"text/javascript; charset=utf-8",
  ".mjs":"text/javascript; charset=utf-8",
@@ -86,12 +86,15 @@ async function main(){
  });
  let browser;
  try{
-  // Use the real installed Microsoft Edge on Windows hosted runners.
-  // Linux CI keeps the bundled, pinned Playwright Chromium browser.
+  // Edge on Windows, WebKit on Linux, Chromium on Linux: all browser
+  // engines use identical synthetic-only local PDF/OCR privacy gates.
   const channel=process.env.FURUSATO_BROWSER_CHANNEL;
-  if(channel&&channel!=="msedge")throw Error("UNAPPROVED_BROWSER_CHANNEL");
-  browser=await chromium.launch(channel?
-    {headless:true,channel:"msedge"}:{headless:true});
+  if(channel&&channel!=="msedge"&&channel!=="webkit")
+    throw Error("UNAPPROVED_BROWSER_CHANNEL");
+  browser=channel==="webkit"
+    ?await webkit.launch({headless:true})
+    :await chromium.launch(channel==="msedge"
+      ?{headless:true,channel:"msedge"}:{headless:true});
   const page=await browser.newPage();
   const external=[];
   page.on("request",function(req){
@@ -282,6 +285,8 @@ async function main(){
   assert.ok(requestCount>=8,"OCR assets not fetched");
   console.log((process.env.FURUSATO_BROWSER_CHANNEL==="msedge"?
    "PUBLIC_OCR_WINDOWS_EDGE_LOCAL_WASM_BOOT_PASS":
+   process.env.FURUSATO_BROWSER_CHANNEL==="webkit"?
+   "PUBLIC_OCR_LINUX_WEBKIT_LOCAL_WASM_BOOT_PASS":
    "PUBLIC_OCR_CHROMIUM_LOCAL_WASM_BOOT_PASS")+
    "; synthetic only; OCR accuracy NOT CERTIFIED");
   await page.close();

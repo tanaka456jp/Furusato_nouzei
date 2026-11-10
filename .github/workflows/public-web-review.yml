@@ -143,3 +143,34 @@ jobs:
         run: |
           "Windows-hosted Edge synthetic-only browser acceptance. Not a user's Windows PC or a real-source accuracy audit." | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
           "NO DEPLOY. NO ADS. NO REAL SOURCE FILES. RELEASE=HOLD." | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+  webkit-browser:
+    name: Linux WebKit local OCR browser acceptance (SYNTHETIC ONLY)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated browser test dependency
+        run: npm ci --prefix gas --ignore-scripts --no-audit --no-fund
+      - name: Install pinned local OCR and Japanese model
+        working-directory: public-web
+        run: npm install --ignore-scripts --no-audit --no-fund --no-package-lock
+      - name: Build offline review assets (NO DEPLOY)
+        run: node public-web/scripts/build.cjs
+      - name: Install isolated Playwright WebKit runtime
+        run: ./gas/node_modules/.bin/playwright install --with-deps webkit
+      - name: Run local OCR/PDF privacy gates in WebKit (synthetic only)
+        env:
+          FURUSATO_BROWSER_CHANNEL: webkit
+        run: node public-web/tests/test-ocr-browser-smoke.cjs
+      - name: Record WebKit-only acceptance boundary
+        run: |
+          echo 'Headless Linux WebKit synthetic tests passed. This is NOT iPhone Safari real-device acceptance.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'No source documents. NO DEPLOY. NO ADS. RELEASE=HOLD.' >> "$GITHUB_STEP_SUMMARY"
