@@ -192,9 +192,16 @@ async function main(){
    await new Promise(resolve=>setImmediate(resolve));
  assert.equal(recognized,oldCount+1);
  const oldRelease=releaseRecognition;releaseRecognition=null;
+ const stoppedBeforeSwap=terminated;
  Object.defineProperty(file,"files",{configurable:true,value:[syntheticRasterFile("newer-synthetic.png","image/png",1024)]});
  file.dispatchEvent(new win.Event("change",{bubbles:true}));
  assert.equal(form.dataset.ocrReviewPending,"true");
+ for(let i=0;i<20&&terminated===stoppedBeforeSwap;i++)
+   await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(terminated,stoppedBeforeSwap+1,
+   "source swap must request immediate worker shutdown without waiting for recognize()");
+ assert.equal(scan.disabled,true,
+   "overlapping scans remain locked until cancelled run actually finishes");
  holdRecognizer=false;
  oldRelease();
  for(let i=0;i<100 && scan.disabled;i++)
@@ -218,9 +225,14 @@ async function main(){
  const releasePendingRecognition=releaseRecognition;
  releaseRecognition=null;
  field("salaryGross").value="7150000";
+ const stoppedBeforeManual=terminated;
  field("salaryGross").dispatchEvent(new win.Event("input",{bubbles:true}));
  assert.equal(form.dataset.ocrReviewPending,"true");
  assert.equal(transfer.disabled,true);
+ for(let i=0;i<20&&terminated===stoppedBeforeManual;i++)
+   await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(terminated,stoppedBeforeManual+1,
+   "manual edit must interrupt stale recognition, not wait for it to return");
  holdRecognizer=false;
  releasePendingRecognition();
  for(let i=0;i<100&&scan.disabled;i++)
@@ -230,6 +242,48 @@ async function main(){
    "an edit during the first pass must stop subsequent OCR passes");
  assert.equal(field("salaryGross").value,"7150000");
  assert.equal(transfer.disabled,true);
+ // A real worker often rejects recognize() immediately when terminate()
+ // is requested. Simulate that to prove no external test-release is needed.
+ // Old candidates stay blocked while the worker is interrupted.
+ form.reset();
+ field("year").value="2026";
+ Object.defineProperty(file,"files",{configurable:true,value:[
+  syntheticRasterFile("synthetic-immediate-terminate.png","image/png",1024)
+ ]});
+ file.dispatchEvent(new win.Event("change",{bubbles:true}));
+ const factoryBeforeInterrupt=win.Tesseract.createWorker;
+ let interruptReject=null,interruptRecognitions=0,interruptStops=0;
+ win.Tesseract.createWorker=async()=>({
+  recognize:()=>{
+   interruptRecognitions++;
+   return new Promise((resolve,reject)=>{interruptReject=reject;});
+  },
+  terminate:async()=>{
+   interruptStops++;
+   if(interruptReject)interruptReject(Error("SYNTHETIC_WORKER_ABORTED"));
+  }
+ });
+ try{
+  scan.click();
+  for(let i=0;i<100&&!interruptReject;i++)
+   await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(interruptRecognitions,1);
+  Object.defineProperty(file,"files",{configurable:true,value:[
+   syntheticRasterFile("synthetic-after-interrupt.png","image/png",1024)
+  ]});
+  file.dispatchEvent(new win.Event("change",{bubbles:true}));
+  for(let i=0;i<100&&scan.disabled;i++)
+   await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(scan.disabled,false,
+   "interrupted recognize must settle and release busy state");
+  assert.equal(interruptStops,1,"stale worker must terminate exactly once");
+  assert.equal(interruptRecognitions,1,"interrupted job must skip follow-up OCR");
+  assert.equal(transfer.disabled,true);
+  assert.equal(form.dataset.ocrReviewPending,"true");
+  assert.equal(calc().className,"result hold");
+ }finally{
+  win.Tesseract.createWorker=factoryBeforeInterrupt;
+ }
  // Reset must invalidate any old source data even when no result exists.
  form.reset();
  assert.equal(form.dataset.ocrReviewPending,undefined);
