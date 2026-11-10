@@ -76,6 +76,10 @@ assert.equal(ideal.accuracyCertified,false);
 assert.equal(ideal.release.startsWith("HOLD"),true);
 assert.equal(ideal.byDevice["iphone-safari"].slipCount,2400);
 assert.equal(ideal.byFormat.photo.slipCount,1600);
+assert.equal(ideal.byFormatAndDevice.photo["iphone-safari"].slipCount,800);
+assert.equal(summarize(large.filter(r=>
+ !(r.format==="photo"&&r.audit.device==="iphone-safari")))
+ .overall.statisticalTargetMet,false);
 assert.equal(JSON.stringify(ideal).includes("sourceFingerprint"),false);
 assert.equal(JSON.stringify(ideal).includes("caseId"),false);
 // Lack of either iOS or scanned-format evidence blocks the overall target.
