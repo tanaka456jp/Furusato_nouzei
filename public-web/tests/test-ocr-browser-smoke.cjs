@@ -266,6 +266,127 @@ async function main(){
    assert.equal(await page.locator('[name="salaryGross"]').inputValue(),"",
      "new PDF scan must invalidate previously transferred OCR salary");
   }
+  // Distinct from OCR cancellation: interrupt an in-progress PDF text
+  // extraction. The PDF.js loading-task worker must be destroyed BEFORE
+  // the blocked text-extraction Promise is manually released.
+  await page.evaluate(async raw=>{
+   const pdfjs=await import("./vendor/pdf.mjs");
+   const probe=pdfjs.getDocument({data:new Uint8Array(raw)});
+   const document=await probe.promise;
+   const one=await document.getPage(1);
+   const taskPrototype=Object.getPrototypeOf(probe);
+   const pagePrototype=Object.getPrototypeOf(one);
+   await probe.destroy();
+   const originalDestroy=taskPrototype.destroy;
+   const originalText=pagePrototype.getTextContent;
+   window.__pdfCancellationProbe={
+    taskPrototype,pagePrototype,originalDestroy,originalText
+   };
+   window.__pdfCancelLoads=0;
+   window.__pdfTextPending=false;
+   window.__releasePdfText=null;
+   taskPrototype.destroy=function(){
+    window.__pdfCancelLoads++;
+    return originalDestroy.apply(this,arguments);
+   };
+   pagePrototype.getTextContent=function(){
+    window.__pdfTextPending=true;
+    return new Promise(resolve=>{
+     window.__releasePdfText=()=>resolve({items:[]});
+    });
+   };
+  },Array.from(sample));
+  try{
+   await page.locator("#slipFile").setInputFiles({
+    name:"synthetic-blocked-text-old.pdf",mimeType:"application/pdf",buffer:sample
+   });
+   await page.locator("#slipScan").click();
+   await page.waitForFunction(()=>window.__pdfTextPending,
+     null,{timeout:30000});
+   await page.locator("#slipFile").setInputFiles({
+    name:"synthetic-blocked-text-new.pdf",mimeType:"application/pdf",buffer:sample
+   });
+   await page.waitForFunction(()=>window.__pdfCancelLoads===1,
+     null,{timeout:30000});
+   assert.equal(await page.locator("#slipScan").isDisabled(),true,
+    "PDF loading worker cleanup may overlap no new scan");
+   await page.evaluate(()=>window.__releasePdfText());
+   await page.waitForFunction(()=>
+    document.getElementById("slipScan").disabled===false,
+    null,{timeout:30000});
+   const cancelled=await page.evaluate(()=>({
+    destroyed:window.__pdfCancelLoads,
+    pending:document.getElementById("calculator").dataset.ocrReviewPending,
+    transfer:document.getElementById("slipTransfer").disabled
+   }));
+   assert.equal(cancelled.destroyed,1,
+    "PDF loading task must be destroyed only once");
+   assert.equal(cancelled.pending,"true");
+   assert.equal(cancelled.transfer,true);
+  }finally{
+   await page.evaluate(()=>{
+    const x=window.__pdfCancellationProbe;
+    x.taskPrototype.destroy=x.originalDestroy;
+    x.pagePrototype.getTextContent=x.originalText;
+    delete window.__pdfCancellationProbe;
+   });
+  }
+
+  // Also cancel PDF page rendering itself. A blocked renderer must receive
+  // renderTask.cancel() and reject, instead of waiting for a large raster to
+  // complete before the next PDF can be read.
+  await page.evaluate(async raw=>{
+   const pdfjs=await import("./vendor/pdf.mjs");
+   const probe=pdfjs.getDocument({data:new Uint8Array(raw)});
+   const document=await probe.promise;
+   const one=await document.getPage(1);
+   const prototype=Object.getPrototypeOf(one);
+   await probe.destroy();
+   const originalRender=prototype.render;
+   window.__pdfRenderProbe={prototype,originalRender};
+   window.__pdfRenderStarted=false;
+   window.__pdfRenderCancelled=0;
+   prototype.render=function(){
+    window.__pdfRenderStarted=true;
+    let rejectRender;
+    return {
+     promise:new Promise((_resolve,reject)=>{rejectRender=reject;}),
+     cancel(){
+      window.__pdfRenderCancelled++;
+      rejectRender(Error("SYNTHETIC_RENDER_CANCELLED"));
+     }
+    };
+   };
+  },Array.from(sample));
+  try{
+   await page.locator("#slipFile").setInputFiles({
+    name:"synthetic-blocked-render-old.pdf",mimeType:"application/pdf",
+    buffer:sample
+   });
+   await page.locator("#slipScan").click();
+   await page.waitForFunction(()=>window.__pdfRenderStarted,
+     null,{timeout:30000});
+   await page.locator("#slipFile").setInputFiles({
+    name:"synthetic-blocked-render-new.pdf",mimeType:"application/pdf",
+    buffer:sample
+   });
+   await page.waitForFunction(()=>window.__pdfRenderCancelled===1,
+     null,{timeout:30000});
+   await page.waitForFunction(()=>
+    document.getElementById("slipScan").disabled===false,
+    null,{timeout:30000});
+   assert.equal(await page.locator("#slipTransfer").isEnabled(),false);
+   assert.equal(await page.locator("#result").isVisible(),false);
+   assert.equal(await page.evaluate(()=>
+    document.getElementById("calculator").dataset.ocrReviewPending),"true");
+  }finally{
+   await page.evaluate(()=>{
+    const x=window.__pdfRenderProbe;
+    x.prototype.render=x.originalRender;
+    delete window.__pdfRenderProbe;
+   });
+  }
+
   // Cancel a PDF OCR mid-recognition by selecting another synthetic source.
   // The stale scan must not proceed to the contrast pass or resurrect the
   // old candidate, even if its worker returns after source replacement.
