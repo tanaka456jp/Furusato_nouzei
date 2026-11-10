@@ -8,6 +8,8 @@ const FIELDS=Object.freeze([
  "salaryGross","salaryIncomeReference","deductionsReference","socialInsurance"
 ]);
 const FORMATS=Object.freeze(["digital-pdf","scan-pdf","photo"]);
+const DEVICES=Object.freeze(["windows-edge","iphone-safari","other"]);
+const CASE_ID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_RECORDS=100000;
 function wilsonLower(success,total){
  if(total===0)return null;
@@ -17,13 +19,15 @@ function wilsonLower(success,total){
 }
 function category(){
  return {slips:0,fieldCount:0,fieldCorrect:0,yearCorrect:0,
-  wholeSlipCorrect:0,unsafeTransfer:0,held:0};
+  wholeSlipCorrect:0,unsafeTransfer:0,held:0,auditedReal:0};
 }
 function summarize(records){
  if(!Array.isArray(records)||records.length===0||
     records.length>MAX_RECORDS)throw Error("BENCHMARK_RECORD_COUNT_INVALID");
  const overall=category(),groups=Object.fromEntries(
-  FORMATS.map(f=>[f,category()]));
+  FORMATS.map(f=>[f,category()])),
+  devices=Object.fromEntries(DEVICES.map(d=>[d,category()])),
+  seenCases=new Set();
  for(const item of records){
   if(!item||!FORMATS.includes(item.format)||!item.truth||
      typeof item.truth!=="object"||Array.isArray(item.truth)||
@@ -35,15 +39,48 @@ function summarize(records){
    if(!Number.isSafeInteger(value)||value<0||value>1000000000000)
     throw Error("BENCHMARK_TRUTH_INVALID");
   }
-  const result=item.result,transfer=result.eligibleForManualTransfer===true;
+  const result=item.result;
+  // Missing or malformed OCR output must never be counted as a legitimate
+  // deliberate HOLD: otherwise a broken integration can inflate safety.
+  if(typeof result.eligibleForManualTransfer!=="boolean"||
+     (result.eligibleForManualTransfer&&
+       (![2025,2026].includes(result.year)||
+        !result.candidates||typeof result.candidates!=="object"||
+        FIELDS.some(k=>!Number.isSafeInteger(result.candidates[k])))))
+    throw Error("BENCHMARK_RESULT_INVALID");
+  const audit=item.audit;
+  let auditedReal=false;
+  if(audit!==undefined){
+    if(!audit||typeof audit!=="object"||Array.isArray(audit)||
+      !CASE_ID.test(audit.caseId||"")||
+      !DEVICES.includes(audit.device)||
+      !["real","synthetic"].includes(audit.sourceKind)||
+      typeof audit.independentTruthVerified!=="boolean")
+      throw Error("BENCHMARK_AUDIT_INVALID");
+    // Random local IDs only: never derive them from names, paths or hashes.
+    if(seenCases.has(audit.caseId))throw Error("BENCHMARK_DUPLICATE_CASE");
+    seenCases.add(audit.caseId);
+    if(audit.independentTruthVerified){
+      const second=audit.secondEntry;
+      if(!second||typeof second!=="object"||
+        second.year!==item.truth.year||
+        FIELDS.some(k=>second[k]!==item.truth[k]))
+        throw Error("BENCHMARK_TRUTH_DISAGREEMENT");
+    }
+    auditedReal=audit.sourceKind==="real"&&
+      audit.independentTruthVerified===true;
+  }
+  const transfer=result.eligibleForManualTransfer===true;
   const yearMatch=transfer&&result.year===item.truth.year;
   let exact=0;
   for(const key of FIELDS)if(transfer&&
     Number.isSafeInteger(result.candidates?.[key])&&
     result.candidates[key]===item.truth[key])exact++;
   const whole=yearMatch&&exact===FIELDS.length;
-  for(const c of [overall,groups[item.format]]){
+  for(const c of [overall,groups[item.format],
+    ...(audit?[devices[audit.device]]:[])]){
    c.slips++;
+   if(auditedReal)c.auditedReal++;
    c.fieldCount+=FIELDS.length;
    c.fieldCorrect+=exact;
    if(yearMatch)c.yearCorrect++;
@@ -65,19 +102,33 @@ function summarize(records){
   unsafeTransferCount:c.unsafeTransfer,
   holdCount:c.held,
   holdRate:c.slips?c.held/c.slips:null,
+  independentlyCheckedRealCount:c.auditedReal,
   targetRate:0.995,
   // These are descriptive numbers, not proof of independent truth
   // provenance, device coverage, or achieved commercial accuracy.
-  statisticalTargetMet:c.slips>0&&c.unsafeTransfer===0&&
+  statisticalTargetMet:c.slips>0&&c.auditedReal===c.slips&&
+   c.unsafeTransfer===0&&
    wilsonLower(c.fieldCorrect,c.fieldCount)>=.995&&
    wilsonLower(c.wholeSlipCorrect,c.slips)>=.995
  });
+ const byFormat=Object.fromEntries(FORMATS.map(f=>[f,prepare(groups[f])]));
+ const byDevice=Object.fromEntries(DEVICES.map(d=>[d,prepare(devices[d])]));
+ const overallResult=prepare(overall);
+ // Accuracy inferred from a single PDF type or only desktop tests is not
+ // a scientifically valid 99.5%-across-formats/devices claim.
+ overallResult.statisticalTargetMet=
+   overallResult.statisticalTargetMet&&
+   FORMATS.every(f=>byFormat[f].statisticalTargetMet)&&
+   ["windows-edge","iphone-safari"].every(d=>byDevice[d].statisticalTargetMet);
  return {
-  schema:"furusato-private-ocr-aggregate/v1",
-  overall:prepare(overall),
-  byFormat:Object.fromEntries(FORMATS.map(f=>[f,prepare(groups[f])])),
+  schema:"furusato-private-ocr-aggregate/v2",
+  overall:overallResult,
+  byFormat,
+  byDevice,
   sourceTextPersisted:false,sourceValuesIncluded:false,
   accuracyCertified:false,
+  // Self-declared independent truth entry and device metadata remain
+  // subject to external audit; numerical thresholds never authorize release.
   release:"HOLD_INDEPENDENT_TRUTH_AND_DEVICE_AUDIT_REQUIRED"
  };
 }
