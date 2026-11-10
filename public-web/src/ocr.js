@@ -25,6 +25,13 @@
   // until that same teardown Promise finishes.
   function stopPdfSession(session){
     if(!session.stopPromise){
+      if(session.textReader&&!session.textReaderCancelled){
+        session.textReaderCancelled=true;
+        try{
+          var stopText=session.textReader.cancel();
+          if(stopText&&typeof stopText.catch==="function")stopText.catch(function(){});
+        }catch(_){}
+      }
       if(session.renderTask&&typeof session.renderTask.cancel==="function"){
         try{session.renderTask.cancel();}catch(_){
           // Continue worker teardown even if the render task already ended.
@@ -289,7 +296,8 @@
     var task=pdfjs.getDocument({data:bytes,disableAutoFetch:true,disableStream:true,
       isEvalSupported:false,useSystemFonts:false,stopAtErrors:true,
       maxImageSize:MAX_PDF_IMAGE_PIXELS});
-    var session={task:task,renderTask:null,stopPromise:null};
+    var session={task:task,renderTask:null,stopPromise:null,
+      textReader:null,textReaderCancelled:false};
     activePdfSession=session;
     try{
       var document=await task.promise;
@@ -305,16 +313,61 @@
       throw error;
     }
   }
-  async function digitalPdfText(page){
-    var content=await page.getTextContent();
+  async function digitalPdfText(page,session,isStale){
     if(!window.FurusatoPdfLayout||
        typeof window.FurusatoPdfLayout.boundedTextLayer!=="function")
       throw Error("PDF_TEXT_LAYER_GUARD_MISSING");
-    var checked=window.FurusatoPdfLayout.boundedTextLayer(content.items);
-    if(checked.status!=="OK"&&checked.status!=="EMPTY")
-      throw Error("PDF_TEXT_LAYER_HOLD");
-    return {text:checked.text,items:checked.items,
-      emptyTextLayer:checked.status==="EMPTY"};
+    // getTextContent() eagerly collects every PDF text item before our
+    // existing boundedTextLayer() can check the 4,000-item/120k-char cap.
+    // Stream in chunks and reject excessive text BEFORE allocating a full
+    // text-layer array. Keep the same strict final geometry audit.
+    if(!page||typeof page.streamTextContent!=="function")
+      throw Error("PDF_TEXT_STREAM_UNAVAILABLE");
+    var stream=page.streamTextContent();
+    if(!stream||typeof stream.getReader!=="function")
+      throw Error("PDF_TEXT_STREAM_UNAVAILABLE");
+    var reader=stream.getReader(),items=[],chars=0,finished=false;
+    session.textReader=reader;
+    session.textReaderCancelled=false;
+    try{
+      while(true){
+        if(isStale())throw Error("OCR_SOURCE_CANCELLED");
+        var part=await reader.read();
+        if(isStale())throw Error("OCR_SOURCE_CANCELLED");
+        if(part.done){finished=true;break;}
+        if(!part.value||!Array.isArray(part.value.items))
+          throw Error("PDF_TEXT_CHUNK_INVALID");
+        if(items.length+part.value.items.length>4000)
+          throw Error("PDF_TEXT_ITEM_COUNT_INVALID");
+        for(const item of part.value.items){
+          if(!item||typeof item!=="object")
+            throw Error("PDF_TEXT_ITEM_INVALID");
+          if(typeof item.str!=="string"){
+            if(item.str!==undefined)throw Error("PDF_TEXT_ITEM_INVALID");
+            continue; // PDF.js may emit marked-content controls.
+          }
+          if(item.str.length>240||!Array.isArray(item.transform)||
+             item.transform.length!==6||item.transform.some(function(v){
+               return typeof v!=="number"||!Number.isFinite(v);
+             }))throw Error("PDF_TEXT_ITEM_MALFORMED");
+          chars+=item.str.length+1;
+          if(chars>120000)throw Error("PDF_TEXT_TOTAL_LIMIT");
+        }
+        items.push(...part.value.items);
+      }
+      var checked=window.FurusatoPdfLayout.boundedTextLayer(items);
+      if(checked.status!=="OK"&&checked.status!=="EMPTY")
+        throw Error("PDF_TEXT_LAYER_HOLD");
+      return {text:checked.text,items:checked.items,
+        emptyTextLayer:checked.status==="EMPTY"};
+    }finally{
+      if(!finished&&!session.textReaderCancelled){
+        session.textReaderCancelled=true;
+        try{await reader.cancel();}catch(_){}
+      }
+      if(session.textReader===reader)session.textReader=null;
+      try{reader.releaseLock();}catch(_){}
+    }
   }
   async function rasterizePdf(page,session){
     var viewport=page.getViewport({scale:1});
@@ -530,7 +583,7 @@
         ensureCurrent();
         stage="PDF_PAGE";var page=await pdf.getPage(1);
         ensureCurrent();
-        stage="PDF_TEXT";var extracted=await digitalPdfText(page);
+        stage="PDF_TEXT";var extracted=await digitalPdfText(page,pdfSession,isStale);
         ensureCurrent();
         if(extracted.emptyTextLayer){
           // No PDF text operators: scanned image-only single-page PDF.
