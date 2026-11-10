@@ -130,7 +130,8 @@ jobs:
       - name: Install isolated browser test dependency
         run: npm ci --prefix gas --ignore-scripts --no-audit --no-fund
       - name: Install pinned local OCR and Japanese model
-        run: npm install --prefix public-web --ignore-scripts --no-audit --no-fund --no-package-lock
+        working-directory: public-web
+        run: npm install --ignore-scripts --no-audit --no-fund --no-package-lock
       - name: Build offline review assets (NO DEPLOY)
         run: node public-web/scripts/build.cjs
       - name: Real Windows Microsoft Edge OCR and PDF smoke (synthetic only)

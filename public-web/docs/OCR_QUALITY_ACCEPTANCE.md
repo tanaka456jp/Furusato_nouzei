@@ -205,3 +205,7 @@ Web版は計算エンジンがESTIMATEを返すだけでなく、選択所得年
 ### Windowsホスト実EdgeによるローカルOCR・PDF自動検証（2026-11-10）
 
 GitHub Actionsの公開リポジトリ用Windows Server 2025ホストに導入済みのMicrosoft Edge実バイナリをPlaywrightのmsedgeチャンネルで起動し、Linux Chromium版と同じ完全合成原票・OCR日本語モデル起動・PDF.js読込/画像化・二段階OCR/HOLD・PNG過大サイズ拒否・外部通信0件を自動検証するジョブを追加する。実ファイルは不要で外部OCRへ転送しない。新ジョブの合格をもってWindowsホストEdgeの合成受入に限定して進捗とし、利用者のPC①/PC②での実機・実原票検証、およびiPhone Safari検証は未完了のまま区別する。公開・広告・デプロイは一切実行せずDraft/RELEASE=HOLDを維持する。
+
+### Windows版npmの相対prefix問題（2026-11-10）
+
+Windowsホスト初回CIでは、PowerShellのnpm install --prefix public-webが誤ってリポジトリ直下の存在しないpackage.jsonを読みに行き、OCRモデル導入前にENOENTで失敗した。GitHub ActionsのWindows Edgeジョブのみを作業ディレクトリpublic-webに変更し、npm installをそこで実行する。Linuxジョブの既存合格経路と依存ライブラリのバージョン固定を維持し、次のWindows CIでセットアップからEdgeの実ブラウザ起動まで検証する。
