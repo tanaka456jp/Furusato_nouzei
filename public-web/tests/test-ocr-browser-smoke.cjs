@@ -494,6 +494,99 @@ async function main(){
   assert.equal(await page.locator("#result").isVisible(),false);
   // PDF.js loading-task worker cleanup applies on both success and HOLD paths.
 
+  // Eager getTextContent() would allocate the entire malicious text
+  // layer first. Bound stream chunks before assembling/flattening them.
+  await page.evaluate(async raw=>{
+   const pdfjs=await import("./vendor/pdf.mjs");
+   const task=pdfjs.getDocument({data:new Uint8Array(raw)});
+   const document=await task.promise;
+   const one=await document.getPage(1);
+   const prototype=Object.getPrototypeOf(one);
+   await task.destroy();
+   window.__streamGuardProbe={prototype,original:prototype.streamTextContent};
+   window.__streamGuardCancelled=0;
+   prototype.streamTextContent=function(){
+    return new ReadableStream({
+     start(controller){
+      controller.enqueue({items:Array.from({length:4001},(_v,i)=>({
+       str:"1",transform:[1,0,0,1,i,1]
+      }))});
+     },
+     cancel(){window.__streamGuardCancelled++;}
+    });
+   };
+  },Array.from(sample));
+  try{
+   const countBeforeStream=await page.evaluate(()=>window.__syntheticPdfOcrCalls);
+   await page.locator("#slipFile").setInputFiles({
+    name:"synthetic-oversized-text-layer.pdf",
+    mimeType:"application/pdf",buffer:sample
+   });
+   await page.locator("#slipScan").click();
+   await page.waitForFunction(()=>
+     document.getElementById("slipScan").disabled===false &&
+     document.getElementById("slipReview").textContent.includes("OCRを完了できません"),
+     null,{timeout:30000});
+   assert.equal(await page.evaluate(()=>window.__streamGuardCancelled),1,
+     "oversized PDF text reader must be cancelled");
+   assert.equal(await page.evaluate(()=>window.__syntheticPdfOcrCalls),
+     countBeforeStream,"oversized PDF text must not fall back to OCR");
+   assert.equal(await page.locator("#slipTransfer").isEnabled(),false);
+   assert.equal(await page.locator("#result").isVisible(),false);
+  }finally{
+   await page.evaluate(()=>{
+    const a=window.__streamGuardProbe;
+    a.prototype.streamTextContent=a.original;
+    delete window.__streamGuardProbe;
+   });
+  }
+  // A pending ReadableStream reader must be cancelled promptly on file
+  // replacement, without waiting for an unbounded text layer to arrive.
+  await page.evaluate(async raw=>{
+   const pdfjs=await import("./vendor/pdf.mjs");
+   const task=pdfjs.getDocument({data:new Uint8Array(raw)});
+   const document=await task.promise;
+   const one=await document.getPage(1);
+   const prototype=Object.getPrototypeOf(one);
+   await task.destroy();
+   window.__streamCancelProbe={prototype,original:prototype.streamTextContent};
+   window.__streamReadingStarted=false;
+   window.__streamCancelCalls=0;
+   prototype.streamTextContent=function(){
+    return new ReadableStream({
+     start(){window.__streamReadingStarted=true;},
+     cancel(){window.__streamCancelCalls++;}
+    });
+   };
+  },Array.from(sample));
+  try{
+   await page.locator("#slipFile").setInputFiles({
+    name:"synthetic-stalled-text-layer.pdf",
+    mimeType:"application/pdf",buffer:sample
+   });
+   await page.locator("#slipScan").click();
+   await page.waitForFunction(()=>window.__streamReadingStarted,
+    null,{timeout:30000});
+   await page.locator("#slipFile").setInputFiles({
+    name:"synthetic-after-stalled-stream.pdf",
+    mimeType:"application/pdf",buffer:sample
+   });
+   await page.waitForFunction(()=>window.__streamCancelCalls===1,
+    null,{timeout:30000});
+   await page.waitForFunction(()=>
+    document.getElementById("slipScan").disabled===false,
+    null,{timeout:30000});
+   assert.equal(await page.locator("#slipTransfer").isEnabled(),false);
+   assert.equal(await page.evaluate(()=>
+    document.getElementById("calculator").dataset.ocrReviewPending),"true");
+  }finally{
+   await page.evaluate(()=>{
+    const a=window.__streamCancelProbe;
+    a.prototype.streamTextContent=a.original;
+    delete window.__streamCancelProbe;
+   });
+  }
+
   // An extremely small forged PNG advertising 50,000 x 50,000 pixels
   // must be rejected before any decode or OCR, with no source upload.
   const oversizedHeader=Buffer.from([
