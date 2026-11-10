@@ -9,6 +9,7 @@
  if(typeof module==="object"&&module.exports)module.exports=api;
  else{
   api.install(root.Map);
+  api.installReadableStream(root.ReadableStream);
   root.FurusatoPdfCompatibility=api;
  }
 }(typeof window!=="undefined"?window:globalThis,function(){
@@ -48,5 +49,39 @@
   }
   return p;
  }
- return Object.freeze({install});
+ // Safari/WebKit 26 lacks ReadableStream async iteration. PDF.js 6
+ // uses 'for await' for text-layer streams. Add only the missing method,
+ // using native getReader(), without network/storage or PDF content access.
+ function installReadableStream(StreamConstructor){
+  if(typeof StreamConstructor!=="function"||!StreamConstructor.prototype)
+   return false; // JSDOM and older non-PDF browsers can omit Streams.
+  const p=StreamConstructor.prototype;
+  if(typeof p[Symbol.asyncIterator]==="function")return false;
+  if(typeof p.getReader!=="function")
+   throw Error("PDF_COMPAT_STREAM_READER_UNAVAILABLE");
+  Object.defineProperty(p,Symbol.asyncIterator,{
+   configurable:true,writable:true,enumerable:false,
+   value:async function* (){
+    const reader=this.getReader();
+    let finished=false;
+    try{
+     for(;;){
+      const next=await reader.read();
+      if(next.done){finished=true;return;}
+      yield next.value;
+     }
+    }finally{
+     try{
+      // Break/throw from 'for await' must cancel the stream to release
+      // PDF.js internal buffers. A fully consumed stream is not cancelled.
+      if(!finished)await reader.cancel();
+     }finally{
+      reader.releaseLock();
+     }
+    }
+   }
+  });
+  return true;
+ }
+ return Object.freeze({install,installReadableStream});
 }));

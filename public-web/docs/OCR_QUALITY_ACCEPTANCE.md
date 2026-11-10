@@ -217,3 +217,7 @@ OCRファイル選択を取り消すとファイル0件・出典転記なしで�
 ### Safari系ブラウザ互換性のためのWebKit自動検証（2026-11-10）
 
 GitHub Actionsのubuntu-24.04にPlaywright WebKitをインストールし、既存のChromium/Windows Edgeと同じ完全合成原票による日本語OCR/WASM起動・PDF.js画像化・画像品質HOLD・過大画像拒否・外部ネットワーク通信0件を自動検証するジョブを追加した。WebKitだけに専用の「合成テスト実行」結果表示を設け、Linux WebKit合格をiPhone Safariの実機受入と同一視しない。個人情報を扱う実原票のデータ・ハッシュ・ログ・画像はリポジトリやGitHub Actionsへ送信せず、正式公開・広告導入・デプロイは禁止（HOLD）のまま。
+
+### WebKit/SafariにおけるPDF.jsのReadableStream非同期反復互換（2026-11-10）
+
+Linux上のWebKit 26合成ブラウザテストで、PDF.js 6.3.289のテキスト層読み取りが TypeError: undefined is not a function (near '...value of readableStream...') により失敗した。PDF.jsの既知のWebKit/Safari問題（mozilla/pdf.js#21557、#21924）と照合し、既存のpdf-compat.jsにReadableStream.prototype[Symbol.asyncIterator]の未実装時のみgetReader()でデータを順次渡す最小限の互換機能を追加。正常読取終了時はreader.releaseLock()、中断・例外時はcancel()＋releaseLock()を実行する。PDFをサーバーへ送信せず、復号内容をログ・ストレージへ保存しない。合成単体テストで全件読取、途中中断、例外、二重適用防止を検証する。実機Safariでの受入と真のOCR精度判定は依然として未完了。
