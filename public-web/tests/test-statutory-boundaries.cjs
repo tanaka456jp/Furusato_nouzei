@@ -52,5 +52,26 @@ for(const [year,gross,expectedIncome] of [
  assert.equal(engine.salaryIncome(gross,year),expectedIncome,
   year+" salary gross "+gross);
 }
+// Exact Q3-1 2026 special salary bands, including each one-yen edge.
+// Source: NTA "2026 基礎控除引上げ等 Q&A" (May 2026), p.6.
+// Expected values are transcribed independently from the official table.
+for(const [gross,expectedIncome] of [
+ [690999,0],[691000,0],[740999,0],
+ [741000,1000],[2190999,1450999],
+ [2191000,1451000],[2192999,1451000],
+ [2193000,1453000],[2195999,1453000],
+ [2196000,1456000],[2199999,1456000],[2200000,1460000]
+]){
+ assert.equal(engine.salaryIncome(gross,2026),expectedIncome,
+  "NTA 2026 Q3-1 exact salary-band edge gross="+gross);
+}
+// The preceding-year minimum differs: do not apply the 2026 short bands
+// to 2025. Also cross-check the statutory table transition at 1.9m.
+for(const [gross,expectedIncome] of [
+ [650999,0],[651000,1000],[1899999,1249999],[1900000,1250000]
+]){
+ assert.equal(engine.salaryIncome(gross,2025),expectedIncome,
+  "2025 NTA salary allowance boundary gross="+gross);
+}
 assert.equal(engine.salaryIncome(7000000,2024),null);
 console.log("PUBLIC_2025_2026_NTA_BASIC_AND_SALARY_BOUNDARY_SYNTHETIC_PASS; tax release HOLD");
