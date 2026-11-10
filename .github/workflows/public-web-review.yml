@@ -149,6 +149,13 @@ jobs:
   webkit-browser:
     name: Linux WebKit local OCR browser acceptance (SYNTHETIC ONLY)
     runs-on: ubuntu-24.04
+    # The packaged browsers and OS dependencies are baked into the official
+    # Playwright image. The previous --with-deps installation downloaded
+    # hundreds of apt packages and exhausted the 20-minute job window.
+    # Keep this image version equal to gas/package.json playwright 1.56.1.
+    container:
+      image: mcr.microsoft.com/playwright:v1.56.1-noble
+      options: --user 1001
     timeout-minutes: 20
     permissions:
       contents: read
@@ -166,8 +173,11 @@ jobs:
         run: npm install --ignore-scripts --no-audit --no-fund --no-package-lock
       - name: Build offline review assets (NO DEPLOY)
         run: node public-web/scripts/build.cjs
-      - name: Install isolated Playwright WebKit runtime
-        run: ./gas/node_modules/.bin/playwright install --with-deps webkit
+      - name: Verify matching preinstalled WebKit runtime (NO APT)
+        run: |
+          test "$(node -p 'require("./gas/node_modules/playwright/package.json").version')" = "1.56.1"
+          test -f "$(node -p 'require("./gas/node_modules/playwright").webkit.executablePath()')"
+          echo 'Playwright WebKit runtime available without apt-get.' >> "$GITHUB_STEP_SUMMARY"
       - name: Run local OCR/PDF privacy gates in WebKit (synthetic only)
         env:
           FURUSATO_BROWSER_CHANNEL: webkit
