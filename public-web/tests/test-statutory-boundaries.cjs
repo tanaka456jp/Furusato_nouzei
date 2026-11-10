@@ -74,4 +74,39 @@ for(const [gross,expectedIncome] of [
   "2025 NTA salary allowance boundary gross="+gross);
 }
 assert.equal(engine.salaryIncome(7000000,2024),null);
-console.log("PUBLIC_2025_2026_NTA_BASIC_AND_SALARY_BOUNDARY_SYNTHETIC_PASS; tax release HOLD");
+// National income-tax rate and LOCAL resident special-credit rate have
+// intentionally different *boundary inclusions*. NTA No.2260: taxable
+// 1,950,000 starts the national 10% band, while Otsu city's 2026
+// resident-tax special credit table retains 5.105% through 1,950,000.
+const separate=context.FurusatoSeparateTax;
+assert.ok(separate&&typeof separate.ordinaryIncomeTax==="function");
+for(const [taxable,expectedTax] of [
+ [1949000,97450],[1950000,97500],[1951000,97600],
+ [3299000,232400],[3300000,232500],[3301000,232700],
+ [6949000,962300],[6950000,962500],[6951000,962730],
+ [8999000,1433770],[9000000,1434000],[9001000,1434330]
+]){
+ assert.equal(separate.ordinaryIncomeTax(taxable),expectedTax,
+  "NTA No.2260 national income tax taxable="+taxable);
+}
+// Build a synthetic 2026 salary with 5.2m taxable salary income and
+// adjust social insurance to hit each local *special-credit* boundary.
+for(const [social,taxable,expectedLocalRate] of [
+ [2581000,1949000,.05],[2580000,1950000,.05],
+ [2579000,1951000,.10],[1231000,3299000,.10],
+ [1230000,3300000,.10],[1229000,3301000,.20]
+]){
+ const out=engine.calculate({year:2026,filing:"one-stop",
+  incomeType:"salary",salaryGross:7000000,
+  socialInsurance:social,acknowledgedExclusions:true});
+ assert.equal(out.status,"ESTIMATE",
+  "synthetic tax band "+taxable+" "+out.reasons?.join("/"));
+ assert.equal(out.calculation.incomeTaxTaxableYen,taxable);
+ assert.equal(out.calculation.residentSpecialRateBaseYen,taxable);
+ assert.equal(out.calculation.marginalIncomeTaxRate,expectedLocalRate,
+  "resident special-credit rate must use MUNICIPAL bracket "+taxable);
+ assert.equal(out.calculation.nationalIncomeTaxYen,
+  separate.ordinaryIncomeTax(taxable),
+  "national tax must follow NTA separate rate table "+taxable);
+}
+console.log("PUBLIC_2025_2026_NTA_BASIC_SALARY_AND_SEPARATE_TAX_BRACKETS_SYNTHETIC_PASS; tax release HOLD");
