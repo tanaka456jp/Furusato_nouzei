@@ -250,8 +250,11 @@
     }catch(error){
       // PDF.js 6 owns its worker through the loading task. The document
       // proxy is not guaranteed to expose .destroy().
-      if(typeof task.destroy==="function")
-        await task.destroy().catch(function(){});
+      if(typeof task.destroy==="function"){
+        try{await task.destroy();}catch(_){
+          // Preserve the original PDF failure; no source content in logs.
+        }
+      }
       throw error;
     }
   }
@@ -539,10 +542,19 @@
       if(generation===requestedGeneration)
         blocked("OCRを完了できませんでした（処理区分："+stage+"）。入力原票は送信されません。画質・ページ構成を確認し、必要なら撮影し直すか手入力してください。");
     }finally{
-      busy=false;runButton.disabled=false;
-      if(canvas){canvas.width=0;canvas.height=0;}
-      if(pdfTask&&typeof pdfTask.destroy==="function")
-        await pdfTask.destroy().catch(function(){});
+      // Keep the scan button unavailable until ALL cleanup completes.
+      // Re-enabling before PDF.js worker termination permits overlapping
+      // decode/worker heaps on repeated clicks, especially on mobile.
+      try{
+        if(canvas){canvas.width=0;canvas.height=0;}
+        if(pdfTask&&typeof pdfTask.destroy==="function"){
+          try{await pdfTask.destroy();}catch(_){
+            // A crashed PDF worker must not trap the UI in a busy state.
+          }
+        }
+      }finally{
+        busy=false;runButton.disabled=false;
+      }
     }
   });
   acceptCheck.addEventListener("change",function(){

@@ -221,3 +221,7 @@ GitHub Actionsのubuntu-24.04にPlaywright WebKitをインストールし、既�
 ### WebKit/SafariにおけるPDF.jsのReadableStream非同期反復互換（2026-11-10）
 
 Linux上のWebKit 26合成ブラウザテストで、PDF.js 6.3.289のテキスト層読み取りが TypeError: undefined is not a function (near '...value of readableStream...') により失敗した。PDF.jsの既知のWebKit/Safari問題（mozilla/pdf.js#21557、#21924）と照合し、既存のpdf-compat.jsにReadableStream.prototype[Symbol.asyncIterator]の未実装時のみgetReader()でデータを順次渡す最小限の互換機能を追加。正常読取終了時はreader.releaseLock()、中断・例外時はcancel()＋releaseLock()を実行する。PDFをサーバーへ送信せず、復号内容をログ・ストレージへ保存しない。合成単体テストで全件読取、途中中断、例外、二重適用防止を検証する。実機Safariでの受入と真のOCR精度判定は依然として未完了。
+
+### PDF.js後処理の完了まで連続読取を待機（2026-11-10）
+
+OCRのfinally節でbusy=falseおよび読取ボタン有効化をPDF.js loadingTask.destroy()より前に実行していたため、PDF解放中に次の読取が始まりワーカー・画像ヒープが重複する可能性があった。キャンバスを先に解放し、loadingTask.destroy()の完了後にだけ読取ボタンを有効にする。destroy()が拒否されても操作不能にならないよう内側で捕捉し、最後にbusy解除する。openPdfの例外後処理もdestroy()の同期例外／Promise拒否のどちらでも元の例外を維持する。合成単一ページPDFを実ブラウザのChromium・Windows Edge・Linux WebKitで連続3回読み直し、各回が二段階OCR・出典転記失効・候補再表示へ正常到達するか検証する。これは処理完了順序の改善であり、実機iPhoneのメモリ消費量・OCR精度の実証ではない。

@@ -247,6 +247,25 @@ async function main(){
   await page.locator("#slipConfirm").check();
   await page.locator("#slipTransfer").click();
   assert.equal(await page.locator('[name="salaryGross"]').inputValue(),"7000000");
+  // Repeated PDF scans must finish both OCR passes and release the PDF.js
+  // document before the next scan is enabled. This exercises the real
+  // browser's worker lifecycle, but measures no memory-retention proof.
+  for(let attempt=0;attempt<3;attempt++){
+   await page.locator("#slipFile").setInputFiles({
+    name:"synthetic-repeat-"+attempt+".pdf",
+    mimeType:"application/pdf",buffer:sample
+   });
+   const previousCalls=await page.evaluate(()=>window.__syntheticPdfOcrCalls);
+   await page.locator("#slipScan").click();
+   await page.waitForFunction(()=>document.getElementById("slipScan").disabled===false &&
+      document.getElementById("slipReview").textContent.includes("候補"),
+    null,{timeout:30000});
+   assert.equal(await page.evaluate(()=>window.__syntheticPdfOcrCalls),previousCalls+2,
+     "every synthetic repeat must perform exactly two recognition passes");
+   assert.equal(await page.locator("#slipTransfer").isEnabled(),true);
+   assert.equal(await page.locator('[name="salaryGross"]').inputValue(),"",
+     "new PDF scan must invalidate previously transferred OCR salary");
+  }
   // A completely blank one-page PDF is also image-only but fails quality
   // screening, not promoted into a transfer candidate by the mocked OCR.
   await page.locator("#slipFile").setInputFiles({
