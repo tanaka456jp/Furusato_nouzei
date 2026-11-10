@@ -113,3 +113,32 @@ jobs:
         run: |
           echo 'Local OCR review only. No source documents uploaded. NO Cloudflare deployment, NO ads, NO indexing.' >> "$GITHUB_STEP_SUMMARY"
           echo 'Supported tax cases still require independent real-device and legal acceptance. RELEASE=HOLD' >> "$GITHUB_STEP_SUMMARY"
+
+  windows-edge:
+    name: Windows Edge local OCR browser acceptance (SYNTHETIC ONLY)
+    runs-on: windows-2025
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated browser test dependency
+        run: npm ci --prefix gas --ignore-scripts --no-audit --no-fund
+      - name: Install pinned local OCR and Japanese model
+        run: npm install --prefix public-web --ignore-scripts --no-audit --no-fund --no-package-lock
+      - name: Build offline review assets (NO DEPLOY)
+        run: node public-web/scripts/build.cjs
+      - name: Real Windows Microsoft Edge OCR and PDF smoke (synthetic only)
+        env:
+          FURUSATO_BROWSER_CHANNEL: msedge
+        run: node public-web/tests/test-ocr-browser-smoke.cjs
+      - name: Record limited Windows hosted acceptance boundary
+        shell: pwsh
+        run: |
+          "Windows-hosted Edge synthetic-only browser acceptance. Not a user's Windows PC or a real-source accuracy audit." | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          "NO DEPLOY. NO ADS. NO REAL SOURCE FILES. RELEASE=HOLD." | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8

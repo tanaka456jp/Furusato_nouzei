@@ -86,7 +86,12 @@ async function main(){
  });
  let browser;
  try{
-  browser=await chromium.launch({headless:true});
+  // Use the real installed Microsoft Edge on Windows hosted runners.
+  // Linux CI keeps the bundled, pinned Playwright Chromium browser.
+  const channel=process.env.FURUSATO_BROWSER_CHANNEL;
+  if(channel&&channel!=="msedge")throw Error("UNAPPROVED_BROWSER_CHANNEL");
+  browser=await chromium.launch(channel?
+    {headless:true,channel:"msedge"}:{headless:true});
   const page=await browser.newPage();
   const external=[];
   page.on("request",function(req){
@@ -275,7 +280,10 @@ async function main(){
   assert.equal(await page.locator("#slipConfirm").isEnabled(),false);
   assert.deepEqual(external,[],"External network request attempted");
   assert.ok(requestCount>=8,"OCR assets not fetched");
-  console.log("PUBLIC_OCR_CHROMIUM_LOCAL_WASM_BOOT_PASS; synthetic only; OCR accuracy NOT CERTIFIED");
+  console.log((process.env.FURUSATO_BROWSER_CHANNEL==="msedge"?
+   "PUBLIC_OCR_WINDOWS_EDGE_LOCAL_WASM_BOOT_PASS":
+   "PUBLIC_OCR_CHROMIUM_LOCAL_WASM_BOOT_PASS")+
+   "; synthetic only; OCR accuracy NOT CERTIFIED");
   await page.close();
  }finally{
   if(browser)await browser.close();
