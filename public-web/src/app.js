@@ -48,6 +48,27 @@
       return null;
     return Number(value);
   }
+  // National income-tax band thresholds are different at the exact edges
+  // from municipal resident special-credit bands. Keep separate auditors.
+  // Source: NTA No.2260, municipal 2026 furusato special-credit tables.
+  function residentSpecialRate(taxable) {
+    if(taxable<=1950000)return .05;
+    if(taxable<=3300000)return .10;
+    if(taxable<=6950000)return .20;
+    if(taxable<=9000000)return .23;
+    if(taxable<=18000000)return .33;
+    if(taxable<=40000000)return .40;
+    return .45;
+  }
+  function nationalIncomeTax(taxable) {
+    if(taxable<1950000)return taxable*5/100;
+    if(taxable<3300000)return taxable*10/100-97500;
+    if(taxable<6950000)return taxable*20/100-427500;
+    if(taxable<9000000)return taxable*23/100-636000;
+    if(taxable<18000000)return taxable*33/100-1536000;
+    if(taxable<40000000)return taxable*40/100-2796000;
+    return taxable*45/100-4796000;
+  }
   // Independent display boundary: an engine result cannot bypass review
   // flags, mutate the user's inputs, or contradict its own tax arithmetic.
   // These are consistency guards, NOT an independent proof of tax law.
@@ -101,8 +122,18 @@
          calc.salaryIncomeYen-430000-social))||
        calc.incomeTaxTaxableYen<=0||calc.residentTaxTaxableYen<=0)
       return false;
-    if(!Number.isFinite(calc.marginalIncomeTaxRate)||
-       calc.marginalIncomeTaxRate<.05||calc.marginalIncomeTaxRate>.45||
+    if(!Number.isSafeInteger(calc.residentSpecialRateBaseYen)||
+       calc.residentSpecialRateBaseYen!==calc.incomeTaxTaxableYen||
+       calc.marginalIncomeTaxRate!==residentSpecialRate(
+         calc.residentSpecialRateBaseYen)||
+       !Number.isSafeInteger(calc.nationalIncomeTaxYen)||
+       calc.nationalIncomeTaxYen!==nationalIncomeTax(calc.incomeTaxTaxableYen)||
+       !Number.isSafeInteger(calc.reconstructionIncomeTaxYen)||
+       calc.reconstructionIncomeTaxYen!==
+         Math.floor(calc.nationalIncomeTaxYen*21/1000)||
+       !Number.isSafeInteger(calc.nationalIncomeTaxTotalYen)||
+       calc.nationalIncomeTaxTotalYen!==
+         calc.nationalIncomeTaxYen+calc.reconstructionIncomeTaxYen||
        !Number.isFinite(calc.denominator)||
        calc.denominator<=0||
        Math.abs(calc.denominator-(.9-calc.marginalIncomeTaxRate*1.021))>1e-10||

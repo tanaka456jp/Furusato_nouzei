@@ -64,7 +64,8 @@ for(const variant of ["year","residentYear","donationAmount","specialCap",
  "residentCap","grossMismatch","socialMismatch","salaryIncomeMismatch",
  "incomeTaxableMismatch","residentTaxableMismatch","preliminaryLimit",
  "denominatorMismatch","residentLevyInvalid","negativeIncome",
- "fractionalDonation","nonemptyReasons"]){
+ "fractionalDonation","nonemptyReasons","residentRate",
+ "residentSpecialBase","nationalIncomeTax","reconstructionTax","nationalTaxTotal"]){
  dom.window.FurusatoEngine.calculate=function(payload){
    const actual=actualCalculate(payload);
    assert.equal(actual.status,"ESTIMATE");
@@ -87,6 +88,18 @@ for(const variant of ["year","residentYear","donationAmount","specialCap",
      bad.donationLimitYen+=.5;bad.calculation.donationLimitYen+=.5;
    }
    if(variant==="nonemptyReasons")bad.reasons=["SYNTHETIC_WARNING"];
+   if(variant==="residentRate"){
+     // Make all derived values internally self-consistent. The separate
+     // official municipal rate-table guard must still reject a wrong band.
+     bad.calculation.marginalIncomeTaxRate=.10;
+     bad.calculation.denominator=.9-.10*1.021;
+     bad.calculation.preliminaryLimitYen=Math.floor(2000+
+       bad.calculation.specialCreditCapYen/bad.calculation.denominator);
+   }
+   if(variant==="residentSpecialBase")bad.calculation.residentSpecialRateBaseYen+=1000;
+   if(variant==="nationalIncomeTax")bad.calculation.nationalIncomeTaxYen+=1000;
+   if(variant==="reconstructionTax")bad.calculation.reconstructionIncomeTaxYen+=100;
+   if(variant==="nationalTaxTotal")bad.calculation.nationalIncomeTaxTotalYen+=100;
    return bad;
  };
  submit();
