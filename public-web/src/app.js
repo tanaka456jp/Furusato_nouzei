@@ -148,10 +148,13 @@
     return result.donationLimitYen<=round1000(Math.min(
       calc.preliminaryLimitYen,calc.residentDonationIncomeCapYen));
   }
+  var printableInputSnapshot=null,printableResult=null;
   function render(result,input) {
     output.replaceChildren();
     output.hidden = false;
     var isEstimate=canDisplayEstimate(result,input);
+    printableInputSnapshot=isEstimate?JSON.stringify(input):null;
+    printableResult=isEstimate?result:null;
     output.className = isEstimate ? "result" : "result hold";
     if (!isEstimate) {
       add("h3", output, "試算を停止しました（HOLD）");
@@ -186,8 +189,29 @@
       String(result.version || "未検証"), "muted");
     var print = add("button", output, "この結果を印刷・PDF保存", "secondary");
     print.type = "button";
-    print.addEventListener("click", function () { window.print(); });
+    print.addEventListener("click", function () {
+      if(checkPrintableSnapshot())window.print();
+    });
   }
+  // Browsers and password/autofill managers can update .value without
+  // dispatching input/change. Revalidate before BOTH the button and Ctrl+P.
+  function checkPrintableSnapshot(){
+    if(printableInputSnapshot===null||!printableResult)return false;
+    var current=getInput();
+    var selected=document.getElementById("slipFile");
+    if(JSON.stringify(current)!==printableInputSnapshot||
+       (selected&&selected.files&&selected.files.length>0)||
+       !canDisplayEstimate(printableResult,current)){
+      render({status:"HOLD",reasons:[
+        "印刷前に入力・原票の選択状態が変わりました。改めて試算してください。"
+      ]},current);
+      return false;
+    }
+    return true;
+  }
+  window.addEventListener("beforeprint",function(){
+    if(printableInputSnapshot!==null)checkPrintableSnapshot();
+  });
   var conditionsConfirmation=form.elements.namedItem("acknowledgedExclusions");
   // Every material input change requires a fresh exclusions/allowances review.
   // OCR transfers change inputs programmatically and revoke this separately.
@@ -203,6 +227,7 @@
     }
   }
   function invalidateEstimate(){
+    printableInputSnapshot=null;printableResult=null;
     output.replaceChildren();
     output.hidden=true;
     output.className="result";
@@ -228,6 +253,7 @@
     }
   });
   form.addEventListener("reset", function () {
+    printableInputSnapshot=null;printableResult=null;
     delete form.dataset.ocrYear;
     delete form.dataset.ocrReviewPending;
     output.replaceChildren();

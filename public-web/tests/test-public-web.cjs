@@ -149,6 +149,33 @@ const detail=view.querySelector("details");
 assert.ok(detail);
 assert.match(detail.textContent,/住民税所得割の概算/);
 assert.equal(view.querySelector("button").type,"button");
+// No input event: a browser autofill or script can alter a live form after
+// an estimate. Printing must NOT reuse the old conditions or visible amount.
+let syntheticPrintCalls=0;
+dom.window.print=()=>{syntheticPrintCalls++;};
+view.querySelector("button").click();
+assert.equal(syntheticPrintCalls,1,"normal print remains available");
+const priorPrintButton=view.querySelector("button");
+field("salaryGross").value="7100000"; // intentionally no input event
+priorPrintButton.click();
+assert.equal(syntheticPrintCalls,1,"changed salary must block stale printing");
+assert.equal(view.className,"result hold");
+assert.doesNotMatch(view.textContent,/109,000円/);
+assert.equal(view.querySelector("button"),null);
+// Ctrl+P routes through beforeprint and must reject a silent change too.
+field("salaryGross").value="7000000";
+submit();
+assert.equal(view.className,"result");
+field("socialInsurance").value="1050000"; // silent autofill
+dom.window.dispatchEvent(new Event("beforeprint"));
+assert.equal(view.className,"result hold");
+assert.equal(view.querySelector("button"),null);
+assert.doesNotMatch(view.textContent,/109,000円/);
+field("socialInsurance").value="1000000";
+submit();
+assert.equal(view.className,"result");
+view.querySelector("button").click();
+assert.equal(syntheticPrintCalls,2,"print allowed again after fresh calculation");
 field("hasMortgage").checked=true;
 field("hasMortgage").dispatchEvent(new Event("change",{bubbles:true}));
 assert.equal(field("acknowledgedExclusions").checked,false,
