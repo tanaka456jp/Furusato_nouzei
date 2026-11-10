@@ -300,6 +300,24 @@ async function main(){
   assert.equal(await page.evaluate(()=>window.__syntheticPdfOcrCalls),beforeOversize);
   assert.equal(await page.locator("#slipTransfer").isEnabled(),false);
   assert.equal(await page.locator("#slipConfirm").isEnabled(),false);
+  // A synthetically forged 48MP PNG header is refused before decode.
+  const largePhotoHeader=Buffer.from([
+    137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,
+    0,0,31,128,0,0,23,160
+  ]); // 8064 x 6048; metadata only, not a real photo
+  const callsBeforeHighRes=await page.evaluate(()=>window.__syntheticPdfOcrCalls);
+  await page.locator("#slipFile").setInputFiles({
+    name:"synthetic-48mp-header.png",mimeType:"image/png",
+    buffer:largePhotoHeader
+  });
+  await page.locator("#slipScan").click();
+  await page.waitForFunction(() =>
+    document.getElementById("slipScan").disabled===false &&
+    document.getElementById("slipReview").textContent.includes("OCRを完了できません"),
+    null,{timeout:30000});
+  assert.equal(await page.evaluate(()=>window.__syntheticPdfOcrCalls),callsBeforeHighRes);
+  assert.equal(await page.locator("#slipTransfer").isEnabled(),false);
+  assert.equal(await page.locator("#slipConfirm").isEnabled(),false);
   assert.deepEqual(external,[],"External network request attempted");
   assert.ok(requestCount>=8,"OCR assets not fetched");
   console.log((process.env.FURUSATO_BROWSER_CHANNEL==="msedge"?

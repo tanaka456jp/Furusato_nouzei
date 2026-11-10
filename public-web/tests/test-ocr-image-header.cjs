@@ -13,14 +13,16 @@ const jpeg=(w,ht,frame=0xC0)=>Uint8Array.from([
  255,216,255,224,0,4,1,1,255,frame,0,7,8,
  Math.floor(ht/256),ht%256,Math.floor(w/256),w%256,255,218]);
 for(const [bytes,mime] of [
- [png(1200,800),"image/png"],[png(4000,12000),"image/png"],
- [jpeg(1200,800),"image/jpeg"],[jpeg(8064,6048,0xC2),"image/jpeg"]]){
+ [png(1200,800),"image/png"],[png(5000,5000),"image/png"],
+ [jpeg(1200,800),"image/jpeg"],[jpeg(5712,4284,0xC2),"image/jpeg"]]){
  const result=h.inspect(bytes,mime);
  assert.equal(result.status,"ACCEPT");assert.ok(result.width*result.height<=h.MAX_PIXELS);
 }
 for(const [bytes,mime] of [
  [png(0,800),"image/png"],[png(50000,100),"image/png"],
- [png(15000,15000),"image/png"],[jpeg(65000,65000),"image/jpeg"],
+ [png(5001,5000),"image/png"],[png(4000,12000),"image/png"],
+ [png(15000,15000),"image/png"],[jpeg(8064,6048,0xC2),"image/jpeg"],
+ [jpeg(65000,65000),"image/jpeg"],
  [jpeg(1200,800).slice(0,9),"image/jpeg"],[png(1200,800),"image/jpeg"],
  [jpeg(1200,800),"image/png"],[new Uint8Array(2),"image/png"],
  [new Uint8Array(h.MAX_HEADER_BYTES+1),"image/png"],
@@ -45,5 +47,6 @@ for(const [w,ht] of [[20000,800],[1200,801],[0,800],
 }
 assert.equal(h.verifyDecodedSize(null,1200,800).status,"HOLD");
 assert.equal(h.verifyDecodedSize(h.inspect(png(0,800),"image/png"),1200,800).status,"HOLD");
-assert.equal(h.verifyDecodedSize(h.inspect(png(4000,12000),"image/png"),4000,12000).status,"ACCEPT");
+assert.equal(h.verifyDecodedSize(h.inspect(png(5000,5000),"image/png"),5000,5000).status,"ACCEPT");
+assert.equal(h.verifyDecodedSize(h.inspect(png(4000,12000),"image/png"),4000,12000).status,"HOLD");
 console.log("PUBLIC_OCR_IMAGE_HEADER_PREFLIGHT_SYNTHETIC_PASS; no real source data");

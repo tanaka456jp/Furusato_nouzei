@@ -6,7 +6,10 @@
  else root.FurusatoImageHeader=api;
 }(typeof window!=="undefined"?window:this,function(){
  "use strict";
- const MAX_HEADER_BYTES=192*1024,MAX_PIXELS=50000000,MAX_EDGE=16000;
+ // Source image decode happens before downscaling. A compressed 48MP
+ // image can allocate ~200MB for RGBA, risking mobile tab eviction.
+ // Allow typical 12/24MP photos; require larger sources to be resized.
+ const MAX_HEADER_BYTES=192*1024,MAX_PIXELS=25000000,MAX_EDGE=16000;
  function hold(reason){return {status:"HOLD",width:null,height:null,reasons:[reason]};}
  function checkDimensions(w,h){
   if(!Number.isSafeInteger(w)||!Number.isSafeInteger(h)||w<1||h<1||
