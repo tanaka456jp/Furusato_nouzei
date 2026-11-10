@@ -266,6 +266,45 @@ async function main(){
    assert.equal(await page.locator('[name="salaryGross"]').inputValue(),"",
      "new PDF scan must invalidate previously transferred OCR salary");
   }
+  // Cancel a PDF OCR mid-recognition by selecting another synthetic source.
+  // The stale scan must not proceed to the contrast pass or resurrect the
+  // old candidate, even if its worker returns after source replacement.
+  await page.evaluate(ocrText=>{
+   window.__cancelSyntheticCalls=0;
+   window.__cancelSyntheticTerminations=0;
+   window.__releaseSyntheticRecognition=null;
+   Tesseract.createWorker=async()=>({
+    recognize:async()=>{
+     window.__cancelSyntheticCalls++;
+     if(window.__cancelSyntheticCalls===1)
+       await new Promise(resolve=>{window.__releaseSyntheticRecognition=resolve;});
+     return {data:{text:ocrText,confidence:97}};
+    },
+    terminate:async()=>{window.__cancelSyntheticTerminations++;}
+   });
+  },fixture);
+  await page.locator("#slipFile").setInputFiles({
+   name:"synthetic-abort-old.pdf",mimeType:"application/pdf",buffer:sample
+  });
+  await page.locator("#slipScan").click();
+  await page.waitForFunction(()=>typeof window.__releaseSyntheticRecognition==="function",
+    null,{timeout:30000});
+  await page.locator("#slipFile").setInputFiles({
+   name:"synthetic-abort-new.pdf",mimeType:"application/pdf",buffer:sample
+  });
+  await page.evaluate(()=>window.__releaseSyntheticRecognition());
+  await page.waitForFunction(()=>document.getElementById("slipScan").disabled===false,
+    null,{timeout:30000});
+  const aborted=await page.evaluate(()=>({
+   calls:window.__cancelSyntheticCalls,
+   terminated:window.__cancelSyntheticTerminations,
+   pending:document.getElementById("calculator").dataset.ocrReviewPending,
+   transferable:!document.getElementById("slipTransfer").disabled
+  }));
+  assert.equal(aborted.calls,1,"stale PDF must skip the second OCR pass");
+  assert.equal(aborted.terminated,1,"stale PDF worker must terminate");
+  assert.equal(aborted.pending,"true","new source must remain review pending");
+  assert.equal(aborted.transferable,false,"no stale source may be transferred");
   // A completely blank one-page PDF is also image-only but fails quality
   // screening, not promoted into a transfer candidate by the mocked OCR.
   await page.locator("#slipFile").setInputFiles({

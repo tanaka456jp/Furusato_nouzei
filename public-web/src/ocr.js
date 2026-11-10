@@ -457,17 +457,24 @@
         (fileInput.files&&fileInput.files[0])!==file||
         Number(taxYear.value)!==requestedYear;
     }
+    function ensureCurrent(){
+      if(isStale())throw Error("OCR_SOURCE_CANCELLED");
+    }
     try{
       var result;
       if(file.type==="application/pdf"){
         stage="PDF_OPEN";var opened=await openPdf(file);
         pdf=opened.document;pdfTask=opened.task;
+        ensureCurrent();
         stage="PDF_PAGE";var page=await pdf.getPage(1);
+        ensureCurrent();
         stage="PDF_TEXT";var extracted=await digitalPdfText(page);
+        ensureCurrent();
         if(extracted.emptyTextLayer){
           // No PDF text operators: scanned image-only single-page PDF.
           // This is the only fallback for EMPTY, not for malformed layers.
           stage="PDF_RASTER";canvas=await rasterizePdf(page);
+          ensureCurrent();
           stage="PDF_OCR";result=await twoPass(canvas,isStale);
         }else{
         var digital=window.FurusatoSlipReview.reviewDigitalPdf(extracted.text);
@@ -524,11 +531,13 @@
           result=positioned;
         }else{
           stage="PDF_RASTER";canvas=await rasterizePdf(page);
+          ensureCurrent();
           stage="PDF_OCR";result=await twoPass(canvas,isStale);
         }
         }
       }else{
         stage="IMAGE_DECODE";canvas=await imageToCanvas(file);
+        ensureCurrent();
         stage="IMAGE_OCR";result=await twoPass(canvas,isStale);
       }
       // A source swap, form reset or year change during async OCR invalidates
@@ -539,7 +548,7 @@
       reviewManualRevision=requestedManualRevision;
       displayReview(result);
     }catch(error){
-      if(generation===requestedGeneration)
+      if(!isStale())
         blocked("OCRを完了できませんでした（処理区分："+stage+"）。入力原票は送信されません。画質・ページ構成を確認し、必要なら撮影し直すか手入力してください。");
     }finally{
       // Keep the scan button unavailable until ALL cleanup completes.
