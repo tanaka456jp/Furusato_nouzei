@@ -60,7 +60,11 @@ assert.match(view.textContent,/寄附上限額の概算/);
 // Even if a future tax engine misreports success, mismatched output year,
 // resident year, or internal yen-cap arithmetic must never reach the UI.
 const actualCalculate=dom.window.FurusatoEngine.calculate;
-for(const variant of ["year","residentYear","donationAmount","specialCap","residentCap"]){
+for(const variant of ["year","residentYear","donationAmount","specialCap",
+ "residentCap","grossMismatch","socialMismatch","salaryIncomeMismatch",
+ "incomeTaxableMismatch","residentTaxableMismatch","preliminaryLimit",
+ "denominatorMismatch","residentLevyInvalid","negativeIncome",
+ "fractionalDonation","nonemptyReasons"]){
  dom.window.FurusatoEngine.calculate=function(payload){
    const actual=actualCalculate(payload);
    assert.equal(actual.status,"ESTIMATE");
@@ -70,12 +74,59 @@ for(const variant of ["year","residentYear","donationAmount","specialCap","resid
    if(variant==="donationAmount")bad.calculation.donationLimitYen+=1000;
    if(variant==="specialCap")bad.calculation.specialCreditCapYen+=1;
    if(variant==="residentCap")bad.calculation.residentDonationIncomeCapYen=1;
+   if(variant==="grossMismatch")bad.calculation.salaryGrossYen+=1000;
+   if(variant==="socialMismatch")bad.calculation.socialInsuranceYen+=1000;
+   if(variant==="salaryIncomeMismatch")bad.calculation.salaryIncomeYen+=1000;
+   if(variant==="incomeTaxableMismatch")bad.calculation.incomeTaxTaxableYen+=1000;
+   if(variant==="residentTaxableMismatch")bad.calculation.residentTaxTaxableYen+=1000;
+   if(variant==="preliminaryLimit")bad.calculation.preliminaryLimitYen+=1000;
+   if(variant==="denominatorMismatch")bad.calculation.denominator+=.1;
+   if(variant==="residentLevyInvalid")bad.calculation.residentIncomeLevyYen=0;
+   if(variant==="negativeIncome")bad.calculation.salaryIncomeYen=-1000;
+   if(variant==="fractionalDonation"){
+     bad.donationLimitYen+=.5;bad.calculation.donationLimitYen+=.5;
+   }
+   if(variant==="nonemptyReasons")bad.reasons=["SYNTHETIC_WARNING"];
    return bad;
  };
  submit();
  assert.equal(view.className,"result hold",variant);
  assert.doesNotMatch(view.textContent,/109,000円/,variant);
  assert.equal(view.querySelector("button"),null,variant);
+}
+dom.window.FurusatoEngine.calculate=actualCalculate;
+submit();
+assert.equal(view.className,"result");
+assert.match(view.textContent,/109,000円/);
+// Force an engine regression returning the old valid ESTIMATE regardless
+// of current user input; the renderer must still refuse unreviewed sources,
+// new income values, unsupported deductions, and absent confirmations.
+const validInput={year:"2026",filing:"one-stop",incomeType:"salary",
+ salaryGross:"7000000",socialInsurance:"1000000",
+ salaryIncomeReference:"",deductionsReference:"",
+ acknowledgedExclusions:true};
+for(const name of ["hasSpouse","hasDependents","hasLifeInsurance",
+ "hasEarthquakeInsurance","hasMortgage","hasOtherIncome","hasMedical",
+ "hasSplitIncome","hasIncomeAdjustment","hasNonstandardConditions"])
+ validInput[name]=false;
+const validResult=actualCalculate(validInput);
+assert.equal(validResult.status,"ESTIMATE");
+dom.window.FurusatoEngine.calculate=()=>validResult;
+for(const [name,value] of [["salaryGross","7100000"],
+ ["socialInsurance","950000"],["hasMortgage",true],
+ ["acknowledgedExclusions",false]]){
+ const target=field(name),old=target.type==="checkbox"?target.checked:target.value;
+ if(target.type==="checkbox")target.checked=value;else target.value=value;
+ submit();
+ assert.equal(view.className,"result hold",name);
+ assert.doesNotMatch(view.textContent,/109,000円/,name);
+ if(target.type==="checkbox")target.checked=old;else target.value=old;
+}
+for(const [key,value] of [["ocrReviewPending","true"],["ocrYear","2025"]]){
+ form.dataset[key]=value;
+ submit();
+ assert.equal(view.className,"result hold",key);
+ delete form.dataset[key];
 }
 dom.window.FurusatoEngine.calculate=actualCalculate;
 submit();

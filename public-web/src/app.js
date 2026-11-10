@@ -43,29 +43,84 @@
     });
     return input;
   }
-  function render(result) {
+  function strictYen(value) {
+    if (typeof value!=="string"||!/^(0|[1-9][0-9]{0,11})$/.test(value))
+      return null;
+    return Number(value);
+  }
+  // Independent display boundary: an engine result cannot bypass review
+  // flags, mutate the user's inputs, or contradict its own tax arithmetic.
+  // These are consistency guards, NOT an independent proof of tax law.
+  function canDisplayEstimate(result,input) {
+    if(!result||result.status!=="ESTIMATE"||!input||
+       input.acknowledgedExclusions!==true||
+       input.sourceReviewPending===true||
+       flags.some(function(name){return input[name]!==false;}))
+      return false;
+    var year=Number(input.year),gross=strictYen(input.salaryGross);
+    var social=strictYen(input.socialInsurance);
+    if((year!==2025&&year!==2026)||
+       (input.sourceYear!==undefined&&String(input.sourceYear)!==String(year))||
+       gross===null||social===null||gross<=0||social>gross||
+       result.year!==year||result.residentYear!==year+1||
+       !Array.isArray(result.reasons)||result.reasons.length!==0)
+      return false;
+    var calc=result.calculation;
+    if(!calc||typeof calc!=="object"||Array.isArray(calc))return false;
+    var integers=["salaryGrossYen","salaryIncomeYen","socialInsuranceYen",
+      "basicIncomeTaxDeductionYen","incomeTaxTaxableYen",
+      "residentBasicDeductionYen","residentTaxTaxableYen",
+      "residentIncomeLevyYen","specialCreditCapYen",
+      "residentDonationIncomeCapYen","preliminaryLimitYen",
+      "donationLimitYen"];
+    if(integers.some(function(key){
+       return !Number.isSafeInteger(calc[key])||calc[key]<0;
+    }))return false;
+    if(!Number.isSafeInteger(result.donationLimitYen)||
+       result.donationLimitYen<0||result.donationLimitYen%1000!==0||
+       calc.donationLimitYen!==result.donationLimitYen||
+       calc.salaryGrossYen!==gross||calc.socialInsuranceYen!==social||
+       calc.salaryIncomeYen>gross||
+       calc.residentBasicDeductionYen!==430000)
+      return false;
+    var reference=input.salaryIncomeReference;
+    if(reference!==""){
+      var salaryRef=strictYen(reference);
+      if(salaryRef===null||salaryRef!==calc.salaryIncomeYen)return false;
+    }
+    var totalReference=input.deductionsReference;
+    if(totalReference!==""){
+      var totalRef=strictYen(totalReference);
+      if(totalRef===null||totalRef!==calc.basicIncomeTaxDeductionYen+social)
+        return false;
+    }
+    var round1000=function(x){return Math.floor(x/1000)*1000;};
+    if(calc.incomeTaxTaxableYen!==round1000(Math.max(0,
+         calc.salaryIncomeYen-calc.basicIncomeTaxDeductionYen-social))||
+       calc.residentTaxTaxableYen!==round1000(Math.max(0,
+         calc.salaryIncomeYen-430000-social))||
+       calc.incomeTaxTaxableYen<=0||calc.residentTaxTaxableYen<=0)
+      return false;
+    if(!Number.isFinite(calc.marginalIncomeTaxRate)||
+       calc.marginalIncomeTaxRate<.05||calc.marginalIncomeTaxRate>.45||
+       !Number.isFinite(calc.denominator)||
+       calc.denominator<=0||
+       Math.abs(calc.denominator-(.9-calc.marginalIncomeTaxRate*1.021))>1e-10||
+       calc.residentIncomeLevyYen<=0||
+       calc.specialCreditCapYen!==Math.floor(calc.residentIncomeLevyYen*.2)||
+       calc.residentDonationIncomeCapYen!==Math.floor(calc.salaryIncomeYen*.3)||
+       calc.preliminaryLimitYen!==Math.floor(2000+
+         calc.specialCreditCapYen/calc.denominator))
+      return false;
+    // In return-filing mode, further conservative deductions may reduce
+    // the engine's proposed limit, but may never exceed this initial cap.
+    return result.donationLimitYen<=round1000(Math.min(
+      calc.preliminaryLimitYen,calc.residentDonationIncomeCapYen));
+  }
+  function render(result,input) {
     output.replaceChildren();
     output.hidden = false;
-    // A self-declared ESTIMATE is not enough to print a yen figure.
-    // Verify the selected year, following resident-tax year and essential
-    // arithmetic invariants independently of the calculation engine.
-    var year = Number(form.elements.namedItem("year").value);
-    var calc = result && result.calculation;
-    var isEstimate = result && result.status === "ESTIMATE" &&
-      (year===2025||year===2026) &&
-      result.year===year &&
-      result.residentYear===year+1 &&
-      Number.isSafeInteger(result.donationLimitYen) &&
-      result.donationLimitYen >= 0 &&
-      calc && typeof calc==="object" && !Array.isArray(calc) &&
-      Number.isSafeInteger(calc.donationLimitYen) &&
-      calc.donationLimitYen===result.donationLimitYen &&
-      Number.isSafeInteger(calc.residentIncomeLevyYen) &&
-      calc.residentIncomeLevyYen>0 &&
-      Number.isSafeInteger(calc.specialCreditCapYen) &&
-      calc.specialCreditCapYen===Math.floor(calc.residentIncomeLevyYen*.2) &&
-      Number.isSafeInteger(calc.residentDonationIncomeCapYen) &&
-      result.donationLimitYen<=calc.residentDonationIncomeCapYen;
+    var isEstimate=canDisplayEstimate(result,input);
     output.className = isEstimate ? "result" : "result hold";
     if (!isEstimate) {
       add("h3", output, "試算を停止しました（HOLD）");
@@ -135,7 +190,8 @@
         render({status:"HOLD",reasons:["計算エンジンを読み込めませんでした。"]});
         return;
       }
-      render(FurusatoEngine.calculate(getInput()));
+      var snapshot=getInput();
+      render(FurusatoEngine.calculate(snapshot),snapshot);
     } catch (_) {
       render({status:"HOLD",reasons:["計算中に異常が発生しました。目安額は表示しません。"]});
     }
