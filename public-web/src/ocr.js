@@ -19,7 +19,27 @@
   // At most one OCR worker may be active while the scan button is locked.
   // Keep a stable shutdown Promise so changing a source can interrupt the
   // in-flight recognize() without double-terminating the same worker.
-  var activeOcrSession=null;
+  var activeOcrSession=null,activePdfSession=null;
+  // A PDF loading task owns its worker. Cancel in-flight raster work first,
+  // then destroy the loading task exactly once; do not unlock another scan
+  // until that same teardown Promise finishes.
+  function stopPdfSession(session){
+    if(!session.stopPromise){
+      if(session.renderTask&&typeof session.renderTask.cancel==="function"){
+        try{session.renderTask.cancel();}catch(_){
+          // Continue worker teardown even if the render task already ended.
+        }
+      }
+      session.stopPromise=Promise.resolve().then(function(){
+        return session.task.destroy();
+      });
+      session.stopPromise.catch(function(){});
+    }
+    return session.stopPromise;
+  }
+  function cancelActivePdf(){
+    if(activePdfSession)stopPdfSession(activePdfSession);
+  }
   function stopOcrSession(session){
     if(!session.stopPromise){
       session.stopPromise=Promise.resolve().then(function(){
@@ -79,6 +99,7 @@
     transferredSource=null;
     generation++;
     cancelActiveOcr();
+    cancelActivePdf();
     review=null;reviewFile=null;reviewYear=null;reviewGeneration=-1;
     reviewManualRevision=-1;
     acceptCheck.checked=false;acceptCheck.disabled=true;
@@ -113,6 +134,7 @@
     if(busy||review!==null){
       generation++;
       cancelActiveOcr();
+      cancelActivePdf();
       review=null;reviewFile=null;reviewYear=null;reviewGeneration=-1;
       reviewManualRevision=-1;
       acceptCheck.checked=false;acceptCheck.disabled=true;
@@ -255,26 +277,31 @@
       return safeCanvas(image,image.naturalWidth,image.naturalHeight);
     }finally{URL.revokeObjectURL(url);}
   }
-  async function openPdf(file){
+  async function openPdf(file,isStale){
     var pdfjs=await import("./vendor/pdf.mjs");
+    if(isStale())throw Error("OCR_SOURCE_CANCELLED");
     pdfjs.GlobalWorkerOptions.workerSrc="./vendor/pdf.worker.mjs";
+    // File.arrayBuffer() itself cannot be interrupted in all browsers.
+    // Avoid starting PDF.js after the bytes have arrived if the user has
+    // since replaced/cancelled the file or changed the income year.
     var bytes=new Uint8Array(await file.arrayBuffer());
+    if(isStale())throw Error("OCR_SOURCE_CANCELLED");
     var task=pdfjs.getDocument({data:bytes,disableAutoFetch:true,disableStream:true,
       isEvalSupported:false,useSystemFonts:false,stopAtErrors:true,
       maxImageSize:MAX_PDF_IMAGE_PIXELS});
+    var session={task:task,renderTask:null,stopPromise:null};
+    activePdfSession=session;
     try{
       var document=await task.promise;
+      if(isStale())throw Error("OCR_SOURCE_CANCELLED");
       if(document.numPages!==1)
         throw Error("PDFは1ページのみ対応しています。");
-      return {document:document,task:task};
+      return {document:document,session:session};
     }catch(error){
-      // PDF.js 6 owns its worker through the loading task. The document
-      // proxy is not guaranteed to expose .destroy().
-      if(typeof task.destroy==="function"){
-        try{await task.destroy();}catch(_){
-          // Preserve the original PDF failure; no source content in logs.
-        }
-      }
+      // A cancelled load must release its PDF.js worker even when no
+      // document proxy was produced. Preserve the initial failure.
+      try{await stopPdfSession(session);}catch(_){}
+      if(activePdfSession===session)activePdfSession=null;
       throw error;
     }
   }
@@ -289,7 +316,7 @@
     return {text:checked.text,items:checked.items,
       emptyTextLayer:checked.status==="EMPTY"};
   }
-  async function rasterizePdf(page){
+  async function rasterizePdf(page,session){
     var viewport=page.getViewport({scale:1});
     var scale=Math.min(3,2600/Math.max(viewport.width,viewport.height));
     if(scale<=0||!Number.isFinite(scale)||viewport.width*scale<750||
@@ -301,7 +328,17 @@
       var ctx=canvas.getContext("2d");
       if(!ctx)throw Error("PDF画像化に対応していません。");
       // PDF.js 6.x may require an explicit canvas in addition to its context.
-      await page.render({canvas:canvas,canvasContext:ctx,viewport:view}).promise;
+      var renderTask=page.render({canvas:canvas,canvasContext:ctx,viewport:view});
+      session.renderTask=renderTask;
+      try{
+        if(session.stopPromise){
+          if(typeof renderTask.cancel==="function")renderTask.cancel();
+          throw Error("OCR_SOURCE_CANCELLED");
+        }
+        await renderTask.promise;
+      }finally{
+        if(session.renderTask===renderTask)session.renderTask=null;
+      }
       return canvas;
     }catch(error){
       canvas.width=0;canvas.height=0;
@@ -475,7 +512,7 @@
     busy=true;runButton.disabled=true;acceptButton.disabled=true;
     var requestedGeneration=generation,requestedYear=Number(taxYear.value);
     var requestedManualRevision=manualRevision;
-    var canvas=null,pdf=null,pdfTask=null,stage="SOURCE_PREPARE";
+    var canvas=null,pdf=null,pdfSession=null,stage="SOURCE_PREPARE";
     function isStale(){
       return generation!==requestedGeneration||
         manualRevision!==requestedManualRevision||
@@ -488,8 +525,8 @@
     try{
       var result;
       if(file.type==="application/pdf"){
-        stage="PDF_OPEN";var opened=await openPdf(file);
-        pdf=opened.document;pdfTask=opened.task;
+        stage="PDF_OPEN";var opened=await openPdf(file,isStale);
+        pdf=opened.document;pdfSession=opened.session;
         ensureCurrent();
         stage="PDF_PAGE";var page=await pdf.getPage(1);
         ensureCurrent();
@@ -498,7 +535,7 @@
         if(extracted.emptyTextLayer){
           // No PDF text operators: scanned image-only single-page PDF.
           // This is the only fallback for EMPTY, not for malformed layers.
-          stage="PDF_RASTER";canvas=await rasterizePdf(page);
+          stage="PDF_RASTER";canvas=await rasterizePdf(page,pdfSession);
           ensureCurrent();
           stage="PDF_OCR";result=await twoPass(canvas,isStale);
         }else{
@@ -555,7 +592,7 @@
           // verification and full tax-engine checks before any estimate.
           result=positioned;
         }else{
-          stage="PDF_RASTER";canvas=await rasterizePdf(page);
+          stage="PDF_RASTER";canvas=await rasterizePdf(page,pdfSession);
           ensureCurrent();
           stage="PDF_OCR";result=await twoPass(canvas,isStale);
         }
@@ -581,10 +618,11 @@
       // decode/worker heaps on repeated clicks, especially on mobile.
       try{
         if(canvas){canvas.width=0;canvas.height=0;}
-        if(pdfTask&&typeof pdfTask.destroy==="function"){
-          try{await pdfTask.destroy();}catch(_){
+        if(pdfSession){
+          try{await stopPdfSession(pdfSession);}catch(_){
             // A crashed PDF worker must not trap the UI in a busy state.
           }
+          if(activePdfSession===pdfSession)activePdfSession=null;
         }
       }finally{
         busy=false;runButton.disabled=false;
