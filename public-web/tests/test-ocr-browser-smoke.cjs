@@ -324,21 +324,22 @@ async function main(){
    const pagePrototype=Object.getPrototypeOf(one);
    await probe.destroy();
    const originalDestroy=taskPrototype.destroy;
-   const originalText=pagePrototype.getTextContent;
+   const originalText=pagePrototype.streamTextContent;
    window.__pdfCancellationProbe={
     taskPrototype,pagePrototype,originalDestroy,originalText
    };
    window.__pdfCancelLoads=0;
    window.__pdfTextPending=false;
-   window.__releasePdfText=null;
+   window.__pdfTextCancelled=0;
    taskPrototype.destroy=function(){
     window.__pdfCancelLoads++;
     return originalDestroy.apply(this,arguments);
    };
-   pagePrototype.getTextContent=function(){
+   pagePrototype.streamTextContent=function(){
     window.__pdfTextPending=true;
-    return new Promise(resolve=>{
-     window.__releasePdfText=()=>resolve({items:[]});
+    // The reader stays pending until the production cancel path closes it.
+    return new ReadableStream({
+     cancel(){window.__pdfTextCancelled++;}
     });
    };
   },Array.from(sample));
@@ -352,11 +353,10 @@ async function main(){
    await page.locator("#slipFile").setInputFiles({
     name:"synthetic-blocked-text-new.pdf",mimeType:"application/pdf",buffer:sample
    });
+   await page.waitForFunction(()=>window.__pdfTextCancelled===1,
+     null,{timeout:30000});
    await page.waitForFunction(()=>window.__pdfCancelLoads===1,
      null,{timeout:30000});
-   assert.equal(await page.locator("#slipScan").isDisabled(),true,
-    "PDF loading worker cleanup may overlap no new scan");
-   await page.evaluate(()=>window.__releasePdfText());
    await page.waitForFunction(()=>
     document.getElementById("slipScan").disabled===false,
     null,{timeout:30000});
@@ -373,7 +373,7 @@ async function main(){
    await page.evaluate(()=>{
     const x=window.__pdfCancellationProbe;
     x.taskPrototype.destroy=x.originalDestroy;
-    x.pagePrototype.getTextContent=x.originalText;
+    x.pagePrototype.streamTextContent=x.originalText;
     delete window.__pdfCancellationProbe;
    });
   }
