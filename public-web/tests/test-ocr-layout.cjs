@@ -146,7 +146,14 @@ assert.equal(bounded(Array.from({length:4001},()=>({type:"beginMarkedContent"}))
 assert.equal(bounded([null]).status,"HOLD");
 assert.equal(bounded([item("OK",1,2),{type:"beginMarkedContent"}]).status,"OK");
 
-assert.match(runtime,/FurusatoPdfLayout\.boundedTextLayer\(content\.items\)/);
+// The runtime must preflight *streamed* text chunks before collecting the
+// complete PDF text layer, then run the original strict geometry audit.
+assert.match(runtime,/page\.streamTextContent\(\)/);
+assert.match(runtime,/FurusatoPdfLayout\.boundedTextLayer\(items\)/);
+assert.match(runtime,/items\.length\+part\.value\.items\.length>4000/);
+assert.match(runtime,/chars>120000/);
+assert.match(runtime,/session\.textReader\.cancel\(\)/);
+assert.doesNotMatch(runtime,/await page\.getTextContent\(\)/);
 const maxImage=/var MAX_PDF_IMAGE_PIXELS=16\*1024\*1024/.test(runtime);
 assert.equal(maxImage,true,"PDF image decoder must have a hard pixel cap");
 assert.match(runtime,/maxImageSize:MAX_PDF_IMAGE_PIXELS/);
