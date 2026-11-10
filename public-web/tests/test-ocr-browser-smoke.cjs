@@ -292,6 +292,12 @@ async function main(){
   await page.locator("#slipFile").setInputFiles({
    name:"synthetic-abort-new.pdf",mimeType:"application/pdf",buffer:sample
   });
+  // A stale recognition must trigger immediate worker termination. Do
+  // not release the synthetic in-flight Promise until the stop is observed.
+  await page.waitForFunction(()=>window.__cancelSyntheticTerminations===1,
+    null,{timeout:30000});
+  assert.equal(await page.locator("#slipScan").isDisabled(),true,
+    "prevent overlapping PDF workers until cleanup finishes");
   await page.evaluate(()=>window.__releaseSyntheticRecognition());
   await page.waitForFunction(()=>document.getElementById("slipScan").disabled===false,
     null,{timeout:30000});
