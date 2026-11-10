@@ -46,10 +46,26 @@
   function render(result) {
     output.replaceChildren();
     output.hidden = false;
+    // A self-declared ESTIMATE is not enough to print a yen figure.
+    // Verify the selected year, following resident-tax year and essential
+    // arithmetic invariants independently of the calculation engine.
+    var year = Number(form.elements.namedItem("year").value);
+    var calc = result && result.calculation;
     var isEstimate = result && result.status === "ESTIMATE" &&
+      (year===2025||year===2026) &&
+      result.year===year &&
+      result.residentYear===year+1 &&
       Number.isSafeInteger(result.donationLimitYen) &&
       result.donationLimitYen >= 0 &&
-      result.calculation && typeof result.calculation === "object";
+      calc && typeof calc==="object" && !Array.isArray(calc) &&
+      Number.isSafeInteger(calc.donationLimitYen) &&
+      calc.donationLimitYen===result.donationLimitYen &&
+      Number.isSafeInteger(calc.residentIncomeLevyYen) &&
+      calc.residentIncomeLevyYen>0 &&
+      Number.isSafeInteger(calc.specialCreditCapYen) &&
+      calc.specialCreditCapYen===Math.floor(calc.residentIncomeLevyYen*.2) &&
+      Number.isSafeInteger(calc.residentDonationIncomeCapYen) &&
+      result.donationLimitYen<=calc.residentDonationIncomeCapYen;
     output.className = isEstimate ? "result" : "result hold";
     if (!isEstimate) {
       add("h3", output, "試算を停止しました（HOLD）");

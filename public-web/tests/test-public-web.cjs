@@ -57,6 +57,30 @@ assert.equal(view.hidden,false);
 assert.equal(view.className,"result");
 assert.match(view.textContent,/109,000円/);
 assert.match(view.textContent,/寄附上限額の概算/);
+// Even if a future tax engine misreports success, mismatched output year,
+// resident year, or internal yen-cap arithmetic must never reach the UI.
+const actualCalculate=dom.window.FurusatoEngine.calculate;
+for(const variant of ["year","residentYear","donationAmount","specialCap","residentCap"]){
+ dom.window.FurusatoEngine.calculate=function(payload){
+   const actual=actualCalculate(payload);
+   assert.equal(actual.status,"ESTIMATE");
+   const bad={...actual,calculation:{...actual.calculation}};
+   if(variant==="year")bad.year=2025;
+   if(variant==="residentYear")bad.residentYear=2028;
+   if(variant==="donationAmount")bad.calculation.donationLimitYen+=1000;
+   if(variant==="specialCap")bad.calculation.specialCreditCapYen+=1;
+   if(variant==="residentCap")bad.calculation.residentDonationIncomeCapYen=1;
+   return bad;
+ };
+ submit();
+ assert.equal(view.className,"result hold",variant);
+ assert.doesNotMatch(view.textContent,/109,000円/,variant);
+ assert.equal(view.querySelector("button"),null,variant);
+}
+dom.window.FurusatoEngine.calculate=actualCalculate;
+submit();
+assert.equal(view.className,"result");
+assert.match(view.textContent,/109,000円/);
 const detail=view.querySelector("details");
 assert.ok(detail);
 assert.match(detail.textContent,/住民税所得割の概算/);
