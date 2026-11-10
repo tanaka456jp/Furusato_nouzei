@@ -16,6 +16,24 @@
   var review=null, busy=false;
   var generation=0,reviewFile=null,reviewYear=null,reviewGeneration=-1;
   var manualRevision=0,reviewManualRevision=-1;
+  // At most one OCR worker may be active while the scan button is locked.
+  // Keep a stable shutdown Promise so changing a source can interrupt the
+  // in-flight recognize() without double-terminating the same worker.
+  var activeOcrSession=null;
+  function stopOcrSession(session){
+    if(!session.stopPromise){
+      session.stopPromise=Promise.resolve().then(function(){
+        return session.worker.terminate();
+      });
+      // Cancellation is fire-and-forget, but the normal scan's finally
+      // still awaits this SAME Promise and can report a shutdown failure.
+      session.stopPromise.catch(function(){});
+    }
+    return session.stopPromise;
+  }
+  function cancelActiveOcr(){
+    if(activeOcrSession)stopOcrSession(activeOcrSession);
+  }
   // Keep original OCR provenance even after a manual edit invalidates
   // dataset.ocrYear. Otherwise switching documents can retain stale amounts.
   var transferredSource=null;
@@ -60,6 +78,7 @@
     var hadTransferredSource=!!oldTransferred||!!form.dataset.ocrYear;
     transferredSource=null;
     generation++;
+    cancelActiveOcr();
     review=null;reviewFile=null;reviewYear=null;reviewGeneration=-1;
     reviewManualRevision=-1;
     acceptCheck.checked=false;acceptCheck.disabled=true;
@@ -93,6 +112,7 @@
       transferredSource.edited[target.name]=true;
     if(busy||review!==null){
       generation++;
+      cancelActiveOcr();
       review=null;reviewFile=null;reviewYear=null;reviewGeneration=-1;
       reviewManualRevision=-1;
       acceptCheck.checked=false;acceptCheck.disabled=true;
@@ -298,7 +318,7 @@
     if(typeof window.Tesseract==="undefined"||
       typeof window.Tesseract.createWorker!=="function")
       throw Error("端末内OCRエンジンを読み込めません。");
-    var original=image,enhanced=null,rectified=null,worker=null;
+    var original=image,enhanced=null,rectified=null,worker=null,session=null;
     try{
       ensureCurrent();
       if(typeof window.FurusatoImageQuality!=="object"||
@@ -327,6 +347,8 @@
         workerBlobURL:false,cacheMethod:"none"
       };
       worker=await window.Tesseract.createWorker("jpn",window.Tesseract.OEM.LSTM_ONLY,paths);
+      session={worker:worker,stopPromise:null};
+      activeOcrSession=session;
       ensureCurrent();
       var a=await worker.recognize(original,{}, {text:true,blocks:true});
       ensureCurrent();
@@ -381,7 +403,10 @@
       // Termination can itself reject, e.g. a worker process crash. Never
       // skip release of large intermediate canvases in that case.
       try{
-        if(worker)await worker.terminate();
+        if(session){
+          if(activeOcrSession===session)activeOcrSession=null;
+          await stopOcrSession(session);
+        }
       }finally{
         if(enhanced){enhanced.width=0;enhanced.height=0;}
         if(rectified){rectified.width=0;rectified.height=0;}
