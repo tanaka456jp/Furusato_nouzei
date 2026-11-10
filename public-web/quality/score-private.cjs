@@ -27,6 +27,8 @@ function summarize(records){
  const overall=category(),groups=Object.fromEntries(
   FORMATS.map(f=>[f,category()])),
   devices=Object.fromEntries(DEVICES.map(d=>[d,category()])),
+  strata=Object.fromEntries(FORMATS.map(f=>[f,Object.fromEntries(
+    DEVICES.map(d=>[d,category()]))])),
   seenCases=new Set(),seenFingerprints=new Set();
  for(const item of records){
   if(!item||!FORMATS.includes(item.format)||!item.truth||
@@ -84,7 +86,7 @@ function summarize(records){
     result.candidates[key]===item.truth[key])exact++;
   const whole=yearMatch&&exact===FIELDS.length;
   for(const c of [overall,groups[item.format],
-    ...(audit?[devices[audit.device]]:[])]){
+    ...(audit?[devices[audit.device],strata[item.format][audit.device]]:[])]){
    c.slips++;
    if(auditedReal)c.auditedReal++;
    c.fieldCount+=FIELDS.length;
@@ -119,18 +121,23 @@ function summarize(records){
  });
  const byFormat=Object.fromEntries(FORMATS.map(f=>[f,prepare(groups[f])]));
  const byDevice=Object.fromEntries(DEVICES.map(d=>[d,prepare(devices[d])]));
+ const byFormatAndDevice=Object.fromEntries(FORMATS.map(f=>[f,
+   Object.fromEntries(DEVICES.map(d=>[d,prepare(strata[f][d])]))]));
  const overallResult=prepare(overall);
  // Accuracy inferred from a single PDF type or only desktop tests is not
  // a scientifically valid 99.5%-across-formats/devices claim.
  overallResult.statisticalTargetMet=
    overallResult.statisticalTargetMet&&
    FORMATS.every(f=>byFormat[f].statisticalTargetMet)&&
-   ["windows-edge","iphone-safari"].every(d=>byDevice[d].statisticalTargetMet);
+   ["windows-edge","iphone-safari"].every(d=>byDevice[d].statisticalTargetMet)&&
+   FORMATS.every(f=>["windows-edge","iphone-safari"].every(
+     d=>byFormatAndDevice[f][d].statisticalTargetMet));
  return {
   schema:"furusato-private-ocr-aggregate/v2",
   overall:overallResult,
   byFormat,
   byDevice,
+  byFormatAndDevice,
   sourceTextPersisted:false,sourceValuesIncluded:false,
   accuracyCertified:false,
   // Self-declared independent truth entry and device metadata remain
