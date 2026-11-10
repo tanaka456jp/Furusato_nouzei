@@ -27,7 +27,7 @@ function summarize(records){
  const overall=category(),groups=Object.fromEntries(
   FORMATS.map(f=>[f,category()])),
   devices=Object.fromEntries(DEVICES.map(d=>[d,category()])),
-  seenCases=new Set();
+  seenCases=new Set(),seenFingerprints=new Set();
  for(const item of records){
   if(!item||!FORMATS.includes(item.format)||!item.truth||
      typeof item.truth!=="object"||Array.isArray(item.truth)||
@@ -53,6 +53,7 @@ function summarize(records){
   if(audit!==undefined){
     if(!audit||typeof audit!=="object"||Array.isArray(audit)||
       !CASE_ID.test(audit.caseId||"")||
+      !/^[0-9a-f]{64}$/i.test(audit.sourceFingerprint||"")||
       !DEVICES.includes(audit.device)||
       !["real","synthetic"].includes(audit.sourceKind)||
       typeof audit.independentTruthVerified!=="boolean")
@@ -60,6 +61,11 @@ function summarize(records){
     // Random local IDs only: never derive them from names, paths or hashes.
     if(seenCases.has(audit.caseId))throw Error("BENCHMARK_DUPLICATE_CASE");
     seenCases.add(audit.caseId);
+    // A keyed HMAC digest of the original local file detects accidentally
+    // counting repeated reads under different random case IDs.
+    if(seenFingerprints.has(audit.sourceFingerprint))
+      throw Error("BENCHMARK_DUPLICATE_SOURCE");
+    seenFingerprints.add(audit.sourceFingerprint);
     if(audit.independentTruthVerified){
       const second=audit.secondEntry;
       if(!second||typeof second!=="object"||
