@@ -266,6 +266,52 @@ async function main(){
    assert.equal(await page.locator('[name="salaryGross"]').inputValue(),"",
      "new PDF scan must invalidate previously transferred OCR salary");
   }
+  // A File API read may finish AFTER the picker has been cancelled.
+  // The stale byte buffer must be discarded before PDF.js starts loading.
+  await page.evaluate(()=>{
+   const original=File.prototype.arrayBuffer;
+   window.__pdfBytesProbe={original};
+   window.__pdfBytesStarted=false;
+   window.__releasePdfBytes=null;
+   File.prototype.arrayBuffer=function(){
+    if(this.name!=="synthetic-delayed-pdf-bytes.pdf")
+     return original.call(this);
+    window.__pdfBytesStarted=true;
+    const source=this;
+    return new Promise((resolve,reject)=>{
+     window.__releasePdfBytes=()=>original.call(source).then(resolve,reject);
+    });
+   };
+  });
+  try{
+   const beforeBytesOcr=await page.evaluate(()=>window.__syntheticPdfOcrCalls);
+   await page.locator("#slipFile").setInputFiles({
+    name:"synthetic-delayed-pdf-bytes.pdf",
+    mimeType:"application/pdf",buffer:sample
+   });
+   await page.locator("#slipScan").click();
+   await page.waitForFunction(()=>window.__pdfBytesStarted,
+     null,{timeout:30000});
+   await page.locator("#slipFile").setInputFiles({
+    name:"synthetic-after-bytes-swap.pdf",
+    mimeType:"application/pdf",buffer:sample
+   });
+   await page.evaluate(()=>window.__releasePdfBytes());
+   await page.waitForFunction(()=>
+    document.getElementById("slipScan").disabled===false,
+    null,{timeout:30000});
+   assert.equal(await page.locator("#slipTransfer").isEnabled(),false);
+   assert.equal(await page.evaluate(()=>window.__syntheticPdfOcrCalls),
+    beforeBytesOcr,"cancelled raw PDF bytes must never start a recognition");
+   assert.equal(await page.evaluate(()=>
+    document.getElementById("calculator").dataset.ocrReviewPending),"true");
+  }finally{
+   await page.evaluate(()=>{
+    File.prototype.arrayBuffer=window.__pdfBytesProbe.original;
+    delete window.__pdfBytesProbe;
+   });
+  }
+
   // Distinct from OCR cancellation: interrupt an in-progress PDF text
   // extraction. The PDF.js loading-task worker must be destroyed BEFORE
   // the blocked text-extraction Promise is manually released.
