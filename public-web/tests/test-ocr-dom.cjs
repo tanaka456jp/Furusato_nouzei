@@ -331,6 +331,30 @@ async function main(){
  field("acknowledgedExclusions").checked=true;
  assert.equal(calc().className,"result hold");
  assert.doesNotMatch(calc().textContent,/109,000円/);
+ // A cancelled file selection can leave NO selected file and NO transferred
+ // values, but the OCR review hold must survive year changes both ways.
+ field("year").value="2025";
+ field("year").dispatchEvent(new win.Event("change",{bubbles:true}));
+ assert.equal(file.files.length,0);
+ assert.equal(form.dataset.ocrReviewPending,"true");
+ assert.equal(field("salaryGross").value,"7000000");
+ assert.equal(field("socialInsurance").value,"1000000");
+ field("acknowledgedExclusions").checked=true;
+ assert.equal(calc().className,"result hold");
+ assert.doesNotMatch(calc().textContent,/寄附上限額の概算/);
+ field("year").value="2026";
+ field("year").dispatchEvent(new win.Event("change",{bubbles:true}));
+ assert.equal(form.dataset.ocrReviewPending,"true");
+ field("acknowledgedExclusions").checked=true;
+ assert.equal(calc().className,"result hold");
+ // An explicit reset, not year toggling, is needed to leave OCR review.
+ form.reset();
+ field("year").value="2026";
+ field("salaryGross").value="7000000";
+ field("socialInsurance").value="1000000";
+ field("acknowledgedExclusions").checked=true;
+ assert.equal(form.dataset.ocrReviewPending,undefined);
+ assert.equal(calc().className,"result");
  // After a fresh OCR transfer, manual edits invalidate the source year.
  // Switching the income year *again* must still require source review;
  // otherwise it could be mistaken for a purely manually entered record.

@@ -145,8 +145,12 @@
     // source still exists in memory until clearReview() disposes of it.
     // A year change must not silently turn that situation into manual mode.
     var hadTransferredSource=!!form.dataset.ocrYear||!!transferredSource;
+    // No file is present after an aborted picker. Preserve an existing OCR
+    // review HOLD even if the original slip was never transferred.
+    var wasPending=form.dataset.ocrReviewPending==="true";
     clearReview();
-    if(hadTransferredSource||(fileInput.files&&fileInput.files.length)){
+    if(hadTransferredSource||wasPending||
+       (fileInput.files&&fileInput.files.length)){
       form.dataset.ocrReviewPending="true";
       show("所得年が変更されました。以前の原票からの読取結果は使えません。新規入力または原票の再確認が必要です。");
     }
