@@ -1,9 +1,11 @@
 """Synthetic parser tests: no actual personal documents in git or CI."""
 import json
+from unittest.mock import patch
+from types import SimpleNamespace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
-from withholding_reader import CODE_MAP,detect_year,extract_codes,extract_labelled,extract_occupancy_year,extract,finish,write_bridge
+from withholding_reader import CODE_MAP,detect_year,extract_codes,extract_labelled,extract_occupancy_year,extract,finish,write_bridge,extract_pdf_batch,write_batch_bridge
 
 
 class WithholdingTest(unittest.TestCase):
@@ -30,6 +32,94 @@ class WithholdingTest(unittest.TestCase):
     def test_labelled(self):
         self.assertEqual(extract_labelled("支払金額：5,000,000\n社会保険料等の金額：1,000,000"),
                          {"salary_gross":5000000,"social_insurance":1000000})
+
+    def test_private_multi_page_pdf_separates_taxpayers_and_disposes_identifiers(self):
+        # Entirely synthetic pages: do not place actual source slips in CI.
+        class FakePage:
+            def __init__(self, text):
+                self.text = text
+            def get_text(self, mode, sort=False):
+                return [] if mode == "words" else self.text
+
+        class FakeDoc:
+            is_encrypted = False
+            def __init__(self, pages):
+                self.pages = [FakePage(p) for p in pages]
+            def __len__(self):
+                return len(self.pages)
+            def __iter__(self):
+                return iter(self.pages)
+            def __enter__(self):
+                return self
+            def __exit__(self, *_):
+                return False
+
+        fictional = [
+            "令和 7 年分 給与所得の源泉徴収票\n"
+            "氏名：SYNTHETIC_PERSON_ONE\n住所：SYNTHETIC_ADDRESS\n"
+            "支払金額：7,000,000\n給与所得控除後の金額：5,200,000\n"
+            "所得控除の額の合計額：1,670,000\n源泉徴収税額：500,000\n"
+            "社会保険料等の金額：1,000,000\n",
+            "令和 8 年分 給与所得の源泉徴収票\n"
+            "氏名：SYNTHETIC_PERSON_TWO\n勤務先：SYNTHETIC_EMPLOYER\n"
+            "支払金額：5,000,000\n給与所得控除後の金額：3,560,000\n"
+            "所得控除の額の合計額：1,400,000\n源泉徴収税額：80,000\n"
+            "社会保険料等の金額：850,000\n",
+        ]
+        with TemporaryDirectory() as tmp:
+            file = Path(tmp) / "fictional_2_slips.pdf"
+            file.write_bytes(b"test-only-placeholder-PDF-content")
+            fake_fitz = SimpleNamespace(open=lambda path: FakeDoc(fictional))
+            with patch.dict("sys.modules", {"fitz": fake_fitz}):
+                records = extract_pdf_batch(file)
+            self.assertEqual([x["page"] for x in records], [1, 2])
+            self.assertEqual([x["year"] for x in records], [2025, 2026])
+            self.assertEqual(records[0]["fields"]["salary_gross"], 7000000)
+            self.assertEqual(records[1]["fields"]["salary_gross"], 5000000)
+            self.assertEqual(records[0]["fields"]["social_insurance"], 1000000)
+            self.assertEqual(records[1]["fields"]["social_insurance"], 850000)
+            output = Path(tmp) / "batch.tsv"
+            write_batch_bridge(records, output)
+            raw = output.read_bytes()
+            self.assertTrue(raw.isascii(), "bridge must be ASCII-only")
+            self.assertIn(b"PAGE\t1\n", raw)
+            self.assertIn(b"ENDPAGE\t1\nPAGE\t2\n", raw)
+            self.assertIn(b"salary_gross\t7000000\n", raw)
+            self.assertIn(b"salary_gross\t5000000\n", raw)
+            self.assertNotIn(b"SYNTHETIC_PERSON", raw)
+            self.assertNotIn(b"ADDRESS", raw)
+            self.assertNotIn(b"EMPLOYER", raw)
+            report = str(records)
+            self.assertNotIn("SYNTHETIC_PERSON", report)
+
+    def test_batch_rejects_wrong_page_count_and_unsafe_bridge_values(self):
+        with TemporaryDirectory() as tmp:
+            file = Path(tmp) / "fictional_slips.pdf"
+            file.write_bytes(b"synthetic-local-input")
+            fake_fitz = SimpleNamespace(
+                open=lambda _: type("InvalidDoc", (), {
+                    "is_encrypted":False,
+                    "__enter__":lambda self: self,
+                    "__exit__":lambda self,*args:False,
+                    "__len__":lambda self:21
+                })()
+            )
+            with patch.dict("sys.modules", {"fitz":fake_fitz}):
+                with self.assertRaises(ValueError):
+                    extract_pdf_batch(file)
+            valid = finish(2025,{
+                "salary_gross":5000000,
+                "salary_reference":3560000,
+                "deductions_reference":1400000,
+                "social_insurance":850000,
+                "income_tax_withheld":80000,
+            }, "PDF_TEXT")
+            with self.assertRaises(ValueError):
+                write_batch_bridge([{"page":2, **valid}],Path(tmp)/"wrong.tsv")
+            with self.assertRaises(ValueError):
+                write_batch_bridge([{"page":1, **valid,
+                                     "warnings":["NAME:\tBAD"]}],
+                                   Path(tmp)/"unsafe.tsv")
 
     def test_structured_csv_does_not_leak_names(self):
         with TemporaryDirectory() as tmp:
