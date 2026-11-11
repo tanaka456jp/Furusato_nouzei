@@ -245,6 +245,84 @@ def extract(path):
     return finish(detect_year(text),vals,mode,flags)
 
 
+
+# Local batch PDF reader. Each page is treated as an INDEPENDENT taxpayer.
+# Never store, forward or inspect names, employer or address as output fields.
+BATCH_MAX_PAGES = 20
+BATCH_FIELDS = tuple(sorted(set(CODE_MAP.values()) | set(TEXT_MAP.values())))
+
+
+def extract_pdf_batch(path):
+    """Return only page ordinals, tax-year, numeric fields and machine codes."""
+    path = Path(path)
+    if path.suffix.lower() != ".pdf":
+        raise ValueError("Batch source must be a PDF")
+    if not path.is_file() or not 0 < path.stat().st_size <= 25 * 1024 * 1024:
+        raise ValueError("Batch PDF exceeds 25MiB")
+    try:
+        import fitz
+    except ImportError as exc:
+        raise RuntimeError("PyMuPDF required") from exc
+    records = []
+    with fitz.open(str(path)) as doc:
+        if doc.is_encrypted or not 1 <= len(doc) <= BATCH_MAX_PAGES:
+            raise ValueError("Unsupported encrypted PDF or page count")
+        for page_number, page in enumerate(doc, 1):
+            try:
+                text = page.get_text("text", sort=True)
+                words = page.get_text("words", sort=True)
+                mode = "PDF_TEXT"
+                if len(text.strip()) < 40:
+                    from PIL import Image
+                    pix = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+                    if pix.width * pix.height > 25_000_000:
+                        raise ValueError("Page raster too large")
+                    pic = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+                    text, words = image_words(pic, 2)
+                    mode = "SCAN_OCR"
+                fields, warnings = extract_codes(words) if words else ({}, [])
+                if not fields:
+                    fields = extract_labelled(text)
+                occupancy = extract_occupancy_year(text)
+                if (occupancy and "mortgage_occupancy_year" in fields and
+                        fields["mortgage_occupancy_year"] != occupancy["mortgage_occupancy_year"]):
+                    warnings.append("CONFLICT_mortgage_occupancy_year")
+                    fields.pop("mortgage_occupancy_year", None)
+                else:
+                    fields.update(occupancy)
+                record = finish(detect_year(text), fields, mode, warnings)
+            except Exception:
+                record = finish(None, {}, "PAGE_ERROR", ["PAGE_READ_FAILED"])
+            records.append({"page": page_number, **record})
+    return records
+
+
+def write_batch_bridge(records, output):
+    """ASCII-only page-separated TSV consumed by VBA after full validation."""
+    if not 1 <= len(records) <= BATCH_MAX_PAGES:
+        raise ValueError("Unsupported page count")
+    with Path(output).open("w", encoding="ascii", newline="") as fp:
+        writer = csv.writer(fp, delimiter="\t", lineterminator="\n")
+        for ordinal, record in enumerate(records, 1):
+            if record.get("page") != ordinal:
+                raise ValueError("PDF pages not sequential")
+            writer.writerow(["PAGE", ordinal])
+            writer.writerow(["STATUS", record["status"]])
+            writer.writerow(["YEAR", record["year"] or ""])
+            warnings = record.get("warnings", [])
+            if any(not re.fullmatch(r"[A-Z_0-9]+", flag) for flag in warnings):
+                raise ValueError("Unsafe warning code")
+            writer.writerow(["WARNINGS", ";".join(warnings)])
+            for key in BATCH_FIELDS:
+                value = record["fields"].get(key)
+                if value is not None:
+                    if (isinstance(value, bool) or not isinstance(value, int) or
+                            not 0 <= value <= 10**12):
+                        raise ValueError("Unsafe numeric field")
+                    writer.writerow([key, value])
+            writer.writerow(["ENDPAGE", ordinal])
+
+
 def write_bridge(result,output):
     """Allowlisted numeric rows only. Explicit status prevents implicit OCR use."""
     with Path(output).open("w",encoding="utf-8",newline="") as f:
@@ -263,12 +341,24 @@ if __name__=="__main__":
     ap.add_argument("--input",required=True,type=Path)
     ap.add_argument("--output",required=True,type=Path)
     ap.add_argument("--bridge",type=Path)
+    ap.add_argument("--batch-bridge",type=Path)
     args=ap.parse_args()
     try:
-        data=extract(args.input)
-        args.output.write_text(json.dumps(data,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
-        if args.bridge: write_bridge(data,args.bridge)
-        print("READER_"+data["status"])
+        if args.batch_bridge:
+            records=extract_pdf_batch(args.input)
+            write_batch_bridge(records,args.batch_bridge)
+            args.output.write_text(json.dumps({
+                "schema":"furusato-batch-summary/v1",
+                "pages":len(records),
+                "review_required":sum(
+                    r["status"]!="READY_FOR_EXCEL_CROSSCHECK" for r in records),
+            },ensure_ascii=True)+"\n",encoding="ascii")
+            print("READER_BATCH_PAGES_"+str(len(records)))
+        else:
+            data=extract(args.input)
+            args.output.write_text(json.dumps(data,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+            if args.bridge: write_bridge(data,args.bridge)
+            print("READER_"+data["status"])
     except Exception as exc:
         print("READ_ERROR_"+type(exc).__name__,file=sys.stderr)
         sys.exit(2)
