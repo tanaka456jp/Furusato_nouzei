@@ -148,6 +148,11 @@
     return result.donationLimitYen<=round1000(Math.min(
       calc.preliminaryLimitYen,calc.residentDonationIncomeCapYen));
   }
+  // Share the same strict display guard with the local multi-person batch.
+  // The batch calculation must never use a weaker amount display policy.
+  window.FurusatoEstimateGuard=Object.freeze({
+    canDisplayEstimate:canDisplayEstimate
+  });
   var printableInputSnapshot=null,printableResult=null;
   function render(result,input) {
     output.replaceChildren();
