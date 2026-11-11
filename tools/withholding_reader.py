@@ -80,12 +80,12 @@ def extract_codes(words):
                    and abs(a[1]-code[1])<=9 for a in anchors): continue
             choices.append(w)
         if len(choices)!=1:
-            if len(choices)>1: flags.append("AMBIGUOUS_"+key)
+            if len(choices)>1: flags.append("AMBIGUOUS_"+key.upper())
             continue
         val=number(choices[0][4])
         if key in out and out[key]!=val:
-            flags.append("CONFLICT_"+key); out.pop(key,None)
-        elif "CONFLICT_"+key not in flags: out[key]=val
+            flags.append("CONFLICT_"+key.upper()); out.pop(key,None)
+        elif "CONFLICT_"+key.upper() not in flags: out[key]=val
     return out, flags
 
 
@@ -238,7 +238,7 @@ def extract(path):
     # Never override a disagreeing structured value.
     occupancy=extract_occupancy_year(text)
     if occupancy and "mortgage_occupancy_year" in vals and vals["mortgage_occupancy_year"]!=occupancy["mortgage_occupancy_year"]:
-        flags.append("CONFLICT_mortgage_occupancy_year")
+        flags.append("CONFLICT_MORTGAGE_OCCUPANCY_YEAR")
         vals.pop("mortgage_occupancy_year",None)
     elif occupancy:
         vals.update(occupancy)
@@ -286,7 +286,7 @@ def extract_pdf_batch(path):
                 occupancy = extract_occupancy_year(text)
                 if (occupancy and "mortgage_occupancy_year" in fields and
                         fields["mortgage_occupancy_year"] != occupancy["mortgage_occupancy_year"]):
-                    warnings.append("CONFLICT_mortgage_occupancy_year")
+                    warnings.append("CONFLICT_MORTGAGE_OCCUPANCY_YEAR")
                     fields.pop("mortgage_occupancy_year", None)
                 else:
                     fields.update(occupancy)
