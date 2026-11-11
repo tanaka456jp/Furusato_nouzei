@@ -292,10 +292,21 @@ async function main(){
   });
   const beforeBatchCalls=await page.evaluate(()=>window.__syntheticPdfOcrCalls);
   await page.locator("#batchScan").click();
-  await page.waitForFunction(()=>
-   document.getElementById("batchScan").disabled===false &&
-   document.querySelectorAll("#batchRows tr").length===2,
-   null,{timeout:30000});
+  try{
+   await page.waitForFunction(()=>
+    document.getElementById("batchScan").disabled===false &&
+    document.querySelectorAll("#batchRows tr").length===2,
+    null,{timeout:30000});
+  }catch(_){
+   const probe=await page.evaluate(()=>({
+    scanDisabled:document.getElementById("batchScan").disabled,
+    status:document.getElementById("batchStatus").textContent.slice(0,160),
+    rowCount:document.querySelectorAll("#batchRows tr").length,
+    reader:!!window.FurusatoBatchPdf,
+    core:!!window.FurusatoBatchCore
+   }));
+   throw Error("SYNTHETIC_BATCH_TWO_PAGE_TEST_FAILED:"+JSON.stringify(probe));
+  }
   assert.equal(await page.evaluate(()=>window.__syntheticPdfOcrCalls),
    beforeBatchCalls+4,"two scan pages require four exact tax-field OCR reads");
   assert.equal(await page.locator("#batchRows tr").count(),2);
