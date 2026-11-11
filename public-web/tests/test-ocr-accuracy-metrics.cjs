@@ -16,6 +16,22 @@ const rows=[
  {kind:"other",truth,review:hold}
 ];
 const out=summarize(rows);
+assert.equal(out.qualityScope,"INCOME_YEAR_AND_FOUR_AMOUNTS_ONLY");
+assert.deepEqual(out.evaluatedMonetaryFields,[
+ "salaryGross","salaryIncomeReference","deductionsReference","socialInsurance"
+]);
+const scoped=summarize([{kind:"digital_pdf",truth:{
+ ...truth,personalName:"SYNTHETIC_EXPECTED_NAME",
+ employer:"SYNTHETIC_EXPECTED_EMPLOYER",address:"SYNTHETIC_ADDRESS"},
+ review:{...correct,candidates:{...correct.candidates,
+  personalName:"SYNTHETIC_WRONG_NAME",
+  employer:"SYNTHETIC_WRONG_EMPLOYER",address:"SYNTHETIC_WRONG_ADDRESS"}}}]);
+const only=summarize([{kind:"digital_pdf",truth,review:correct}]);
+assert.deepEqual(scoped,only);
+assert.equal(scoped.overall.fields,4);
+assert.equal(scoped.overall.exactDocuments,1);
+assert.doesNotMatch(JSON.stringify(scoped),/SYNTHETIC_(EXPECTED|WRONG|ADDRESS)/);
+
 assert.equal(out.status,"MEASURED_NOT_CERTIFIED");
 assert.equal(out.release,"HOLD");
 assert.equal(out.overall.documents,4);
