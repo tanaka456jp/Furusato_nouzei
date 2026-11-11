@@ -265,12 +265,12 @@ End Sub
 
 Private Function SnapshotInputs() As Object
     Dim data As Object, refs As Variant, addr As Variant, ws As Worksheet
+    Dim n As Long
     Set data = CreateObject("Scripting.Dictionary")
     Set ws = ThisWorkbook.Worksheets(SHEET_HOME)
     For Each addr In Split("B4 B11 B12 B15 B16 B19 B20 B21 B22 B23 B24 B25 B33 B34 B35 B36 D24", " ")
         data.Add "H|" & CStr(addr), ws.Range(CStr(addr)).Formula
     Next addr
-    Dim n As Long
     For n = 11 To 23
         data.Add "H|D" & CStr(n), ws.Range("D" & CStr(n)).Formula
     Next n
@@ -297,7 +297,7 @@ End Sub
 
 Private Sub ApplyCaseRow(ByVal ws As Worksheet, ByVal index As Long)
     Dim home As Worksheet, extra As Worksheet, keys As Variant, targets As Variant
-    Dim idx As Long
+    Dim idx As Long, value As Variant, target As String
     Set home = ThisWorkbook.Worksheets(SHEET_HOME)
     Set extra = ThisWorkbook.Worksheets(SHEET_ADV)
     home.Range("B11:B12,B15:B16,B19:B25,B33:B36,D11:D24").ClearContents
@@ -315,7 +315,6 @@ Private Sub ApplyCaseRow(ByVal ws As Worksheet, ByVal index As Long)
                     "H|B23", "H|B21", "H|B22", "H|B24", _
                     "H|B33", "H|B34", "H|B35", "H|B36", "H|D23", _
                     "E|B15", "E|B14", "E|B16", "E|B17", "E|B13", "E|B38", "E|B39")
-    Dim value As Variant, target As String
     For idx = LBound(keys) To UBound(keys)
         value = ws.Cells(index, CStr(keys(idx))).Value2
         If Len(Trim$(CStr(value))) > 0 Then
