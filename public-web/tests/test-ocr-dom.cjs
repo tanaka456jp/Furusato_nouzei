@@ -72,10 +72,12 @@ async function main(){
      return {
        recognize:async()=>{
          recognized++;
+         // The synthetic page-wide confidence is intentionally low:
+         // irrelevant identity/address text must not veto correct tax fields.
          if(holdRecognizer)return await new Promise(resolve=>{
-           releaseRecognition=()=>resolve({data:{text:text,confidence:96}});
+           releaseRecognition=()=>resolve({data:{text:text,confidence:0}});
          });
-         return {data:{text:text,confidence:96}};
+         return {data:{text:text,confidence:0}};
        },
        terminate:async()=>{terminated++;}
      };
