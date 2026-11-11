@@ -181,11 +181,28 @@ Failed:
               "一括読取データの安全性検証に失敗しました。ファイルを再確認してください。"
 End Function
 
+' Return only tax-field names/Excel columns. Never echo raw source text.
+Private Function MissingBatchFields(ByVal item As Object) As String
+    Dim required As Variant, labels As Variant, idx As Long
+    required = Array("salary_gross", "salary_reference", _
+                     "deductions_reference", "income_tax_withheld", "social_insurance")
+    labels = Array("支払金額(D列)", "給与所得控除後(K列)", _
+                   "所得控除合計(L列)", "源泉徴収税額(M列)", "社会保険料等(N列)")
+    For idx = LBound(required) To UBound(required)
+        If Not item.Exists(CStr(required(idx))) Then
+            If Len(MissingBatchFields) > 0 Then _
+                MissingBatchFields = MissingBatchFields & "・"
+            MissingBatchFields = MissingBatchFields & CStr(labels(idx))
+        End If
+    Next idx
+End Function
+
 Public Sub BatchImport()
     Dim selected As Variant, fso As Object, shell As Object, executable As String
     Dim outputJson As String, outputTsv As String, command As String, rc As Long
     Dim all As Collection, record As Object, ws As Worksheet
     Dim idx As Long, rowNum As Long, item As Variant, col As String
+    Dim missingFields As String, warningCodes As String
     On Error GoTo Failed
     If mWorking Then Exit Sub
     selected = Application.GetOpenFilename("PDF (*.pdf),*.pdf", 1, "複数人の源泉徴収票PDFを選択")
@@ -229,9 +246,26 @@ Public Sub BatchImport()
         ws.Cells(rowNum, "I").Value2 = "未確認"
         ws.Cells(rowNum, "J").Value2 = "ワンストップ"
         ws.Cells(rowNum, "F").Value2 = "HOLD"
-        ws.Cells(rowNum, "G").Value2 = "原票の金額・所得年と追加条件を個別確認してください"
-        If CStr(record("STATUS")) <> "READY_FOR_EXCEL_CROSSCHECK" Then _
-            ws.Cells(rowNum, "G").Value2 = "読取要確認：原票と数値を照合してください"
+        missingFields = MissingBatchFields(record)
+        warningCodes = CStr(record("WARNINGS"))
+        If Len(missingFields) > 0 Then
+            ws.Cells(rowNum, "G").Value2 = _
+                "未読取：" & missingFields & "。原票照合後に値を入力し、確認してください"
+        ElseIf InStr(1, warningCodes, "AMBIGUOUS_", vbBinaryCompare) > 0 Or _
+               InStr(1, warningCodes, "CONFLICT_", vbBinaryCompare) > 0 Then
+            ws.Cells(rowNum, "G").Value2 = _
+                "項目の重複・矛盾：原票を確認してください。限度額はHOLD"
+        ElseIf InStr(1, warningCodes, "MORTGAGE_", vbBinaryCompare) > 0 And _
+               CStr(record("STATUS")) <> "READY_FOR_EXCEL_CROSSCHECK" Then
+            ws.Cells(rowNum, "G").Value2 = _
+                "住宅ローン控除の適用額・入居年等を単票画面で確認してください"
+        ElseIf CStr(record("STATUS")) <> "READY_FOR_EXCEL_CROSSCHECK" Then
+            ws.Cells(rowNum, "G").Value2 = _
+                "読取要確認：原票の金額・年分・控除条件を照合してください"
+        Else
+            ws.Cells(rowNum, "G").Value2 = _
+                "原票の金額・所得年と追加条件を個別確認してください"
+        End If
     Next idx
     MsgBox CStr(all.Count) & "ページを読み取り、対象者別の確認一覧を作成しました。" & vbCrLf & _
            "H列・I列を各人ごとに確認するまで寄附限度額は表示しません。", vbInformation
