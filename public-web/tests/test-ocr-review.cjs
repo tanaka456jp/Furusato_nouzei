@@ -56,10 +56,35 @@ for(const mutated of invalid){
  assert.deepEqual(result.candidates,{},mutated.slice(-100));
  assert.equal(result.status,"REQUIRES_SOURCE_REVIEW");
 }
+// Page-wide confidence must NOT rate irrelevant identity/address OCR.
+const unrelatedA=[
+ "（架空の氏名欄）〇〇　〇〇", "住所欄　架空住所　丁目番号",
+ "支払者名称欄　架空事業所", "個人番号欄　読取対象外"
+].join("\\n");
+const unrelatedB=[
+ "（架空の氏名欄）XX　XX", "住所欄　認識失敗",
+ "支払者名称欄　文字化け", "個人番号欄　判定対象外"
+].join("\\n");
+const scoped=review.compareAttempts(sample+"\\n"+unrelatedA,
+ sample+"\\n"+unrelatedB,5,0);
+assert.equal(scoped.eligibleForManualTransfer,true);
+assert.equal(scoped.qualityScope,"INCOME_YEAR_AND_FOUR_AMOUNTS_ONLY");
+assert.equal(scoped.autoApproved,false);
+assert.equal(scoped.originalCompared,false);
+assert.deepEqual(scoped.candidates,a.candidates);
+assert.equal(scoped.reasons.length,0);
+// Irrelevant changes never excuse a mismatch in income year or money.
+const material=review.compareAttempts(sample+"\\n"+unrelatedA,
+ sample.replace("7,000,000円","7,100,000円")+"\\n"+unrelatedB,99,99);
+assert.equal(material.eligibleForManualTransfer,false);
+assert.deepEqual(material.candidates,{});
+assert.ok(material.reasons.includes("FIELD_DISAGREEMENT_salaryGross"));
+// Even missing/invalid whole-page confidence is not evidence that the
+// four required fields are wrong. Confirmation is still always manual.
 for(const bad of [[null,99],[99,null],[74.9,90],[90,10],[NaN,100]]){
  const result=review.compareAttempts(sample,sample,bad[0],bad[1]);
- assert.equal(result.eligibleForManualTransfer,false,JSON.stringify(bad));
- assert.ok(result.reasons.includes("OCR_CONFIDENCE_NOT_ENOUGH"));
+ assert.equal(result.eligibleForManualTransfer,true,JSON.stringify(bad));
+ assert.equal(result.autoApproved,false);
 }
 for(const amount of ["123abc","１,０００,０１","-100","1e4","10.5","1,2,345","","¥100","1000万円"]){
  assert.equal(review.parseYen(amount),null,amount);
