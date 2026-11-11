@@ -6,7 +6,7 @@ from tempfile import TemporaryDirectory
 import unittest
 from zipfile import ZipFile
 
-from prepare_vbaupdater_project import CANONICAL_VBA, ROOT, prepare
+from prepare_vbaupdater_project import CANONICAL_VBA, CANONICAL_BATCH_VBA, ROOT, prepare
 
 
 class VbaUpdaterBridgeTest(unittest.TestCase):
@@ -20,6 +20,7 @@ class VbaUpdaterBridgeTest(unittest.TestCase):
                 archive.writestr("xl/vbaProject.bin", b"test-only" * 2800)
             before = sha256(workbook.read_bytes()).hexdigest()
             vba_before = sha256(CANONICAL_VBA.read_bytes()).hexdigest()
+            batch_before = sha256(CANONICAL_BATCH_VBA.read_bytes()).hexdigest()
             dest = root / "new-stage"
             report = prepare(workbook, dest)
             manifest = json.loads((dest / "project.json").read_text(encoding="utf-8"))
@@ -30,6 +31,10 @@ class VbaUpdaterBridgeTest(unittest.TestCase):
                 "type": "standard",
                 "name": "TaxLawUpdater",
                 "file": "standard/TaxLawUpdater.bas",
+            }, {
+                "type": "standard",
+                "name": "BatchWithholding",
+                "file": "standard/BatchWithholding.bas",
             }])
             self.assertTrue(manifest["validation"]["requireBackup"])
             self.assertEqual(manifest["target"]["file"], "Furusato_nouzei.xlsm")
@@ -38,6 +43,8 @@ class VbaUpdaterBridgeTest(unittest.TestCase):
             self.assertEqual(report["canonical_vba_sha256"], report["staged_vba_sha256"])
             self.assertEqual(sha256(workbook.read_bytes()).hexdigest(), before)
             self.assertEqual(sha256(CANONICAL_VBA.read_bytes()).hexdigest(), vba_before)
+            self.assertEqual(sha256(CANONICAL_BATCH_VBA.read_bytes()).hexdigest(), batch_before)
+            self.assertEqual(report["canonical_batch_vba_sha256"], report["staged_batch_vba_sha256"])
             with self.assertRaises(FileExistsError):
                 prepare(workbook, dest)
 
