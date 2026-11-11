@@ -169,6 +169,13 @@ try {
     }
     QA-Stage 'synthetic-years-pass'
 
+    QA-Stage 'private-batch-import-invalid-path-start'
+    # The private local acceptance entry point must fail quietly on an
+    # invalid local source and never mutate the user's original workbook.
+    $invalidSource = Join-Path $dir ('does_not_exist_' + [Guid]::NewGuid().ToString('N') + '.pdf')
+    Assert-Value ([bool]($excel.Run('BatchWithholding.BatchImportLocalFile', $invalidSource))) $false 'Private batch rejects absent PDF without a dialog'
+    Assert-Value ([int]$excel.Worksheets.Item('一括試算一覧').Range('A7').Value2) 0 'Failed private import leaves batch list empty'
+    QA-Stage 'private-batch-import-invalid-path-pass'
     QA-Stage 'synthetic-batch-restore-and-hold-start'
     # Only fictional money amounts in a throwaway QA XLSM. No real PDF.
     $batch = $book.Worksheets.Item('一括試算一覧')
