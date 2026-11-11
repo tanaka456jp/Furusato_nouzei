@@ -92,6 +92,119 @@ class WithholdingTest(unittest.TestCase):
             report = str(records)
             self.assertNotIn("SYNTHETIC_PERSON", report)
 
+    def test_five_page_2025_batch_preserves_blank_social_and_housing_fields(self):
+        # A completely fictional five-page PDF model. No actual financial
+        # amounts or identifiers are copied from the user's source PDF.
+        def tokens(gross, salary, deductions, withheld, social):
+            cells = [
+                ((104, 218, 115, 223, "G04"),
+                 (178, 215, 233, 226, f"{gross:,}")),
+                ((231, 209, 242, 215, "G05"),
+                 (289, 207, 344, 218, f"{salary:,}")),
+                ((341, 209, 352, 215, "G06"),
+                 (398, 207, 453, 218, f"{deductions:,}")),
+                ((452, 218, 463, 223, "G08"),
+                 (533, 215, 560, 224, f"{withheld:,}")),
+            ]
+            if social is not None:
+                cells.append(((138, 308, 149, 314, "G26"),
+                              (215, 305, 260, 314, f"{social:,}")))
+            else:
+                # The next column is a life-insurance deduction, NOT social
+                # insurance. An absent G26 must not borrow a G27 value.
+                cells.extend([
+                    ((138, 308, 149, 314, "G26"),),
+                    ((300, 308, 311, 314, "G27"),
+                     (365, 305, 410, 314, "42,000")),
+                ])
+            return [w for pair in cells for w in pair]
+
+        fixtures = [
+            (6900000, 5000000, 1800000, 140000, 950000),
+            (5100000, 3560000, 1500000, 0, 740000),
+            (3900000, 2600000, 1250000, 35000, 580000),
+            (1200000, 550000, 740000, 0, None),
+            (3400000, 2300000, 1140000, 46000, 415000),
+        ]
+
+        class Page:
+            def __init__(self, ordinal, entry):
+                self.ordinal = ordinal
+                self.words = tokens(*entry)
+                self.text = (
+                    "令和 7 年分\n"
+                    "源泉徴収票の架空レイアウト検証用であり"
+                    "実際の納税者の記載事項は含まれていません\n"
+                )
+            def get_text(self, kind, sort=False):
+                return self.words if kind == "words" else self.text
+
+        class Document:
+            is_encrypted = False
+            def __enter__(self):
+                return self
+            def __exit__(self, *_):
+                return False
+            def __len__(self):
+                return len(fixtures)
+            def __iter__(self):
+                return iter(Page(i, x) for i, x in enumerate(fixtures, 1))
+
+        with TemporaryDirectory() as tmp:
+            pdf = Path(tmp) / "synthetic_five_taxpayers.pdf"
+            pdf.write_bytes(b"synthetic-pdf-mock")
+            fitz_fake = SimpleNamespace(open=lambda _: Document())
+            with patch.dict("sys.modules", {"fitz": fitz_fake}):
+                pages = extract_pdf_batch(pdf)
+            self.assertEqual(len(pages), 5)
+            self.assertEqual([x["year"] for x in pages], [2025] * 5)
+            self.assertEqual([x["status"] for x in pages], [
+                "READY_FOR_EXCEL_CROSSCHECK",
+                "READY_FOR_EXCEL_CROSSCHECK",
+                "READY_FOR_EXCEL_CROSSCHECK",
+                "REQUIRES_REVIEW",
+                "READY_FOR_EXCEL_CROSSCHECK",
+            ])
+            self.assertNotIn("social_insurance", pages[3]["fields"])
+            self.assertEqual(pages[3]["fields"]["life_deduction_reference"], 42000)
+            self.assertEqual(pages[4]["fields"]["social_insurance"], 415000)
+            self.assertNotEqual(
+                pages[0]["fields"]["salary_gross"],
+                pages[1]["fields"]["salary_gross"],
+                "never reuse a previous taxpayer's income"
+            )
+            destination = Path(tmp) / "safe_page_bridge.tsv"
+            write_batch_bridge(pages, destination)
+            content = destination.read_bytes()
+            self.assertEqual(content.count(b"PAGE\t"), 5)
+            self.assertIn(b"ENDPAGE\t4\nPAGE\t5\n", content)
+            page4 = content.split(b"PAGE\t4\n", 1)[1].split(b"ENDPAGE\t4\n", 1)[0]
+            self.assertNotIn(b"social_insurance\t", page4)
+            self.assertIn(b"life_deduction_reference\t42000", page4)
+            self.assertIn(b"STATUS\tREQUIRES_REVIEW", page4)
+            self.assertNotIn(b"name", content.lower())
+            self.assertTrue(content.isascii())
+
+    def test_ambiguous_code_stays_per_page_hold_without_bridge_failure(self):
+        # An ambiguous numeric field must not abort all taxpayers' import.
+        tokens = [
+            (104, 218, 115, 223, "G04"),
+            (178, 215, 233, 226, "5,000,000"),
+            (237, 215, 263, 226, "5,100,000"),
+        ]
+        fields, warnings = extract_codes(tokens)
+        self.assertNotIn("salary_gross", fields)
+        self.assertEqual(warnings, ["AMBIGUOUS_SALARY_GROSS"])
+        hold = finish(2025, fields, "PDF_TEXT", warnings)
+        self.assertEqual(hold["status"], "REQUIRES_REVIEW")
+        with TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "ambiguous.tsv"
+            write_batch_bridge([{"page": 1, **hold}], dest)
+            output = dest.read_bytes()
+            self.assertTrue(output.isascii())
+            self.assertIn(b"AMBIGUOUS_SALARY_GROSS", output)
+            self.assertNotIn(b"salary_gross\t", output)
+
     def test_batch_rejects_wrong_page_count_and_unsafe_bridge_values(self):
         with TemporaryDirectory() as tmp:
             file = Path(tmp) / "fictional_slips.pdf"
