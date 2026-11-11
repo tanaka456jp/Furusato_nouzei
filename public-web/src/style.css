@@ -61,7 +61,15 @@
  body.batch-print .batch-panel #batchStatus,
  body.batch-print .batch-table .batch-candidate,
  body.batch-print .batch-table .batch-check,
- body.batch-print .batch-table select{display:none!important}
+ body.batch-print .batch-table select,
+ body.batch-print .batch-table th:nth-child(4),
+ body.batch-print .batch-table th:nth-child(5),
+ body.batch-print .batch-table th:nth-child(6),
+ body.batch-print .batch-table th:nth-child(7),
+ body.batch-print .batch-table th:nth-child(8),
+ body.batch-print .batch-table th:nth-child(9),
+ body.batch-print .batch-table th:nth-child(10),
+ body.batch-print .batch-table td:nth-child(8){display:none!important}
  body.batch-print .batch-viewport{overflow:visible}
  body.batch-print .batch-table{min-width:0;font-size:9px;width:100%;table-layout:auto}
  body.batch-print .batch-table th,
