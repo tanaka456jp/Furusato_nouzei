@@ -224,6 +224,42 @@ try {
     Assert-Value $batch.Range('H7').Value2 '未確認' 'Source edits revoke prior attestation'
     Assert-Value $batch.Range('I7').Value2 '未確認' 'Source edits revoke applicability check'
     $batch.Range('A7:AF26').ClearContents()
+    QA-Stage 'synthetic-five-page-batch-start'
+    # Synthetic-only five-page acceptance mirrors a missing social-insurance
+    # field in page 4 without embedding real source amounts or person names.
+    foreach ($row in @(7,8,9,10,11)) {
+        $batch.Range('A'+$row).Value2 = [double]($row-6)
+        $batch.Range('C'+$row).Value2 = 2026.0
+        $batch.Range('D'+$row).Value2 = 7000000.0
+        $batch.Range('K'+$row).Value2 = 5200000.0
+        $batch.Range('L'+$row).Value2 = 1670000.0
+        $batch.Range('M'+$row).Value2 = 285800.0
+        if ($row -ne 10) {
+            $batch.Range('N'+$row).Value2 = 1000000.0
+            $batch.Range('AE'+$row).Value2 = 'READY_FOR_EXCEL_CROSSCHECK'
+        } else {
+            $batch.Range('AE'+$row).Value2 = 'REQUIRES_REVIEW'
+            $batch.Range('AF'+$row).Value2 = 'INCOMPLETE_OR_UNVERIFIED'
+        }
+        $batch.Range('J'+$row).Value2 = '確定申告'
+        $batch.Range('H'+$row).Value2 = '照合済'
+        $batch.Range('I'+$row).Value2 = '未対応条件なし'
+    }
+    Assert-Value ([bool]($excel.Run('BatchWithholding.BatchCalculateForTest'))) $true 'Synthetic five-person batch completed'
+    foreach ($row in @(7,8,9,11)) {
+        Assert-Value $batch.Range('E'+$row).Value2 109000 ('Synthetic page '+($row-6)+' estimated separately')
+        Assert-Value $batch.Range('F'+$row).Value2 '概算' ('Synthetic page '+($row-6)+' accepted status')
+    }
+    Assert-BlankTaxAmount $batch.Range('E10').Value2 'Missing social insurance page 4 must be HOLD'
+    Assert-Value $batch.Range('F10').Value2 'HOLD' 'Missing social insurance page 4 status'
+    $batch.Range('N10').Value2 = 1000000.0
+    # A manual correction must never silently inherit the old checks.
+    $batch.Range('H10').Value2 = '照合済'
+    $batch.Range('I10').Value2 = '未対応条件なし'
+    Assert-Value ([bool]($excel.Run('BatchWithholding.BatchCalculateForTest'))) $true 'Reverified page 4 accepted for recomputation'
+    Assert-Value $batch.Range('E10').Value2 109000 'Reverified synthetic fourth person receives own estimate'
+    $batch.Range('A7:AF26').ClearContents()
+    QA-Stage 'synthetic-five-page-batch-pass'
     QA-Stage 'synthetic-batch-restore-and-hold-pass'
 
     # Regression: certified source subtotals are not invalid just because a
