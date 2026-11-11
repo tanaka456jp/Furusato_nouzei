@@ -27,6 +27,13 @@ def package(destination, reader=None):
             if not reader.is_file() or reader.stat().st_size < 10000:
                 raise ValueError("Verified standalone Windows reader EXE required")
             files["FurusatoDocumentReader.exe"] = reader
+            # Private source acceptance is available only in the actual
+            # Python-free Windows bundle, never on public Actions with
+            # uploaded tax documents.
+            files["PRIVATE_5PAGE_CHECK.cmd"] = ROOT / "tools/PRIVATE_5PAGE_CHECK.cmd"
+            files["private_batch_excel_acceptance.ps1"] = (
+                ROOT / "tools/private_batch_excel_acceptance.ps1"
+            )
         with ZipFile(destination, "w", ZIP_DEFLATED) as archive:
             for name, source in files.items():
                 archive.write(source, name)
