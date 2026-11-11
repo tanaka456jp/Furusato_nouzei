@@ -15,6 +15,7 @@ expected = {
     "START_SETUP.cmd": ROOT / "tools/START_SETUP.cmd",
     "setup.ps1": ROOT / "tools/setup.ps1",
     "TaxLawUpdater.bas": ROOT / "vba/TaxLawUpdater.bas",
+    "BatchWithholding.bas": ROOT / "vba/BatchWithholding.bas",
     "withholding_reader.py": ROOT / "tools/withholding_reader.py",
     "README.txt": ROOT / "docs/user-guide.md",
 }
@@ -23,7 +24,7 @@ with ZipFile(package) as archive:
     assert archive.testzip() is None, "Review ZIP CRC failure"
     assert set(archive.namelist()) == set(expected), "Unexpected or missing ZIP members"
     assert all(n.isascii() and n == Path(n).name for n in archive.namelist()), "Setup ZIP is not ASCII/flat"
-    for member in ("START_SETUP.cmd", "setup.ps1", "TaxLawUpdater.bas", "withholding_reader.py", "README.txt"):
+    for member in ("START_SETUP.cmd", "setup.ps1", "TaxLawUpdater.bas", "BatchWithholding.bas", "withholding_reader.py", "README.txt"):
         assert archive.read(member) == expected[member].read_bytes(), f"Stale ZIP payload: {member}"
     assert len(archive.read("Furusato_nouzei.xlsx")) > 20_000, "Incomplete workbook payload"
     ps = archive.read("setup.ps1").decode("utf-8-sig")
@@ -31,6 +32,12 @@ with ZipFile(package) as archive:
     vba = archive.read("TaxLawUpdater.bas").decode("utf-8-sig")
 
 assert "VBComponents.Add(1)" in ps, "Setup must register a standard VBA module"
+assert "BatchWithholding.bas" in ps, "Installer must require local batch VBA source"
+assert "BatchWithholding.BindButtons" in ps, "Reopen must restore local batch buttons"
+assert "CodeModule.AddFromString($batchBody)" in ps, "Installer must embed batch macro"
+assert "btnShowBatch" in (ROOT / "vba/BatchWithholding.bas").read_text(encoding="utf-8-sig")
+assert "FurusatoDocumentReader.exe" in (ROOT / "vba/BatchWithholding.bas").read_text(encoding="utf-8-sig")
+
 assert "CodeModule.AddFromString($sourceBody)" in ps, "VBA Unicode registration missing"
 assert "GetBytes($sourceVba)" not in ps, "Installer still depends on local ANSI code page"
 assert "VBComponents.Import($tempBas)" not in ps, "Installer still imports locale-sensitive ANSI BAS"
