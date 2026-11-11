@@ -19,6 +19,13 @@ $startedUtc = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
 function Assert-Value($actual, $expected, [string]$label) {
     if ($actual -cne $expected) { throw "$label expected [$expected], got [$actual]" }
 }
+function Assert-BlankTaxAmount($actual, [string]$label) {
+    # Excel COM Empty can be marshaled as null (not an empty string).
+    # Both represent truly blank cells; numeric zero is NOT blank.
+    if ($null -ne $actual -and [string]$actual -ne '') {
+        throw "$label expected an empty amount, got [$actual]"
+    }
+}
 function Assert-PrintConfiguration($sheet, [string]$label, [string]$rangePattern) {
     $page = $sheet.PageSetup
     $area = [string]$page.PrintArea
@@ -196,7 +203,7 @@ try {
     Assert-Value ([bool]($excel.Run('BatchWithholding.BatchCalculateForTest'))) $true 'Nonmodal batch calculation completed'
     Assert-Value $batch.Range('E7').Value2 109000 'Independent synthetic page 1 estimate'
     Assert-Value $batch.Range('F7').Value2 '概算' 'Page 1 calculation status'
-    Assert-Value $batch.Range('E8').Value2 '' 'Unconfirmed page 2 has no tax amount'
+    Assert-BlankTaxAmount $batch.Range('E8').Value2 'Unconfirmed page 2 has no tax amount'
     Assert-Value $batch.Range('F8').Value2 'HOLD' 'Page 2 remains HOLD'
     foreach ($addr in $baseBefore.Keys) {
         Assert-Value ([string]$homeSheet.Range($addr).Formula) $baseBefore[$addr] ('Original single-person input restored: '+$addr)
@@ -206,13 +213,13 @@ try {
     }
     $batch.Range('C7').Value2 = 2025.0
     Assert-Value ([bool]($excel.Run('BatchWithholding.BatchCalculateForTest'))) $true 'Year mismatch evaluated safely'
-    Assert-Value $batch.Range('E7').Value2 '' 'Mismatched-year page hides prior amount'
+    Assert-BlankTaxAmount $batch.Range('E7').Value2 'Mismatched-year page hides prior amount'
     Assert-Value $batch.Range('F7').Value2 'HOLD' 'Mismatched-year page is HOLD'
     $batch.Range('C7').Value2 = 2026.0
     Assert-Value ([bool]($excel.Run('BatchWithholding.BatchCalculateForTest'))) $true 'Fresh batch restored for invalidation check'
     Assert-Value $batch.Range('E7').Value2 109000 'Recovered page can calculate again'
     $excel.Run('BatchWithholding.BatchInvalidate', $batch.Range('A7'))
-    Assert-Value $batch.Range('E7').Value2 '' 'Editing source page ID invalidates estimate'
+    Assert-BlankTaxAmount $batch.Range('E7').Value2 'Editing source page ID invalidates estimate'
     Assert-Value $batch.Range('F7').Value2 'HOLD' 'Editing source page ID sets HOLD'
     Assert-Value $batch.Range('H7').Value2 '未確認' 'Source edits revoke prior attestation'
     Assert-Value $batch.Range('I7').Value2 '未確認' 'Source edits revoke applicability check'
