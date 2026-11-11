@@ -26,6 +26,21 @@ Public Sub BindButtons()
     BindOne SHEET_BATCH, "btnBatchReturnHome", "BatchReturnHome"
 End Sub
 
+' Nonmodal Excel COM acceptance checks the freshly installed VBA module
+' without exposing a client PDF or showing any confirmation dialog.
+Public Function BatchReadyForTest() As Boolean
+    On Error GoTo NotReady
+    Dim ws As Worksheet
+    Set ws = ThisWorkbook.Worksheets(SHEET_BATCH)
+    BatchReadyForTest = (CStr(ws.Range("A6").Value2) = "PDF頁" And _
+        CStr(ws.Range("E6").Value2) = "限度額の目安" And _
+        ws.Buttons("btnBatchImport").Name = "btnBatchImport" And _
+        ws.Buttons("btnBatchCalculate").Name = "btnBatchCalculate")
+    Exit Function
+NotReady:
+    BatchReadyForTest = False
+End Function
+
 Public Sub ShowBatch()
     ThisWorkbook.Worksheets(SHEET_BATCH).Visible = xlSheetVisible
     ThisWorkbook.Worksheets(SHEET_BATCH).Activate
