@@ -230,11 +230,11 @@ Failed:
 End Sub
 
 Public Sub BatchClear()
+    Dim previousEvents As Boolean
     If mWorking Then Exit Sub
     If MsgBox("現在の一括一覧を消去しますか？保存が必要な場合は先に案件保存してください。", _
               vbQuestion + vbYesNo + vbDefaultButton2) <> vbYes Then Exit Sub
     mWorking = True
-    Dim previousEvents As Boolean
     previousEvents = Application.EnableEvents
     On Error GoTo RestoreClearEvents
     Application.EnableEvents = False
@@ -347,6 +347,7 @@ Public Sub BatchCalculate()
     Dim cache As Object, initialEvents As Boolean, initialScreen As Boolean
     Dim index As Long, reason As String, amount As Variant, year As Long
     Dim sourceYear As Variant, header As Variant, good As Long, hold As Long
+    Dim originalError As String, priorPageCount As Long
     If mWorking Then Exit Sub
     initialEvents = Application.EnableEvents
     initialScreen = Application.ScreenUpdating
@@ -356,6 +357,23 @@ Public Sub BatchCalculate()
     Set settings = ThisWorkbook.Worksheets("設定・税率")
     If Application.CountA(ws.Range("A7:A26")) = 0 Then _
         Err.Raise vbObjectError + 923, , "まず複数ページPDFを読み取ってください。"
+    priorPageCount = Application.CountA(ws.Range("A7:A26"))
+    For index = START_ROW To START_ROW + priorPageCount - 1
+        If Not NumericYen(ws.Cells(index, "A").Value2) Then _
+            Err.Raise vbObjectError + 924, , "ページ番号が欠落しています。PDFを再読込してください。"
+        If CLng(ws.Cells(index, "A").Value2) <> index - START_ROW + 1 Then _
+            Err.Raise vbObjectError + 925, , "ページ番号が変更または入替されています。"
+    Next index
+    If priorPageCount > END_ROW - START_ROW + 1 Then _
+        Err.Raise vbObjectError + 926, , "20ページ上限を超えました。"
+    For index = START_ROW + priorPageCount To END_ROW
+        If Len(Trim$(CStr(ws.Cells(index, "F").Value2))) > 0 Or _
+           Len(Trim$(CStr(ws.Cells(index, "E").Value2))) > 0 Then
+            ws.Cells(index, "E").ClearContents
+            ws.Cells(index, "F").Value2 = "HOLD"
+            ws.Cells(index, "G").Value2 = "一覧の対象外です。元のPDFを確認してください"
+        End If
+    Next index
     mWorking = True
     Application.EnableEvents = False
     Application.ScreenUpdating = False
@@ -429,9 +447,18 @@ Public Sub BatchCalculate()
            "件。元の単票画面の入力は復元しました。", vbInformation
     Exit Sub
 Failed:
-    Dim originalError As String
     originalError = Err.Description
     On Error Resume Next
+    ' Abort is atomic as to published estimates: no partial results survive.
+    If Not ws Is Nothing Then
+        ws.Range("E7:E26").ClearContents
+        For index = START_ROW To END_ROW
+            If Len(Trim$(CStr(ws.Cells(index, "A").Value2))) > 0 Then
+                ws.Cells(index, "F").Value2 = "HOLD"
+                ws.Cells(index, "G").Value2 = "一括試算を中断しました。全件再確認・再計算してください"
+            End If
+        Next index
+    End If
     RestoreInputs cache
     Application.Calculate
     Application.EnableEvents = initialEvents
@@ -469,18 +496,37 @@ Public Sub BatchInvalidate(ByVal changed As Range)
     Application.EnableEvents = False
     For Each rowKey In changedRows.Keys
         index = CLng(changedRows(rowKey))
-        If Len(Trim$(CStr(ws.Cells(index, "A").Value2))) > 0 Then
-            ws.Cells(index, "E").ClearContents
-            ws.Cells(index, "F").Value2 = "HOLD"
-            ws.Cells(index, "G").Value2 = "入力変更後のため再試算が必要です"
-            If taxRows.Exists(rowKey) Then
-                ws.Cells(index, "H").Value2 = "未確認"
-                ws.Cells(index, "I").Value2 = "未確認"
-            End If
+        ws.Cells(index, "E").ClearContents
+        ws.Cells(index, "F").Value2 = "HOLD"
+        ws.Cells(index, "G").Value2 = "入力変更後のため再試算が必要です"
+        If taxRows.Exists(rowKey) Then
+            ws.Cells(index, "H").Value2 = "未確認"
+            ws.Cells(index, "I").Value2 = "未確認"
         End If
     Next rowKey
 RestoreEvents:
     Application.EnableEvents = wasEnabled
+End Sub
+
+' Called after the master/year changes successfully. Earlier estimates
+' must never survive a tax revision or approved-income-year switch.
+Public Sub BatchMasterChanged()
+    Dim ws As Worksheet, ix As Long, priorEvents As Boolean
+    If mWorking Then Exit Sub
+    Set ws = ThisWorkbook.Worksheets(SHEET_BATCH)
+    priorEvents = Application.EnableEvents
+    On Error GoTo ExitSafely
+    Application.EnableEvents = False
+    For ix = START_ROW To END_ROW
+        ws.Cells(ix, "E").ClearContents
+        If Len(Trim$(CStr(ws.Cells(ix, "A").Value2))) > 0 Then
+            ws.Cells(ix, "F").Value2 = "HOLD"
+            ws.Cells(ix, "G").Value2 = "税制変更後のため、適用年・控除条件の再確認が必要"
+            ws.Cells(ix, "I").Value2 = "未確認"
+        End If
+    Next ix
+ExitSafely:
+    Application.EnableEvents = priorEvents
 End Sub
 
 Public Sub BatchPrint()
