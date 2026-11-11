@@ -64,6 +64,11 @@ Private Function ApplyApprovedYear(ByVal noDialogs As Boolean) As Boolean
     home.Range("B29").Value2 = BUNDLED_REVISION
     home.Range("B30").Value2 = "適用済 " & Format$(Now, "yyyy/mm/dd hh:nn")
     Application.Calculate
+    ' Cached results are tied to the former approved year and tax master.
+    ' They cannot remain visible after any successful tax-master update.
+    If Not BatchWithholding.BatchMasterChanged() Then
+        Err.Raise vbObjectError + 119, , "一括試算結果の無効化に失敗しました。税制更新を中止します。"
+    End If
     book.Save
     ApplyApprovedYear = True
     If Not noDialogs Then
