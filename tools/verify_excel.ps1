@@ -66,6 +66,15 @@ try {
     QA-Stage 'worksheet-handles-acquired'
     # This is a renamed test COPY, so bind its buttons to the test workbook.
     $excel.Run('TaxLawUpdater.BindButtons')
+    $excel.Run('BatchWithholding.BindButtons')
+    Assert-Value ([bool]($excel.Run('BatchWithholding.BatchReadyForTest'))) $true 'Batch VBA module installed'
+    $batchSheet = $book.Worksheets.Item('一括試算一覧')
+    Assert-Value $batchSheet.Visible 2 'Batch sheet is hidden until explicitly requested'
+    Assert-MacroAction ([string]$homeSheet.Buttons().Item('btnShowBatch').OnAction) 'FurusatoQA.xlsm!BatchWithholding.ShowBatch' 'Batch entry button ownership'
+    $excel.Run('BatchWithholding.ShowBatch')
+    Assert-Value $batchSheet.Visible -1 'Batch sheet visible after explicit opening'
+    $excel.Run('BatchWithholding.BatchReturnHome')
+    Assert-Value $batchSheet.Visible 2 'Batch sheet hidden after return'
     Assert-MacroAction ([string]$homeSheet.Buttons().Item('btnTaxLawUpdate').OnAction) 'FurusatoQA.xlsm!TaxLawUpdater.TaxLawUpdate' 'Main case macro ownership'
     QA-Stage 'initial-recalculate-start'
     $excel.Run('TaxLawUpdater.RecalculateCase')
@@ -530,6 +539,9 @@ try {
     Assert-Value $detail.Visible 2 'Calculation details remain hidden after reopen'
     $book.Save()
     $excel.Run('TaxLawUpdater.BindButtons')
+    $excel.Run('BatchWithholding.BindButtons')
+    Assert-Value ([bool]($excel.Run('BatchWithholding.BatchReadyForTest'))) $true 'Reopened batch macro ownership'
+    Assert-MacroAction ([string]$homeSheet.Buttons().Item('btnShowBatch').OnAction) 'FurusatoQA.xlsm!BatchWithholding.ShowBatch' 'Reloaded batch entry macro'
     Assert-MacroAction ([string]$homeSheet.Buttons().Item('btnTaxLawUpdate').OnAction) 'FurusatoQA.xlsm!TaxLawUpdater.TaxLawUpdate' 'Reloaded case macro ownership'
     if (-not $detail.PageSetup.PrintArea) { throw 'Calculation details lack print area' }
     QA-Stage 'all-acceptance-checks-pass'
