@@ -156,6 +156,7 @@ End Sub
 
 Private Sub Workbook_SheetChange(ByVal Sh As Object, ByVal Target As Range)
     If Sh Is Me.Worksheets(1) Then Application.Calculate
+    If Sh.Name = "一括試算一覧" Then BatchWithholding.BatchInvalidate Target
 End Sub
 '@
     $bookModule = $workbook.VBProject.VBComponents.Item($workbook.CodeName).CodeModule
