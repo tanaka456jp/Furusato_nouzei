@@ -161,6 +161,64 @@ try {
         Assert-Value $homeSheet.Range('B8').Value2 109000 "$year donation estimate"
     }
     QA-Stage 'synthetic-years-pass'
+
+    QA-Stage 'synthetic-batch-restore-and-hold-start'
+    # Only fictional money amounts in a throwaway QA XLSM. No real PDF.
+    $batch = $book.Worksheets.Item('一括試算一覧')
+    $baseBefore = @{}
+    foreach ($addr in @('B4','B11','B12','B15','B16','B25','D22','D24')) {
+        $baseBefore[$addr] = [string]$homeSheet.Range($addr).Formula
+    }
+    $extraCase = $book.Worksheets.Item('例外・分離課税')
+    $extraBefore = @{}
+    foreach ($addr in @('B14','B15','B19','B20','B32')) {
+        $extraBefore[$addr] = [string]$extraCase.Range($addr).Formula
+    }
+    $batch.Range('A7:AF26').ClearContents()
+    foreach ($row in @(7,8)) {
+        $batch.Range('A'+$row).Value2 = [double]($row-6)
+        $batch.Range('C'+$row).Value2 = 2026.0
+        $batch.Range('D'+$row).Value2 = 7000000.0
+        $batch.Range('K'+$row).Value2 = 5200000.0
+        $batch.Range('L'+$row).Value2 = 1670000.0
+        $batch.Range('M'+$row).Value2 = 285800.0
+        $batch.Range('N'+$row).Value2 = 1000000.0
+        $batch.Range('AE'+$row).Value2 = 'READY_FOR_EXCEL_CROSSCHECK'
+        $batch.Range('AF'+$row).Value2 = ''
+        $batch.Range('J'+$row).Value2 = '確定申告'
+        $batch.Range('H'+$row).Value2 = '未確認'
+        $batch.Range('I'+$row).Value2 = '未確認'
+    }
+    # A valid fictional taxpayer gets an amount; an unverified taxpayer
+    # in the same PDF must never inherit the first person's attestation.
+    $batch.Range('H7').Value2 = '照合済'
+    $batch.Range('I7').Value2 = '未対応条件なし'
+    Assert-Value ([bool]($excel.Run('BatchWithholding.BatchCalculateForTest'))) $true 'Nonmodal batch calculation completed'
+    Assert-Value $batch.Range('E7').Value2 109000 'Independent synthetic page 1 estimate'
+    Assert-Value $batch.Range('F7').Value2 '概算' 'Page 1 calculation status'
+    Assert-Value $batch.Range('E8').Value2 '' 'Unconfirmed page 2 has no tax amount'
+    Assert-Value $batch.Range('F8').Value2 'HOLD' 'Page 2 remains HOLD'
+    foreach ($addr in $baseBefore.Keys) {
+        Assert-Value ([string]$homeSheet.Range($addr).Formula) $baseBefore[$addr] ('Original single-person input restored: '+$addr)
+    }
+    foreach ($addr in $extraBefore.Keys) {
+        Assert-Value ([string]$extraCase.Range($addr).Formula) $extraBefore[$addr] ('Original advanced input restored: '+$addr)
+    }
+    $batch.Range('C7').Value2 = 2025.0
+    Assert-Value ([bool]($excel.Run('BatchWithholding.BatchCalculateForTest'))) $true 'Year mismatch evaluated safely'
+    Assert-Value $batch.Range('E7').Value2 '' 'Mismatched-year page hides prior amount'
+    Assert-Value $batch.Range('F7').Value2 'HOLD' 'Mismatched-year page is HOLD'
+    $batch.Range('C7').Value2 = 2026.0
+    Assert-Value ([bool]($excel.Run('BatchWithholding.BatchCalculateForTest'))) $true 'Fresh batch restored for invalidation check'
+    Assert-Value $batch.Range('E7').Value2 109000 'Recovered page can calculate again'
+    $excel.Run('BatchWithholding.BatchInvalidate', $batch.Range('A7'))
+    Assert-Value $batch.Range('E7').Value2 '' 'Editing source page ID invalidates estimate'
+    Assert-Value $batch.Range('F7').Value2 'HOLD' 'Editing source page ID sets HOLD'
+    Assert-Value $batch.Range('H7').Value2 '未確認' 'Source edits revoke prior attestation'
+    Assert-Value $batch.Range('I7').Value2 '未確認' 'Source edits revoke applicability check'
+    $batch.Range('A7:AF26').ClearContents()
+    QA-Stage 'synthetic-batch-restore-and-hold-pass'
+
     # Regression: certified source subtotals are not invalid just because a
     # simplified entry screen omits special-dependent deduction components.
     # All values below are synthetic and must never contain taxpayer data.
