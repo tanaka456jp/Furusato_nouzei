@@ -6,7 +6,7 @@ import unittest
 from zipfile import ZipFile
 
 from openpyxl import load_workbook
-from build_workbook import ROOT, HOME, ENGINE, DETAIL, RESIDENT, ADVANCED, INPUT, build
+from build_workbook import ROOT, HOME, ENGINE, DETAIL, RESIDENT, ADVANCED, INPUT, BATCH, build
 
 
 class WorkbookTest(unittest.TestCase):
@@ -27,6 +27,24 @@ class WorkbookTest(unittest.TestCase):
         with ZipFile(self.target) as archive:
             self.assertIsNone(archive.testzip())
             self.assertFalse(any(n.startswith(("xl/externalLinks/", "xl/vbaProject")) for n in archive.namelist()))
+
+    def test_local_multi_person_sheet_fail_closed(self):
+        self.assertIn(BATCH, self.book.sheetnames)
+        sheet = self.book[BATCH]
+        self.assertEqual(sheet.sheet_state, "veryHidden")
+        self.assertEqual(sheet.max_row, 26)
+        self.assertGreaterEqual(sheet.max_column, 32)
+        self.assertEqual(sheet["A6"].value, "PDF頁")
+        self.assertEqual(sheet["E6"].value, "限度額の目安")
+        self.assertEqual(sheet["H6"].value, "4金額・年分の原票照合")
+        self.assertEqual(sheet["I6"].value, "未対応条件なしを確認")
+        self.assertEqual(sheet["AE6"].value, "読取判定")
+        self.assertTrue(all(sheet[f"E{i}"].value is None for i in range(7,27)))
+        self.assertTrue(all(sheet[f"F{i}"].value is None for i in range(7,27)))
+        self.assertEqual(str(sheet.print_area), "'一括試算一覧'!$A$1:$J$26")
+        self.assertEqual(sheet.freeze_panes, "D7")
+        self.assertEqual(len(sheet.data_validations.dataValidation), 3)
+        self.assertEqual([s.title for s in self.book if s.sheet_state == "visible"], [HOME])
 
     def test_a4_single_page_layout_and_legible_status(self):
         for name in (HOME, DETAIL):
