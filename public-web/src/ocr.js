@@ -444,8 +444,11 @@
       ensureCurrent();
       var b=await worker.recognize(enhanced);
       ensureCurrent();
+      // Whole-page OCR confidence includes irrelevant names/addresses.
+      // Compare the required tax fields and tax year only, with no
+      // identity-field recognition scoring or automatic approval.
       var compared=window.FurusatoSlipReview.compareAttempts(
-        a?.data?.text,b?.data?.text,a?.data?.confidence,b?.data?.confidence);
+        a?.data?.text,b?.data?.text);
       // Do not use regional reads to invent fields or override global HOLD.
       // If the original OCR returns exact positions for all four labels,
       // re-read the four crops at 2x size and VETO disagreement.
