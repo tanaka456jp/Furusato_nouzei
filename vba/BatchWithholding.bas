@@ -233,7 +233,13 @@ Public Sub BatchClear()
     If mWorking Then Exit Sub
     If MsgBox("現在の一括一覧を消去しますか？保存が必要な場合は先に案件保存してください。", _
               vbQuestion + vbYesNo + vbDefaultButton2) <> vbYes Then Exit Sub
+    mWorking = True
+    Dim previousEvents As Boolean
+    previousEvents = Application.EnableEvents
+    Application.EnableEvents = False
     ThisWorkbook.Worksheets(SHEET_BATCH).Range("A7:AF26").ClearContents
+    Application.EnableEvents = previousEvents
+    mWorking = False
 End Sub
 
 Private Function SnapshotInputs() As Object
@@ -429,6 +435,48 @@ Failed:
     mWorking = False
     MsgBox "一括試算を中断しました。元の入力は復元を試みました。" & vbCrLf & _
            "エラー: " & Err.Description, vbCritical
+End Sub
+
+' Every manual edit invalidates prior estimates. Monetary changes also
+' invalidate the operator's former confirmation; labels alone do not.
+Public Sub BatchInvalidate(ByVal changed As Range)
+    Dim ws As Worksheet, touched As Range, cell As Range
+    Dim changedRows As Object, taxRows As Object, rowKey As Variant
+    Dim wasEnabled As Boolean, index As Long
+    If mWorking Then Exit Sub
+    Set ws = ThisWorkbook.Worksheets(SHEET_BATCH)
+    Set touched = Application.Intersect(changed, ws.Range("A7:AF26"))
+    If touched Is Nothing Then Exit Sub
+    Set changedRows = CreateObject("Scripting.Dictionary")
+    Set taxRows = CreateObject("Scripting.Dictionary")
+    For Each cell In touched.Cells
+        If cell.Column <> 2 Then
+            rowKey = CStr(cell.Row)
+            If Not changedRows.Exists(rowKey) Then changedRows.Add rowKey, cell.Row
+            If cell.Column = 1 Or cell.Column = 3 Or cell.Column = 4 Or _
+               cell.Column >= 11 Then
+                If Not taxRows.Exists(rowKey) Then taxRows.Add rowKey, cell.Row
+            End If
+        End If
+    Next cell
+    If changedRows.Count = 0 Then Exit Sub
+    wasEnabled = Application.EnableEvents
+    On Error GoTo RestoreEvents
+    Application.EnableEvents = False
+    For Each rowKey In changedRows.Keys
+        index = CLng(changedRows(rowKey))
+        If Len(Trim$(CStr(ws.Cells(index, "A").Value2))) > 0 Then
+            ws.Cells(index, "E").ClearContents
+            ws.Cells(index, "F").Value2 = "HOLD"
+            ws.Cells(index, "G").Value2 = "入力変更後のため再試算が必要です"
+            If taxRows.Exists(rowKey) Then
+                ws.Cells(index, "H").Value2 = "未確認"
+                ws.Cells(index, "I").Value2 = "未確認"
+            End If
+        End If
+    Next rowKey
+RestoreEvents:
+    Application.EnableEvents = wasEnabled
 End Sub
 
 Public Sub BatchPrint()
