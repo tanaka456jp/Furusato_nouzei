@@ -13,7 +13,7 @@
   var acceptCheck=document.getElementById("slipConfirm");
   var report=document.getElementById("slipReview");
   if(!form||!fileInput||!runButton||!acceptButton||!acceptCheck||!report)return;
-  var review=null, busy=false;
+  var review=null, busy=false,batchBusy=false;
   var generation=0,reviewFile=null,reviewYear=null,reviewGeneration=-1;
   var manualRevision=0,reviewManualRevision=-1;
   // At most one OCR worker may be active while the scan button is locked.
@@ -284,7 +284,10 @@
       return safeCanvas(image,image.naturalWidth,image.naturalHeight);
     }finally{URL.revokeObjectURL(url);}
   }
-  async function openPdf(file,isStale){
+  async function openPdf(file,isStale,maxPages){
+    var pageLimit=maxPages===undefined?1:maxPages;
+    if(!Number.isSafeInteger(pageLimit)||pageLimit<1||pageLimit>20)
+      throw Error("PDF_PAGE_LIMIT_INVALID");
     var pdfjs=await import("./vendor/pdf.mjs");
     if(isStale())throw Error("OCR_SOURCE_CANCELLED");
     pdfjs.GlobalWorkerOptions.workerSrc="./vendor/pdf.worker.mjs";
@@ -302,8 +305,8 @@
     try{
       var document=await task.promise;
       if(isStale())throw Error("OCR_SOURCE_CANCELLED");
-      if(document.numPages!==1)
-        throw Error("PDFは1ページのみ対応しています。");
+      if(document.numPages<1||document.numPages>pageLimit)
+        throw Error("PDF_PAGE_COUNT_UNSUPPORTED");
       return {document:document,session:session};
     }catch(error){
       // A cancelled load must release its PDF.js worker even when no
@@ -506,6 +509,118 @@
       }
     }
   }
+  // Shared PDF page reader for the legacy single-slip screen and
+  // page-by-page batch screening. Never assumes consecutive pages are the
+  // same taxpayer; each page is isolated and must be reviewed independently.
+  async function analyzePdfPage(page,pdfSession,isStale){
+    var canvas=null,result;
+    function ensureCurrent(){
+      if(isStale())throw Error("OCR_SOURCE_CANCELLED");
+    }
+    try{
+          var extracted=await digitalPdfText(page,pdfSession,isStale);
+          ensureCurrent();
+          if(extracted.emptyTextLayer){
+            // No PDF text operators: scanned image-only single-page PDF.
+            // This is the only fallback for EMPTY, not for malformed layers.
+            canvas=await rasterizePdf(page,pdfSession);
+            ensureCurrent();
+            result=await twoPass(canvas,isStale);
+          }else{
+          var digital=window.FurusatoSlipReview.reviewDigitalPdf(extracted.text);
+          if(typeof window.FurusatoPdfLayout!=="object"||
+             typeof window.FurusatoPdfLayout.audit!=="function"||
+             typeof window.FurusatoPdfLayout.extract!=="function")
+            throw Error("PDF_POSITION_AUDIT_MISSING");
+          var positioned=window.FurusatoPdfLayout.extract(extracted.items);
+          // A PDF text layer can concatenate several separate table cells into
+          // one text line: FIELD_INVALID alone is not decisive if all four
+          // independent positioned cell anchors were uniquely verified.
+          // A real duplicate/conflict always blocks even that layout fallback.
+          var hardTextFailure=(digital.reasons||[]).some(function(reason){
+            return reason.startsWith("FIELD_CONFLICT_")||
+                   reason.startsWith("FIELD_DUPLICATE_")||
+                   (reason.startsWith("FIELD_INVALID_")&&
+                    !positioned.eligibleForManualTransfer);
+          });
+          var conflictingYears=positioned.year!==null&&digital.year!==null&&
+            positioned.year!==digital.year;
+          // Distinct complete extraction routes must agree on ALL four yen
+          // values, not just the year. A position audit may return PARTIAL;
+          // that must not mask a conflicting complete positioned candidate.
+          if(typeof window.FurusatoPdfLayout.crossCheckExtracted!=="function")
+            throw Error("PDF_CROSS_SOURCE_AUDIT_MISSING");
+          var crossCheck=window.FurusatoPdfLayout.crossCheckExtracted(
+            digital,positioned);
+          if(positioned.positionStatus==="CONFLICT"||
+             hardTextFailure||digital.yearConflict===true||
+             conflictingYears||crossCheck.status==="CONFLICT"){
+            result={
+              schema:"furusato-slip-pdf-cross-check/v1",
+              status:"REQUIRES_SOURCE_REVIEW",year:null,candidates:{},
+              reasons:positioned.positionStatus==="CONFLICT"
+                ?positioned.reasons:digital.yearConflict===true
+                  ?["PDF_EXPLICIT_YEAR_CONFLICT"]:crossCheck.status==="CONFLICT"
+                    ?crossCheck.reasons:["PDF_TEXT_OR_YEAR_CONFLICT"],
+              eligibleForManualTransfer:false,originalCompared:false,
+              autoApproved:false
+            };
+          }else if(digital.eligibleForManualTransfer){
+            var positions=window.FurusatoPdfLayout.audit(
+              extracted.items,digital.candidates);
+            result=positions.status==="CONFLICT"?{
+              schema:digital.schema,status:"REQUIRES_SOURCE_REVIEW",
+              year:null,candidates:{},reasons:positions.reasons,
+              eligibleForManualTransfer:false,originalCompared:false,
+              autoApproved:false
+            }:digital;
+          }else if(positioned.eligibleForManualTransfer){
+            // Only a fully unique title/year/four-fields geometry result can
+            // supply missing digital text candidates. It still needs original
+            // verification and full tax-engine checks before any estimate.
+            result=positioned;
+          }else{
+            canvas=await rasterizePdf(page,pdfSession);
+            ensureCurrent();
+            result=await twoPass(canvas,isStale);
+          }
+          }
+      return result;
+    }finally{
+      if(canvas){canvas.width=0;canvas.height=0;}
+      if(page&&typeof page.cleanup==="function"){
+        try{page.cleanup();}catch(_){}
+      }
+    }
+  }
+  // The batch UI only receives vetted year/four-value candidates, never
+  // OCR text, page raster, PDF bytes, identity/address or employer fields.
+  window.FurusatoBatchPdf=Object.freeze({
+    maxBytes:MAX_BYTES,
+    maxPages:20,
+    async open(file,isStale){return openPdf(file,isStale,20);},
+    async readPage(pdf,session,pageNo,isStale){
+      if(isStale())throw Error("OCR_SOURCE_CANCELLED");
+      var page=await pdf.getPage(pageNo);
+      if(isStale())throw Error("OCR_SOURCE_CANCELLED");
+      return analyzePdfPage(page,session,isStale);
+    },
+    async close(session){
+      if(!session)return;
+      try{await stopPdfSession(session);}finally{
+        if(activePdfSession===session)activePdfSession=null;
+      }
+    },
+    cancel(){cancelActiveOcr();cancelActivePdf();},
+    isSingleBusy(){return busy;},
+    beginBatch(){
+      if(busy||batchBusy)return false;
+      batchBusy=true;runButton.disabled=true;return true;
+    },
+    endBatch(){
+      batchBusy=false;runButton.disabled=busy;
+    }
+  });
   function displayReview(r){
     // A pre-checked consent made during the asynchronous scan is invalid.
     acceptCheck.checked=false;
@@ -545,7 +660,7 @@
     acceptButton.disabled=false;
   }
   runButton.addEventListener("click",async function(){
-    if(busy)return;
+    if(busy||batchBusy)return;
     // A reread supersedes all prior source attestations. A missing/invalid
     // file must not leave the old OCR values, which could otherwise be
     // calculated after the user re-checks the exclusions confirmation.
@@ -586,73 +701,8 @@
         ensureCurrent();
         stage="PDF_PAGE";var page=await pdf.getPage(1);
         ensureCurrent();
-        stage="PDF_TEXT";var extracted=await digitalPdfText(page,pdfSession,isStale);
-        ensureCurrent();
-        if(extracted.emptyTextLayer){
-          // No PDF text operators: scanned image-only single-page PDF.
-          // This is the only fallback for EMPTY, not for malformed layers.
-          stage="PDF_RASTER";canvas=await rasterizePdf(page,pdfSession);
-          ensureCurrent();
-          stage="PDF_OCR";result=await twoPass(canvas,isStale);
-        }else{
-        var digital=window.FurusatoSlipReview.reviewDigitalPdf(extracted.text);
-        if(typeof window.FurusatoPdfLayout!=="object"||
-           typeof window.FurusatoPdfLayout.audit!=="function"||
-           typeof window.FurusatoPdfLayout.extract!=="function")
-          throw Error("PDF_POSITION_AUDIT_MISSING");
-        var positioned=window.FurusatoPdfLayout.extract(extracted.items);
-        // A PDF text layer can concatenate several separate table cells into
-        // one text line: FIELD_INVALID alone is not decisive if all four
-        // independent positioned cell anchors were uniquely verified.
-        // A real duplicate/conflict always blocks even that layout fallback.
-        var hardTextFailure=(digital.reasons||[]).some(function(reason){
-          return reason.startsWith("FIELD_CONFLICT_")||
-                 reason.startsWith("FIELD_DUPLICATE_")||
-                 (reason.startsWith("FIELD_INVALID_")&&
-                  !positioned.eligibleForManualTransfer);
-        });
-        var conflictingYears=positioned.year!==null&&digital.year!==null&&
-          positioned.year!==digital.year;
-        // Distinct complete extraction routes must agree on ALL four yen
-        // values, not just the year. A position audit may return PARTIAL;
-        // that must not mask a conflicting complete positioned candidate.
-        if(typeof window.FurusatoPdfLayout.crossCheckExtracted!=="function")
-          throw Error("PDF_CROSS_SOURCE_AUDIT_MISSING");
-        var crossCheck=window.FurusatoPdfLayout.crossCheckExtracted(
-          digital,positioned);
-        if(positioned.positionStatus==="CONFLICT"||
-           hardTextFailure||digital.yearConflict===true||
-           conflictingYears||crossCheck.status==="CONFLICT"){
-          result={
-            schema:"furusato-slip-pdf-cross-check/v1",
-            status:"REQUIRES_SOURCE_REVIEW",year:null,candidates:{},
-            reasons:positioned.positionStatus==="CONFLICT"
-              ?positioned.reasons:digital.yearConflict===true
-                ?["PDF_EXPLICIT_YEAR_CONFLICT"]:crossCheck.status==="CONFLICT"
-                  ?crossCheck.reasons:["PDF_TEXT_OR_YEAR_CONFLICT"],
-            eligibleForManualTransfer:false,originalCompared:false,
-            autoApproved:false
-          };
-        }else if(digital.eligibleForManualTransfer){
-          var positions=window.FurusatoPdfLayout.audit(
-            extracted.items,digital.candidates);
-          result=positions.status==="CONFLICT"?{
-            schema:digital.schema,status:"REQUIRES_SOURCE_REVIEW",
-            year:null,candidates:{},reasons:positions.reasons,
-            eligibleForManualTransfer:false,originalCompared:false,
-            autoApproved:false
-          }:digital;
-        }else if(positioned.eligibleForManualTransfer){
-          // Only a fully unique title/year/four-fields geometry result can
-          // supply missing digital text candidates. It still needs original
-          // verification and full tax-engine checks before any estimate.
-          result=positioned;
-        }else{
-          stage="PDF_RASTER";canvas=await rasterizePdf(page,pdfSession);
-          ensureCurrent();
-          stage="PDF_OCR";result=await twoPass(canvas,isStale);
-        }
-        }
+        stage="PDF_PAGE_READ";
+        result=await analyzePdfPage(page,pdfSession,isStale);
       }else{
         stage="IMAGE_DECODE";canvas=await imageToCanvas(file);
         ensureCurrent();
