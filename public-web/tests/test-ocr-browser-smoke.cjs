@@ -209,7 +209,9 @@ async function main(){
    Tesseract.createWorker=async()=>({
     recognize:async()=>{
      window.__syntheticPdfOcrCalls++;
-     return {data:{text:ocrText,confidence:97}};
+     // Deliberately low page-wide confidence: identity/address text
+     // is outside the five tax-relevant OCR quality targets.
+     return {data:{text:ocrText,confidence:0}};
     },
     terminate:async()=>{}
    });
