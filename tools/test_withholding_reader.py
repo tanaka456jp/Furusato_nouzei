@@ -176,7 +176,7 @@ class WithholdingTest(unittest.TestCase):
             destination = Path(tmp) / "safe_page_bridge.tsv"
             write_batch_bridge(pages, destination)
             content = destination.read_bytes()
-            self.assertEqual(content.count(b"PAGE\t"), 5)
+            self.assertEqual(sum(line.startswith(b"PAGE\t") for line in content.splitlines()), 5)
             self.assertIn(b"ENDPAGE\t4\nPAGE\t5\n", content)
             page4 = content.split(b"PAGE\t4\n", 1)[1].split(b"ENDPAGE\t4\n", 1)[0]
             self.assertNotIn(b"social_insurance\t", page4)
