@@ -21,6 +21,9 @@ def verify(path):
         assert b"BatchImportLocalFile" in z.read("private_batch_excel_acceptance.ps1")
         assert z.read("PRIVATE_5PAGE_CHECK.cmd").isascii()
         assert b"ExpectedPages 5" in z.read("PRIVATE_5PAGE_CHECK.cmd")
+        # Windows PowerShell 5.1 requires UTF-8 BOM to parse Japanese text
+        # without corrupting quoted strings, even on an English runner.
+        assert z.read("private_batch_excel_acceptance.ps1").startswith(b"\xef\xbb\xbf")
     print("Python-free Windows review bundle: PASS")
 
 if __name__=="__main__":
