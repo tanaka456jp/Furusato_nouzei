@@ -198,21 +198,37 @@ Private Function MissingBatchFields(ByVal item As Object) As String
 End Function
 
 Public Sub BatchImport()
+    Dim selected As Variant
+    selected = Application.GetOpenFilename("PDF (*.pdf),*.pdf", 1, "複数人の源泉徴収票PDFを選択")
+    If VarType(selected) = vbBoolean Then Exit Sub
+    Call ImportBatchFile(CStr(selected), False)
+End Sub
+
+' Private on-device acceptance: the caller supplies a local PDF path to an
+' isolated workbook copy. No input dialog and no raw figures in the return.
+Public Function BatchImportLocalFile(ByVal pdfPath As String) As Boolean
+    BatchImportLocalFile = ImportBatchFile(pdfPath, True)
+End Function
+
+Private Function ImportBatchFile(ByVal pdfPath As String, ByVal quiet As Boolean) As Boolean
     Dim selected As Variant, fso As Object, shell As Object, executable As String
     Dim outputJson As String, outputTsv As String, command As String, rc As Long
     Dim all As Collection, record As Object, ws As Worksheet
     Dim idx As Long, rowNum As Long, item As Variant, col As String
     Dim missingFields As String, warningCodes As String
     On Error GoTo Failed
-    If mWorking Then Exit Sub
-    selected = Application.GetOpenFilename("PDF (*.pdf),*.pdf", 1, "複数人の源泉徴収票PDFを選択")
-    If VarType(selected) = vbBoolean Then Exit Sub
+    If mWorking Then Exit Function
+    selected = pdfPath
+    If Len(Trim$(pdfPath)) = 0 Then _
+        Err.Raise vbObjectError + 927, , "ローカルPDFを選択してください。"
     If ThisWorkbook.ReadOnly Or Len(ThisWorkbook.Path) = 0 Then _
         Err.Raise vbObjectError + 918, , "書き込み可能なローカルExcelブックが必要です。"
     Set ws = ThisWorkbook.Worksheets(SHEET_BATCH)
     If Application.CountA(ws.Range("A7:A26")) > 0 Then _
         Err.Raise vbObjectError + 919, , "既存の一覧があります。保存後に「一覧初期化」で消去してください。"
     Set fso = CreateObject("Scripting.FileSystemObject")
+    If Not fso.FileExists(CStr(selected)) Then _
+        Err.Raise vbObjectError + 928, , "指定PDFが見つかりません。"
     If fso.GetFile(CStr(selected)).Size > 25 * 1024 * 1024 Then _
         Err.Raise vbObjectError + 920, , "PDFは25MB以下を指定してください。"
     executable = fso.BuildPath(ThisWorkbook.Path, "FurusatoDocumentReader.exe")
@@ -267,8 +283,11 @@ Public Sub BatchImport()
                 "原票の金額・所得年と追加条件を個別確認してください"
         End If
     Next idx
-    MsgBox CStr(all.Count) & "ページを読み取り、対象者別の確認一覧を作成しました。" & vbCrLf & _
-           "H列・I列を各人ごとに確認するまで寄附限度額は表示しません。", vbInformation
+    ImportBatchFile = True
+    If Not quiet Then
+        MsgBox CStr(all.Count) & "ページを読み取り、対象者別の確認一覧を作成しました。" & vbCrLf & _
+               "H列・I列を各人ごとに確認するまで寄附限度額は表示しません。", vbInformation
+    End If
 CleanUp:
     On Error Resume Next
     mWorking = False
@@ -276,11 +295,12 @@ CleanUp:
         If Len(outputJson) > 0 And fso.FileExists(outputJson) Then fso.DeleteFile outputJson, True
         If Len(outputTsv) > 0 And fso.FileExists(outputTsv) Then fso.DeleteFile outputTsv, True
     End If
-    Exit Sub
+    Exit Function
 Failed:
-    MsgBox "複数PDF取込： " & Err.Description, vbExclamation
+    ImportBatchFile = False
+    If Not quiet Then MsgBox "複数PDF取込： " & Err.Description, vbExclamation
     Resume CleanUp
-End Sub
+End Function
 
 Public Sub BatchClear()
     Dim previousEvents As Boolean
