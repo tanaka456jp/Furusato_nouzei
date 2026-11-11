@@ -85,16 +85,17 @@
       sourceTextPersisted:false,autoApproved:false
     };
   }
-  function compareAttempts(left,right,confidenceLeft,confidenceRight) {
+  // Compare ONLY the income year and four tax-calculation amounts.
+  // Tesseract's page-wide confidence includes irrelevant personal identifiers
+  // (name, address, employer etc.) and must not decide tax-field quality.
+  // These candidates are never auto-approved; the original must be checked.
+  function compareAttempts(left,right) {
     var a=reviewText(left),b=reviewText(right);
     var reasons=[];
     if(a.year===null||b.year===null||a.year!==b.year)
       reasons.push("YEAR_DISAGREEMENT");
     if(!a.fullyExtracted||!b.fullyExtracted)
       reasons.push("INCOMPLETE_OCR");
-    if(!Number.isFinite(confidenceLeft)||!Number.isFinite(confidenceRight)||
-       confidenceLeft<75||confidenceRight<75)
-      reasons.push("OCR_CONFIDENCE_NOT_ENOUGH");
     var candidates={};
     FIELDS.forEach(function(f){
       if(!Number.isSafeInteger(a.candidates[f.key])||
@@ -114,6 +115,8 @@
       candidates:reasons.length===0?candidates:{},
       reasons:Array.from(new Set(reasons)),
       eligibleForManualTransfer:reasons.length===0,
+      // Explicit audit scope; irrelevant personal fields are never scored.
+      qualityScope:"INCOME_YEAR_AND_FOUR_AMOUNTS_ONLY",
       autoApproved:false,originalCompared:false
     };
   }
