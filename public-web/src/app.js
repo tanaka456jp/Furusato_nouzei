@@ -209,8 +209,28 @@
     }
     return true;
   }
+  // Print/PDF needs the calculation basis even if the user never opened
+  // the on-screen <details>. Do not permanently change the screen state.
+  var printDetails=null,printDetailsWasOpen=false;
   window.addEventListener("beforeprint",function(){
-    if(printableInputSnapshot!==null)checkPrintableSnapshot();
+    if(printableInputSnapshot!==null&&!checkPrintableSnapshot())return;
+    if(printableInputSnapshot===null||!printableResult||
+       output.hidden||output.className!=="result")return;
+    var details=output.querySelector("details");
+    if(details){
+      if(printDetails!==details){
+        printDetails=details;
+        printDetailsWasOpen=details.open;
+      }
+      details.open=true;
+    }
+  });
+  window.addEventListener("afterprint",function(){
+    if(printDetails){
+      printDetails.open=printDetailsWasOpen;
+      printDetails=null;
+      printDetailsWasOpen=false;
+    }
   });
   var conditionsConfirmation=form.elements.namedItem("acknowledgedExclusions");
   // Every material input change requires a fresh exclusions/allowances review.
