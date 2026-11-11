@@ -236,8 +236,10 @@ Public Sub BatchClear()
     mWorking = True
     Dim previousEvents As Boolean
     previousEvents = Application.EnableEvents
+    On Error GoTo RestoreClearEvents
     Application.EnableEvents = False
     ThisWorkbook.Worksheets(SHEET_BATCH).Range("A7:AF26").ClearContents
+RestoreClearEvents:
     Application.EnableEvents = previousEvents
     mWorking = False
 End Sub
@@ -345,16 +347,16 @@ Public Sub BatchCalculate()
     Dim cache As Object, initialEvents As Boolean, initialScreen As Boolean
     Dim index As Long, reason As String, amount As Variant, year As Long
     Dim sourceYear As Variant, header As Variant, good As Long, hold As Long
-    On Error GoTo Failed
     If mWorking Then Exit Sub
+    initialEvents = Application.EnableEvents
+    initialScreen = Application.ScreenUpdating
+    On Error GoTo Failed
     Set ws = ThisWorkbook.Worksheets(SHEET_BATCH)
     Set home = ThisWorkbook.Worksheets(SHEET_HOME)
     Set settings = ThisWorkbook.Worksheets("設定・税率")
     If Application.CountA(ws.Range("A7:A26")) = 0 Then _
         Err.Raise vbObjectError + 923, , "まず複数ページPDFを読み取ってください。"
     mWorking = True
-    initialEvents = Application.EnableEvents
-    initialScreen = Application.ScreenUpdating
     Application.EnableEvents = False
     Application.ScreenUpdating = False
     Set cache = SnapshotInputs()
@@ -427,6 +429,8 @@ Public Sub BatchCalculate()
            "件。元の単票画面の入力は復元しました。", vbInformation
     Exit Sub
 Failed:
+    Dim originalError As String
+    originalError = Err.Description
     On Error Resume Next
     RestoreInputs cache
     Application.Calculate
@@ -434,7 +438,7 @@ Failed:
     Application.ScreenUpdating = initialScreen
     mWorking = False
     MsgBox "一括試算を中断しました。元の入力は復元を試みました。" & vbCrLf & _
-           "エラー: " & Err.Description, vbCritical
+           "エラー: " & originalError, vbCritical
 End Sub
 
 ' Every manual edit invalidates prior estimates. Monetary changes also
