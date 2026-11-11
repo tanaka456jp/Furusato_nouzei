@@ -11,6 +11,10 @@ const FORMATS=Object.freeze(["digital-pdf","scan-pdf","photo"]);
 const DEVICES=Object.freeze(["windows-edge","iphone-safari","other"]);
 const CASE_ID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_RECORDS=100000;
+// Only these values and the income year count towards field accuracy.
+// Personal identifiers, employer, address and other unrelated OCR text
+// are never scored, persisted or required for the statistical target.
+const QUALITY_SCOPE="INCOME_YEAR_AND_FOUR_AMOUNTS_ONLY";
 function wilsonLower(success,total){
  if(total===0)return null;
  const z=1.959963984540054,p=success/total,v=z*z;
@@ -134,6 +138,8 @@ function summarize(records){
      d=>byFormatAndDevice[f][d].statisticalTargetMet));
  return {
   schema:"furusato-private-ocr-aggregate/v2",
+  qualityScope:QUALITY_SCOPE,
+  evaluatedMonetaryFields:FIELDS.slice(),
   overall:overallResult,
   byFormat,
   byDevice,
