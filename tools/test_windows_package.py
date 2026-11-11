@@ -7,12 +7,15 @@ def verify(path):
     with ZipFile(path) as z:
         names=set(z.namelist())
         mandatory={"Furusato_nouzei.xlsx","START_SETUP.cmd","setup.ps1",
-                   "TaxLawUpdater.bas","FurusatoDocumentReader.exe","README.txt"}
+                   "TaxLawUpdater.bas","BatchWithholding.bas",
+                   "FurusatoDocumentReader.exe","README.txt"}
         assert names==mandatory,(names,mandatory)
         assert z.testzip() is None
         assert len(z.read("FurusatoDocumentReader.exe"))>10000
         assert b"python.exe" not in z.read("TaxLawUpdater.bas").lower()
         assert b"FurusatoDocumentReader.exe" in z.read("TaxLawUpdater.bas")
+        assert b"FurusatoDocumentReader.exe" in z.read("BatchWithholding.bas")
+        assert b"BatchCalculate" in z.read("BatchWithholding.bas")
     print("Python-free Windows review bundle: PASS")
 
 if __name__=="__main__":
