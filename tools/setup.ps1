@@ -224,6 +224,8 @@ End Sub
     $phase = 'VBA実行スモーク'
     Log 'マクロを実際に実行して、Excel/VBA連携を検査します。'
     $excel.Run('TaxLawUpdater.BindButtons')
+    $excel.Run('BatchWithholding.BindButtons')
+    Assert ([bool]($excel.Run('BatchWithholding.BatchReadyForTest'))) '一括試算VBAのボタン登録・読込に失敗しました。'
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert ($workbook.Worksheets.Item('自動回帰テスト').Range('B49').Value2 -ceq 'PASS') 'マクロの実行後、回帰試験が不合格です。'
     $phase = 'ファイル確定保存'
