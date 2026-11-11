@@ -16,6 +16,7 @@ def package(destination, reader=None):
             "START_SETUP.cmd": ROOT / "tools/START_SETUP.cmd",
             "setup.ps1": ROOT / "tools/setup.ps1",
             "TaxLawUpdater.bas": ROOT / "vba/TaxLawUpdater.bas",
+            "BatchWithholding.bas": ROOT / "vba/BatchWithholding.bas",
             "README.txt": ROOT / "docs/user-guide.md",
         }
         if reader is None:
