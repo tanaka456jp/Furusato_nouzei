@@ -23,7 +23,8 @@ foreach ($source in @(
     'tools/verify_windows_hosted.ps1',
     'tools/probe_excel_open.ps1',
     'tools/run_excel_open_probe.ps1',
-    'tools/verify_vbaupdater_bridge.ps1'
+    'tools/verify_vbaupdater_bridge.ps1',
+    'tools/private_batch_excel_acceptance.ps1'
 )) {
     $tokens = $null
     $errors = $null
@@ -72,6 +73,7 @@ try {
     Require ($batchBas.Contains('Attribute VB_Name = "BatchWithholding"')) 'Batch module encoding is damaged'
     Require ($batchBas.Contains('Public Sub BatchCalculate()')) 'Batch macro missing'
     Require ($batchBas.Contains('Public Sub BatchInvalidate(')) 'Batch edit-invalidating guard missing'
+    Require ($batchBas.Contains('Public Function BatchImportLocalFile(')) 'Private offline import VBA missing'
 
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $xlsx = [IO.Compression.ZipFile]::OpenRead((Join-Path $extracted 'Furusato_nouzei.xlsx'))
