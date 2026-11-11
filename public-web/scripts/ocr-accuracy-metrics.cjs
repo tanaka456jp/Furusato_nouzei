@@ -8,6 +8,7 @@ const fs=require("node:fs"),path=require("node:path");
 const FIELDS=["salaryGross","salaryIncomeReference",
  "deductionsReference","socialInsurance"];
 const KINDS=["digital_pdf","mfp_scan","mobile_photo","other"];
+const QUALITY_SCOPE="INCOME_YEAR_AND_FOUR_AMOUNTS_ONLY";
 function wilsonLower(k,n){
  if(!Number.isSafeInteger(k)||!Number.isSafeInteger(n)||n<=0||k<0||k>n)return 0;
  const z=1.959963984540054,p=k/n,z2=z*z;
@@ -68,6 +69,8 @@ function summarize(rows){
  for(const kind of KINDS)if(categories[kind].documents)segments[kind]=out(categories[kind]);
  return {
   schema:"furusato-local-ocr-accuracy-aggregate/v1",
+  qualityScope:QUALITY_SCOPE,
+  evaluatedMonetaryFields:FIELDS.slice(),
   status:"MEASURED_NOT_CERTIFIED",release:"HOLD",syntheticOrPrivate:"CALLER_DECLARED",
   overall:out(total),byKind:segments,
   warnings:["AGGREGATES_NOT_PROOF_OF_AI_OCR_EQUIVALENCE",
