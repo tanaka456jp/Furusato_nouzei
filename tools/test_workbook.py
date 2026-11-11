@@ -36,7 +36,7 @@ class WorkbookTest(unittest.TestCase):
         self.assertGreaterEqual(sheet.max_column, 32)
         self.assertEqual(sheet["A6"].value, "PDF頁")
         self.assertEqual(sheet["E6"].value, "限度額の目安")
-        self.assertEqual(sheet["H6"].value, "4金額・年分の原票照合")
+        self.assertEqual(sheet["H6"].value, "必要5金額・年分の原票照合")
         self.assertEqual(sheet["I6"].value, "未対応条件なしを確認")
         self.assertEqual(sheet["AE6"].value, "読取判定")
         self.assertTrue(all(sheet[f"E{i}"].value is None for i in range(7,27)))
