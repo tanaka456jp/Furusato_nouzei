@@ -60,13 +60,13 @@ for(const mutated of invalid){
 const unrelatedA=[
  "（架空の氏名欄）〇〇　〇〇", "住所欄　架空住所　丁目番号",
  "支払者名称欄　架空事業所", "個人番号欄　読取対象外"
-].join("\\n");
+].join("\n");
 const unrelatedB=[
  "（架空の氏名欄）XX　XX", "住所欄　認識失敗",
  "支払者名称欄　文字化け", "個人番号欄　判定対象外"
-].join("\\n");
-const scoped=review.compareAttempts(sample+"\\n"+unrelatedA,
- sample+"\\n"+unrelatedB,5,0);
+].join("\n");
+const scoped=review.compareAttempts(sample+"\n"+unrelatedA,
+ sample+"\n"+unrelatedB,5,0);
 assert.equal(scoped.eligibleForManualTransfer,true);
 assert.equal(scoped.qualityScope,"INCOME_YEAR_AND_FOUR_AMOUNTS_ONLY");
 assert.equal(scoped.autoApproved,false);
@@ -74,8 +74,8 @@ assert.equal(scoped.originalCompared,false);
 assert.deepEqual(scoped.candidates,a.candidates);
 assert.equal(scoped.reasons.length,0);
 // Irrelevant changes never excuse a mismatch in income year or money.
-const material=review.compareAttempts(sample+"\\n"+unrelatedA,
- sample.replace("7,000,000円","7,100,000円")+"\\n"+unrelatedB,99,99);
+const material=review.compareAttempts(sample+"\n"+unrelatedA,
+ sample.replace("7,000,000円","7,100,000円")+"\n"+unrelatedB,99,99);
 assert.equal(material.eligibleForManualTransfer,false);
 assert.deepEqual(material.candidates,{});
 assert.ok(material.reasons.includes("FIELD_DISAGREEMENT_salaryGross"));
