@@ -5,6 +5,7 @@ installation must still pass tools/verify_excel.ps1 on a dedicated runner.
 """
 from __future__ import annotations
 from pathlib import Path
+import re
 from zipfile import ZipFile
 import sys
 
@@ -37,6 +38,22 @@ assert "BatchWithholding.BindButtons" in ps, "Reopen must restore local batch bu
 assert "CodeModule.AddFromString($batchBody)" in ps, "Installer must embed batch macro"
 assert "btnShowBatch" in (ROOT / "vba/BatchWithholding.bas").read_text(encoding="utf-8-sig")
 assert "FurusatoDocumentReader.exe" in (ROOT / "vba/BatchWithholding.bas").read_text(encoding="utf-8-sig")
+# VBA accepts Exit Function only inside Function and Exit Sub only inside Sub.
+# An invalid Exit Sub in ExecuteBatch previously opened a hidden compile
+# dialog during unattended Excel COM and exhausted the 8-minute runner window.
+batch_vba = (ROOT / "vba/BatchWithholding.bas").read_text(encoding="utf-8-sig")
+for match in re.finditer(
+    r"(?im)^\s*(?:Public|Private)\s+(Function|Sub)\s+([A-Za-z][A-Za-z0-9_]*)\b[^\n]*\n"
+    r"(.*?)^\s*End\s+(Function|Sub)\b",
+    batch_vba, re.S,
+):
+    kind, name, body, ending = match.groups()
+    assert kind.lower() == ending.lower(), f"Wrong VBA end for {name}"
+    forbidden = "Exit Sub" if kind.lower() == "function" else "Exit Function"
+    assert not re.search(r"\b" + forbidden + r"\b", body, flags=re.I), (
+        f"VBA {name} uses {forbidden} within {kind}"
+    )
+
 
 assert "CodeModule.AddFromString($sourceBody)" in ps, "VBA Unicode registration missing"
 assert "GetBytes($sourceVba)" not in ps, "Installer still depends on local ANSI code page"
