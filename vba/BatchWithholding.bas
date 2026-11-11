@@ -362,6 +362,16 @@ Private Function ReviewWarningsSafe(ByVal status As String, ByVal warnings As St
 End Function
 
 Public Sub BatchCalculate()
+    Call ExecuteBatch(False)
+End Sub
+
+' Deterministic, nonmodal acceptance used only on the disposable Windows QA
+' workbook. The exact same tax and HOLD flow drives the user-facing button.
+Public Function BatchCalculateForTest() As Boolean
+    BatchCalculateForTest = ExecuteBatch(True)
+End Function
+
+Private Function ExecuteBatch(ByVal noDialogs As Boolean) As Boolean
     Dim ws As Worksheet, home As Worksheet, settings As Worksheet
     Dim cache As Object, initialEvents As Boolean, initialScreen As Boolean
     Dim index As Long, reason As String, amount As Variant, year As Long
@@ -462,9 +472,12 @@ Public Sub BatchCalculate()
     Application.EnableEvents = initialEvents
     Application.ScreenUpdating = initialScreen
     mWorking = False
-    MsgBox "個別計算を終了しました。" & vbCrLf & "概算 " & good & "件 / HOLD " & hold & _
-           "件。元の単票画面の入力は復元しました。", vbInformation
-    Exit Sub
+    ExecuteBatch = True
+    If Not noDialogs Then
+        MsgBox "個別計算を終了しました。" & vbCrLf & "概算 " & good & "件 / HOLD " & hold & _
+               "件。元の単票画面の入力は復元しました。", vbInformation
+    End If
+    Exit Function
 Failed:
     originalError = Err.Description
     On Error Resume Next
@@ -483,9 +496,12 @@ Failed:
     Application.EnableEvents = initialEvents
     Application.ScreenUpdating = initialScreen
     mWorking = False
-    MsgBox "一括試算を中断しました。元の入力は復元を試みました。" & vbCrLf & _
-           "エラー: " & originalError, vbCritical
-End Sub
+    ExecuteBatch = False
+    If Not noDialogs Then
+        MsgBox "一括試算を中断しました。元の入力は復元を試みました。" & vbCrLf & _
+               "エラー: " & originalError, vbCritical
+    End If
+End Function
 
 ' Every manual edit invalidates prior estimates. Monetary changes also
 ' invalidate the operator's former confirmation; labels alone do not.
