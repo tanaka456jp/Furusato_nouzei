@@ -13,7 +13,7 @@ assert.equal(result.ads,"NOT_ENABLED");
 assert.equal(result.ocr,"LOCAL_ONLY_REVIEW");
 assert.equal(result.deployment,"NOT_RUN");
 for(const name of ["index.html","style.css","app.js","about.html","privacy.html",
- "engine.js","robots.txt","_headers", "ocr.js","ocr-review.js","ocr-quality.js","ocr-layout.js","ocr-regions.js","ocr-image-header.js","pdf-compat.js",
+ "engine.js","robots.txt","_headers", "ocr.js","batch.js","batch-core.js","ocr-review.js","ocr-quality.js","ocr-layout.js","ocr-regions.js","ocr-image-header.js","pdf-compat.js",
  "vendor/tesseract/tesseract.min.js","vendor/tesseract/worker.min.js",
  "vendor/tesseract/lang/jpn.traineddata.gz","vendor/pdf.mjs","vendor/pdf.worker.mjs",
  "licenses/THIRD_PARTY_NOTICES.txt"])
@@ -42,6 +42,17 @@ assert.doesNotMatch(html,/https?:\/\/[^"']+\.js["']/);
 assert.match(html,/id="slipFile"/);
 assert.match(html,/id="slipTransfer"/);
 assert.match(html,/id="slipConfirm"[^>]*disabled/);
+assert.match(html,/id="batchPdf"/);
+assert.match(html,/id="batchScan"/);
+assert.match(html,/id="batchRows"/);
+assert.match(html,/id="batchCalculate"[^>]*disabled/);
+assert.match(html,/id="batchDownload"[^>]*disabled/);
+assert.match(html,/src="\.\/batch-core\.js"/);
+assert.match(html,/src="\.\/batch\.js"/);
+const batchJavaScript=fs.readFileSync(path.join(out,"batch.js"),"utf8");
+assert.doesNotMatch(batchJavaScript,/XMLHttpRequest|sendBeacon|localStorage|sessionStorage|\bfetch\s*\(/);
+assert.match(batchJavaScript,/FurusatoEstimateGuard/);
+
 assert.match(html,/src="\.\/ocr-review\.js"/);
 assert.match(html,/src="\.\/ocr-quality\.js"/);
 assert.match(html,/src="\.\/ocr-image-header\.js"/);
