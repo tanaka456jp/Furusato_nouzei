@@ -28,3 +28,44 @@
 .ocr-report ul{margin:8px 0;padding-left:21px}
 .smallprint{font-size:11px!important}
 @media(max-width:700px){.ocr-panel{padding:14px}.ocr-actions{display:grid}.ocr-actions button{width:100%}}
+
+
+/* One local slip per page; no identity text is extracted by OCR. */
+.batch-panel{margin:24px 0 30px}
+.batch-panel h2{font-size:23px;margin:0 0 10px;color:#17374d}
+.batch-panel>p{font-size:13px;line-height:1.7;color:#52687b}
+.batch-file-label{display:block;margin:14px 0 8px}
+.batch-file-label input{display:block;margin:8px 0;border:1px solid #9eaeb9;
+ background:white;border-radius:8px;padding:10px;max-width:100%;width:100%}
+.batch-actions{margin:12px 0 15px}
+.batch-viewport{overflow-x:auto;max-width:100%}
+.batch-table{border-collapse:collapse;min-width:1240px;width:100%;font-size:12px;background:white}
+.batch-table caption{text-align:left;font-weight:700;margin:12px 0}
+.batch-table th,.batch-table td{border:1px solid #d0dce4;padding:8px;vertical-align:middle;min-width:72px}
+.batch-table th{background:#e9f2f8;white-space:normal;min-width:68px}
+.batch-table td.batch-candidate,.batch-table td.batch-result{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.batch-table td.batch-reason{min-width:150px;max-width:280px}
+.batch-table input[type=text]{min-width:130px;width:100%;margin:0;font-size:12px;height:34px}
+.batch-table select{min-width:110px;height:34px;margin:0;padding:3px}
+.batch-table .batch-check{text-align:center}
+.batch-table input[type=checkbox]{width:19px;height:19px;accent-color:#12689c}
+.batch-panel button:disabled{opacity:.55;cursor:not-allowed}
+@media print{
+ body:not(.batch-print) .batch-panel{display:none!important}
+ body.batch-print .panel:not(.batch-panel){display:none!important}
+ body.batch-print .batch-panel{display:block!important;border:0;box-shadow:none;padding:0;margin:0}
+ body.batch-print .batch-panel .actions,
+ body.batch-print .batch-panel .batch-file-label,
+ body.batch-print .batch-panel .notice,
+ body.batch-print .batch-panel .smallprint,
+ body.batch-print .batch-panel #batchStatus,
+ body.batch-print .batch-table .batch-candidate,
+ body.batch-print .batch-table .batch-check,
+ body.batch-print .batch-table select{display:none!important}
+ body.batch-print .batch-viewport{overflow:visible}
+ body.batch-print .batch-table{min-width:0;font-size:9px;width:100%;table-layout:auto}
+ body.batch-print .batch-table th,
+ body.batch-print .batch-table td{min-width:0;padding:5px;word-break:break-word}
+ body.batch-print .batch-table input[type=text]{border:0;background:none;padding:0;width:100%;font-size:9px}
+ body.batch-print .batch-table tr{break-inside:avoid}
+}
