@@ -23,6 +23,13 @@ assert.equal(engine,fs.readFileSync(path.join(root,"..","gas","Engine.gs"),"utf8
 const html=fs.readFileSync(path.join(out,"index.html"),"utf8");
 const app=fs.readFileSync(path.join(out,"app.js"),"utf8");
 const headers=fs.readFileSync(path.join(out,"_headers"),"utf8");
+const printCss=fs.readFileSync(path.join(out,"style.css"),"utf8");
+// Only reviewed tax results and their basis may be printed. Source filenames,
+// OCR preview and personal identity fields must remain outside saved PDFs.
+assert.match(printCss,/\.ocr-panel,\.fields/);
+assert.match(printCss,/\.result details>summary/);
+assert.match(printCss,/#result\[hidden\]/);
+assert.match(html,/class="print-only"/);
 assert.match(html,/noindex,nofollow,noarchive/);
 assert.match(headers,/connect-src 'self'/);
 assert.match(headers,/worker-src 'self'/);
@@ -153,6 +160,17 @@ assert.equal(view.querySelector("button").type,"button");
 // an estimate. Printing must NOT reuse the old conditions or visible amount.
 let syntheticPrintCalls=0;
 dom.window.print=()=>{syntheticPrintCalls++;};
+const printBasis=view.querySelector("details");
+assert.equal(printBasis.open,false);
+dom.window.dispatchEvent(new Event("beforeprint"));
+assert.equal(printBasis.open,true,"PDF print must expand the calculation basis");
+dom.window.dispatchEvent(new Event("afterprint"));
+assert.equal(printBasis.open,false,"print preview must not alter screen state");
+printBasis.open=true;
+dom.window.dispatchEvent(new Event("beforeprint"));
+dom.window.dispatchEvent(new Event("afterprint"));
+assert.equal(printBasis.open,true,"previously expanded details stay expanded");
+printBasis.open=false;
 view.querySelector("button").click();
 assert.equal(syntheticPrintCalls,1,"normal print remains available");
 const priorPrintButton=view.querySelector("button");
