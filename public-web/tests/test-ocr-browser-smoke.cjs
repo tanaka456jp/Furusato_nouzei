@@ -54,6 +54,40 @@ function imageOnlyPdf(blank=false){
  return Buffer.concat(blocks);
 }
 
+// Two *fictional* taxpayers: one synthetic image-only slip per PDF page.
+// No personal names or real salary statements are embedded in the fixture.
+function twoPageImagePdf(){
+ const w=1100,h=800,pixels=Buffer.alloc(w*h*3,255);
+ for(let y=80;y<730;y++)for(let x=60;x<1020;x++){
+  if((y%91<5&&x%37<26)||(x%131<4&&y%41<27)){
+   const i=(y*w+x)*3;pixels[i]=pixels[i+1]=pixels[i+2]=30;
+  }
+ }
+ const image=zlib.deflateSync(pixels,{level:6});
+ const stream=Buffer.from("q 1100 0 0 800 0 0 cm /Im0 Do Q");
+ const objects=[
+  Buffer.from("<< /Type /Catalog /Pages 2 0 R >>"),
+  Buffer.from("<< /Type /Pages /Count 2 /Kids [3 0 R 6 0 R] >>"),
+  Buffer.from("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1100 800] /Resources << /XObject << /Im0 5 0 R >> >> /Contents 4 0 R >>"),
+  Buffer.concat([Buffer.from("<< /Length "+stream.length+" >>\\nstream\\n"),stream,Buffer.from("\\nendstream")]),
+  Buffer.concat([Buffer.from("<< /Type /XObject /Subtype /Image /Width 1100 /Height 800 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /Length "+image.length+" >>\\nstream\\n"),image,Buffer.from("\\nendstream")]),
+  Buffer.from("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1100 800] /Resources << /XObject << /Im0 5 0 R >> >> /Contents 7 0 R >>"),
+  Buffer.concat([Buffer.from("<< /Length "+stream.length+" >>\\nstream\\n"),stream,Buffer.from("\\nendstream")])
+ ];
+ const blocks=[Buffer.from("%PDF-1.4\\n%\\xE2\\xE3\\xCF\\xD3\\n","binary")];
+ const offsets=[0];let size=blocks[0].length;
+ objects.forEach((obj,i)=>{
+  offsets.push(size);
+  const block=Buffer.concat([Buffer.from((i+1)+" 0 obj\\n"),obj,Buffer.from("\\nendobj\\n")]);
+  blocks.push(block);size+=block.length;
+ });
+ const xref=["xref","0 "+(objects.length+1),"0000000000 65535 f "];
+ for(let i=1;i<offsets.length;i++)
+  xref.push(String(offsets[i]).padStart(10,"0")+" 00000 n ");
+ blocks.push(Buffer.from(xref.join("\\n")+"\\ntrailer\\n<< /Size "+(objects.length+1)+" /Root 1 0 R >>\\nstartxref\\n"+size+"\\n%%EOF\\n"));
+ return Buffer.concat(blocks);
+}
+
 async function main(){
  const csp=fs.readFileSync(path.join(root,"_headers"),"utf8")
    .split("\n").find(x=>x.trim().startsWith("Content-Security-Policy:"))
@@ -249,6 +283,45 @@ async function main(){
   await page.locator("#slipConfirm").check();
   await page.locator("#slipTransfer").click();
   assert.equal(await page.locator('[name="salaryGross"]').inputValue(),"7000000");
+  // Real browser / actual PDF.js two-page image-only document acceptance:
+  // independent person-by-page processing, no automatic estimates, per-row
+  // review and supported-condition checks, HOLD for an unverified row.
+  await page.locator("#batchPdf").setInputFiles({
+   name:"fictional-two-page-slips.pdf",
+   mimeType:"application/pdf",buffer:twoPageImagePdf()
+  });
+  const beforeBatchCalls=await page.evaluate(()=>window.__syntheticPdfOcrCalls);
+  await page.locator("#batchScan").click();
+  await page.waitForFunction(()=>
+   document.getElementById("batchScan").disabled===false &&
+   document.querySelectorAll("#batchRows tr").length===2,
+   null,{timeout:30000});
+  assert.equal(await page.evaluate(()=>window.__syntheticPdfOcrCalls),
+   beforeBatchCalls+4,"two scan pages require four exact tax-field OCR reads");
+  assert.equal(await page.locator("#batchRows tr").count(),2);
+  assert.equal(await page.locator("#batchDownload").isDisabled(),true);
+  await page.locator("#batchCalculate").click();
+  assert.equal(await page.locator("#batchRows .batch-result").first().textContent(),"—",
+   "bulk estimate must not calculate without manual source verification");
+  await page.locator('#batchRows input[data-field="confirmed"]').first().check();
+  await page.locator('#batchRows input[data-field="noExclusions"]').first().check();
+  await page.locator("#batchCalculate").click();
+  const results=await page.locator("#batchRows .batch-result").allTextContents();
+  assert.deepEqual(results,["109,000円","—"],
+   "unverified second taxpayer must stay HOLD, never inherit first consent");
+  await page.locator('#batchRows input[data-field="confirmed"]').nth(1).check();
+  await page.locator('#batchRows input[data-field="noExclusions"]').nth(1).check();
+  await page.locator("#batchCalculate").click();
+  assert.deepEqual(await page.locator("#batchRows .batch-result").allTextContents(),
+    ["109,000円","109,000円"],
+    "each independently confirmed taxpayer must get a separate result");
+  assert.equal(await page.locator("#batchDownload").isEnabled(),true);
+  await page.locator("#batchClear").click();
+  assert.equal(await page.locator("#batchRows tr").count(),0);
+  assert.equal(await page.locator("#batchDownload").isDisabled(),true);
+  assert.equal(await page.locator("#batchScan").isDisabled(),false);
+  assert.equal(await page.evaluate(()=>window.FurusatoBatchPdf.isSingleBusy()),false);
+
   // Repeated PDF scans must finish both OCR passes and release the PDF.js
   // document before the next scan is enabled. This exercises the real
   // browser's worker lifecycle, but measures no memory-retention proof.
