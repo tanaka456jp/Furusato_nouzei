@@ -69,22 +69,22 @@ function twoPageImagePdf(){
   Buffer.from("<< /Type /Catalog /Pages 2 0 R >>"),
   Buffer.from("<< /Type /Pages /Count 2 /Kids [3 0 R 6 0 R] >>"),
   Buffer.from("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1100 800] /Resources << /XObject << /Im0 5 0 R >> >> /Contents 4 0 R >>"),
-  Buffer.concat([Buffer.from("<< /Length "+stream.length+" >>\\nstream\\n"),stream,Buffer.from("\\nendstream")]),
-  Buffer.concat([Buffer.from("<< /Type /XObject /Subtype /Image /Width 1100 /Height 800 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /Length "+image.length+" >>\\nstream\\n"),image,Buffer.from("\\nendstream")]),
+  Buffer.concat([Buffer.from("<< /Length "+stream.length+" >>\nstream\n"),stream,Buffer.from("\nendstream")]),
+  Buffer.concat([Buffer.from("<< /Type /XObject /Subtype /Image /Width 1100 /Height 800 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /Length "+image.length+" >>\nstream\n"),image,Buffer.from("\nendstream")]),
   Buffer.from("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1100 800] /Resources << /XObject << /Im0 5 0 R >> >> /Contents 7 0 R >>"),
-  Buffer.concat([Buffer.from("<< /Length "+stream.length+" >>\\nstream\\n"),stream,Buffer.from("\\nendstream")])
+  Buffer.concat([Buffer.from("<< /Length "+stream.length+" >>\nstream\n"),stream,Buffer.from("\nendstream")])
  ];
- const blocks=[Buffer.from("%PDF-1.4\\n%\\xE2\\xE3\\xCF\\xD3\\n","binary")];
+ const blocks=[Buffer.from("%PDF-1.4\n%\\xE2\\xE3\\xCF\\xD3\n","binary")];
  const offsets=[0];let size=blocks[0].length;
  objects.forEach((obj,i)=>{
   offsets.push(size);
-  const block=Buffer.concat([Buffer.from((i+1)+" 0 obj\\n"),obj,Buffer.from("\\nendobj\\n")]);
+  const block=Buffer.concat([Buffer.from((i+1)+" 0 obj\n"),obj,Buffer.from("\nendobj\n")]);
   blocks.push(block);size+=block.length;
  });
  const xref=["xref","0 "+(objects.length+1),"0000000000 65535 f "];
  for(let i=1;i<offsets.length;i++)
   xref.push(String(offsets[i]).padStart(10,"0")+" 00000 n ");
- blocks.push(Buffer.from(xref.join("\\n")+"\\ntrailer\\n<< /Size "+(objects.length+1)+" /Root 1 0 R >>\\nstartxref\\n"+size+"\\n%%EOF\\n"));
+ blocks.push(Buffer.from(xref.join("\n")+"\ntrailer\n<< /Size "+(objects.length+1)+" /Root 1 0 R >>\nstartxref\n"+size+"\n%%EOF\n"));
  return Buffer.concat(blocks);
 }
 
