@@ -510,7 +510,7 @@ End Sub
 
 ' Called after the master/year changes successfully. Earlier estimates
 ' must never survive a tax revision or approved-income-year switch.
-Public Sub BatchMasterChanged()
+Public Function BatchMasterChanged() As Boolean
     Dim ws As Worksheet, ix As Long, priorEvents As Boolean
     If mWorking Then Exit Sub
     Set ws = ThisWorkbook.Worksheets(SHEET_BATCH)
@@ -525,9 +525,10 @@ Public Sub BatchMasterChanged()
             ws.Cells(ix, "I").Value2 = "未確認"
         End If
     Next ix
+    BatchMasterChanged = True
 ExitSafely:
     Application.EnableEvents = priorEvents
-End Sub
+End Function
 
 Public Sub BatchPrint()
     If mWorking Then Exit Sub
