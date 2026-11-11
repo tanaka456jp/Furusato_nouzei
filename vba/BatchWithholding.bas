@@ -29,8 +29,8 @@ End Sub
 ' Nonmodal Excel COM acceptance checks the freshly installed VBA module
 ' without exposing a client PDF or showing any confirmation dialog.
 Public Function BatchReadyForTest() As Boolean
-    On Error GoTo NotReady
     Dim ws As Worksheet
+    On Error GoTo NotReady
     Set ws = ThisWorkbook.Worksheets(SHEET_BATCH)
     BatchReadyForTest = (CStr(ws.Range("A6").Value2) = "PDF頁" And _
         CStr(ws.Range("E6").Value2) = "限度額の目安" And _
@@ -107,6 +107,7 @@ Private Function ParseBatchBridge(ByVal path As String) As Collection
     Dim fso As Object, handle As Object, all As Collection, record As Object
     Dim line As String, pair As Variant, name As String, val As String
     Dim code As Long, pieces As Variant, word As Variant, i As Long
+    Dim parseFailure As String
     Set fso = CreateObject("Scripting.FileSystemObject")
     Set all = New Collection
     Set handle = fso.OpenTextFile(path, 1, False, 0)
@@ -172,9 +173,12 @@ Private Function ParseBatchBridge(ByVal path As String) As Collection
     Set ParseBatchBridge = all
     Exit Function
 Failed:
+    parseFailure = Err.Description
     On Error Resume Next
     If Not handle Is Nothing Then handle.Close
-    Err.Raise vbObjectError + 917, , "一括読取データの安全性検証に失敗しました。"
+    On Error GoTo 0
+    Err.Raise vbObjectError + 917, "BatchWithholding", _
+              "一括読取データの安全性検証に失敗しました。ファイルを再確認してください。"
 End Function
 
 Public Sub BatchImport()
