@@ -15,6 +15,24 @@ const rows=[
  {format:"photo",truth,result:wrong}
 ];
 const summary=summarize(rows);
+assert.equal(summary.qualityScope,"INCOME_YEAR_AND_FOUR_AMOUNTS_ONLY");
+assert.deepEqual(summary.evaluatedMonetaryFields,[
+ "salaryGross","salaryIncomeReference","deductionsReference","socialInsurance"
+]);
+// Unrelated identity, employer and address text is explicitly outside the
+// statistical numerator and denominator, even when it differs wildly.
+const noisy=summarize([{format:"digital-pdf",
+ truth:{...truth,personalName:"SYNTHETIC_TRUTH_NAME",
+  employer:"SYNTHETIC_TRUTH_EMPLOYER",address:"SYNTHETIC_TRUTH_ADDRESS"},
+ result:{...correct,candidates:{...correct.candidates,
+  personalName:"SYNTHETIC_BAD_NAME",employer:"SYNTHETIC_BAD_COMPANY",
+  address:"SYNTHETIC_BAD_ADDRESS"}}}]);
+const clean=summarize([{format:"digital-pdf",truth,result:correct}]);
+assert.deepEqual(noisy,clean,"PII OCR differences must not affect tax-field accuracy");
+for(const token of ["SYNTHETIC_BAD_NAME","SYNTHETIC_BAD_COMPANY",
+ "SYNTHETIC_BAD_ADDRESS","SYNTHETIC_TRUTH_NAME"]){
+ assert.equal(JSON.stringify(noisy).includes(token),false);
+}
 assert.equal(summary.overall.slipCount,3);
 assert.equal(summary.overall.fieldCorrect,7);
 assert.equal(summary.overall.fieldCount,12);
