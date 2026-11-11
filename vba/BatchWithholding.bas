@@ -376,7 +376,7 @@ Private Function ExecuteBatch(ByVal noDialogs As Boolean) As Boolean
     Dim index As Long, reason As String, amount As Variant, year As Long
     Dim sourceYear As Variant, header As Variant, good As Long, hold As Long
     Dim originalError As String, priorPageCount As Long
-    If mWorking Then Exit Sub
+    If mWorking Then Exit Function
     initialEvents = Application.EnableEvents
     initialScreen = Application.ScreenUpdating
     On Error GoTo Failed
@@ -546,7 +546,7 @@ End Sub
 ' must never survive a tax revision or approved-income-year switch.
 Public Function BatchMasterChanged() As Boolean
     Dim ws As Worksheet, ix As Long, priorEvents As Boolean
-    If mWorking Then Exit Sub
+    If mWorking Then Exit Function
     Set ws = ThisWorkbook.Worksheets(SHEET_BATCH)
     priorEvents = Application.EnableEvents
     On Error GoTo ExitSafely
