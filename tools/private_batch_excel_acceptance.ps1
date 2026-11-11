@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
   Offline, private, READ-ONLY acceptance for a real multi-page payslip PDF.
   Does not send, persist, print, or log names, money, PDF bytes, paths,
