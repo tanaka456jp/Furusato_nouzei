@@ -422,7 +422,7 @@ try {
         $calcSheet = $book.Worksheets.Item('ふるさと納税限度額計算')
         foreach ($spouseIncome in @(0.0, 300000.0)) {
             $homeSheet.Range('D17').Value2 = $spouseIncome
-            $excel.CalculateFull()
+            $excel.Run('TaxLawUpdater.RecalculateCase')
             Assert-Value ([double]$calcSheet.Range('F36').Value2) 380000.0 ('Ordinary spouse income-tax deduction / ' + $spouseIncome)
             Assert-Value ([double]$calcSheet.Range('H36').Value2) 330000.0 ('Ordinary spouse resident-tax deduction / ' + $spouseIncome)
         }
@@ -437,7 +437,7 @@ try {
         else { $homeSheet.Range('D17').Value2 = $savedSpouse }
         if ($null -eq $savedElderSpouse) { $homeSheet.Range('D18').ClearContents() }
         else { $homeSheet.Range('D18').Value2 = $savedElderSpouse }
-        $excel.CalculateFull()
+        $excel.Run('TaxLawUpdater.RecalculateCase')
     }
     QA-Stage 'zero-income-spouse-tax-table-pass'
 
