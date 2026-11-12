@@ -364,6 +364,43 @@ try {
     Assert-BlankTaxAmount $batch.Range('E7').Value2 'Unmapped family cannot show donation estimate'
     $batch.Range('A7:AW26').ClearContents()
     QA-Stage 'spouse-and-dependent-fail-closed-pass'
+    QA-Stage 'batch-standard-family-automatic-calculation-start'
+    $batch.Range('A7:AW26').ClearContents()
+    foreach ($case in @('spouse','general')) {
+        $batch.Range('A7:AW26').ClearContents()
+        $batch.Range('A7').Value2 = 1.0
+        $batch.Range('C7').Value2 = 2026.0
+        $batch.Range('D7').Value2 = 7000000.0
+        $batch.Range('K7').Value2 = 5200000.0
+        $batch.Range('L7').Value2 = 2100000.0
+        $batch.Range('M7').Value2 = 220000.0
+        $batch.Range('N7').Value2 = 1000000.0
+        $batch.Range('J7').Value2 = '確定申告'
+        $batch.Range('H7').Value2 = '照合済'
+        $batch.Range('I7').Value2 = '未対応条件なし'
+        $batch.Range('AE7').Value2 = 'READY_FOR_EXCEL_CROSSCHECK'
+        $batch.Range('AF7').Value2 = ''
+        $batch.Range('AG7').Value2 = 0.0
+        $batch.Range('AH7').Value2 = 2.0
+        $batch.Range('AI7').Value2 = 2.0
+        $batch.Range('AR7').Value2 = 2.0
+        if ($case -eq 'spouse') {
+            # Regular year-end-adjusted spouse deduction, not spouse
+            # SPECIAL deduction; matching source applied tax amount.
+            $batch.Range('AG7').Value2 = 380000.0
+            $batch.Range('AH7').Value2 = 1.0
+        } else {
+            $batch.Range('AN7').Value2 = 1.0
+        }
+        Assert-Value ([bool]($excel.Run('BatchWithholding.BatchCalculateForTest'))) $true ('Synthetic '+$case+' batch returned')
+        Assert-Value $batch.Range('F7').Value2 '概算' ('Supported '+$case+' should not be held')
+        $donation=[double]$batch.Range('E7').Value2
+        if ($donation -lt 2000.0) {
+            throw ('Supported '+$case+' yielded an invalid donation estimate')
+        }
+    }
+    $batch.Range('A7:AW26').ClearContents()
+    QA-Stage 'batch-standard-family-automatic-calculation-pass'
     QA-Stage 'synthetic-batch-restore-and-hold-pass'
 
     # Regression: certified source subtotals are not invalid just because a
