@@ -508,7 +508,7 @@ Private Sub ApplyCaseRow(ByVal ws As Worksheet, ByVal index As Long)
         End If
         ' For regular spouse deduction G09=1, the source tax deduction and
         ' elderly flag uniquely determine the equivalent ordinary deduction
-        ' bracket. For spouse SPECIAL deduction, source spouse income G42
+        ' bracket. For spouse SPECIAL deduction, source spouse income G43
         ' is mandatory because resident thresholds may differ.
         If Val(CStr(ws.Cells(index, "AH").Value2)) = 1 Then
             home.Range(target).Value2 = 0
