@@ -186,36 +186,45 @@ End Sub
 ' Inspect PDF structure before running any single-slip extraction.
 ' A multi-page PDF must never be mistaken for one taxpayer; the reader
 ' writes only the ASCII count, no text, image, name, or income value.
-Private Function PdfPagesForImport(ByVal reader As String, ByVal sourcePdf As String, _
-                                   ByVal shell As Object, ByVal fso As Object, _
-                                   ByVal probeFile As String) As Long
-    Dim command As String, h As Object, line As String, cells As Variant
-    Dim raw As String, result As Long, exitCode As Long
-    command = Chr$(34) & reader & Chr$(34) & " --input " & Chr$(34) & _
-              sourcePdf & Chr$(34) & " --output " & Chr$(34) & _
-              probeFile & Chr$(34) & " --probe-pages"
-    exitCode = shell.Run(command, 0, True)
-    If exitCode <> 0 Or Not fso.FileExists(probeFile) Then _
-        Err.Raise vbObjectError + 220, , _
-            "PDFのページ数を確認できません。ファイル形式を確認してください。"
-    Set h = fso.OpenTextFile(probeFile, 1, False, 0)
-    If h.AtEndOfStream Then Err.Raise vbObjectError + 221, , "PDF構造の確認結果が空です。"
-    line = h.ReadLine
-    If Not h.AtEndOfStream Then _
-        Err.Raise vbObjectError + 222, , "PDF構造の確認結果が不正です。"
-    h.Close
-    Set h = Nothing
-    cells = Split(line, vbTab)
-    If UBound(cells) <> 1 Or CStr(cells(0)) <> "PDF_PAGES" Then _
-        Err.Raise vbObjectError + 223, , "PDFページ数の検証に失敗しました。"
-    raw = CStr(cells(1))
-    If Len(raw) = 0 Or Len(raw) > 4 Or raw Like "*[!0-9]*" Then _
-        Err.Raise vbObjectError + 224, , "PDFページ番号の形式が不正です。"
-    result = CLng(raw)
-    If result < 1 Or result > 20 Then _
-        Err.Raise vbObjectError + 225, , _
-            "一括取込は最大20ページです。PDFを20ページ以下に分割してください。"
-    PdfPagesForImport = result
+' Count the page boundaries in a numeric-only, local ASCII bridge.
+' The source PDF was already read once by --batch-bridge. We never run the
+' 40MB PyInstaller reader a SECOND time when the document is multi-page.
+Private Function PdfPagesForImport(ByVal bridgePath As String, ByVal fso As Object) As Long
+    Dim stream As Object, line As String, parts As Variant
+    Dim opened As Long, closed As Long, raw As String
+    On Error GoTo Broken
+    Set stream = fso.OpenTextFile(bridgePath, 1, False, 0)
+    Do Until stream.AtEndOfStream
+        line = stream.ReadLine
+        parts = Split(line, vbTab)
+        If UBound(parts) <> 1 Then Err.Raise vbObjectError + 220, , "取込境界が不正です。"
+        If CStr(parts(0)) = "PAGE" Or CStr(parts(0)) = "ENDPAGE" Then
+            raw = CStr(parts(1))
+            If Len(raw) = 0 Or Len(raw) > 2 Or raw Like "*[!0-9]*" Then _
+                Err.Raise vbObjectError + 221, , "PDFページ番号が不正です。"
+            If CStr(parts(0)) = "PAGE" Then
+                opened = opened + 1
+                If CLng(raw) <> opened Then _
+                    Err.Raise vbObjectError + 222, , "ページ順序が不正です。"
+            Else
+                closed = closed + 1
+                If CLng(raw) <> closed Or closed > opened Then _
+                    Err.Raise vbObjectError + 223, , "ページ終端に不整合があります。"
+            End If
+        End If
+    Loop
+    stream.Close
+    Set stream = Nothing
+    If opened < 1 Or opened > 20 Or opened <> closed Then _
+        Err.Raise vbObjectError + 224, , "PDFページ数が不正です。"
+    PdfPagesForImport = opened
+    Exit Function
+Broken:
+    On Error Resume Next
+    If Not stream Is Nothing Then stream.Close
+    On Error GoTo 0
+    Err.Raise vbObjectError + 225, "TaxLawUpdater", _
+              "PDFページ構成を確認できません。20ページ以下のPDFを指定してください。"
 End Function
 
 ' Import only allowlisted numeric fields from a local, explicitly selected file.
@@ -224,6 +233,7 @@ End Function
 Public Sub ImportWithholding()
     Dim picked As Variant, fso As Object, shell As Object, reader As String
     Dim tempJson As String, tempTsv As String, tempProbe As String
+    Dim tempBatchJson As String, probeCommand As String
     Dim command As String, line As String, pageCount As Long
     Dim inFile As Object, fields As Object, fragments As Variant
     Dim key As Variant, value As Double, year As Long, exitCode As Long
@@ -253,18 +263,28 @@ Public Sub ImportWithholding()
     ' only safe behavior: the legacy single source reader explicitly
     ' rejects multi-page documents and otherwise reports "year missing".
     If LCase$(fso.GetExtensionName(CStr(picked))) = "pdf" Then
-        tempProbe = fso.BuildPath(fso.GetSpecialFolder(2), fso.GetTempName & ".txt")
-        pageCount = PdfPagesForImport(reader, CStr(picked), shell, fso, tempProbe)
+        tempProbe = fso.BuildPath(fso.GetSpecialFolder(2), fso.GetTempName & ".tsv")
+        tempBatchJson = fso.BuildPath(fso.GetSpecialFolder(2), fso.GetTempName & ".json")
+        probeCommand = Chr$(34) & reader & Chr$(34) & _
+                       " --input " & Chr$(34) & CStr(picked) & Chr$(34) & _
+                       " --output " & Chr$(34) & tempBatchJson & Chr$(34) & _
+                       " --batch-bridge " & Chr$(34) & tempProbe & Chr$(34)
+        exitCode = shell.Run(probeCommand, 0, True)
+        If exitCode <> 0 Or Not fso.FileExists(tempProbe) Then _
+            Err.Raise vbObjectError + 220, , _
+                "PDFのページ別読取に失敗しました（READER_BATCH:" & CStr(exitCode) & "）。" & vbCrLf & _
+                "「複数人一括試算」からPDF一括読込もお試しください。"
+        pageCount = PdfPagesForImport(tempProbe, fso)
         If pageCount > 1 Then
-            If Not BatchWithholding.BatchImportLocalFile(CStr(picked)) Then _
+            If Not BatchWithholding.BatchImportBridgeLocalFile(tempProbe) Then _
                 Err.Raise vbObjectError + 226, , _
                     "複数ページPDFの一括取込に失敗しました（" & _
                     BatchWithholding.BatchImportFailureCode() & "）。" & vbCrLf & _
-                    "「複数人一括試算」を開き、以前の一覧があれば保存後に初期化してから再取込してください。"
+                    "以前の一覧がある場合は、保存後に初期化してから再取込してください。"
             BatchWithholding.ShowBatch
-            MsgBox CStr(pageCount) & "ページのPDFを検出したため、" & _
-                   "対象者ごとの一括試算一覧へ切り替えました。" & vbCrLf & _
-                   "所得年・必要5金額と控除条件を各ページで確認してください。" & vbCrLf & _
+            MsgBox CStr(pageCount) & "ページのPDFから、" & _
+                   "対象者ごとの一括試算一覧を作成しました。" & vbCrLf & _
+                   "必要5金額・年分と控除条件を各ページで確認してください。" & vbCrLf & _
                    "確認前の限度額は表示しません。", vbInformation, _
                    "複数人の源泉徴収票を検出"
             GoTo CleanUp
@@ -409,6 +429,7 @@ CleanUp:
         If Len(tempTsv) > 0 Then If fso.FileExists(tempTsv) Then fso.DeleteFile tempTsv, True
         If Len(tempJson) > 0 Then If fso.FileExists(tempJson) Then fso.DeleteFile tempJson, True
         If Len(tempProbe) > 0 Then If fso.FileExists(tempProbe) Then fso.DeleteFile tempProbe, True
+        If Len(tempBatchJson) > 0 Then If fso.FileExists(tempBatchJson) Then fso.DeleteFile tempBatchJson, True
     End If
     Exit Sub
 Failed:
