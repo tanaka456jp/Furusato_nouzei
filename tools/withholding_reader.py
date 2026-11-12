@@ -237,7 +237,7 @@ def finish(year,fields,mode,warnings=None):
         enough=False;warnings.append("MORTGAGE_OCCUPANCY_YEAR_MISSING")
     if possible>0 and used is not None and used>possible:
         enough=False;warnings.append("MORTGAGE_APPLIED_EXCEEDS_POSSIBLE")
-    # G72 is the special-relative count, G73 the under-16 count, and
+    # G72 is the special-relative count, G20 the under-16 count, and
     # G74 the special-relative tax deduction. The slip does not reveal all
     # qualifying relatives' incomes, so require an explicit reconciliation.
     special_count=fields.get("special_relative_count",0)
