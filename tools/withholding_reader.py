@@ -17,7 +17,7 @@ CODE_MAP = {
     "G29":"mortgage_credit","G30":"life_new","G31":"life_old",
     "G32":"medical_care","G33":"annuity_new","G34":"annuity_old",
     "G35":"mortgage_claim_count","G36":"mortgage_possible_credit",
-    "G72":"special_relative_count", "G73":"under16_count",
+    "G72":"special_relative_count", "G20":"under16_count",
     "G74":"special_relative_deduction_reference",
     "G46":"basic_reference",
     "G47":"income_adjustment",
@@ -87,6 +87,47 @@ def extract_codes(words):
             flags.append("CONFLICT_"+key.upper()); out.pop(key,None)
         elif "CONFLICT_"+key.upper() not in flags: out[key]=val
     return out, flags
+
+
+
+# The first-generation Excel batch transfer has no spouse-/adult-dependent
+# source columns. Never show a potentially inaccurate estimate simply because
+# the income-tax deduction total was read. Resident-tax human deductions differ.
+# These checks inspect only G-code-anchored numeric tokens, never names.
+FAMILY_UNMAPPED_CODES = frozenset({
+    "G09", "G10", "G11", "G12", "G13", "G14", "G15", "G16",
+    "G17", "G18", "G19", "G21", "G22", "G23", "G24", "G73",
+})
+
+
+def family_transfer_warnings(words):
+    anchors = [w for w in words if re.fullmatch(r"G[0-9]{2}", w[4])]
+    numbers = [w for w in words if number(w[4]) is not None]
+    warnings = []
+    for code in anchors:
+        if code[4] not in FAMILY_UNMAPPED_CODES:
+            continue
+        options = []
+        for w in numbers:
+            if not (code[2] + 1 <= w[0] <= code[2] + 125):
+                continue
+            if abs((w[1] + w[3]) / 2 - (code[1] + code[3]) / 2) > 9:
+                continue
+            if any(a is not code and a[0] > code[0] and a[0] < w[0]
+                   and abs(a[1] - code[1]) <= 9 for a in anchors):
+                continue
+            options.append(w)
+        if len(options) > 1:
+            warnings.append("FAMILY_CODE_AMBIGUOUS")
+        elif len(options) == 1:
+            value = number(options[0][4])
+            if code[4] in {"G09", "G10", "G11"}:
+                # Source's serialized checkbox value 1=checked, 2=unchecked.
+                if value not in (1, 2) or value == 1:
+                    warnings.append("FAMILY_DEDUCTION_NOT_TRANSFERRED")
+            elif value and value > 0:
+                warnings.append("FAMILY_DEDUCTION_NOT_TRANSFERRED")
+    return sorted(set(warnings))
 
 
 def extract_labelled(text):
@@ -198,7 +239,7 @@ def finish(year,fields,mode,warnings=None):
         enough=False;warnings.append("OCR_REQUIRES_VERIFICATION")
     if "MULTIPAGE" in mode:
         enough=False;warnings.append("MULTIPAGE_REQUIRES_REVIEW")
-    if any(x.startswith(("AMBIGUOUS_","CONFLICT_")) for x in warnings):
+    if any(x.startswith(("AMBIGUOUS_", "CONFLICT_", "FAMILY_")) for x in warnings):
         enough=False
     if year not in (2025,2026): warnings.append("YEAR_NOT_APPROVED")
     if not enough: warnings.append("INCOMPLETE_OR_UNVERIFIED")
@@ -233,6 +274,8 @@ def extract(path):
         return finish(year,{k:v for k,v in fields.items() if v is not None},"STRUCTURED_TEXT")
     text,words,mode=document_content(path)
     vals,flags=extract_codes(words) if words else ({},[])
+    if words:
+        flags.extend(family_transfer_warnings(words))
     if not vals: vals=extract_labelled(text)
     # Occupancy year is an anchored field, not the document income year.
     # Never override a disagreeing structured value.
@@ -298,6 +341,8 @@ def extract_pdf_batch(path):
                     text, words = image_words(pic, 2)
                     mode = "SCAN_OCR"
                 fields, warnings = extract_codes(words) if words else ({}, [])
+                if words:
+                    warnings.extend(family_transfer_warnings(words))
                 if not fields:
                     fields = extract_labelled(text)
                 occupancy = extract_occupancy_year(text)
