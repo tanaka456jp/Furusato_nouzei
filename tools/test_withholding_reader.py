@@ -406,13 +406,17 @@ class WithholdingTest(unittest.TestCase):
         words=[
             (380,265,391,271,"G72"),(395,264,402,271,"1"),
             (408,265,419,271,"G73"),(423,264,430,271,"2"),
+            (435,265,446,271,"G20"),(451,264,458,271,"2"),
             (33,300,44,305,"G74"),(102,296,138,305,"630,000"),
         ]
         self.assertEqual(CODE_MAP["G72"],"special_relative_count")
-        self.assertEqual(CODE_MAP["G73"],"under16_count")
+        self.assertEqual(CODE_MAP["G20"],"under16_count")
+        self.assertNotIn("G73",CODE_MAP)  # secondary special-relative count, not under16
         self.assertEqual(CODE_MAP["G74"],"special_relative_deduction_reference")
         fields,flags=extract_codes(words)
         self.assertEqual(flags,[])
+        self.assertIn("FAMILY_DEDUCTION_NOT_TRANSFERRED",
+                      family_transfer_warnings(words))
         self.assertEqual(fields,{
             "special_relative_count":1,
             "under16_count":2,
