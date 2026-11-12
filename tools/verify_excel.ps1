@@ -417,12 +417,14 @@ try {
         $homeSheet.Range('B4').Value2 = 2025.0
         $homeSheet.Range('B11').Value2 = 2025.0
         $homeSheet.Range('B12').Value2 = 7600000.0
-        $homeSheet.Range('D17').Value2 = 0.0
         $homeSheet.Range('D18').ClearContents()
-        $excel.CalculateFull()
         $calcSheet = $book.Worksheets.Item('ふるさと納税限度額計算')
-        Assert-Value ([double]$calcSheet.Range('F36').Value2) 380000.0 'Zero-income spouse income-tax deduction'
-        Assert-Value ([double]$calcSheet.Range('H36').Value2) 330000.0 'Zero-income spouse resident-tax deduction'
+        foreach ($spouseIncome in @(0.0, 300000.0)) {
+            $homeSheet.Range('D17').Value2 = $spouseIncome
+            $excel.CalculateFull()
+            Assert-Value ([double]$calcSheet.Range('F36').Value2) 380000.0 ('Ordinary spouse income-tax deduction / ' + $spouseIncome)
+            Assert-Value ([double]$calcSheet.Range('H36').Value2) 330000.0 ('Ordinary spouse resident-tax deduction / ' + $spouseIncome)
+        }
     }
     finally {
         $settings.Range('B4').Value2 = $savedMasterYear
