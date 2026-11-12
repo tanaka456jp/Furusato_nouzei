@@ -39,9 +39,9 @@ class WithholdingTest(unittest.TestCase):
         vba = (Path(__file__).parent.parent / "vba" /
                "TaxLawUpdater.bas").read_text(encoding="utf-8-sig")
         self.assertIn("PdfPagesForImport", vba)
-        self.assertIn("--probe-pages", vba)
+        self.assertIn("--batch-bridge", vba)
         self.assertIn("If pageCount > 1 Then", vba)
-        self.assertIn("BatchWithholding.BatchImportLocalFile(CStr(picked))", vba)
+        self.assertIn("BatchWithholding.BatchImportBridgeLocalFile(tempProbe)", vba)
         self.assertIn("BatchWithholding.ShowBatch", vba)
         self.assertIn("GoTo CleanUp",vba)
 
