@@ -34,6 +34,13 @@ def package(destination, reader=None):
             files["private_batch_excel_acceptance.ps1"] = (
                 ROOT / "tools/private_batch_excel_acceptance.ps1"
             )
+            # Private oracle logic ships WITHOUT any confidential fixture.
+            files["PRIVATE_5PERSON_ORACLE_CHECK.cmd"] = (
+                ROOT / "tools/PRIVATE_5PERSON_ORACLE_CHECK.cmd"
+            )
+            files["private_5person_oracle_acceptance.ps1"] = (
+                ROOT / "tools/private_5person_oracle_acceptance.ps1"
+            )
         with ZipFile(destination, "w", ZIP_DEFLATED) as archive:
             for name, source in files.items():
                 archive.write(source, name)
