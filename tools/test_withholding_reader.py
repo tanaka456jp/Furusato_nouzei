@@ -433,6 +433,7 @@ class WithholdingTest(unittest.TestCase):
                       family_transfer_warnings(words))
         self.assertEqual(fields,{
             "special_relative_count":1,
+            "secondary_special_relative_count":2,
             "under16_count":2,
             "special_relative_deduction_reference":630000,
         })
