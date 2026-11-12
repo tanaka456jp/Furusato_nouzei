@@ -51,6 +51,20 @@ class WorkbookTest(unittest.TestCase):
         self.assertEqual(len(sheet.data_validations.dataValidation), 3)
         self.assertEqual([s.title for s in self.book if s.sheet_state == "visible"], [HOME])
 
+    def test_zero_spouse_income_first_band(self):
+        # Only D=0 is special; every positive spouse-income bracket retains
+        # its strict lower boundary to prevent counting adjacent bands twice.
+        for row in (36, 37):
+            for col in ("F", "H"):
+                address = f"{col}{row}"
+                baseline = self.baseline[ENGINE][address].value
+                generated = self.book[ENGINE][address].value
+                old_floor = f'"<"&$D{row}'
+                revised_floor = f'"<"&IF($D{row}=0,1,$D{row})'
+                self.assertEqual(baseline.count(old_floor), 1, address)
+                self.assertIn(revised_floor, generated, address)
+                self.assertNotIn(old_floor, generated, address)
+
     def test_a4_single_page_layout_and_legible_status(self):
         for name in (HOME, DETAIL):
             sheet = self.book[name]
