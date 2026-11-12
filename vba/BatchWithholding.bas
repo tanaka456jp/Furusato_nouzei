@@ -251,25 +251,37 @@ Private Sub PopulateBatchReview(ByVal all As Collection, ByVal ws As Worksheet)
     Next idx
 End Sub
 
-' This is used exclusively on a disposable Windows QA workbook. A synthetic
-' ASCII bridge is fed through EXACTLY the production parser and row writer.
+' No additional reader launch: multi-page PDFs selected from the normal
+' source-import button are parsed once, then this validated ASCII bridge is
+' transferred to the local review sheet. Never accepts arbitrary text fields.
+Public Function BatchImportBridgeLocalFile(ByVal localBridge As String) As Boolean
+    BatchImportBridgeLocalFile = ImportValidatedBridge(localBridge)
+End Function
+
+' Synthetic Windows Excel COM verification goes through the same path.
 Public Function BatchImportBridgeForTest(ByVal localBridge As String) As Boolean
+    BatchImportBridgeForTest = ImportValidatedBridge(localBridge)
+End Function
+
+Private Function ImportValidatedBridge(ByVal localBridge As String) As Boolean
     Dim ws As Worksheet, parsed As Collection
     On Error GoTo ImportFailed
     If mWorking Then Exit Function
     mWorking = True
     mLastBatchErrorCode = "NONE"
+    If ThisWorkbook.ReadOnly Or Len(ThisWorkbook.Path) = 0 Then _
+        Err.Raise vbObjectError + 918, , "保存可能なローカルブックが必要です。"
     Set ws = ThisWorkbook.Worksheets(SHEET_BATCH)
     If Application.CountA(ws.Range("A7:A26")) > 0 Then _
         Err.Raise vbObjectError + 930, , "一括試算一覧は空欄が必要です。"
     Set parsed = ParseBatchBridge(localBridge)
     Call PopulateBatchReview(parsed, ws)
-    BatchImportBridgeForTest = True
+    ImportValidatedBridge = True
 TestCleanup:
     mWorking = False
     Exit Function
 ImportFailed:
-    mLastBatchErrorCode = "TEST_BRIDGE:" & CStr(Err.Number)
+    mLastBatchErrorCode = "BRIDGE_VALIDATION:" & CStr(Err.Number)
     If Not ws Is Nothing Then
         On Error Resume Next
         ws.Range("A7:AF26").ClearContents
