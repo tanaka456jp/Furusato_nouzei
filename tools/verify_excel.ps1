@@ -431,9 +431,12 @@ try {
         $settings.Range('B4').Value2 = $savedMasterYear
         $homeSheet.Range('B4').Value2 = $savedHomeYear
         $homeSheet.Range('B11').Value2 = $savedIncomeYear
-        $homeSheet.Range('B12').Value2 = $savedSalary
-        $homeSheet.Range('D17').Value2 = $savedSpouse
-        $homeSheet.Range('D18').Value2 = $savedElderSpouse
+        if ($null -eq $savedSalary) { $homeSheet.Range('B12').ClearContents() }
+        else { $homeSheet.Range('B12').Value2 = $savedSalary }
+        if ($null -eq $savedSpouse) { $homeSheet.Range('D17').ClearContents() }
+        else { $homeSheet.Range('D17').Value2 = $savedSpouse }
+        if ($null -eq $savedElderSpouse) { $homeSheet.Range('D18').ClearContents() }
+        else { $homeSheet.Range('D18').Value2 = $savedElderSpouse }
         $excel.CalculateFull()
     }
     QA-Stage 'zero-income-spouse-tax-table-pass'
