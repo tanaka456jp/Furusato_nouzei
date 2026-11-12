@@ -2,7 +2,9 @@
 # Run on a dedicated Windows Excel desktop with VBOM access configured for the build user.
 param(
     [Parameter(Mandatory=$true)][string]$Workbook,
-    [string]$EvidencePath = ''
+    [string]$EvidencePath = '',
+    [string]$SyntheticBatchPdf = '',
+    [string]$ReaderExecutable = ''
 )
 $ErrorActionPreference = 'Stop'
 $Workbook = (Resolve-Path -LiteralPath $Workbook).Path
@@ -10,6 +12,15 @@ $dir = Join-Path ([System.IO.Path]::GetTempPath()) ('FurusatoQA_' + [Guid]::NewG
 [void][IO.Directory]::CreateDirectory($dir)
 $copy = Join-Path $dir 'FurusatoQA.xlsm'
 [IO.File]::Copy($Workbook, $copy)
+if ($SyntheticBatchPdf -ne '') {
+    if ($ReaderExecutable -eq '' -or
+        -not (Test-Path -LiteralPath $ReaderExecutable -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $SyntheticBatchPdf -PathType Leaf)) {
+        throw 'Fictional PDF fixture or reader EXE is missing'
+    }
+    # VBA resolves the reader next to THIS throwaway workbook, not the original.
+    Copy-Item -LiteralPath $ReaderExecutable -Destination (Join-Path $dir 'FurusatoDocumentReader.exe')
+}
 $excel = $null; $book = $null; $savedCase = $null; $homeSheet = $null; $settings = $null; $checks = $null; $detail = $null
 $passed = $false
 $failureSummary = ''
@@ -176,6 +187,26 @@ try {
     Assert-Value ([bool]($excel.Run('BatchWithholding.BatchImportLocalFile', $invalidSource))) $false 'Private batch rejects absent PDF without a dialog'
     Assert-Value ([int]$excel.Worksheets.Item('一括試算一覧').Range('A7').Value2) 0 'Failed private import leaves batch list empty'
     QA-Stage 'private-batch-import-invalid-path-pass'
+    if ($SyntheticBatchPdf -ne '') {
+        QA-Stage 'synthetic-pdf-exe-to-excel-import-start'
+        $batch = $book.Worksheets.Item('一括試算一覧')
+        $batch.Range('A7:AF26').ClearContents()
+        if (-not [bool]($excel.Run('BatchWithholding.BatchImportLocalFile',
+                                   $SyntheticBatchPdf))) {
+            throw 'Valid fictional 5-page PDF failed through real reader EXE and Excel batch VBA'
+        }
+        for ($row = 7; $row -le 11; $row++) {
+            Assert-Value $batch.Range('A'+$row).Value2 ([double]($row-6)) ('Imported page ordinal '+($row-6))
+            Assert-Value $batch.Range('C'+$row).Value2 2025.0 ('Imported synthetic source year '+($row-6))
+            Assert-Value $batch.Range('F'+$row).Value2 'HOLD' ('Imported row stays HOLD '+($row-6))
+            Assert-BlankTaxAmount $batch.Range('E'+$row).Value2 ('No automatic estimate '+($row-6))
+        }
+        Assert-Value $batch.Range('AE10').Value2 'REQUIRES_REVIEW' 'Page 4 incomplete social insurance status'
+        Assert-BlankTaxAmount $batch.Range('N10').Value2 'Page 4 must not reuse nearby tax field'
+        Assert-Value $batch.Range('AE11').Value2 'READY_FOR_EXCEL_CROSSCHECK' 'Page 5 independently parsed'
+        $batch.Range('A7:AF26').ClearContents()
+        QA-Stage 'synthetic-pdf-exe-to-excel-import-pass'
+    }
     QA-Stage 'synthetic-batch-restore-and-hold-start'
     # Only fictional money amounts in a throwaway QA XLSM. No real PDF.
     $batch = $book.Worksheets.Item('一括試算一覧')
