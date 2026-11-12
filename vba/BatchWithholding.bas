@@ -10,6 +10,12 @@ Private Const SHEET_ADV As String = "例外・分離課税"
 Private Const START_ROW As Long = 7
 Private Const END_ROW As Long = 26
 Private mWorking As Boolean
+' Non-identifying diagnostic: stage and numeric VBA error code only.
+Private mLastBatchErrorCode As String
+
+Public Function BatchImportFailureCode() As String
+    BatchImportFailureCode = mLastBatchErrorCode
+End Function
 
 Private Sub BindOne(ByVal sheetName As String, ByVal buttonName As String, ByVal procedure As String)
     Dim target As Object
@@ -197,54 +203,14 @@ Private Function MissingBatchFields(ByVal item As Object) As String
     Next idx
 End Function
 
-Public Sub BatchImport()
-    Dim selected As Variant
-    selected = Application.GetOpenFilename("PDF (*.pdf),*.pdf", 1, "複数人の源泉徴収票PDFを選択")
-    If VarType(selected) = vbBoolean Then Exit Sub
-    Call ImportBatchFile(CStr(selected), False)
-End Sub
-
-' Private on-device acceptance: the caller supplies a local PDF path to an
-' isolated workbook copy. No input dialog and no raw figures in the return.
-Public Function BatchImportLocalFile(ByVal pdfPath As String) As Boolean
-    BatchImportLocalFile = ImportBatchFile(pdfPath, True)
-End Function
-
-Private Function ImportBatchFile(ByVal pdfPath As String, ByVal quiet As Boolean) As Boolean
-    Dim selected As Variant, fso As Object, shell As Object, executable As String
-    Dim outputJson As String, outputTsv As String, command As String, rc As Long
-    Dim all As Collection, record As Object, ws As Worksheet
+' Called by both the regular local reader and the synthetic-only
+' Excel COM test. Parsing always finishes before modifying a cell.
+Private Sub PopulateBatchReview(ByVal all As Collection, ByVal ws As Worksheet)
     Dim idx As Long, rowNum As Long, item As Variant, col As String
-    Dim missingFields As String, warningCodes As String
-    On Error GoTo Failed
-    If mWorking Then Exit Function
-    selected = pdfPath
-    If Len(Trim$(pdfPath)) = 0 Then _
-        Err.Raise vbObjectError + 927, , "ローカルPDFを選択してください。"
-    If ThisWorkbook.ReadOnly Or Len(ThisWorkbook.Path) = 0 Then _
-        Err.Raise vbObjectError + 918, , "書き込み可能なローカルExcelブックが必要です。"
-    Set ws = ThisWorkbook.Worksheets(SHEET_BATCH)
-    If Application.CountA(ws.Range("A7:A26")) > 0 Then _
-        Err.Raise vbObjectError + 919, , "既存の一覧があります。保存後に「一覧初期化」で消去してください。"
-    Set fso = CreateObject("Scripting.FileSystemObject")
-    If Not fso.FileExists(CStr(selected)) Then _
-        Err.Raise vbObjectError + 928, , "指定PDFが見つかりません。"
-    If fso.GetFile(CStr(selected)).Size > 25 * 1024 * 1024 Then _
-        Err.Raise vbObjectError + 920, , "PDFは25MB以下を指定してください。"
-    executable = fso.BuildPath(ThisWorkbook.Path, "FurusatoDocumentReader.exe")
-    If Not fso.FileExists(executable) Then _
-        Err.Raise vbObjectError + 921, , "読取EXEがありません。Windows配布ZIPを展開してください。"
-    outputJson = fso.BuildPath(fso.GetSpecialFolder(2), fso.GetTempName & ".json")
-    outputTsv = fso.BuildPath(fso.GetSpecialFolder(2), fso.GetTempName & ".tsv")
-    command = Chr$(34) & executable & Chr$(34) & " --input " & Chr$(34) & CStr(selected) & _
-              Chr$(34) & " --output " & Chr$(34) & outputJson & Chr$(34) & _
-              " --batch-bridge " & Chr$(34) & outputTsv & Chr$(34)
-    mWorking = True
-    Set shell = CreateObject("WScript.Shell")
-    rc = shell.Run(command, 0, True)
-    If rc <> 0 Or Not fso.FileExists(outputTsv) Then _
-        Err.Raise vbObjectError + 922, , "PDFのページ別読取に失敗しました。"
-    Set all = ParseBatchBridge(outputTsv)
+    Dim record As Object, missingFields As String, warningCodes As String
+    ' Reject malformed batch size even when invoked by another VBA macro.
+    If all.Count < 1 Or all.Count > 20 Then _
+        Err.Raise vbObjectError + 929, , "ページ数が不正です。"
     ' Only write after every block and every value has passed validation.
     ws.Range("A7:AF26").ClearContents
     For idx = 1 To all.Count
@@ -283,6 +249,88 @@ Private Function ImportBatchFile(ByVal pdfPath As String, ByVal quiet As Boolean
                 "原票の金額・所得年と追加条件を個別確認してください"
         End If
     Next idx
+End Sub
+
+' This is used exclusively on a disposable Windows QA workbook. A synthetic
+' ASCII bridge is fed through EXACTLY the production parser and row writer.
+Public Function BatchImportBridgeForTest(ByVal localBridge As String) As Boolean
+    Dim ws As Worksheet, parsed As Collection
+    On Error GoTo ImportFailed
+    If mWorking Then Exit Function
+    mWorking = True
+    mLastBatchErrorCode = "NONE"
+    Set ws = ThisWorkbook.Worksheets(SHEET_BATCH)
+    If Application.CountA(ws.Range("A7:A26")) > 0 Then _
+        Err.Raise vbObjectError + 930, , "一括試算一覧は空欄が必要です。"
+    Set parsed = ParseBatchBridge(localBridge)
+    Call PopulateBatchReview(parsed, ws)
+    BatchImportBridgeForTest = True
+TestCleanup:
+    mWorking = False
+    Exit Function
+ImportFailed:
+    mLastBatchErrorCode = "TEST_BRIDGE:" & CStr(Err.Number)
+    If Not ws Is Nothing Then
+        On Error Resume Next
+        ws.Range("A7:AF26").ClearContents
+    End If
+    Resume TestCleanup
+End Function
+
+Public Sub BatchImport()
+    Dim selected As Variant
+    selected = Application.GetOpenFilename("PDF (*.pdf),*.pdf", 1, "複数人の源泉徴収票PDFを選択")
+    If VarType(selected) = vbBoolean Then Exit Sub
+    Call ImportBatchFile(CStr(selected), False)
+End Sub
+
+' Private on-device acceptance: the caller supplies a local PDF path to an
+' isolated workbook copy. No input dialog and no raw figures in the return.
+Public Function BatchImportLocalFile(ByVal pdfPath As String) As Boolean
+    BatchImportLocalFile = ImportBatchFile(pdfPath, True)
+End Function
+
+Private Function ImportBatchFile(ByVal pdfPath As String, ByVal quiet As Boolean) As Boolean
+    Dim selected As Variant, fso As Object, shell As Object, executable As String
+    Dim outputJson As String, outputTsv As String, command As String, rc As Long
+    Dim all As Collection, record As Object, ws As Worksheet
+    Dim idx As Long, rowNum As Long, item As Variant, col As String
+    Dim missingFields As String, warningCodes As String, importStage As String
+    importStage = "PRECHECK"
+    mLastBatchErrorCode = "NONE"
+    On Error GoTo Failed
+    If mWorking Then Exit Function
+    selected = pdfPath
+    If Len(Trim$(pdfPath)) = 0 Then _
+        Err.Raise vbObjectError + 927, , "ローカルPDFを選択してください。"
+    If ThisWorkbook.ReadOnly Or Len(ThisWorkbook.Path) = 0 Then _
+        Err.Raise vbObjectError + 918, , "書き込み可能なローカルExcelブックが必要です。"
+    Set ws = ThisWorkbook.Worksheets(SHEET_BATCH)
+    If Application.CountA(ws.Range("A7:A26")) > 0 Then _
+        Err.Raise vbObjectError + 919, , "既存の一覧があります。保存後に「一覧初期化」で消去してください。"
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    If Not fso.FileExists(CStr(selected)) Then _
+        Err.Raise vbObjectError + 928, , "指定PDFが見つかりません。"
+    If fso.GetFile(CStr(selected)).Size > 25 * 1024 * 1024 Then _
+        Err.Raise vbObjectError + 920, , "PDFは25MB以下を指定してください。"
+    executable = fso.BuildPath(ThisWorkbook.Path, "FurusatoDocumentReader.exe")
+    If Not fso.FileExists(executable) Then _
+        Err.Raise vbObjectError + 921, , "読取EXEがありません。Windows配布ZIPを展開してください。"
+    outputJson = fso.BuildPath(fso.GetSpecialFolder(2), fso.GetTempName & ".json")
+    outputTsv = fso.BuildPath(fso.GetSpecialFolder(2), fso.GetTempName & ".tsv")
+    command = Chr$(34) & executable & Chr$(34) & " --input " & Chr$(34) & CStr(selected) & _
+              Chr$(34) & " --output " & Chr$(34) & outputJson & Chr$(34) & _
+              " --batch-bridge " & Chr$(34) & outputTsv & Chr$(34)
+    mWorking = True
+    Set shell = CreateObject("WScript.Shell")
+    importStage = "READER_EXE"
+    rc = shell.Run(command, 0, True)
+    If rc <> 0 Or Not fso.FileExists(outputTsv) Then _
+        Err.Raise vbObjectError + 922, , "PDFのページ別読取に失敗しました。"
+    importStage = "BRIDGE_PARSE"
+    Set all = ParseBatchBridge(outputTsv)
+    importStage = "ROW_TRANSFER"
+    Call PopulateBatchReview(all, ws)
     ImportBatchFile = True
     If Not quiet Then
         MsgBox CStr(all.Count) & "ページを読み取り、対象者別の確認一覧を作成しました。" & vbCrLf & _
@@ -298,7 +346,15 @@ CleanUp:
     Exit Function
 Failed:
     ImportBatchFile = False
-    If Not quiet Then MsgBox "複数PDF取込： " & Err.Description, vbExclamation
+    mLastBatchErrorCode = importStage & ":" & CStr(Err.Number)
+    If importStage = "ROW_TRANSFER" Then
+        On Error Resume Next
+        If Not ws Is Nothing Then ws.Range("A7:AF26").ClearContents
+    End If
+    If Not quiet Then
+        MsgBox "複数PDF取込に失敗しました（" & mLastBatchErrorCode & "）。" & vbCrLf & _
+               "元のPDFは変更していません。", vbExclamation
+    End If
     Resume CleanUp
 End Function
 
