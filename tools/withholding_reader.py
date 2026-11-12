@@ -368,7 +368,7 @@ if __name__=="__main__":
             # The ASCII probe contains exactly one non-identifying integer.
             # Single-slip VBA routes 2+ page PDFs to the isolated batch UI.
             count = pdf_page_count(args.input)
-            args.output.write_text("PDF_PAGES\\t" + str(count) + "\\n",
+            args.output.write_text("PDF_PAGES\t" + str(count) + "\n",
                                    encoding="ascii")
             print("READER_PDF_PAGE_PROBE_OK")
         elif args.batch_bridge:
