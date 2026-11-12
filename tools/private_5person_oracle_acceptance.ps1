@@ -129,6 +129,7 @@ try {
 
     $stage = 'source-field-reconciliation'
     for ($i=0; $i -lt $oracle.Count; $i++) {
+        $stage = 'source-field-reconciliation-page-' + [string]($i+1)
         $rec = $oracle[$i]
         $row = $i+7
         if ([int]$batch.Range('A'+$row).Value2 -ne $i+1) {
@@ -170,6 +171,7 @@ try {
     }
     $stage = 'compare-private-oracle'
     for ($i=0; $i -lt $oracle.Count; $i++) {
+        $stage = 'compare-private-oracle-page-' + [string]($i+1)
         $rec = $oracle[$i]
         $row = $i+7
         $status = [string]$batch.Range('F'+$row).Value2
@@ -194,17 +196,6 @@ try {
         throw 'SOURCE_WORKBOOK_CHANGED'
     }
     $pass = $true
-    Write-Output 'PRIVATE_5PERSON_NUMERIC_ACCEPTANCE_PASS'
-    [pscustomobject]@{
-        incomeYear=2025
-        pageCount=$ExpectedPages
-        results=$verifiedRows
-        oracleSource='LOCAL_PRIVATE_CSV'
-        noOutsideIncome='QA_ASSUMPTION_ONLY'
-        actualTaxpayerEligibility='NOT_CERTIFIED'
-        personalDataUploaded=$false
-        originalWorkbookModified=$false
-    } | ConvertTo-Json -Depth 4
 }
 catch {
     # Exception detail might include filenames, PDF contents, or monetary data.
@@ -232,4 +223,16 @@ finally {
     }
 }
 if (-not $pass) { exit 1 }
+# Publish PASS only after original integrity check AND temporary-file cleanup.
+Write-Output 'PRIVATE_5PERSON_NUMERIC_ACCEPTANCE_PASS'
+[pscustomobject]@{
+    incomeYear=2025
+    pageCount=$ExpectedPages
+    results=$verifiedRows
+    oracleSource='LOCAL_PRIVATE_CSV'
+    noOutsideIncome='QA_ASSUMPTION_ONLY'
+    actualTaxpayerEligibility='NOT_CERTIFIED'
+    personalDataUploaded=$false
+    originalWorkbookModified=$false
+} | ConvertTo-Json -Depth 4
 exit 0
