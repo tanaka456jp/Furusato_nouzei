@@ -339,24 +339,18 @@ try {
     # Taxpayer 2 has a family deduction that is present in the source slip
     # but not yet carried through to resident-tax personal-deduction logic.
     # A synthetic confirmed input MUST NOT produce an incorrect limit.
-    $batch.Range('A8').Value2 = 2.0
-    $batch.Range('C8').Value2 = 2026.0
-    $batch.Range('D8').Value2 = 7000000.0
-    $batch.Range('K8').Value2 = 5200000.0
-    $batch.Range('L8').Value2 = 1670000.0
-    $batch.Range('M8').Value2 = 285800.0
-    $batch.Range('N8').Value2 = 1000000.0
-    $batch.Range('J8').Value2 = '確定申告'
-    $batch.Range('H8').Value2 = '照合済'
-    $batch.Range('I8').Value2 = '未対応条件なし'
-    $batch.Range('AE8').Value2 = 'REQUIRES_REVIEW'
-    $batch.Range('AF8').Value2 = 'FAMILY_DEDUCTION_NOT_TRANSFERRED;INCOMPLETE_OR_UNVERIFIED'
-    # Only this row exists, so the ordinal must start from page 1.
-    $batch.Range('A8').Value2 = 1.0
-    $batch.Range('A7:AF7').ClearContents()
-    # Move the entire synthetic taxpayer into row 7 (page 1).
-    $batch.Range('A7:AF7').Value2 = $batch.Range('A8:AF8').Value2
-    $batch.Range('A8:AF8').ClearContents()
+    $batch.Range('A7').Value2 = 1.0
+    $batch.Range('C7').Value2 = 2026.0
+    $batch.Range('D7').Value2 = 7000000.0
+    $batch.Range('K7').Value2 = 5200000.0
+    $batch.Range('L7').Value2 = 1670000.0
+    $batch.Range('M7').Value2 = 285800.0
+    $batch.Range('N7').Value2 = 1000000.0
+    $batch.Range('J7').Value2 = '確定申告'
+    $batch.Range('H7').Value2 = '照合済'
+    $batch.Range('I7').Value2 = '未対応条件なし'
+    $batch.Range('AE7').Value2 = 'REQUIRES_REVIEW'
+    $batch.Range('AF7').Value2 = 'FAMILY_DEDUCTION_NOT_TRANSFERRED;INCOMPLETE_OR_UNVERIFIED'
     Assert-Value ([bool]($excel.Run('BatchWithholding.BatchCalculateForTest'))) $true 'Family flag evaluated'
     Assert-Value $batch.Range('F7').Value2 'HOLD' 'Unmapped spouse/dependent case HOLD'
     Assert-BlankTaxAmount $batch.Range('E7').Value2 'Unmapped family cannot show donation estimate'
