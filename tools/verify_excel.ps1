@@ -196,7 +196,7 @@ try {
     [IO.File]::WriteAllText($bridgeFile, ($fixtureLines -join "`n") + "`n",
                             [System.Text.Encoding]::ASCII)
     $batch = $book.Worksheets.Item('一括試算一覧')
-    $batch.Range('A7:AF26').ClearContents()
+    $batch.Range('A7:AW26').ClearContents()
     if (-not [bool]($excel.Run('BatchWithholding.BatchImportBridgeForTest', $bridgeFile))) {
         $batchCode = [string]($excel.Run('BatchWithholding.BatchImportFailureCode'))
         throw ('Valid fictional 5-page bridge failed through VBA (' + $batchCode + ')')
@@ -210,7 +210,7 @@ try {
     Assert-Value $batch.Range('AE10').Value2 'REQUIRES_REVIEW' 'Fourth page requires review'
     Assert-BlankTaxAmount $batch.Range('N10').Value2 'Fourth page social insurance cannot be borrowed'
     Assert-Value $batch.Range('AE11').Value2 'READY_FOR_EXCEL_CROSSCHECK' 'Fifth page independent'
-    $batch.Range('A7:AF26').ClearContents()
+    $batch.Range('A7:AW26').ClearContents()
     QA-Stage 'synthetic-five-page-ascii-bridge-import-pass'
     QA-Stage 'synthetic-batch-restore-and-hold-start'
     # Only fictional money amounts in a throwaway QA XLSM. No real PDF.
@@ -224,7 +224,7 @@ try {
     foreach ($addr in @('B14','B15','B19','B20','B32')) {
         $extraBefore[$addr] = [string]$extraCase.Range($addr).Formula
     }
-    $batch.Range('A7:AF26').ClearContents()
+    $batch.Range('A7:AW26').ClearContents()
     foreach ($row in @(7,8)) {
         $batch.Range('A'+$row).Value2 = [double]($row-6)
         $batch.Range('C'+$row).Value2 = 2026.0
@@ -233,6 +233,10 @@ try {
         $batch.Range('L'+$row).Value2 = 1670000.0
         $batch.Range('M'+$row).Value2 = 285800.0
         $batch.Range('N'+$row).Value2 = 1000000.0
+        $batch.Range('AG'+$row).Value2 = 0.0
+        $batch.Range('AH'+$row).Value2 = 2.0
+        $batch.Range('AI'+$row).Value2 = 2.0
+        $batch.Range('AR'+$row).Value2 = 2.0
         $batch.Range('AE'+$row).Value2 = 'READY_FOR_EXCEL_CROSSCHECK'
         $batch.Range('AF'+$row).Value2 = ''
         $batch.Range('J'+$row).Value2 = '確定申告'
@@ -266,7 +270,7 @@ try {
     Assert-Value $batch.Range('F7').Value2 'HOLD' 'Editing source page ID sets HOLD'
     Assert-Value $batch.Range('H7').Value2 '未確認' 'Source edits revoke prior attestation'
     Assert-Value $batch.Range('I7').Value2 '未確認' 'Source edits revoke applicability check'
-    $batch.Range('A7:AF26').ClearContents()
+    $batch.Range('A7:AW26').ClearContents()
     QA-Stage 'synthetic-five-page-batch-start'
     # Synthetic-only five-page acceptance mirrors a missing social-insurance
     # field in page 4 without embedding real source amounts or person names.
@@ -277,6 +281,10 @@ try {
         $batch.Range('K'+$row).Value2 = 5200000.0
         $batch.Range('L'+$row).Value2 = 1670000.0
         $batch.Range('M'+$row).Value2 = 285800.0
+        $batch.Range('AG'+$row).Value2 = 0.0
+        $batch.Range('AH'+$row).Value2 = 2.0
+        $batch.Range('AI'+$row).Value2 = 2.0
+        $batch.Range('AR'+$row).Value2 = 2.0
         if ($row -ne 10) {
             $batch.Range('N'+$row).Value2 = 1000000.0
             $batch.Range('AE'+$row).Value2 = 'READY_FOR_EXCEL_CROSSCHECK'
@@ -333,7 +341,7 @@ try {
     Assert-Value $batch.Range('F8').Value2 'HOLD' 'Multiple residence credits require review'
     Assert-BlankTaxAmount $batch.Range('E8').Value2 'No amount for unsupported multiple residence credits'
     QA-Stage 'batch-mortgage-source-regression-pass'
-    $batch.Range('A7:AF26').ClearContents()
+    $batch.Range('A7:AW26').ClearContents()
     QA-Stage 'synthetic-five-page-batch-pass'
     QA-Stage 'spouse-and-dependent-fail-closed-start'
     # Taxpayer 2 has a family deduction that is present in the source slip
@@ -354,7 +362,7 @@ try {
     Assert-Value ([bool]($excel.Run('BatchWithholding.BatchCalculateForTest'))) $true 'Family flag evaluated'
     Assert-Value $batch.Range('F7').Value2 'HOLD' 'Unmapped spouse/dependent case HOLD'
     Assert-BlankTaxAmount $batch.Range('E7').Value2 'Unmapped family cannot show donation estimate'
-    $batch.Range('A7:AF26').ClearContents()
+    $batch.Range('A7:AW26').ClearContents()
     QA-Stage 'spouse-and-dependent-fail-closed-pass'
     QA-Stage 'synthetic-batch-restore-and-hold-pass'
 
