@@ -81,8 +81,17 @@ def create_batch_review(book):
         "新個人年金保険料", "旧個人年金保険料", "地震保険支払額",
         "所得金額調整控除", "16歳未満人数", "特定親族人数",
         "特定親族控除", "読取判定", "機械警告コード",
+        # All family source fields are non-identifying values. Keep them
+        # separate from the tax engine's mapped inputs for reconciliation.
+        "配偶者控除額（所得税）", "配偶者控除有（1/2）",
+        "老人配偶者有（1/2）", "配偶者の合計所得",
+        "特定扶養人数", "同居老親人数", "老人扶養総人数",
+        "一般扶養人数", "同居特別障害人数", "特別障害総人数",
+        "普通障害人数", "従たる配偶者（1/2）", "特定扶養従人数",
+        "老人扶養従人数", "一般扶養従人数", "特親従人数",
+        "非居住親族人数",
     ]
-    assert len(headers) == 32
+    assert len(headers) == 49
     for index, header in enumerate(headers, 1):
         cell = sheet.cell(6, index, header)
         cell.fill = PatternFill("solid", fgColor="244D69")
@@ -98,12 +107,15 @@ def create_batch_review(book):
         widths[col] = 17
     for col in ("AA", "AB", "AC", "AD", "AE"):
         widths[col] = 17
+    for col in ("AG", "AH", "AI", "AJ", "AK", "AL", "AM", "AN",
+                "AO", "AP", "AQ", "AR", "AS", "AT", "AU", "AV", "AW"):
+        widths[col] = 17
     widths["AF"] = 45
     for col, width in widths.items():
         sheet.column_dimensions[col].width = width
     for row in range(7, 27):
         sheet.row_dimensions[row].height = 27
-        for col in range(1, 33):
+        for col in range(1, 50):
             cell = sheet.cell(row, col)
             cell.font = Font(name="Yu Gothic", size=10, color="254052")
             cell.alignment = Alignment(vertical="center")
@@ -114,7 +126,7 @@ def create_batch_review(book):
                 cell.protection = Protection(locked=False)
             elif col in (5, 6, 7):
                 cell.fill = PatternFill("solid", fgColor="E7F1F7")
-            if col in (4, 5) or 11 <= col <= 30:
+            if col in (4, 5) or 11 <= col <= 30 or 33 <= col <= 49:
                 cell.number_format = '#,##0'
                 cell.alignment = Alignment(horizontal="right", vertical="center")
         sheet.cell(row, 7).alignment = Alignment(wrap_text=True,
@@ -131,7 +143,7 @@ def create_batch_review(book):
         validation.showErrorMessage = True
         sheet.add_data_validation(validation)
         validation.add(f"{column}7:{column}26")
-    sheet.auto_filter.ref = "A6:AF26"
+    sheet.auto_filter.ref = "A6:AW26"
     sheet.sheet_properties.pageSetUpPr.fitToPage = True
     sheet.page_setup.fitToWidth = 1
     sheet.page_setup.fitToHeight = 0
