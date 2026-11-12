@@ -1,14 +1,63 @@
 """Synthetic parser tests: no actual personal documents in git or CI."""
 import json
+import runpy
+import sys
 from unittest.mock import patch
 from types import SimpleNamespace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
-from withholding_reader import CODE_MAP,detect_year,extract_codes,extract_labelled,extract_occupancy_year,extract,finish,write_bridge,extract_pdf_batch,write_batch_bridge
+from withholding_reader import CODE_MAP,detect_year,extract_codes,extract_labelled,extract_occupancy_year,extract,finish,write_bridge,extract_pdf_batch,write_batch_bridge,pdf_page_count
 
 
 class WithholdingTest(unittest.TestCase):
+    def test_page_probe_is_structure_only_and_returns_no_personal_text(self):
+        # Simulated PDF is five-page and contains no actual taxpayer data.
+        # The probe must not call get_text/get_pixmap/get_textpage.
+        class HeaderOnlyPDF:
+            is_encrypted = False
+            def __enter__(self): return self
+            def __exit__(self, *_): return False
+            def __len__(self): return 5
+            def __getitem__(self, idx):
+                raise AssertionError("Probe must never open a PDF page")
+        with TemporaryDirectory() as tmp:
+            inp = Path(tmp) / "fictional_five_people.pdf"
+            output = Path(tmp) / "private_count.txt"
+            inp.write_bytes(b"synthetic-placeholder-pdf-not-a-real-document")
+            fake = SimpleNamespace(open=lambda path: HeaderOnlyPDF())
+            with patch.dict("sys.modules", {"fitz": fake}):
+                self.assertEqual(pdf_page_count(inp), 5)
+                args = ["withholding_reader.py","--input",str(inp),
+                        "--output",str(output),"--probe-pages"]
+                with patch.object(sys,"argv",args):
+                    runpy.run_path(str(Path(__file__).with_name("withholding_reader.py")),
+                                   run_name="__main__")
+            self.assertEqual(output.read_bytes(), b"PDF_PAGES\t5\n")
+            self.assertNotIn(b"salary",output.read_bytes())
+            self.assertNotIn(b"personal",output.read_bytes())
+        vba = (Path(__file__).parent.parent / "vba" /
+               "TaxLawUpdater.bas").read_text(encoding="utf-8-sig")
+        self.assertIn("PdfPagesForImport", vba)
+        self.assertIn("--probe-pages", vba)
+        self.assertIn("If pageCount > 1 Then", vba)
+        self.assertIn("BatchWithholding.BatchImportLocalFile(CStr(picked))", vba)
+        self.assertIn("BatchWithholding.ShowBatch", vba)
+        self.assertIn("GoTo CleanUp",vba)
+
+    def test_page_probe_rejects_encrypted_pdf(self):
+        class Encrypted:
+            is_encrypted = True
+            def __enter__(self): return self
+            def __exit__(self, *_): return False
+            def __len__(self): return 5
+        with TemporaryDirectory() as tmp:
+            inp = Path(tmp) / "fictional_encrypted.pdf"
+            inp.write_bytes(b"not-actual-pdf")
+            with patch.dict("sys.modules",{"fitz":SimpleNamespace(open=lambda _:Encrypted())}):
+                with self.assertRaisesRegex(ValueError,"PDF_PAGE_PROBE_UNSUPPORTED"):
+                    pdf_page_count(inp)
+
     def test_years(self):
         self.assertEqual(detect_year("令和 8 年分 給与所得の源泉徴収票"),2026)
         self.assertEqual(detect_year("令和 7 年分"),2025)
