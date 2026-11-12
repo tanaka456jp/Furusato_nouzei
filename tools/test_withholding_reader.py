@@ -126,6 +126,22 @@ class WithholdingTest(unittest.TestCase):
             self.assertIn(b"FAMILY_LAYOUT_UNVERIFIED",path.read_bytes())
 
 
+    def test_spouse_income_uses_g43_never_personal_number_g42(self):
+        # On the statutory form G42 is spouse ID, G43 is spouse income.
+        # The fictional G42 sequence must never enter the numeric bridge.
+        self.assertNotIn("G42", CODE_MAP)
+        self.assertEqual(CODE_MAP["G43"], "spouse_total_income")
+        words = [
+            (100, 480, 120, 488, "G42"),
+            (125, 480, 210, 488, "111111111111"),
+            (270, 485, 281, 491, "G43"),
+            (319, 485, 375, 491, "310000"),
+        ]
+        fields, warnings = extract_codes(words)
+        self.assertEqual(warnings, [])
+        self.assertEqual(fields, {"spouse_total_income": 310000})
+        self.assertNotIn(111111111111, fields.values())
+
     def test_labelled(self):
         self.assertEqual(extract_labelled("支払金額：5,000,000\n社会保険料等の金額：1,000,000"),
                          {"salary_gross":5000000,"social_insurance":1000000})
