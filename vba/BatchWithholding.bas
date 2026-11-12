@@ -233,6 +233,9 @@ Private Sub PopulateBatchReview(ByVal all As Collection, ByVal ws As Worksheet)
         If Len(missingFields) > 0 Then
             ws.Cells(rowNum, "G").Value2 = _
                 "未読取：" & missingFields & "。原票照合後に値を入力し、確認してください"
+        ElseIf InStr(1, warningCodes, "FAMILY_", vbBinaryCompare) > 0 Then
+            ws.Cells(rowNum, "G").Value2 = _
+                "配偶者・扶養等の人数/控除額は未転記です。住民税控除差の検証が必要なためHOLD"
         ElseIf InStr(1, warningCodes, "AMBIGUOUS_", vbBinaryCompare) > 0 Or _
                InStr(1, warningCodes, "CONFLICT_", vbBinaryCompare) > 0 Then
             ws.Cells(rowNum, "G").Value2 = _
@@ -574,6 +577,8 @@ Private Function ExecuteBatch(ByVal noDialogs As Boolean) As Boolean
             reason = "承認済み税制年と所得年が異なります"
         ElseIf CLng(sourceYear) <> 2025 And CLng(sourceYear) <> 2026 Then
             reason = "未承認の税制年です"
+        ElseIf InStr(1, CStr(ws.Cells(index, "AF").Value2), "FAMILY_", vbBinaryCompare) > 0 Then
+            reason = "配偶者・扶養控除の人数・区分が既存の一括計算へ未反映です。自動試算は保留"
         ElseIf Not ReviewWarningsSafe(CStr(ws.Cells(index, "AE").Value2), _
                                            CStr(ws.Cells(index, "AF").Value2), ws, index) Then
             reason = "OCR・原票構造に個別照合が必要です"
