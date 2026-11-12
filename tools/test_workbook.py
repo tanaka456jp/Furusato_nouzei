@@ -33,7 +33,12 @@ class WorkbookTest(unittest.TestCase):
         sheet = self.book[BATCH]
         self.assertEqual(sheet.sheet_state, "veryHidden")
         self.assertEqual(sheet.max_row, 26)
-        self.assertGreaterEqual(sheet.max_column, 32)
+        self.assertGreaterEqual(sheet.max_column, 49)
+        self.assertEqual(sheet["AG6"].value, "配偶者控除額（所得税）")
+        self.assertEqual(sheet["AH6"].value, "配偶者控除有（1/2）")
+        self.assertEqual(sheet["AK6"].value, "特定扶養人数")
+        self.assertEqual(sheet["AN6"].value, "一般扶養人数")
+        self.assertEqual(sheet["AW6"].value, "非居住親族人数")
         self.assertEqual(sheet["A6"].value, "PDF頁")
         self.assertEqual(sheet["E6"].value, "限度額の目安")
         self.assertEqual(sheet["H6"].value, "必要5金額・年分の原票照合")
