@@ -28,7 +28,7 @@ CODE_MAP = {
     "G21":"cohabiting_special_disabled_count",
     "G22":"special_disabled_count", "G23":"ordinary_disabled_count",
     "G24":"nonresident_relative_count",
-    "G42":"spouse_total_income",
+    "G43":"spouse_total_income",  # G42 is spouse personal number: NEVER ingest it.
     "G73":"secondary_special_relative_count",
     "G72":"special_relative_count", "G20":"under16_count",
     "G74":"special_relative_deduction_reference",
