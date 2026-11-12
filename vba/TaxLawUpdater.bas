@@ -183,12 +183,48 @@ Public Sub BindButtons()
 End Sub
 
 
+' Inspect PDF structure before running any single-slip extraction.
+' A multi-page PDF must never be mistaken for one taxpayer; the reader
+' writes only the ASCII count, no text, image, name, or income value.
+Private Function PdfPagesForImport(ByVal reader As String, ByVal sourcePdf As String, _
+                                   ByVal shell As Object, ByVal fso As Object, _
+                                   ByVal probeFile As String) As Long
+    Dim command As String, h As Object, line As String, cells As Variant
+    Dim raw As String, result As Long, exitCode As Long
+    command = Chr$(34) & reader & Chr$(34) & " --input " & Chr$(34) & _
+              sourcePdf & Chr$(34) & " --output " & Chr$(34) & _
+              probeFile & Chr$(34) & " --probe-pages"
+    exitCode = shell.Run(command, 0, True)
+    If exitCode <> 0 Or Not fso.FileExists(probeFile) Then _
+        Err.Raise vbObjectError + 220, , _
+            "PDFのページ数を確認できません。ファイル形式を確認してください。"
+    Set h = fso.OpenTextFile(probeFile, 1, False, 0)
+    If h.AtEndOfStream Then Err.Raise vbObjectError + 221, , "PDF構造の確認結果が空です。"
+    line = h.ReadLine
+    If Not h.AtEndOfStream Then _
+        Err.Raise vbObjectError + 222, , "PDF構造の確認結果が不正です。"
+    h.Close
+    Set h = Nothing
+    cells = Split(line, vbTab)
+    If UBound(cells) <> 1 Or CStr(cells(0)) <> "PDF_PAGES" Then _
+        Err.Raise vbObjectError + 223, , "PDFページ数の検証に失敗しました。"
+    raw = CStr(cells(1))
+    If Len(raw) = 0 Or Len(raw) > 4 Or raw Like "*[!0-9]*" Then _
+        Err.Raise vbObjectError + 224, , "PDFページ番号の形式が不正です。"
+    result = CLng(raw)
+    If result < 1 Or result > 20 Then _
+        Err.Raise vbObjectError + 225, , _
+            "一括取込は最大20ページです。PDFを20ページ以下に分割してください。"
+    PdfPagesForImport = result
+End Function
+
 ' Import only allowlisted numeric fields from a local, explicitly selected file.
 ' Do not put names, addresses, tax IDs, or raw document text into the workbook.
 ' An immutable snapshot is saved before mutating a user's current input.
 Public Sub ImportWithholding()
     Dim picked As Variant, fso As Object, shell As Object, reader As String
-    Dim tempJson As String, tempTsv As String, command As String, line As String
+    Dim tempJson As String, tempTsv As String, tempProbe As String
+    Dim command As String, line As String, pageCount As Long
     Dim inFile As Object, fields As Object, fragments As Variant
     Dim key As Variant, value As Double, year As Long, exitCode As Long
     Dim status As String, raw As String, backup As String, caution As String
@@ -212,6 +248,27 @@ Public Sub ImportWithholding()
     End If
     command = Chr$(34) & reader & Chr$(34)
     Set shell = CreateObject("WScript.Shell")
+    ' When the user uses the single-slip button for a multipage PDF,
+    ' automatically route to the per-person batch interface. This is the
+    ' only safe behavior: the legacy single source reader explicitly
+    ' rejects multi-page documents and otherwise reports "year missing".
+    If LCase$(fso.GetExtensionName(CStr(picked))) = "pdf" Then
+        tempProbe = fso.BuildPath(fso.GetSpecialFolder(2), fso.GetTempName & ".txt")
+        pageCount = PdfPagesForImport(reader, CStr(picked), shell, fso, tempProbe)
+        If pageCount > 1 Then
+            If Not BatchWithholding.BatchImportLocalFile(CStr(picked)) Then _
+                Err.Raise vbObjectError + 226, , _
+                    "複数ページPDFの一括取込に失敗しました。" & vbCrLf & _
+                    "「複数人一括試算」を開き、以前の一覧があれば保存後に初期化してから再取込してください。"
+            BatchWithholding.ShowBatch
+            MsgBox CStr(pageCount) & "ページのPDFを検出したため、" & _
+                   "対象者ごとの一括試算一覧へ切り替えました。" & vbCrLf & _
+                   "所得年・必要5金額と控除条件を各ページで確認してください。" & vbCrLf & _
+                   "確認前の限度額は表示しません。", vbInformation, _
+                   "複数人の源泉徴収票を検出"
+            GoTo CleanUp
+        End If
+    End If
     tempJson = fso.BuildPath(fso.GetSpecialFolder(2), fso.GetTempName & ".json")
     tempTsv = fso.BuildPath(fso.GetSpecialFolder(2), fso.GetTempName & ".tsv")
     command = command & " --input " & Chr$(34) & CStr(picked) & Chr$(34) & _
@@ -350,6 +407,7 @@ CleanUp:
     If Not fso Is Nothing Then
         If Len(tempTsv) > 0 Then If fso.FileExists(tempTsv) Then fso.DeleteFile tempTsv, True
         If Len(tempJson) > 0 Then If fso.FileExists(tempJson) Then fso.DeleteFile tempJson, True
+        If Len(tempProbe) > 0 Then If fso.FileExists(tempProbe) Then fso.DeleteFile tempProbe, True
     End If
     Exit Sub
 Failed:
