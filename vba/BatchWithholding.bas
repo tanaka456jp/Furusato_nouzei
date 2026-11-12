@@ -496,7 +496,7 @@ Private Sub ApplyCaseRow(ByVal ws As Worksheet, ByVal index As Long)
                                Val(CStr(ws.Cells(index, "AO").Value2))
     home.Range("D21").Value2 = Val(CStr(ws.Cells(index, "AO").Value2))
     For idx = 0 To CLng(Val(CStr(ws.Cells(index, "AK").Value2))) - 1
-        ' A qualifying 19–22-year-old with income in the dependent bracket
+        ' A qualifying 19-22-year-old with income in the dependent bracket
         ' maps to a 0-yen special-relative income in the existing tax table.
         home.Range("D" & CStr(14 + idx)).Value2 = 0
     Next idx
