@@ -511,7 +511,13 @@ Private Sub ApplyCaseRow(ByVal ws As Worksheet, ByVal index As Long)
         ' bracket. For spouse SPECIAL deduction, source spouse income G43
         ' is mandatory because resident thresholds may differ.
         If Val(CStr(ws.Cells(index, "AH").Value2)) = 1 Then
-            home.Range(target).Value2 = 0
+            ' Prefer the actual G43 spouse income when the slip supplies it.
+            ' Only use the ordinary-deduction 0-yen representative if absent.
+            If NumericYen(ws.Cells(index, "AJ").Value2) Then
+                home.Range(target).Value2 = ws.Cells(index, "AJ").Value2
+            Else
+                home.Range(target).Value2 = 0
+            End If
         Else
             home.Range(target).Value2 = ws.Cells(index, "AJ").Value2
         End If
