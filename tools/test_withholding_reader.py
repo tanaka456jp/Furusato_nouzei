@@ -425,7 +425,7 @@ class WithholdingTest(unittest.TestCase):
         ]
         self.assertEqual(CODE_MAP["G72"],"special_relative_count")
         self.assertEqual(CODE_MAP["G20"],"under16_count")
-        self.assertNotIn("G73",CODE_MAP)  # secondary special-relative count, not under16
+        self.assertEqual(CODE_MAP["G73"],"secondary_special_relative_count")
         self.assertEqual(CODE_MAP["G74"],"special_relative_deduction_reference")
         fields,flags=extract_codes(words)
         self.assertEqual(flags,[])
