@@ -37,7 +37,7 @@ def verify(path):
         assert b"QaAssumeNoOutsideIncome" in private
         assert b"private_5person_oracle.csv" in launcher
         assert b"-QaAssumeNoOutsideIncome" in launcher
-        assert b"private_5person_oracle.csv" not in names
+        assert "private_5person_oracle.csv" not in names
         assert b"121000" not in private and b"105000" not in private
 
     print("Python-free Windows review bundle: PASS")
