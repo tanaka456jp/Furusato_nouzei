@@ -17,6 +17,19 @@ CODE_MAP = {
     "G29":"mortgage_credit","G30":"life_new","G31":"life_old",
     "G32":"medical_care","G33":"annuity_new","G34":"annuity_old",
     "G35":"mortgage_claim_count","G36":"mortgage_possible_credit",
+    # G09–G24 are anonymous checkbox/count/amount slots on the 2025/26
+    # withholding format. They are not names, addresses or family identifiers.
+    "G09":"spouse_deduction_flag", "G10":"secondary_spouse_flag",
+    "G11":"elderly_spouse_flag", "G12":"spouse_tax_deduction",
+    "G13":"specific_dependent_count", "G14":"secondary_specific_count",
+    "G15":"cohabiting_elder_count", "G16":"elder_dependent_count",
+    "G17":"secondary_elder_count", "G18":"general_dependent_count",
+    "G19":"secondary_general_count",
+    "G21":"cohabiting_special_disabled_count",
+    "G22":"special_disabled_count", "G23":"ordinary_disabled_count",
+    "G24":"nonresident_relative_count",
+    "G42":"spouse_total_income",
+    "G73":"secondary_special_relative_count",
     "G72":"special_relative_count", "G20":"under16_count",
     "G74":"special_relative_deduction_reference",
     "G46":"basic_reference",
@@ -90,44 +103,51 @@ def extract_codes(words):
 
 
 
-# The first-generation Excel batch transfer has no spouse-/adult-dependent
-# source columns. Never show a potentially inaccurate estimate simply because
-# the income-tax deduction total was read. Resident-tax human deductions differ.
-# These checks inspect only G-code-anchored numeric tokens, never names.
-FAMILY_UNMAPPED_CODES = frozenset({
-    "G09", "G10", "G11", "G12", "G13", "G14", "G15", "G16",
-    "G17", "G18", "G19", "G21", "G22", "G23", "G24", "G73",
-})
+# The statutory form exposes only numeric/checkbox/count fields. Every code
+# below is source-level and contains no name, address, or date of birth.
+# The workbook must not guess "no family" if the expected tax-field row is absent.
+FAMILY_FORM_CODES = frozenset(
+    ("G09", "G10", "G11", "G12", "G13", "G14", "G15", "G16",
+     "G17", "G18", "G19", "G20", "G21", "G22", "G23", "G24")
+)
 
 
 def family_transfer_warnings(words):
-    anchors = [w for w in words if re.fullmatch(r"G[0-9]{2}", w[4])]
-    numbers = [w for w in words if number(w[4]) is not None]
-    warnings = []
-    for code in anchors:
-        if code[4] not in FAMILY_UNMAPPED_CODES:
-            continue
-        options = []
-        for w in numbers:
-            if not (code[2] + 1 <= w[0] <= code[2] + 125):
-                continue
-            if abs((w[1] + w[3]) / 2 - (code[1] + code[3]) / 2) > 9:
-                continue
-            if any(a is not code and a[0] > code[0] and a[0] < w[0]
-                   and abs(a[1] - code[1]) <= 9 for a in anchors):
-                continue
-            options.append(w)
-        if len(options) > 1:
-            warnings.append("FAMILY_CODE_AMBIGUOUS")
-        elif len(options) == 1:
-            value = number(options[0][4])
-            if code[4] in {"G09", "G10", "G11"}:
-                # Source's serialized checkbox value 1=checked, 2=unchecked.
-                if value not in (1, 2) or value == 1:
-                    warnings.append("FAMILY_DEDUCTION_NOT_TRANSFERRED")
-            elif value and value > 0:
-                warnings.append("FAMILY_DEDUCTION_NOT_TRANSFERRED")
+    code_names = {w[4] for w in words if re.fullmatch(r"G[0-9]{2}", w[4])}
+    if not FAMILY_FORM_CODES.issubset(code_names):
+        return ["FAMILY_LAYOUT_UNVERIFIED"]
+    parsed, errors = extract_codes(words)
+    warnings = [x for x in errors if x.startswith(("AMBIGUOUS_", "CONFLICT_"))]
+    for field in ("spouse_deduction_flag", "secondary_spouse_flag",
+                  "elderly_spouse_flag"):
+        if parsed.get(field) not in (1, 2):
+            warnings.append("FAMILY_CHECKBOX_UNVERIFIED")
+    if parsed.get("secondary_spouse_flag") == 1:
+        warnings.append("FAMILY_SECONDARY_SPOUSE_REQUIRES_REVIEW")
+    if any(parsed.get(key, 0) > 0 for key in (
+        "secondary_specific_count", "secondary_elder_count",
+        "secondary_general_count", "secondary_special_relative_count",
+        "nonresident_relative_count"
+    )):
+        warnings.append("FAMILY_SECONDARY_OR_NONRESIDENT_REQUIRES_REVIEW")
+    if parsed.get("cohabiting_elder_count", 0) > parsed.get("elder_dependent_count", 0):
+        warnings.append("FAMILY_ELDERLY_SUBCOUNT_INVALID")
+    if parsed.get("cohabiting_special_disabled_count", 0) > parsed.get("special_disabled_count", 0):
+        warnings.append("FAMILY_DISABLED_SUBCOUNT_INVALID")
+    if parsed.get("specific_dependent_count", 0) > 3:
+        warnings.append("FAMILY_SPECIFIC_OVER_THREE")
+    spouse_claimed = parsed.get("spouse_deduction_flag") == 1
+    tax_ded = parsed.get("spouse_tax_deduction", 0)
+    if spouse_claimed and tax_ded == 0:
+        warnings.append("FAMILY_SPOUSE_DEDUCTION_INCONSISTENT")
+    if not spouse_claimed and tax_ded > 0 and "spouse_total_income" not in parsed:
+        # Spouse SPECIAL deduction cannot be inferred exactly from its tax
+        # amount alone: different income bands may have a resident-tax effect.
+        warnings.append("FAMILY_SPOUSE_INCOME_NEEDED")
+    if spouse_claimed and parsed.get("spouse_total_income", 0) > 620000:
+        warnings.append("FAMILY_SPOUSE_INCOME_INCONSISTENT")
     return sorted(set(warnings))
+
 
 
 def extract_labelled(text):
