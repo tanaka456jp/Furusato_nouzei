@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
-from withholding_reader import CODE_MAP,detect_year,extract_codes,extract_labelled,extract_occupancy_year,extract,finish,write_bridge,extract_pdf_batch,write_batch_bridge,pdf_page_count
+from withholding_reader import CODE_MAP,detect_year,extract_codes,extract_labelled,extract_occupancy_year,extract,finish,write_bridge,extract_pdf_batch,write_batch_bridge,pdf_page_count,family_transfer_warnings
 
 
 class WithholdingTest(unittest.TestCase):
@@ -77,6 +77,49 @@ class WithholdingTest(unittest.TestCase):
         self.assertEqual(result["deductions_reference"],3956000)
         self.assertEqual(result["social_insurance"],1600000)
         self.assertEqual(result["income_tax_withheld"],0)
+
+    def test_family_tax_slip_fields_are_not_silently_ignored(self):
+        # G20 is the under-16 count, whereas G73 is the subordinate
+        # special-relative count; the old mapping reversed their meaning.
+        under16 = [(435,265,446,271,"G20"),
+                   (455,264,463,270,"2")]
+        dependent = [(187,265,198,271,"G13"),
+                     (207,264,214,270,"1")]
+        spouse = [(142,265,153,271,"G12"),
+                  (159,264,186,270,"380,000")]
+        subordinate = [(407,265,419,271,"G73"),
+                       (427,264,435,270,"1")]
+        no_spouse = [(33,265,44,271,"G09"),
+                     (49,264,53,270,"2")]
+        fields, errors = extract_codes(under16)
+        self.assertEqual(errors, [])
+        self.assertEqual(fields["under16_count"], 2)
+        self.assertEqual(family_transfer_warnings(under16), [])
+        self.assertEqual(family_transfer_warnings(no_spouse), [])
+        self.assertEqual(family_transfer_warnings(dependent),
+                         ["FAMILY_DEDUCTION_NOT_TRANSFERRED"])
+        self.assertEqual(family_transfer_warnings(spouse),
+                         ["FAMILY_DEDUCTION_NOT_TRANSFERRED"])
+        self.assertEqual(family_transfer_warnings(subordinate),
+                         ["FAMILY_DEDUCTION_NOT_TRANSFERRED"])
+        self.assertEqual(extract_codes(subordinate)[0], {},
+                         "G73 must never become under-16 dependents")
+        base = {"salary_gross": 5000000,
+                "salary_reference": 3500000,
+                "deductions_reference": 1500000,
+                "income_tax_withheld": 100000,
+                "social_insurance": 800000}
+        result = finish(2025, base, "PDF_TEXT",
+                        family_transfer_warnings(spouse))
+        self.assertEqual(result["status"], "REQUIRES_REVIEW")
+        self.assertIn("FAMILY_DEDUCTION_NOT_TRANSFERRED",
+                      result["warnings"])
+        with TemporaryDirectory() as tmp:
+            path = Path(tmp) / "synthetic_family_warning.tsv"
+            write_batch_bridge([{"page": 1, **result}], path)
+            self.assertIn(b"FAMILY_DEDUCTION_NOT_TRANSFERRED",
+                          path.read_bytes())
+            self.assertTrue(path.read_bytes().isascii())
 
     def test_labelled(self):
         self.assertEqual(extract_labelled("支払金額：5,000,000\n社会保険料等の金額：1,000,000"),
