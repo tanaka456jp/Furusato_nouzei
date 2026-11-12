@@ -34,6 +34,17 @@ def make(destination):
             page.insert_text((48, y), field, fontname="helv", fontsize=12)
             page.insert_text((100, y), f"{amount:,}",
                              fontname="helv", fontsize=12)
+        # Real (non-identifying) structure of the 2025/26 family-count
+        # row. Code slots are required before "empty" can mean zero.
+        for idx, code in enumerate((
+            "G09","G10","G11","G12","G13","G14","G15","G16",
+            "G17","G18","G19","G20","G21","G22","G23","G24"
+        )):
+            x = 15 + 39 * idx
+            value = 2 if code in ("G09","G10","G11") else 0
+            page.insert_text((x, 411), code, fontname="helv", fontsize=8)
+            page.insert_text((x+23, 411), str(value),
+                             fontname="helv", fontsize=8)
         page.insert_text((45, 455), f"SYNTHETIC_TEST_PAGE_{ordinal}",
                          fontname="helv", fontsize=10)
     destination = Path(destination)
