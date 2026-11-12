@@ -301,6 +301,38 @@ try {
     $batch.Range('I10').Value2 = '未対応条件なし'
     Assert-Value ([bool]($excel.Run('BatchWithholding.BatchCalculateForTest'))) $true 'Reverified page 4 accepted for recomputation'
     Assert-Value $batch.Range('E10').Value2 109000 'Reverified synthetic fourth person receives own estimate'
+    QA-Stage 'batch-mortgage-source-regression-start'
+    # A standard residence-credit entry on a withholding slip is ordinary
+    # tax data, not an unsupported deduction. Page 2 has a fictional 2024
+    # occupancy year and one claim, with non-zero possible credit.
+    $batch.Range('Q8').Value2 = 0.0
+    $batch.Range('R8').Value2 = 5000.0
+    $batch.Range('S8').Value2 = 2024.0
+    $batch.Range('T8').Value2 = 1.0
+    $batch.Range('AE8').Value2 = 'READY_FOR_EXCEL_CROSSCHECK'
+    $batch.Range('AF8').Value2 = ''
+    $batch.Range('H8').Value2 = '照合済'
+    $batch.Range('I8').Value2 = '未対応条件なし'
+    Assert-Value ([bool]($excel.Run('BatchWithholding.BatchCalculateForTest'))) $true 'Ordinary mortgage batch calculation completed'
+    Assert-Value $batch.Range('F8').Value2 '概算' 'Source-documented mortgage must not be blanket-HOLD'
+    if ([double]$batch.Range('E8').Value2 -le 0) { throw 'Normal 2024 mortgage produced no estimate' }
+    # A previously missing mortgage field can be filled from the source,
+    # without remaining permanently blocked by its stale OCR warning.
+    $batch.Range('AE8').Value2 = 'REQUIRES_REVIEW'
+    $batch.Range('AF8').Value2 = 'MORTGAGE_APPLIED_CREDIT_MISSING;INCOMPLETE_OR_UNVERIFIED'
+    $batch.Range('H8').Value2 = '照合済'
+    $batch.Range('I8').Value2 = '未対応条件なし'
+    Assert-Value ([bool]($excel.Run('BatchWithholding.BatchCalculateForTest'))) $true 'Reconciled mortgage credit calculation completed'
+    Assert-Value $batch.Range('F8').Value2 '概算' 'Reconciled mortgage can calculate after verification'
+    # Multiple housing claims and older-year treatment require separate
+    # evidence and must stay HOLD rather than guessed from year alone.
+    $batch.Range('AF8').Value2 = 'MULTIPLE_MORTGAGE_CREDITS_REQUIRE_REVIEW;INCOMPLETE_OR_UNVERIFIED'
+    $batch.Range('H8').Value2 = '照合済'
+    $batch.Range('I8').Value2 = '未対応条件なし'
+    Assert-Value ([bool]($excel.Run('BatchWithholding.BatchCalculateForTest'))) $true 'Multiple mortgage review test completed'
+    Assert-Value $batch.Range('F8').Value2 'HOLD' 'Multiple residence credits require review'
+    Assert-BlankTaxAmount $batch.Range('E8').Value2 'No amount for unsupported multiple residence credits'
+    QA-Stage 'batch-mortgage-source-regression-pass'
     $batch.Range('A7:AF26').ClearContents()
     QA-Stage 'synthetic-five-page-batch-pass'
     QA-Stage 'synthetic-batch-restore-and-hold-pass'
