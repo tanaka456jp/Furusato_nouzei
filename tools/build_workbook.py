@@ -182,6 +182,21 @@ def build(source, output):
     extra.print_area = "A1:D25"
     original, withholding, resident = (book[name] for name in (ENGINE, INPUT, RESIDENT))
 
+    # Zero-yen spouse income must match the first legally valid income band.
+    # The frozen baseline uses a strict lower threshold (< D36/D37), which
+    # inadvertently omits the 0-yen first band. Preserve strict comparisons
+    # at every positive boundary to avoid counting adjacent bands twice.
+    for spouse_row in (36, 37):
+        for result_col in ("F", "H"):
+            address = f"{result_col}{spouse_row}"
+            old_floor = f'"<"&$D{spouse_row}'
+            first_band_floor = f'"<"&IF($D{spouse_row}=0,1,$D{spouse_row})'
+            existing = original[address].value
+            if not isinstance(existing, str) or existing.count(old_floor) != 1:
+                raise ValueError(f"Unexpected spouse tax-table formula: {address}")
+            original[address] = existing.replace(old_floor, first_band_floor)
+
+
     for view, widths in ((home, (33, 16, 32, 18)), (detail, (33, 16, 32, 18))):
         view.sheet_view.showGridLines = False
         view.sheet_view.zoomScale = 85
