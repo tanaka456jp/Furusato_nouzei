@@ -244,9 +244,13 @@ Private Sub PopulateBatchReview(ByVal all As Collection, ByVal ws As Worksheet)
         ElseIf CStr(record("STATUS")) <> "READY_FOR_EXCEL_CROSSCHECK" Then
             ws.Cells(rowNum, "G").Value2 = _
                 "読取要確認：原票の金額・年分・控除条件を照合してください"
+        ElseIf record.Exists("mortgage_credit") Or _
+               record.Exists("mortgage_possible_credit") Then
+            ws.Cells(rowNum, "G").Value2 = _
+                "住宅ローン控除は読取済・通常計算対象です。必要金額と源泉票外の所得・控除を確認してください"
         Else
             ws.Cells(rowNum, "G").Value2 = _
-                "原票の金額・所得年と追加条件を個別確認してください"
+                "必要金額と源泉票外の所得・控除を個別確認してください"
         End If
     Next idx
 End Sub
@@ -466,17 +470,44 @@ Invalid:
     NumericYen = False
 End Function
 
-Private Function ReviewWarningsSafe(ByVal status As String, ByVal warnings As String) As Boolean
-    Dim flag As Variant
+' A mortgage-related OCR warning does NOT permanently exclude a taxpayer.
+' When the user manually reconciles the specific missing tax-slip field, the
+' same pre-existing Excel housing-credit guards still decide eligibility.
+' Multiple housing claims/unsupported pre-2022 cases NEVER auto-clear.
+Private Function ReviewWarningsSafe(ByVal status As String, ByVal warnings As String, _
+                                    ByVal ws As Worksheet, ByVal index As Long) As Boolean
+    Dim flag As Variant, applied As Variant, possible As Variant
+    Dim occupied As Variant, claims As Variant, sourceYear As Variant
+    Dim normalMortgage As Boolean
     If status = "READY_FOR_EXCEL_CROSSCHECK" Then
         ReviewWarningsSafe = True
         Exit Function
     End If
     If status <> "REQUIRES_REVIEW" Then Exit Function
+    applied = ws.Cells(index, "Q").Value2
+    possible = ws.Cells(index, "R").Value2
+    occupied = ws.Cells(index, "S").Value2
+    claims = ws.Cells(index, "T").Value2
+    sourceYear = ws.Cells(index, "C").Value2
+    normalMortgage = NumericYen(applied) And NumericYen(possible) And _
+                    NumericYen(occupied) And NumericYen(claims)
+    If normalMortgage Then
+        normalMortgage = (CDbl(possible) > 0 And CDbl(applied) <= CDbl(possible) _
+                          And CLng(occupied) >= 2022 And _
+                          CLng(occupied) <= CLng(sourceYear) And _
+                          CLng(claims) = 1)
+    End If
     For Each flag In Split(warnings, ";")
         Select Case CStr(flag)
             Case "OCR_REQUIRES_VERIFICATION", "INCOMPLETE_OR_UNVERIFIED"
-            Case Else: Exit Function
+                ' The two confirmation cells must already have been checked.
+            Case "MORTGAGE_APPLIED_CREDIT_MISSING", _
+                 "MORTGAGE_OCCUPANCY_YEAR_MISSING", _
+                 "MORTGAGE_APPLIED_EXCEEDS_POSSIBLE", _
+                 "INVALID_MORTGAGE_OCCUPANCY_YEAR"
+                If Not normalMortgage Then Exit Function
+            Case Else
+                Exit Function
         End Select
     Next flag
     ReviewWarningsSafe = True
@@ -544,7 +575,7 @@ Private Function ExecuteBatch(ByVal noDialogs As Boolean) As Boolean
         ElseIf CLng(sourceYear) <> 2025 And CLng(sourceYear) <> 2026 Then
             reason = "未承認の税制年です"
         ElseIf Not ReviewWarningsSafe(CStr(ws.Cells(index, "AE").Value2), _
-                                           CStr(ws.Cells(index, "AF").Value2)) Then
+                                           CStr(ws.Cells(index, "AF").Value2), ws, index) Then
             reason = "OCR・原票構造に個別照合が必要です"
         ElseIf Not NumericYen(ws.Cells(index, "D").Value2) Or _
                Not NumericYen(ws.Cells(index, "K").Value2) Or _
