@@ -401,6 +401,40 @@ try {
     }
     $batch.Range('A7:AW26').ClearContents()
     QA-Stage 'batch-standard-family-automatic-calculation-pass'
+
+    # Regression: Excel must distinguish numeric zero from an empty spouse
+    # income cell. A regular spouse with income 0 still receives the normal
+    # 380k income-tax and 330k resident-tax deductions. Synthetic-only.
+    QA-Stage 'zero-income-spouse-tax-table-start'
+    $savedMasterYear = $settings.Range('B4').Value2
+    $savedHomeYear = $homeSheet.Range('B4').Value2
+    $savedIncomeYear = $homeSheet.Range('B11').Value2
+    $savedSalary = $homeSheet.Range('B12').Value2
+    $savedSpouse = $homeSheet.Range('D17').Value2
+    $savedElderSpouse = $homeSheet.Range('D18').Value2
+    try {
+        $settings.Range('B4').Value2 = 2025.0
+        $homeSheet.Range('B4').Value2 = 2025.0
+        $homeSheet.Range('B11').Value2 = 2025.0
+        $homeSheet.Range('B12').Value2 = 7600000.0
+        $homeSheet.Range('D17').Value2 = 0.0
+        $homeSheet.Range('D18').ClearContents()
+        $excel.CalculateFull()
+        $calcSheet = $book.Worksheets.Item('ふるさと納税限度額計算')
+        Assert-Value ([double]$calcSheet.Range('F36').Value2) 380000.0 'Zero-income spouse income-tax deduction'
+        Assert-Value ([double]$calcSheet.Range('H36').Value2) 330000.0 'Zero-income spouse resident-tax deduction'
+    }
+    finally {
+        $settings.Range('B4').Value2 = $savedMasterYear
+        $homeSheet.Range('B4').Value2 = $savedHomeYear
+        $homeSheet.Range('B11').Value2 = $savedIncomeYear
+        $homeSheet.Range('B12').Value2 = $savedSalary
+        $homeSheet.Range('D17').Value2 = $savedSpouse
+        $homeSheet.Range('D18').Value2 = $savedElderSpouse
+        $excel.CalculateFull()
+    }
+    QA-Stage 'zero-income-spouse-tax-table-pass'
+
     QA-Stage 'synthetic-batch-restore-and-hold-pass'
 
     # Regression: certified source subtotals are not invalid just because a
