@@ -62,7 +62,7 @@ def create_batch_review(book):
     sheet["A2"].alignment = Alignment(wrap_text=True, vertical="center")
     sheet.row_dimensions[2].height = 31
     sheet.merge_cells("A3:J3")
-    sheet["A3"] = "氏名・住所・会社名は自動抽出しません。源泉票記載の住宅ローン控除は通常計算対象です。源泉票外の所得・追加控除・申告方式のみ別途確認してください。"
+    sheet["A3"] = "氏名・住所・会社名は自動抽出しません。通常の配偶者・扶養・障害者・住宅ローン控除は原票照合後に試算します。源泉票外の所得・追加控除・申告方式は別途確認してください。"
     sheet["A3"].font = Font(name="Yu Gothic", size=10, color="8A3D28")
     sheet["A3"].alignment = Alignment(wrap_text=True)
     sheet.row_dimensions[3].height = 29
@@ -230,7 +230,7 @@ def build(source, output):
         home.add_data_validation(validation)
         validation.add(home[cell])
 
-    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.18.6 検証版")
+    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.18.7 検証版")
     bar(extra, 1, "追加所得・分離課税（所得年内で事前試算）")
     extra.merge_cells("A3:D3")
     extra["A3"] = "翌年度の住民税通知書は参照せず、所得年内の収入・経費・控除と法定税率表から計算します。"
