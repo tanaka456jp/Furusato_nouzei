@@ -252,6 +252,23 @@ BATCH_MAX_PAGES = 20
 BATCH_FIELDS = tuple(sorted(set(CODE_MAP.values()) | set(TEXT_MAP.values())))
 
 
+def pdf_page_count(path):
+    """Read only PDF structure: never parse or report names or financial data."""
+    path = Path(path)
+    if path.suffix.lower() != ".pdf" or not path.is_file():
+        raise ValueError("PDF_PAGE_PROBE_INPUT_INVALID")
+    if not 0 < path.stat().st_size <= 25 * 1024 * 1024:
+        raise ValueError("PDF_PAGE_PROBE_SIZE_INVALID")
+    try:
+        import fitz
+    except ImportError as exc:
+        raise RuntimeError("PyMuPDF is required") from exc
+    with fitz.open(str(path)) as document:
+        if document.is_encrypted or len(document) < 1:
+            raise ValueError("PDF_PAGE_PROBE_UNSUPPORTED")
+        return len(document)
+
+
 def extract_pdf_batch(path):
     """Return only page ordinals, tax-year, numeric fields and machine codes."""
     path = Path(path)
@@ -342,9 +359,19 @@ if __name__=="__main__":
     ap.add_argument("--output",required=True,type=Path)
     ap.add_argument("--bridge",type=Path)
     ap.add_argument("--batch-bridge",type=Path)
+    ap.add_argument("--probe-pages",action="store_true")
     args=ap.parse_args()
     try:
-        if args.batch_bridge:
+        if args.probe_pages:
+            if args.bridge or args.batch_bridge:
+                raise ValueError("PDF_PAGE_PROBE_CONFLICTING_OPTIONS")
+            # The ASCII probe contains exactly one non-identifying integer.
+            # Single-slip VBA routes 2+ page PDFs to the isolated batch UI.
+            count = pdf_page_count(args.input)
+            args.output.write_text("PDF_PAGES\\t" + str(count) + "\\n",
+                                   encoding="ascii")
+            print("READER_PDF_PAGE_PROBE_OK")
+        elif args.batch_bridge:
             records=extract_pdf_batch(args.input)
             write_batch_bridge(records,args.batch_bridge)
             args.output.write_text(json.dumps({
