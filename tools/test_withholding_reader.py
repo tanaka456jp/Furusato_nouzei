@@ -79,47 +79,52 @@ class WithholdingTest(unittest.TestCase):
         self.assertEqual(result["income_tax_withheld"],0)
 
     def test_family_tax_slip_fields_are_not_silently_ignored(self):
-        # G20 is the under-16 count, whereas G73 is the subordinate
-        # special-relative count; the old mapping reversed their meaning.
-        under16 = [(435,265,446,271,"G20"),
-                   (455,264,463,270,"2")]
-        dependent = [(187,265,198,271,"G13"),
-                     (207,264,214,270,"1")]
-        spouse = [(142,265,153,271,"G12"),
-                  (159,264,186,270,"380,000")]
-        subordinate = [(407,265,419,271,"G73"),
-                       (427,264,435,270,"1")]
-        no_spouse = [(33,265,44,271,"G09"),
-                     (49,264,53,270,"2")]
-        fields, errors = extract_codes(under16)
-        self.assertEqual(errors, [])
+        # Exact anonymous G-field slots, matching the 2025/26 tax form.
+        ordered = ("G09","G10","G11","G12","G13","G14","G15","G16",
+                   "G17","G18","G19","G20","G21","G22","G23","G24")
+        def form(**amounts):
+            words = []
+            for idx, code in enumerate(ordered):
+                x = 23 + idx * 37
+                words.append((x,260,x+16,268,code))
+                value = amounts.get(code, 2 if code in ("G09","G10","G11") else 0)
+                words.append((x+22,260,x+34,268,str(value)))
+            return words
+        baseline = form()
+        self.assertEqual(family_transfer_warnings(baseline), [])
+        self.assertEqual(family_transfer_warnings(form(G18=1)), [])
+        self.assertEqual(family_transfer_warnings(form(G09=1,G12=380000)), [])
+        self.assertEqual(family_transfer_warnings(form(G13=2,G15=1,G16=2)), [])
+        self.assertEqual(family_transfer_warnings(form(G09=2,G12=380000)),
+                         ["FAMILY_SPOUSE_INCOME_NEEDED"])
+        self.assertEqual(family_transfer_warnings(form(G21=2,G22=1)),
+                         ["FAMILY_DISABLED_SUBCOUNT_INVALID"])
+        self.assertEqual(family_transfer_warnings(form(G14=1)),
+                         ["FAMILY_SECONDARY_OR_NONRESIDENT_REQUIRES_REVIEW"])
+        self.assertEqual(family_transfer_warnings(form(G24=1)),
+                         ["FAMILY_SECONDARY_OR_NONRESIDENT_REQUIRES_REVIEW"])
+        self.assertEqual(family_transfer_warnings([(435,265,446,271,"G20")]),
+                         ["FAMILY_LAYOUT_UNVERIFIED"])
+        fields, flags = extract_codes(form(G20=2,G13=1))
+        self.assertEqual(flags, [])
         self.assertEqual(fields["under16_count"], 2)
-        self.assertEqual(family_transfer_warnings(under16), [])
-        self.assertEqual(family_transfer_warnings(no_spouse), [])
-        self.assertEqual(family_transfer_warnings(dependent),
-                         ["FAMILY_DEDUCTION_NOT_TRANSFERRED"])
-        self.assertEqual(family_transfer_warnings(spouse),
-                         ["FAMILY_DEDUCTION_NOT_TRANSFERRED"])
-        self.assertEqual(family_transfer_warnings(subordinate),
-                         ["FAMILY_DEDUCTION_NOT_TRANSFERRED"])
-        self.assertEqual(extract_codes(subordinate)[0], {},
-                         "G73 must never become under-16 dependents")
-        base = {"salary_gross": 5000000,
-                "salary_reference": 3500000,
-                "deductions_reference": 1500000,
-                "income_tax_withheld": 100000,
-                "social_insurance": 800000}
-        result = finish(2025, base, "PDF_TEXT",
-                        family_transfer_warnings(spouse))
-        self.assertEqual(result["status"], "REQUIRES_REVIEW")
-        self.assertIn("FAMILY_DEDUCTION_NOT_TRANSFERRED",
-                      result["warnings"])
+        self.assertEqual(fields["specific_dependent_count"], 1)
+        self.assertEqual(CODE_MAP["G73"],"secondary_special_relative_count")
+        self.assertNotEqual(CODE_MAP["G73"],"under16_count")
+        # A source with no reconstructable family row must be HOLD, never
+        # read as 'no spouse and no dependents' without evidence.
+        base = {"salary_gross":5000000,"salary_reference":3500000,
+                "deductions_reference":1500000,"income_tax_withheld":100000,
+                "social_insurance":800000}
+        unsafe = finish(2025,base,"PDF_TEXT",family_transfer_warnings([]))
+        self.assertEqual(unsafe["status"],"REQUIRES_REVIEW")
+        self.assertIn("FAMILY_LAYOUT_UNVERIFIED",unsafe["warnings"])
         with TemporaryDirectory() as tmp:
-            path = Path(tmp) / "synthetic_family_warning.tsv"
-            write_batch_bridge([{"page": 1, **result}], path)
-            self.assertIn(b"FAMILY_DEDUCTION_NOT_TRANSFERRED",
-                          path.read_bytes())
+            path=Path(tmp)/"fictional_family_warning.tsv"
+            write_batch_bridge([{"page":1,**unsafe}],path)
             self.assertTrue(path.read_bytes().isascii())
+            self.assertIn(b"FAMILY_LAYOUT_UNVERIFIED",path.read_bytes())
+
 
     def test_labelled(self):
         self.assertEqual(extract_labelled("支払金額：5,000,000\n社会保険料等の金額：1,000,000"),
@@ -209,6 +214,15 @@ class WithholdingTest(unittest.TestCase):
                     ((300, 308, 311, 314, "G27"),
                      (365, 305, 410, 314, "42,000")),
                 ])
+            # Mock the 2025/26 anonymized family-code row. Checkbox
+            # values 2 mean unchecked; other numbered slots are empty/zero.
+            for idx, code in enumerate(("G09","G10","G11","G12","G13","G14",
+                                         "G15","G16","G17","G18","G19","G20",
+                                         "G21","G22","G23","G24")):
+                x=20+idx*36
+                value=2 if code in ("G09","G10","G11") else 0
+                cells.append(((x,265,x+17,273,code),
+                              (x+23,265,x+33,273,str(value))))
             return [w for pair in cells for w in pair]
 
         fixtures = [
