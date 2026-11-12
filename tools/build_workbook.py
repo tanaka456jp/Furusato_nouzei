@@ -62,18 +62,18 @@ def create_batch_review(book):
     sheet["A2"].alignment = Alignment(wrap_text=True, vertical="center")
     sheet.row_dimensions[2].height = 31
     sheet.merge_cells("A3:J3")
-    sheet["A3"] = "氏名・住所・会社名は自動抽出しません。任意ラベルのみ手入力可。住宅ローン、扶養、二か所給与等で照合不足ならHOLDにします。"
+    sheet["A3"] = "氏名・住所・会社名は自動抽出しません。源泉票記載の住宅ローン控除は通常計算対象です。源泉票外の所得・追加控除・申告方式のみ別途確認してください。"
     sheet["A3"].font = Font(name="Yu Gothic", size=10, color="8A3D28")
     sheet["A3"].alignment = Alignment(wrap_text=True)
     sheet.row_dimensions[3].height = 29
     sheet.merge_cells("A5:J5")
-    sheet["A5"] = "操作：PDF一括取込 → 各行のH列・I列を確認 → 一括試算。所得年が承認中の税制年と異なる行はHOLD。"
+    sheet["A5"] = "PDF一括取込 → 必要5金額と源泉票記載の住宅ローン控除を確認 → 源泉票外の条件を確認 → 一括試算。税制年不一致はHOLD。"
     sheet["A5"].alignment = Alignment(wrap_text=True)
     sheet.row_dimensions[5].height = 29
     headers = [
         "PDF頁", "識別ラベル（任意）", "所得年", "支払金額",
         "限度額の目安", "状態", "理由・確認事項",
-        "必要5金額・年分の原票照合", "未対応条件なしを確認", "申告方法",
+        "必要5金額・年分の原票照合", "源泉票外の追加所得・控除なしを確認", "申告方法",
         "給与所得控除後", "所得控除合計", "源泉徴収税額", "社会保険料",
         "生命保険控除", "地震保険控除", "住宅控除（適用）",
         "住宅控除（可能）", "入居開始年", "住宅控除適用数",
@@ -218,7 +218,7 @@ def build(source, output):
         home.add_data_validation(validation)
         validation.add(home[cell])
 
-    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.18.4 検証版")
+    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.18.5 検証版")
     bar(extra, 1, "追加所得・分離課税（所得年内で事前試算）")
     extra.merge_cells("A3:D3")
     extra["A3"] = "翌年度の住民税通知書は参照せず、所得年内の収入・経費・控除と法定税率表から計算します。"
