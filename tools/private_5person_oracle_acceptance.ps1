@@ -79,7 +79,19 @@ try {
         secondary_general_count='AU'; secondary_special_relative_count='AV'
         nonresident_relative_count='AW'
     }
-    $requiredHeaders = @('page','expect_status','expect_limit','expect_hold_reason') + @($columns.Keys)
+    # Earlier private five-person CSVs contain the core fields only.
+    # Supplementary columns are compared when present, but never guessed.
+    $requiredFields = @('year','salary_gross','salary_income',
+        'deductions_total','tax_withheld','social_insurance',
+        'life_deduction','earthquake_deduction','spouse_tax_deduction',
+        'spouse_flag','elderly_spouse_flag','secondary_spouse_flag',
+        'spouse_income','under16_count','mortgage_credit',
+        'mortgage_possible_credit','mortgage_occupancy_year',
+        'mortgage_claim_count')
+    $requiredHeaders = @('page','expect_status','expect_limit') + $requiredFields
+    $providedHeaders = @($oracle[0].PSObject.Properties.Name)
+    $availableColumns = @($columns.Keys | Where-Object { $_ -in $providedHeaders })
+    $hasHoldReason = 'expect_hold_reason' -in $providedHeaders
     foreach ($header in $requiredHeaders) {
         if ($header -notin @($oracle[0].PSObject.Properties.Name)) {
             throw 'ORACLE_COLUMN_MISSING'
@@ -88,7 +100,7 @@ try {
     for ($i=0; $i -lt $oracle.Count; $i++) {
         $rec = $oracle[$i]
         if ([string]$rec.page -cne [string]($i+1)) { throw 'ORACLE_PAGE_ORDER' }
-        foreach ($columnName in $columns.Keys) {
+        foreach ($columnName in $availableColumns) {
             $raw = [string]($rec.$columnName)
             if ($raw -cne 'BLANK' -and $raw -cnotmatch '^(0|[1-9][0-9]{0,11})$') {
                 throw 'ORACLE_FIELD_INVALID'
@@ -102,10 +114,17 @@ try {
             throw 'ORACLE_LIMIT_INVALID'
         }
         if ([string]$rec.year -cne '2025') { throw 'ORACLE_YEAR_UNAPPROVED' }
-        if ($status -ceq 'HOLD' -and [string]$rec.expect_hold_reason -cne 'MISSING_REQUIRED_AMOUNT') {
+        $holdReason = if ($hasHoldReason) {
+            [string]$rec.expect_hold_reason
+        } elseif ($status -ceq 'HOLD') {
+            'MISSING_REQUIRED_AMOUNT'
+        } else {
+            'NONE'
+        }
+        if ($status -ceq 'HOLD' -and $holdReason -cne 'MISSING_REQUIRED_AMOUNT') {
             throw 'ORACLE_HOLD_REASON_INVALID'
         }
-        if ($status -ceq 'ESTIMATE' -and [string]$rec.expect_hold_reason -cne 'NONE') {
+        if ($status -ceq 'ESTIMATE' -and $holdReason -cne 'NONE') {
             throw 'ORACLE_HOLD_REASON_INVALID'
         }
     }
@@ -167,7 +186,7 @@ try {
             [string]$batch.Range('I'+$row).Value2 -cne '未確認') {
             throw 'PREMATURE_APPROVAL'
         }
-        foreach ($field in $columns.Keys) {
+        foreach ($field in $availableColumns) {
             $expected = [string]($rec.$field)
             $actual = $batch.Range($columns[$field] + $row).Value2
             if ($expected -ceq 'BLANK') {
@@ -209,7 +228,12 @@ try {
                 ($null -ne $amount -and [string]$amount -cne '')) {
                 throw 'EXPECTED_HOLD_NOT_ENFORCED'
             }
-            if ([string]$rec.expect_hold_reason -ceq 'MISSING_REQUIRED_AMOUNT' -and
+            $expectedHoldReason = if ($hasHoldReason) {
+                [string]$rec.expect_hold_reason
+            } else {
+                'MISSING_REQUIRED_AMOUNT'
+            }
+            if ($expectedHoldReason -ceq 'MISSING_REQUIRED_AMOUNT' -and
                 $reason -cne '計算用の5金額に欠落または異常があります') {
                 throw 'HOLD_REASON_MISMATCH'
             }
