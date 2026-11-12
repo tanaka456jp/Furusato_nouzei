@@ -258,7 +258,8 @@ Public Sub ImportWithholding()
         If pageCount > 1 Then
             If Not BatchWithholding.BatchImportLocalFile(CStr(picked)) Then _
                 Err.Raise vbObjectError + 226, , _
-                    "複数ページPDFの一括取込に失敗しました。" & vbCrLf & _
+                    "複数ページPDFの一括取込に失敗しました（" & _
+                    BatchWithholding.BatchImportFailureCode() & "）。" & vbCrLf & _
                     "「複数人一括試算」を開き、以前の一覧があれば保存後に初期化してから再取込してください。"
             BatchWithholding.ShowBatch
             MsgBox CStr(pageCount) & "ページのPDFを検出したため、" & _
