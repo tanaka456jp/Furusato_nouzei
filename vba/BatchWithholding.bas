@@ -484,6 +484,39 @@ Private Sub ApplyCaseRow(ByVal ws As Worksheet, ByVal index As Long)
     If IsNumeric(ws.Cells(index, "AB").Value2) Then
         If CDbl(ws.Cells(index, "AB").Value2) > 0 Then home.Range("B25").Value2 = "あり"
     End If
+    ' Source family numbers reconcile to BOTH existing tax engines.
+    ' Elder totals include cohabiting elders; special-disabled totals also
+    ' include cohabiting members, so subtract the documented subtotals.
+    home.Range("D11").Value2 = Val(CStr(ws.Cells(index, "AN").Value2))
+    home.Range("D12").Value2 = Val(CStr(ws.Cells(index, "AL").Value2))
+    home.Range("D13").Value2 = Val(CStr(ws.Cells(index, "AM").Value2)) - _
+                               Val(CStr(ws.Cells(index, "AL").Value2))
+    home.Range("D19").Value2 = Val(CStr(ws.Cells(index, "AQ").Value2))
+    home.Range("D20").Value2 = Val(CStr(ws.Cells(index, "AP").Value2)) - _
+                               Val(CStr(ws.Cells(index, "AO").Value2))
+    home.Range("D21").Value2 = Val(CStr(ws.Cells(index, "AO").Value2))
+    For idx = 0 To CLng(Val(CStr(ws.Cells(index, "AK").Value2))) - 1
+        ' A qualifying 19–22-year-old with income in the dependent bracket
+        ' maps to a 0-yen special-relative income in the existing tax table.
+        home.Range("D" & CStr(14 + idx)).Value2 = 0
+    Next idx
+    If Val(CStr(ws.Cells(index, "AG").Value2)) > 0 Then
+        If Val(CStr(ws.Cells(index, "AI").Value2)) = 1 Then
+            target = "D18"
+        Else
+            target = "D17"
+        End If
+        ' For regular spouse deduction G09=1, the source tax deduction and
+        ' elderly flag uniquely determine the equivalent ordinary deduction
+        ' bracket. For spouse SPECIAL deduction, source spouse income G42
+        ' is mandatory because resident thresholds may differ.
+        If Val(CStr(ws.Cells(index, "AH").Value2)) = 1 Then
+            home.Range(target).Value2 = 0
+        Else
+            home.Range(target).Value2 = ws.Cells(index, "AJ").Value2
+        End If
+    End If
+    If Val(CStr(ws.Cells(index, "AK").Value2)) > 0 Then home.Range("B25").Value2 = "あり"
     extra.Range("B19").Value2 = "ローカル一括：原票照合済"
     extra.Range("B20").Value2 = "VERIFIED_AFTER_CORRECTION"
     extra.Range("B32").Value2 = ws.Cells(index, "AF").Value2
@@ -503,6 +536,85 @@ End Function
 ' When the user manually reconciles the specific missing tax-slip field, the
 ' same pre-existing Excel housing-credit guards still decide eligibility.
 ' Multiple housing claims/unsupported pre-2022 cases NEVER auto-clear.
+' An ordinary dependents/spouse claim is supported if its anonymized
+' G-code fields are present and internally consistent. Never infer a missing
+' checkbox, secondary claim, or nonresident status.
+Private Function FamilyRowIssue(ByVal ws As Worksheet, ByVal index As Long) As String
+    Dim applied As Variant, spouseFlag As Variant, elderFlag As Variant
+    Dim secondaryFlag As Variant, spouseIncome As Variant, threshold As Long
+    Dim numberCol As Variant, countVal As Variant
+    spouseFlag = ws.Cells(index, "AH").Value2
+    elderFlag = ws.Cells(index, "AI").Value2
+    secondaryFlag = ws.Cells(index, "AR").Value2
+    applied = ws.Cells(index, "AG").Value2
+    spouseIncome = ws.Cells(index, "AJ").Value2
+    If Not NumericYen(spouseFlag) Or Not NumericYen(elderFlag) Or _
+       Not NumericYen(secondaryFlag) Then
+        FamilyRowIssue = "配偶者の有無・老人区分の読取が不完全です"
+        Exit Function
+    End If
+    If Not ((CLng(spouseFlag) = 1 Or CLng(spouseFlag) = 2) And _
+           (CLng(elderFlag) = 1 Or CLng(elderFlag) = 2) And _
+           (CLng(secondaryFlag) = 1 Or CLng(secondaryFlag) = 2)) Then
+        FamilyRowIssue = "配偶者の有無・老人区分が不正です"
+        Exit Function
+    End If
+    If Not NumericYen(applied) Then
+        FamilyRowIssue = "源泉票の配偶者控除額が確認できません"
+        Exit Function
+    End If
+    For Each numberCol In Split("AK AL AM AN AO AP AQ AS AT AU AV AW", " ")
+        countVal = ws.Cells(index, CStr(numberCol)).Value2
+        If Len(Trim$(CStr(countVal))) > 0 Then
+            If Not NumericYen(countVal) Or CDbl(countVal) > 30 Then
+                FamilyRowIssue = "扶養・障害者人数の読取が不正です"
+                Exit Function
+            End If
+        End If
+    Next numberCol
+    If CLng(secondaryFlag) = 1 Or _
+       Val(CStr(ws.Cells(index, "AS").Value2)) > 0 Or _
+       Val(CStr(ws.Cells(index, "AT").Value2)) > 0 Or _
+       Val(CStr(ws.Cells(index, "AU").Value2)) > 0 Or _
+       Val(CStr(ws.Cells(index, "AV").Value2)) > 0 Or _
+       Val(CStr(ws.Cells(index, "AW").Value2)) > 0 Then
+        FamilyRowIssue = "従たる給与又は非居住者の扶養条件は個別確認が必要です"
+        Exit Function
+    End If
+    If Val(CStr(ws.Cells(index, "AL").Value2)) > _
+       Val(CStr(ws.Cells(index, "AM").Value2)) Or _
+       Val(CStr(ws.Cells(index, "AO").Value2)) > _
+       Val(CStr(ws.Cells(index, "AP").Value2)) Or _
+       Val(CStr(ws.Cells(index, "AK").Value2)) > 3 Then
+        FamilyRowIssue = "扶養・障害者の内訳が一致しません"
+        Exit Function
+    End If
+    If CLng(spouseFlag) = 1 Then
+        If CDbl(applied) = 0 Then
+            FamilyRowIssue = "配偶者控除の適用有無と所得税控除額が矛盾しています"
+            Exit Function
+        End If
+        If NumericYen(spouseIncome) Then
+            threshold = IIf(CLng(ws.Cells(index, "C").Value2) = 2025, 580000, 620000)
+            If CDbl(spouseIncome) > threshold Then
+                FamilyRowIssue = "源泉控除対象配偶者の所得要件が一致しません"
+                Exit Function
+            End If
+        End If
+    ElseIf CDbl(applied) > 0 Then
+        If Not NumericYen(spouseIncome) Then
+            FamilyRowIssue = "配偶者特別控除は配偶者の合計所得を確認してください"
+            Exit Function
+        End If
+        If CLng(elderFlag) = 1 Then
+            FamilyRowIssue = "配偶者特別控除と老人配偶者の区分を確認してください"
+            Exit Function
+        End If
+    ElseIf CLng(elderFlag) = 1 Then
+        FamilyRowIssue = "配偶者控除がないのに老人配偶者の印が付いています"
+    End If
+End Function
+
 Private Function ReviewWarningsSafe(ByVal status As String, ByVal warnings As String, _
                                     ByVal ws As Worksheet, ByVal index As Long) As Boolean
     Dim flag As Variant, applied As Variant, possible As Variant
@@ -528,7 +640,8 @@ Private Function ReviewWarningsSafe(ByVal status As String, ByVal warnings As St
     End If
     For Each flag In Split(warnings, ";")
         Select Case CStr(flag)
-            Case "OCR_REQUIRES_VERIFICATION", "INCOMPLETE_OR_UNVERIFIED"
+            Case "OCR_REQUIRES_VERIFICATION", "INCOMPLETE_OR_UNVERIFIED", _
+                 "FAMILY_SPOUSE_INCOME_NEEDED"
                 ' The two confirmation cells must already have been checked.
             Case "MORTGAGE_APPLIED_CREDIT_MISSING", _
                  "MORTGAGE_OCCUPANCY_YEAR_MISSING", _
@@ -603,8 +716,11 @@ Private Function ExecuteBatch(ByVal noDialogs As Boolean) As Boolean
             reason = "承認済み税制年と所得年が異なります"
         ElseIf CLng(sourceYear) <> 2025 And CLng(sourceYear) <> 2026 Then
             reason = "未承認の税制年です"
-        ElseIf InStr(1, CStr(ws.Cells(index, "AF").Value2), "FAMILY_", vbBinaryCompare) > 0 Then
-            reason = "配偶者・扶養控除の人数・区分が既存の一括計算へ未反映です。自動試算は保留"
+        ElseIf Len(FamilyRowIssue(ws, index)) > 0 Then
+            reason = FamilyRowIssue(ws, index)
+        ElseIf InStr(1, CStr(ws.Cells(index, "AF").Value2), "FAMILY_", vbBinaryCompare) > 0 _
+               And InStr(1, CStr(ws.Cells(index, "AF").Value2), "FAMILY_SPOUSE_INCOME_NEEDED", vbBinaryCompare) = 0 Then
+            reason = "源泉票の扶養・配偶者欄を安全に復元できません"
         ElseIf Not ReviewWarningsSafe(CStr(ws.Cells(index, "AE").Value2), _
                                            CStr(ws.Cells(index, "AF").Value2), ws, index) Then
             reason = "OCR・原票構造に個別照合が必要です"
@@ -627,6 +743,23 @@ Private Function ExecuteBatch(ByVal noDialogs As Boolean) As Boolean
             If Len(reason) = 0 Then
                 Application.Calculate
                 If Err.Number <> 0 Then reason = "既存計算式の再計算に失敗": Err.Clear
+            End If
+            If Len(reason) = 0 Then
+                ' Compare the source's income-tax spouse deduction with
+                ' the independently recalculated source-year tax-table value
+                ' before trusting the resident-tax deduction differential.
+                If Val(CStr(ws.Cells(index, "AG").Value2)) > 0 Then
+                    If Val(CStr(ws.Cells(index, "AI").Value2)) = 1 Then
+                        amount = ThisWorkbook.Worksheets("ふるさと納税限度額計算").Range("F37").Value2
+                    Else
+                        amount = ThisWorkbook.Worksheets("ふるさと納税限度額計算").Range("F36").Value2
+                    End If
+                    If Not NumericYen(amount) Then
+                        reason = "配偶者控除の再計算ができません"
+                    ElseIf CDbl(amount) <> CDbl(ws.Cells(index, "AG").Value2) Then
+                        reason = "源泉票の配偶者控除額と税制表の再計算が一致しません"
+                    End If
+                End If
             End If
             If Len(reason) = 0 Then
                 If CStr(home.Range("B28").Value2) <> "正常" Then
