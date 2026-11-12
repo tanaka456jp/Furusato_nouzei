@@ -24,7 +24,7 @@
 
 参考：
 - 国税庁（ふるさと納税）：https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1155.htm
-- 練馬区（住宅ローン控除とふるさと納税の関係）：https://www.city.nerima.tokyo.jp/kurashi/zei/jyuminzei/zeigakukojo/kifukinzeigaku.html
+- 練馬区（住宅ローン控除とふるさと納税の関係）：https://www.city.nerima.tokyo.jp/kurashi/zei/jyuminzei/zeigakukojo/kifukinzeigakukojo.html
 
 ### v4.18.4：5ページ実原票の取込エラー再対策
 
