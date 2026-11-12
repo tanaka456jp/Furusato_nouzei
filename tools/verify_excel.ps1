@@ -389,6 +389,7 @@ try {
             # SPECIAL deduction; matching source applied tax amount.
             $batch.Range('AG7').Value2 = 380000.0
             $batch.Range('AH7').Value2 = 1.0
+            $batch.Range('AJ7').Value2 = 300000.0
         } else {
             $batch.Range('AN7').Value2 = 1.0
         }
