@@ -236,44 +236,7 @@ try {
 catch {
     # Exception detail might include filenames, PDF contents, or monetary data.
     $code = [string]$_.Exception.Message
-    if ($code -cnotmatch '^[A-Z][A-Z0-9_]{0,70}
-}
-finally {
-    if ($null -ne $book) {
-        try { $book.Close($false) } catch {}
-        try { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($book) } catch {}
-    }
-    if ($null -ne $batch) {
-        try { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($batch) } catch {}
-    }
-    if ($null -ne $excel) {
-        try { $excel.AutomationSecurity = 3; $excel.Quit() } catch {}
-        try { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($excel) } catch {}
-    }
-    [GC]::Collect()
-    [GC]::WaitForPendingFinalizers()
-    if ($temp -and (Test-Path -LiteralPath $temp)) {
-        try { Remove-Item -LiteralPath $temp -Recurse -Force } catch {
-            Write-Output 'PRIVATE_5PERSON_CLEANUP_HOLD'
-            $pass = $false
-        }
-    }
-}
-if (-not $pass) { exit 1 }
-# Publish PASS only after original integrity check AND temporary-file cleanup.
-Write-Output 'PRIVATE_5PERSON_NUMERIC_ACCEPTANCE_PASS'
-[pscustomobject]@{
-    incomeYear=2025
-    pageCount=$ExpectedPages
-    results=$verifiedRows
-    oracleSource='LOCAL_PRIVATE_CSV'
-    noOutsideIncome='QA_ASSUMPTION_ONLY'
-    actualTaxpayerEligibility='NOT_CERTIFIED'
-    personalDataUploaded=$false
-    originalWorkbookModified=$false
-} | ConvertTo-Json -Depth 4
-exit 0
-) { $code = 'UNEXPECTED_ERROR' }
+    if ($code -cnotmatch '^[A-Z][A-Z0-9_]{0,70}$') { $code = 'UNEXPECTED_ERROR' }
     Write-Output ('PRIVATE_5PERSON_NUMERIC_ACCEPTANCE_HOLD; stage=' + $stage + '; code=' + $code)
 }
 finally {
