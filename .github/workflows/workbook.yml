@@ -186,6 +186,7 @@ jobs:
 
   # Explicit opt-in: never execute arbitrary fork PR code on a self-hosted runner.
   excel:
+    needs: [document_reader]
     if: >-
       (github.event_name == 'pull_request' &&
        github.event.pull_request.head.repo.full_name == github.repository &&
@@ -202,11 +203,18 @@ jobs:
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
+      # The Excel test must exercise the same reader EXE that ships to users.
+      # Download the binary from this exact workflow run, never fetch a live client document.
+      - name: Download the built PDF reader for fictional Excel batch acceptance
+        uses: actions/download-artifact@v4
+        with:
+          name: Furusato_DocumentReader_Windows_EXE_${{ github.run_id }}
+          path: review_reader
       - name: Build, install and run real Excel acceptance
         shell: powershell
         run: |
-          python -m pip install openpyxl==3.1.5
-          if ($LASTEXITCODE -ne 0) { throw 'Unable to install Python dependencies' }
+          python -m pip install openpyxl==3.1.5 pymupdf==1.26.7
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to install fictional PDF test dependencies' }
           $work = Join-Path $env:RUNNER_TEMP ('furusato-' + $env:GITHUB_RUN_ID + '-' + $env:GITHUB_RUN_ATTEMPT)
           if (Test-Path -LiteralPath $work) { throw 'Acceptance directory already exists' }
           New-Item -ItemType Directory -Path $work | Out-Null
@@ -214,6 +222,20 @@ jobs:
           python tools/package_review.py $zip
           if ($LASTEXITCODE -ne 0) { throw 'Review ZIP generation failed' }
           Expand-Archive -LiteralPath $zip -DestinationPath (Join-Path $work 'review')
+          $reader = Join-Path $PWD 'review_reader/FurusatoDocumentReader.exe'
+          if (-not (Test-Path -LiteralPath $reader -PathType Leaf)) {
+            throw 'Reader artifact was not downloaded from this workflow run'
+          }
+          Copy-Item -LiteralPath $reader -Destination (Join-Path $work 'review/FurusatoDocumentReader.exe')
+          $fictional = Join-Path $work 'fictional_taxpayers_5_pages.pdf'
+          python tools/create_synthetic_batch_pdf.py $fictional
+          if ($LASTEXITCODE -ne 0) { throw 'Fictional PDF creation failed' }
+          $readerProbe = Join-Path $work 'reader_result.json'
+          $readerBridge = Join-Path $work 'reader_batch.tsv'
+          & $reader --input $fictional --output $readerProbe --batch-bridge $readerBridge
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $readerBridge)) {
+            throw 'Standalone reader rejected synthetic multi-page source'
+          }
           $probes = Join-Path $work 'excel_open_probes'
           python tools/make_excel_open_probes.py $probes --self-test
           if ($LASTEXITCODE -ne 0) { throw 'Excel opening diagnostic preparation failed' }
@@ -224,7 +246,7 @@ jobs:
           powershell.exe -NoProfile -File $setup
           if ($LASTEXITCODE -ne 0) { throw 'Excel installer failed; see setup.log' }
           $evidence = Join-Path $work 'excel_acceptance.json'
-          & .\tools\verify_excel.ps1 -Workbook (Join-Path $work 'review/Furusato_nouzei.xlsm') -EvidencePath $evidence
+          & .\tools\verify_excel.ps1 -Workbook (Join-Path $work 'review/Furusato_nouzei.xlsm') -EvidencePath $evidence -SyntheticBatchPdf $fictional -ReaderExecutable $reader
           if (-not $?) { throw 'Windows Excel acceptance failed' }
           if (-not (Test-Path -LiteralPath $evidence)) { throw 'Excel acceptance evidence was not created' }
           $report = Get-Content -LiteralPath $evidence -Raw -Encoding UTF8 | ConvertFrom-Json
