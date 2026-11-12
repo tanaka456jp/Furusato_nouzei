@@ -57,6 +57,14 @@ jobs:
           if ($errors.Count -gt 0) {
             throw ($errors | Out-String)
           }
+      - name: Parse private five-person acceptance (PowerShell syntax only)
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          $file = (Resolve-Path ./tools/private_5person_oracle_acceptance.ps1).Path
+          [System.Management.Automation.Language.Parser]::ParseFile($file, [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { throw ($errors | Out-String) }
       - name: Attach one-click diagnostic launcher
         run: |
           cp tools/START_EXCEL_PROBE.cmd tools/run_excel_open_probe.ps1 tools/probe_excel_open.ps1 Excel_open_probes/
