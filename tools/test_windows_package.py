@@ -35,6 +35,13 @@ def verify(path):
         assert b"ESTIMATE_DIFFERENCE" in private
         assert b"SAFE_HOLD" in private
         assert b"QaAssumeNoOutsideIncome" in private
+        assert b"expect_hold_reason" in private
+        assert b"HOLD_REASON_MISMATCH" in private
+        assert b"PRIVATE_INPUT_CHANGED" in private
+        assert b"ORACLE_COLUMN_MISSING" in private
+        assert b"source-field-reconciliation-page-" in private
+        assert private.count(b"finally {") == 1
+        assert private.count(b"exit 0") == 1
         assert b"private_5person_oracle.csv" in launcher
         assert b"-QaAssumeNoOutsideIncome" in launcher
         assert "private_5person_oracle.csv" not in names
