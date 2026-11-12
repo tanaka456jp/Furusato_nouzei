@@ -429,7 +429,7 @@ class WithholdingTest(unittest.TestCase):
         self.assertEqual(CODE_MAP["G74"],"special_relative_deduction_reference")
         fields,flags=extract_codes(words)
         self.assertEqual(flags,[])
-        self.assertIn("FAMILY_DEDUCTION_NOT_TRANSFERRED",
+        self.assertIn("FAMILY_LAYOUT_UNVERIFIED",
                       family_transfer_warnings(words))
         self.assertEqual(fields,{
             "special_relative_count":1,
