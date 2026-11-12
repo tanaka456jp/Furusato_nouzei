@@ -77,7 +77,16 @@ Private Function AllowedField(ByVal key As String) As Boolean
              "life_new", "life_old", "medical_care", "annuity_new", _
              "annuity_old", "earthquake_paid", "income_adjustment", _
              "under16_count", "special_relative_count", _
-             "special_relative_deduction_reference", "basic_reference"
+             "special_relative_deduction_reference", "basic_reference", _
+             "spouse_tax_deduction", "spouse_deduction_flag", _
+             "elderly_spouse_flag", "spouse_total_income", _
+             "specific_dependent_count", "cohabiting_elder_count", _
+             "elder_dependent_count", "general_dependent_count", _
+             "cohabiting_special_disabled_count", "special_disabled_count", _
+             "ordinary_disabled_count", "secondary_spouse_flag", _
+             "secondary_specific_count", "secondary_elder_count", _
+             "secondary_general_count", "secondary_special_relative_count", _
+             "nonresident_relative_count"
             AllowedField = True
     End Select
 End Function
@@ -105,6 +114,23 @@ Private Function ColumnForField(ByVal key As String) As String
         Case "under16_count": ColumnForField = "AB"
         Case "special_relative_count": ColumnForField = "AC"
         Case "special_relative_deduction_reference": ColumnForField = "AD"
+        Case "spouse_tax_deduction": ColumnForField = "AG"
+        Case "spouse_deduction_flag": ColumnForField = "AH"
+        Case "elderly_spouse_flag": ColumnForField = "AI"
+        Case "spouse_total_income": ColumnForField = "AJ"
+        Case "specific_dependent_count": ColumnForField = "AK"
+        Case "cohabiting_elder_count": ColumnForField = "AL"
+        Case "elder_dependent_count": ColumnForField = "AM"
+        Case "general_dependent_count": ColumnForField = "AN"
+        Case "cohabiting_special_disabled_count": ColumnForField = "AO"
+        Case "special_disabled_count": ColumnForField = "AP"
+        Case "ordinary_disabled_count": ColumnForField = "AQ"
+        Case "secondary_spouse_flag": ColumnForField = "AR"
+        Case "secondary_specific_count": ColumnForField = "AS"
+        Case "secondary_elder_count": ColumnForField = "AT"
+        Case "secondary_general_count": ColumnForField = "AU"
+        Case "secondary_special_relative_count": ColumnForField = "AV"
+        Case "nonresident_relative_count": ColumnForField = "AW"
         ' basic_reference is supplemental and intentionally not auto-imported.
     End Select
 End Function
@@ -212,7 +238,7 @@ Private Sub PopulateBatchReview(ByVal all As Collection, ByVal ws As Worksheet)
     If all.Count < 1 Or all.Count > 20 Then _
         Err.Raise vbObjectError + 929, , "ページ数が不正です。"
     ' Only write after every block and every value has passed validation.
-    ws.Range("A7:AF26").ClearContents
+    ws.Range("A7:AW26").ClearContents
     For idx = 1 To all.Count
         Set record = all(idx)
         rowNum = START_ROW + idx - 1
@@ -291,7 +317,7 @@ ImportFailed:
     mLastBatchErrorCode = "BRIDGE_VALIDATION:" & CStr(Err.Number)
     If Not ws Is Nothing Then
         On Error Resume Next
-        ws.Range("A7:AF26").ClearContents
+        ws.Range("A7:AW26").ClearContents
     End If
     Resume TestCleanup
 End Function
@@ -368,7 +394,7 @@ Failed:
     mLastBatchErrorCode = importStage & ":" & CStr(Err.Number)
     If importStage = "ROW_TRANSFER" Then
         On Error Resume Next
-        If Not ws Is Nothing Then ws.Range("A7:AF26").ClearContents
+        If Not ws Is Nothing Then ws.Range("A7:AW26").ClearContents
     End If
     If Not quiet Then
         MsgBox "複数PDF取込に失敗しました（" & mLastBatchErrorCode & "）。" & vbCrLf & _
@@ -386,7 +412,7 @@ Public Sub BatchClear()
     previousEvents = Application.EnableEvents
     On Error GoTo RestoreClearEvents
     Application.EnableEvents = False
-    ThisWorkbook.Worksheets(SHEET_BATCH).Range("A7:AF26").ClearContents
+    ThisWorkbook.Worksheets(SHEET_BATCH).Range("A7:AW26").ClearContents
 RestoreClearEvents:
     Application.EnableEvents = previousEvents
     mWorking = False
@@ -668,7 +694,7 @@ Public Sub BatchInvalidate(ByVal changed As Range)
     Dim wasEnabled As Boolean, index As Long
     If mWorking Then Exit Sub
     Set ws = ThisWorkbook.Worksheets(SHEET_BATCH)
-    Set touched = Application.Intersect(changed, ws.Range("A7:AF26"))
+    Set touched = Application.Intersect(changed, ws.Range("A7:AW26"))
     If touched Is Nothing Then Exit Sub
     Set changedRows = CreateObject("Scripting.Dictionary")
     Set taxRows = CreateObject("Scripting.Dictionary")
