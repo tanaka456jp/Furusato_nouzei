@@ -204,7 +204,8 @@ jobs:
     if: >-
       (github.event_name == 'pull_request' &&
        github.event.pull_request.head.repo.full_name == github.repository &&
-       contains(github.event.pull_request.body, '[run-windows-excel]')) ||
+       (contains(github.event.pull_request.body, '[run-windows-excel]') ||
+        contains(github.event.pull_request.body, '[run-private-local-5person]'))) ||
       (github.event_name == 'workflow_dispatch' && inputs.excel)
     # Both PC1 and PC2 may host this repository-scoped runner alongside
     # their existing runners. Accept only the Furusato Excel runner label.
@@ -337,7 +338,7 @@ jobs:
       github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       contains(github.event.pull_request.body, '[run-private-local-5person]')
-    needs: [document_reader]
+    needs: [document_reader, excel]
     runs-on: [self-hosted, Windows, furusato-excel]
     timeout-minutes: 12
     steps:
