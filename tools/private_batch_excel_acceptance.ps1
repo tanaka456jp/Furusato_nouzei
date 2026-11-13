@@ -89,6 +89,8 @@ try {
         $index = $i - 6
         if ([int]$rawPage -ne $index) { throw 'PAGE_ORDER_MISMATCH' }
         $taxYear = $batch.Range('C' + $i).Value2
+        $sourceYear = $batch.Range('AX' + $i).Value2
+        if ($null -eq $sourceYear -or [int]$sourceYear -notin @(2025,2026)) { throw 'SOURCE_YEAR_UNVERIFIED' }
         $missing = @()
         foreach ($field in $fields) {
             $raw = $batch.Range($field.col + $i).Value2
@@ -110,7 +112,8 @@ try {
         }
         $records += [pscustomobject]@{
             page = $index
-            incomeYear = [int]$taxYear
+            targetTaxYear = [int]$taxYear
+            referenceSlipYear = [int]$sourceYear
             fieldMissing = @($missing)
             sourceReview = $(if ($state -eq 'READY_FOR_EXCEL_CROSSCHECK') {'PROVISIONAL'} else {'REVIEW'})
             estimate = 'HOLD'
