@@ -89,6 +89,9 @@ try {
         $index = $i - 6
         if ([int]$rawPage -ne $index) { throw 'PAGE_ORDER_MISMATCH' }
         $taxYear = $batch.Range('C' + $i).Value2
+        # Only report whether a name was read, NEVER the private value.
+        $privateName = [string]$batch.Range('B' + $i).Value2
+        $nameWasRead = $privateName.Trim().Length -ge 2
         $sourceYear = $batch.Range('AX' + $i).Value2
         if ($null -eq $sourceYear -or [int]$sourceYear -notin @(2025,2026)) { throw 'SOURCE_YEAR_UNVERIFIED' }
         $missing = @()
@@ -114,6 +117,7 @@ try {
             page = $index
             targetTaxYear = [int]$taxYear
             referenceSlipYear = [int]$sourceYear
+            recipientNameRecognized = [bool]$nameWasRead
             fieldMissing = @($missing)
             sourceReview = $(if ($state -eq 'READY_FOR_EXCEL_CROSSCHECK') {'PROVISIONAL'} else {'REVIEW'})
             estimate = 'HOLD'
