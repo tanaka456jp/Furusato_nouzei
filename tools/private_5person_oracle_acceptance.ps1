@@ -5,6 +5,8 @@
   Do NOT add the oracle, PDF, workbook output, raw amounts, or source hashes
   to GitHub Actions or diagnostic logs. This test checks calculations under
   explicit QA assumptions; it is not a taxpayer attestation.
+  The existing CSV is a 2025-tax-law historical benchmark; it MUST NEVER
+  be used to certify a 2026 forecast amount.
   Only a disposable copy of the workbook/reader is modified.
 #>
 [CmdletBinding()]
@@ -59,7 +61,7 @@ try {
     $oracle = @(Import-Csv -LiteralPath $OracleCsv -Encoding ASCII)
     if ($oracle.Count -ne $ExpectedPages) { throw 'ORACLE_PAGE_COUNT' }
     $columns = [ordered]@{
-        year='C'; salary_gross='D'; salary_income='K'
+        year='AX'; salary_gross='D'; salary_income='K'
         deductions_total='L'; tax_withheld='M'; social_insurance='N'
         life_deduction='O'; earthquake_deduction='P'
         spouse_tax_deduction='AG'; spouse_flag='AH'
@@ -153,7 +155,7 @@ try {
         throw 'BATCH_MODULE_MISSING'
     }
 
-    $stage = '2025-master'
+    $stage = 'historical-2025-master-only'
     # QA copy only. Year-switch coverage is already exercised separately
     # by the normal Windows Excel acceptance workflow.
     $settings.Range('B4').Value2 = 2025.0
@@ -179,6 +181,9 @@ try {
         $row = $i+7
         if ([int]$batch.Range('A'+$row).Value2 -ne $i+1) {
             throw 'IMPORTED_PAGE_ORDER'
+        }
+        if ([int]$batch.Range('C'+$row).Value2 -ne 2025) {
+            throw 'ORACLE_IS_NOT_2026_FORECAST'
         }
         if ([string]$batch.Range('F'+$row).Value2 -cne 'HOLD' -or
             $null -ne $batch.Range('E'+$row).Value2 -or
@@ -288,7 +293,9 @@ if (-not $pass) { exit 1 }
 # Publish PASS only after original integrity check AND temporary-file cleanup.
 Write-Output 'PRIVATE_5PERSON_NUMERIC_ACCEPTANCE_PASS'
 [pscustomobject]@{
-    incomeYear=2025
+    sourceSlipYear=2025
+    calculationTaxYear=2025
+    validationPurpose='HISTORICAL_2025_ORACLE_ONLY_NOT_2026_FORECAST'
     pageCount=$ExpectedPages
     results=$verifiedRows
     oracleSource='LOCAL_PRIVATE_CSV'
