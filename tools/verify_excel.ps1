@@ -403,6 +403,82 @@ try {
     $batch.Range('A7:AW26').ClearContents()
     QA-Stage 'batch-standard-family-automatic-calculation-pass'
 
+    # Real Workbook_SheetChange acceptance: a manual correction revokes the
+    # earlier attestation and calculates THIS row again as soon as H/I are
+    # confirmed. Previous estimates for other people must not be altered.
+    QA-Stage 'batch-manual-edit-automatic-recalc-start'
+    $batch.Range('A7:AW26').ClearContents()
+    foreach ($row in @(7,8)) {
+        $batch.Range('A'+$row).Value2 = [double]($row-6)
+        $batch.Range('C'+$row).Value2 = 2026.0
+        $batch.Range('D'+$row).Value2 = 7000000.0
+        $batch.Range('K'+$row).Value2 = 5200000.0
+        $batch.Range('L'+$row).Value2 = 1670000.0
+        $batch.Range('M'+$row).Value2 = 285800.0
+        $batch.Range('N'+$row).Value2 = 1000000.0
+        $batch.Range('AG'+$row).Value2 = 0.0
+        $batch.Range('AH'+$row).Value2 = 2.0
+        $batch.Range('AI'+$row).Value2 = 2.0
+        $batch.Range('AR'+$row).Value2 = 2.0
+        $batch.Range('AE'+$row).Value2 = 'READY_FOR_EXCEL_CROSSCHECK'
+        $batch.Range('AF'+$row).Value2 = ''
+        $batch.Range('J'+$row).Value2 = '確定申告'
+        $batch.Range('H'+$row).Value2 = '照合済'
+        $batch.Range('I'+$row).Value2 = '未対応条件なし'
+    }
+    Assert-Value ([bool]($excel.Run('BatchWithholding.BatchCalculateForTest'))) $true 'Two-row baseline calculation'
+    Assert-Value $batch.Range('E7').Value2 109000.0 'First source baseline estimate'
+    Assert-Value $batch.Range('E8').Value2 109000.0 'Second source baseline estimate'
+    $eventsBefore = [bool]$excel.EnableEvents
+    # This is a disposable QA copy. The only real Excel event handler is the
+    # Workbook_SheetChange VBA installed by setup.ps1.
+    $excel.EnableEvents = $true
+    try {
+        # Re-enter the manually verified salary-income value; Excel fires an
+        # event even if the value is the same. Neither K nor L is overwritten.
+        $batch.Range('K7').Value2 = 5200000.0
+        Assert-BlankTaxAmount $batch.Range('E7').Value2 'Manual K7 correction immediately removes stale estimate'
+        Assert-Value $batch.Range('F7').Value2 'HOLD' 'K7 corrected row held until attested'
+        Assert-Value $batch.Range('H7').Value2 '未確認' 'Correction revokes source amount attestation'
+        Assert-Value $batch.Range('I7').Value2 '未確認' 'Correction revokes outside-income attestation'
+        Assert-Value $batch.Range('E8').Value2 109000.0 'Editing taxpayer one preserves taxpayer two'
+        Assert-Value $batch.Range('K7').Value2 5200000.0 'Manual salary income is preserved'
+        Assert-Value $batch.Range('L7').Value2 1670000.0 'Manual income deductions are preserved'
+        $batch.Range('H7').Value2 = '照合済'
+        Assert-BlankTaxAmount $batch.Range('E7').Value2 'H-only confirmation not enough for estimate'
+        $batch.Range('I7').Value2 = '未対応条件なし'
+        Assert-Value $batch.Range('F7').Value2 '概算' 'Final confirmation automatically recalculates'
+        Assert-Value $batch.Range('E7').Value2 109000.0 'Recalculation equals explicit batch button'
+        Assert-Value $batch.Range('E8').Value2 109000.0 'Confirmed taxpayer two remains intact'
+        # The source year and the approved tax table must agree. They are
+        # NEVER silently adjusted by the event handler.
+        $batch.Range('C7').Value2 = 2025.0
+        Assert-BlankTaxAmount $batch.Range('E7').Value2 'Year mismatch hides amount'
+        Assert-Value $batch.Range('F7').Value2 'HOLD' 'Year mismatch held'
+        Assert-Value $batch.Range('G7').Value2 '承認済み税制年と所得年が異なります' 'Visible mismatch explanation'
+        $batch.Range('C7').Value2 = 2026.0
+        Assert-Value $batch.Range('H7').Value2 '未確認' 'Year return does not auto-approve'
+        $batch.Range('H7').Value2 = '照合済'
+        $batch.Range('I7').Value2 = '未対応条件なし'
+        Assert-Value $batch.Range('E7').Value2 109000.0 'Fresh year verification recalculates'
+        # Dropping a required monetary field may NEVER reuse the earlier
+        # value or show a donation estimate, even after operator reapproval.
+        $batch.Range('N7').ClearContents()
+        $batch.Range('H7').Value2 = '照合済'
+        $batch.Range('I7').Value2 = '未対応条件なし'
+        Assert-BlankTaxAmount $batch.Range('E7').Value2 'Missing insurance remains blank'
+        Assert-Value $batch.Range('F7').Value2 'HOLD' 'Missing insurance remains HOLD'
+        Assert-Value $batch.Range('G7').Value2 '計算用の5金額に欠落または異常があります' 'Missing insurance explicit reason'
+        Assert-Value $batch.Range('E8').Value2 109000.0 'Unrelated taxpayer cannot be changed'
+    }
+    finally {
+        $excel.EnableEvents = $false
+        $batch.Range('A7:AW26').ClearContents()
+        $excel.EnableEvents = $eventsBefore
+    }
+    QA-Stage 'batch-manual-edit-automatic-recalc-pass'
+
+
     # Regression: Excel must distinguish numeric zero from an empty spouse
     # income cell. A regular spouse with income 0 still receives the normal
     # 380k income-tax and 330k resident-tax deductions. Synthetic-only.
