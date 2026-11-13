@@ -238,12 +238,17 @@ Private Sub PopulateBatchReview(ByVal all As Collection, ByVal ws As Worksheet)
     If all.Count < 1 Or all.Count > 20 Then _
         Err.Raise vbObjectError + 929, , "ページ数が不正です。"
     ' Only write after every block and every value has passed validation.
-    ws.Range("A7:AW26").ClearContents
+    ws.Range("A7:AX26").ClearContents
     For idx = 1 To all.Count
         Set record = all(idx)
         rowNum = START_ROW + idx - 1
         ws.Cells(rowNum, "A").Value2 = CLng(record("PAGE"))
-        If Len(CStr(record("YEAR"))) > 0 Then ws.Cells(rowNum, "C").Value2 = CLng(record("YEAR"))
+        ' The slip year is immutable reference metadata, not the tax year.
+        ' Use the operator-selected target year for tax calculations.
+        If Len(CStr(record("YEAR"))) > 0 Then _
+            ws.Cells(rowNum, "AX").Value2 = CLng(record("YEAR"))
+        If NumericYen(ThisWorkbook.Worksheets(SHEET_HOME).Range("B4").Value2) Then _
+            ws.Cells(rowNum, "C").Value2 = CLng(ThisWorkbook.Worksheets(SHEET_HOME).Range("B4").Value2)
         ws.Cells(rowNum, "AE").Value2 = CStr(record("STATUS"))
         ws.Cells(rowNum, "AF").Value2 = CStr(record("WARNINGS"))
         For Each item In record.Keys
@@ -256,7 +261,12 @@ Private Sub PopulateBatchReview(ByVal all As Collection, ByVal ws As Worksheet)
         ws.Cells(rowNum, "F").Value2 = "HOLD"
         missingFields = MissingBatchFields(record)
         warningCodes = CStr(record("WARNINGS"))
-        If Len(missingFields) > 0 Then
+        If NumericYen(ws.Cells(rowNum, "AX").Value2) And _
+           NumericYen(ws.Cells(rowNum, "C").Value2) And _
+           CLng(ws.Cells(rowNum, "AX").Value2) < CLng(ws.Cells(rowNum, "C").Value2) Then
+            ws.Cells(rowNum, "G").Value2 = _
+                "前年源泉票を参考に対象年を試算。給与・控除・扶養・住宅控除を対象年の見込額へ補正してください"
+        ElseIf Len(missingFields) > 0 Then
             ws.Cells(rowNum, "G").Value2 = _
                 "未読取：" & missingFields & "。原票照合後に値を入力し、確認してください"
         ElseIf InStr(1, warningCodes, "FAMILY_", vbBinaryCompare) > 0 Then
@@ -317,7 +327,7 @@ ImportFailed:
     mLastBatchErrorCode = "BRIDGE_VALIDATION:" & CStr(Err.Number)
     If Not ws Is Nothing Then
         On Error Resume Next
-        ws.Range("A7:AW26").ClearContents
+        ws.Range("A7:AX26").ClearContents
     End If
     Resume TestCleanup
 End Function
@@ -394,7 +404,7 @@ Failed:
     mLastBatchErrorCode = importStage & ":" & CStr(Err.Number)
     If importStage = "ROW_TRANSFER" Then
         On Error Resume Next
-        If Not ws Is Nothing Then ws.Range("A7:AW26").ClearContents
+        If Not ws Is Nothing Then ws.Range("A7:AX26").ClearContents
     End If
     If Not quiet Then
         MsgBox "複数PDF取込に失敗しました（" & mLastBatchErrorCode & "）。" & vbCrLf & _
@@ -412,7 +422,7 @@ Public Sub BatchClear()
     previousEvents = Application.EnableEvents
     On Error GoTo RestoreClearEvents
     Application.EnableEvents = False
-    ThisWorkbook.Worksheets(SHEET_BATCH).Range("A7:AW26").ClearContents
+    ThisWorkbook.Worksheets(SHEET_BATCH).Range("A7:AX26").ClearContents
 RestoreClearEvents:
     Application.EnableEvents = previousEvents
     mWorking = False
@@ -676,7 +686,8 @@ Private Function ExecuteBatch(ByVal noDialogs As Boolean, Optional ByVal onlyRow
     Dim cache As Object, initialEvents As Boolean, initialScreen As Boolean
     Dim index As Long, firstRow As Long, lastRow As Long
     Dim reason As String, amount As Variant, year As Long
-    Dim sourceYear As Variant, header As Variant, good As Long, hold As Long
+    Dim sourceYear As Variant, referenceYear As Variant
+    Dim header As Variant, good As Long, hold As Long
     Dim originalError As String, priorPageCount As Long
     If mWorking Then Exit Function
     initialEvents = Application.EnableEvents
@@ -738,7 +749,12 @@ Private Function ExecuteBatch(ByVal noDialogs As Boolean, Optional ByVal onlyRow
         ElseIf CLng(sourceYear) <> 2025 And CLng(sourceYear) <> 2026 Then
             reason = "未承認の税制年です"
         ElseIf CLng(ws.Cells(index, "C").Value2) <> CLng(sourceYear) Then
-            reason = "承認済み税制年と所得年が異なります"
+            reason = "承認済み税制年と試算対象年が異なります"
+        ElseIf Not NumericYen(ws.Cells(index, "AX").Value2) Then
+            reason = "原票の年分が不明です。PDFを再取込してください"
+        ElseIf CLng(ws.Cells(index, "AX").Value2) < CLng(sourceYear) - 1 Or _
+               CLng(ws.Cells(index, "AX").Value2) > CLng(sourceYear) Then
+            reason = "原票年分が試算対象年の前年・当年ではありません"
         ElseIf ws.Cells(index, "H").Value2 <> "照合済" Or _
                ws.Cells(index, "I").Value2 <> "未対応条件なし" Then
             reason = "原票の金額・年分と未対応条件の確認待ち"
@@ -794,8 +810,14 @@ Private Function ExecuteBatch(ByVal noDialogs As Boolean, Optional ByVal onlyRow
                     amount = home.Range("B8").Value2
                     If NumericYen(amount) Then
                         ws.Cells(index, "E").Value2 = CDbl(amount)
-                        ws.Cells(index, "F").Value2 = "概算"
-                        reason = "既存計算エンジンによる概算（原票照合済）"
+                        referenceYear = ws.Cells(index, "AX").Value2
+                        If CLng(referenceYear) < CLng(sourceYear) Then
+                            ws.Cells(index, "F").Value2 = "前年参考概算"
+                            reason = "前年源泉票を参考にした対象年の見込額による概算（確定額ではありません）"
+                        Else
+                            ws.Cells(index, "F").Value2 = "概算"
+                            reason = "既存計算エンジンによる概算（原票照合済）"
+                        End If
                         good = good + 1
                     Else
                         reason = "計算結果が数値ではありません"
@@ -856,7 +878,7 @@ Public Sub BatchInvalidate(ByVal changed As Range)
     Dim wasEnabled As Boolean, index As Long
     If mWorking Then Exit Sub
     Set ws = ThisWorkbook.Worksheets(SHEET_BATCH)
-    Set touched = Application.Intersect(changed, ws.Range("A7:AW26"))
+    Set touched = Application.Intersect(changed, ws.Range("A7:AX26"))
     If touched Is Nothing Then Exit Sub
     Set changedRows = CreateObject("Scripting.Dictionary")
     Set taxRows = CreateObject("Scripting.Dictionary")
