@@ -62,7 +62,7 @@ def create_batch_review(book):
     sheet["A2"].alignment = Alignment(wrap_text=True, vertical="center")
     sheet.row_dimensions[2].height = 31
     sheet.merge_cells("A3:J3")
-    sheet["A3"] = "氏名・住所・会社名は自動抽出しません。通常の配偶者・扶養・障害者・住宅ローン控除は原票照合後に試算します。源泉票外の所得・追加控除・申告方式は別途確認してください。"
+    sheet["A3"] = "受給者本人の氏名だけをPDFからB列へ自動転記します。読めない場合はB列に手入力してください。住所・勤務先・個人番号は取り込みません。個人情報を含む一覧の保存・印刷に注意してください。"
     sheet["A3"].font = Font(name="Yu Gothic", size=10, color="8A3D28")
     sheet["A3"].alignment = Alignment(wrap_text=True)
     sheet.row_dimensions[3].height = 29
@@ -71,7 +71,7 @@ def create_batch_review(book):
     sheet["A5"].alignment = Alignment(wrap_text=True)
     sheet.row_dimensions[5].height = 29
     headers = [
-        "PDF頁", "識別ラベル（任意）", "試算対象年", "支払金額",
+        "PDF頁", "氏名（源泉票から自動読取・訂正可）", "試算対象年", "支払金額",
         "限度額の目安", "状態", "理由・確認事項",
         "対象年見込額・控除条件を照合済", "源泉票外の追加所得・控除なしを確認", "申告方法",
         "給与所得控除後", "所得控除合計", "源泉徴収税額", "社会保険料",
@@ -100,7 +100,7 @@ def create_batch_review(book):
                                    wrap_text=True)
     sheet.row_dimensions[6].height = 44
     widths = {
-        "A": 9, "B": 20, "C": 11, "D": 18, "E": 19, "F": 13,
+        "A": 9, "B": 29, "C": 11, "D": 18, "E": 19, "F": 13,
         "G": 50, "H": 24, "I": 20, "J": 15,
     }
     for col in "KLMNOPQRSTUVWXYZ":
@@ -133,6 +133,9 @@ def create_batch_review(book):
                 # Source document year is provenance, not user-forecast year.
                 cell.fill = PatternFill("solid", fgColor="E9EDF1")
                 cell.protection = Protection(locked=True)
+            if col == 2:
+                cell.number_format = "@"
+                cell.alignment = Alignment(horizontal="left", vertical="center")
             if col in (4, 5) or 11 <= col <= 30 or 33 <= col <= 49:
                 cell.number_format = '#,##0'
                 cell.alignment = Alignment(horizontal="right", vertical="center")
