@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import re
 import sys
+import unicodedata
 
 SUPPORTED = {".pdf",".png",".jpg",".jpeg",".webp",".tif",".tiff",".bmp",
              ".heic",".heif",".txt",".csv",".tsv",".json"}
@@ -310,9 +311,69 @@ def extract(path):
 
 
 # Local batch PDF reader. Each page is treated as an INDEPENDENT taxpayer.
-# Never store, forward or inspect names, employer or address as output fields.
+# Recipient name is displayed only in the local batch list. Never log it.
 BATCH_MAX_PAGES = 20
 BATCH_FIELDS = tuple(sorted(set(CODE_MAP.values()) | set(TEXT_MAP.values())))
+# Only a requested, local multiperson register may contain the recipient's
+# name. The EXE's JSON summary, stdout and public CI artifacts MUST NOT.
+# The transport remains ASCII-only: UTF-8 bytes encoded in UPPERCASE hex.
+_NAME_SEGMENT = r"[A-Za-z\u3040-\u30ff\u3400-\u9fff々〆ヵヶ]+"
+_NAME_VALID = re.compile(rf"{_NAME_SEGMENT}(?:[ ・\-]{_NAME_SEGMENT})*")
+
+
+def normalize_recipient_name(value):
+    """Accept only a plausible human name; never IDs, labels or formulas."""
+    if not isinstance(value, str):
+        return None
+    clean = unicodedata.normalize("NFKC", value)
+    clean = re.sub(r"\s+", " ", clean).strip()
+    if not 2 <= len(clean) <= 40 or not _NAME_VALID.fullmatch(clean):
+        return None
+    if len(clean.encode("utf-8")) > 120:
+        return None
+    return clean
+
+
+def extract_recipient_name(text, words):
+    """Read only the PAYEE/recipient's header E03 name, not employer or kin.
+
+    This function is invoked solely by the multi-person local PDF workflow.
+    It does not touch G42 (the spouse's personal number), address or employer.
+    A missing/ambiguous name is blank for a human to correct; never guess.
+    """
+    anchors = [w for w in words if w[4] == "E03" and w[1] < 260]
+    if len(anchors) == 0:
+        # OCR may omit the E03 code, but the first upper-left "氏名" label
+        # still identifies the document recipient (not family detail rows).
+        anchors = [w for w in words if w[4] == "氏名" and
+                   w[0] < 140 and w[1] < 240]
+    if len(anchors) == 1:
+        anchor = anchors[0]
+        center_y = (anchor[1] + anchor[3]) / 2
+        candidates = sorted(
+            [w for w in words
+             if anchor[2] + 0.5 < w[0] < min(anchor[2] + 205, 320)
+             and abs((w[1] + w[3]) / 2 - center_y) <= 8
+             and normalize_recipient_name(w[4])],
+            key=lambda w: w[0],
+        )
+        if candidates and len(candidates) <= 4:
+            # Reject a jump to another form field or repeated/overlaid text.
+            if all(b[0] - a[2] < 38 for a, b in zip(candidates, candidates[1:])):
+                value = " ".join(w[4] for w in candidates)
+                name = normalize_recipient_name(value)
+                if name is not None:
+                    return name
+        # Never fall back to another relative's name when header is unclear.
+        return None
+    if anchors:
+        return None
+    # Strict text-only / structured OCR fallback (source header lines only).
+    for line in text.splitlines()[:22]:
+        m = re.fullmatch(r"\s*(?:受給者\s*)?氏\s*名\s*[:：]\s*(.*?)\s*", line)
+        if m:
+            return normalize_recipient_name(m.group(1))
+    return None
 
 
 def pdf_page_count(path):
@@ -333,7 +394,7 @@ def pdf_page_count(path):
 
 
 def extract_pdf_batch(path):
-    """Return only page ordinals, tax-year, numeric fields and machine codes."""
+    """Local-only records with optional recipient name; no PII in logs."""
     path = Path(path)
     if path.suffix.lower() != ".pdf":
         raise ValueError("Batch source must be a PDF")
@@ -373,6 +434,9 @@ def extract_pdf_batch(path):
                 else:
                     fields.update(occupancy)
                 record = finish(detect_year(text), fields, mode, warnings)
+                recipient = extract_recipient_name(text, words)
+                if recipient:
+                    record["recipient_name"] = recipient
             except Exception:
                 record = finish(None, {}, "PAGE_ERROR", ["PAGE_READ_FAILED"])
             records.append({"page": page_number, **record})
@@ -395,6 +459,14 @@ def write_batch_bridge(records, output):
             if any(not re.fullmatch(r"[A-Z_0-9]+", flag) for flag in warnings):
                 raise ValueError("Unsafe warning code")
             writer.writerow(["WARNINGS", ";".join(warnings)])
+            # Explicitly permitted recipient name, encoded for the existing
+            # ASCII VBA bridge. Never print, write to JSON, or embed in logs.
+            original_name = record.get("recipient_name")
+            if original_name is not None:
+                safe_name = normalize_recipient_name(original_name)
+                if safe_name is None or safe_name != original_name:
+                    raise ValueError("Invalid recipient name")
+                writer.writerow(["NAME_UTF8_HEX", safe_name.encode("utf-8").hex().upper()])
             for key in BATCH_FIELDS:
                 value = record["fields"].get(key)
                 if value is not None:
