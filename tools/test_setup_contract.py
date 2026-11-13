@@ -125,6 +125,19 @@ assert 'ws.Cells(index, "K").Value2' in batch
 assert 'ws.Cells(index, "L").Value2' in batch
 assert "batch-manual-edit-automatic-recalc-pass" in verify_ps
 assert "$excel.EnableEvents = $true" in verify_ps
+assert 'Case "NAME_UTF8_HEX"' in batch
+assert 'DecodeRecipientNameHex' in batch
+assert 'ws.Cells(rowNum, "B").Value2 = DecodeRecipientNameHex' in batch
+assert 'If cell.Column = 1 Or cell.Column = 2' in batch
+assert 'recipient-name' not in batch.lower(), "Only the approved field is used"
+assert 'NAME_UTF8_HEX' in verify_ps
+assert 'Recipient name from safe UTF8 hex' in verify_ps
+assert 'Changing beneficiary name revokes old estimate' in verify_ps
+reader = (ROOT / "tools/withholding_reader.py").read_text(encoding="utf-8-sig")
+assert 'extract_recipient_name(text, words)' in reader
+assert 'writer.writerow(["NAME_UTF8_HEX", safe_name.encode("utf-8").hex().upper()])' in reader
+assert 'w[4] == "E03"' in reader
+
 assert 'ws.Cells(rowNum, "AX").Value2 = CLng(record("YEAR"))' in batch
 assert 'ws.Cells(rowNum, "C").Value2 = CLng(ThisWorkbook.Worksheets(SHEET_HOME).Range("B4").Value2)' in batch
 assert 'ws.Cells(index, "AX").Value2' in batch
