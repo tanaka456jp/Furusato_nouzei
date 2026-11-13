@@ -349,6 +349,11 @@ Private Sub PopulateBatchReview(ByVal all As Collection, ByVal ws As Worksheet)
             ws.Cells(rowNum, "G").Value2 = _
                 "必要金額と源泉票外の所得・控除を個別確認してください"
         End If
+        If Len(Trim$(CStr(ws.Cells(rowNum, "B").Value2))) = 0 Then
+            ws.Cells(rowNum, "G").Value2 = _
+                Left$(CStr(ws.Cells(rowNum, "G").Value2), 102) & _
+                "／受給者氏名が未読取のためB列に氏名を手入力してください"
+        End If
     Next idx
 End Sub
 
