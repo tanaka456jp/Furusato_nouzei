@@ -58,7 +58,7 @@ def create_batch_review(book):
     sheet["A1"].font = Font(name="Yu Gothic", size=16, bold=True, color="FFFFFF")
     sheet.row_dimensions[1].height = 35
     sheet.merge_cells("A2:J2")
-    sheet["A2"] = "PDF 1ページ＝原則1人、最大20件。金額の手修正・照合確認後はその人だけ自動再試算し、ほかの人の計算結果は保持します。"
+    sheet["A2"] = "原票年分と試算対象年を分離。例：2025年源泉票を参考に2026年の見込給与・控除を入力し、2026年税制で試算します。"
     sheet["A2"].alignment = Alignment(wrap_text=True, vertical="center")
     sheet.row_dimensions[2].height = 31
     sheet.merge_cells("A3:J3")
@@ -67,13 +67,13 @@ def create_batch_review(book):
     sheet["A3"].alignment = Alignment(wrap_text=True)
     sheet.row_dimensions[3].height = 29
     sheet.merge_cells("A5:J5")
-    sheet["A5"] = "PDF取込 → C/D/K/L/M/N列等を訂正（手入力値を優先） → H列とI列を再確認 → 限度額を自動再試算。税制年不一致・未確認はHOLD。"
+    sheet["A5"] = "原票年分はAX列、C列は試算対象年。C/D/K/L/M/N列を対象年見込額へ訂正（手入力値を優先） → H/I列を確認 → 自動再試算。未確認はHOLD。"
     sheet["A5"].alignment = Alignment(wrap_text=True)
     sheet.row_dimensions[5].height = 29
     headers = [
-        "PDF頁", "識別ラベル（任意）", "所得年", "支払金額",
+        "PDF頁", "識別ラベル（任意）", "試算対象年", "支払金額",
         "限度額の目安", "状態", "理由・確認事項",
-        "必要5金額・年分の原票照合", "源泉票外の追加所得・控除なしを確認", "申告方法",
+        "対象年見込額・控除条件を照合済", "源泉票外の追加所得・控除なしを確認", "申告方法",
         "給与所得控除後", "所得控除合計", "源泉徴収税額", "社会保険料",
         "生命保険控除", "地震保険控除", "住宅控除（適用）",
         "住宅控除（可能）", "入居開始年", "住宅控除適用数",
@@ -89,9 +89,9 @@ def create_batch_review(book):
         "一般扶養人数", "同居特別障害人数", "特別障害総人数",
         "普通障害人数", "従たる配偶者（1/2）", "特定扶養従人数",
         "老人扶養従人数", "一般扶養従人数", "特親従人数",
-        "非居住親族人数",
+        "非居住親族人数", "参照源泉票の年分（読取値）",
     ]
-    assert len(headers) == 49
+    assert len(headers) == 50
     for index, header in enumerate(headers, 1):
         cell = sheet.cell(6, index, header)
         cell.fill = PatternFill("solid", fgColor="244D69")
@@ -101,7 +101,7 @@ def create_batch_review(book):
     sheet.row_dimensions[6].height = 44
     widths = {
         "A": 9, "B": 20, "C": 11, "D": 18, "E": 19, "F": 13,
-        "G": 36, "H": 21, "I": 20, "J": 15,
+        "G": 50, "H": 24, "I": 20, "J": 15,
     }
     for col in "KLMNOPQRSTUVWXYZ":
         widths[col] = 17
@@ -111,11 +111,12 @@ def create_batch_review(book):
                 "AO", "AP", "AQ", "AR", "AS", "AT", "AU", "AV", "AW"):
         widths[col] = 17
     widths["AF"] = 45
+    widths["AX"] = 22
     for col, width in widths.items():
         sheet.column_dimensions[col].width = width
     for row in range(7, 27):
         sheet.row_dimensions[row].height = 27
-        for col in range(1, 50):
+        for col in range(1, 51):
             cell = sheet.cell(row, col)
             cell.font = Font(name="Yu Gothic", size=10, color="254052")
             cell.alignment = Alignment(vertical="center")
@@ -128,6 +129,10 @@ def create_batch_review(book):
                 cell.protection = Protection(locked=False)
             elif col in (5, 6, 7):
                 cell.fill = PatternFill("solid", fgColor="E7F1F7")
+            elif col == 50:
+                # Source document year is provenance, not user-forecast year.
+                cell.fill = PatternFill("solid", fgColor="E9EDF1")
+                cell.protection = Protection(locked=True)
             if col in (4, 5) or 11 <= col <= 30 or 33 <= col <= 49:
                 cell.number_format = '#,##0'
                 cell.alignment = Alignment(horizontal="right", vertical="center")
@@ -145,7 +150,7 @@ def create_batch_review(book):
         validation.showErrorMessage = True
         sheet.add_data_validation(validation)
         validation.add(f"{column}7:{column}26")
-    sheet.auto_filter.ref = "A6:AW26"
+    sheet.auto_filter.ref = "A6:AX26"
     sheet.sheet_properties.pageSetUpPr.fitToPage = True
     sheet.page_setup.fitToWidth = 1
     sheet.page_setup.fitToHeight = 0
