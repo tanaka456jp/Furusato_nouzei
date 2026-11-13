@@ -323,7 +323,7 @@ _NAME_VALID = re.compile(rf"{_NAME_SEGMENT}(?:[ ・\-]{_NAME_SEGMENT})*")
 
 def normalize_recipient_name(value):
     """Accept only a plausible human name; never IDs, labels or formulas."""
-    if not isinstance(value, str):
+    if not isinstance(value, str) or any(unicodedata.category(c) == "Cc" for c in value):
         return None
     clean = unicodedata.normalize("NFKC", value)
     clean = re.sub(r"\s+", " ", clean).strip()
