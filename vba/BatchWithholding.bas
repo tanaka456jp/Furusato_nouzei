@@ -135,6 +135,48 @@ Private Function ColumnForField(ByVal key As String) As String
     End Select
 End Function
 
+' Convert the reader's ASCII-only UTF-8 hex value to an Excel text name.
+' Never interpret it as an Excel formula, a numeric field, or a file path.
+' Reject malformed text and characters outside the small person-name set.
+Private Function DecodeRecipientNameHex(ByVal encoded As String) As String
+    Dim data() As Byte, i As Long, code As Long, ch As String
+    Dim stm As Object, decoded As String, allowed As Boolean
+    If Len(encoded) < 4 Or Len(encoded) > 240 Or Len(encoded) Mod 2 <> 0 Then _
+        Err.Raise vbObjectError + 932, , "氏名の読取データ形式が不正です。"
+    For i = 1 To Len(encoded)
+        If InStr(1, "0123456789ABCDEF", Mid$(encoded, i, 1), vbBinaryCompare) = 0 Then _
+            Err.Raise vbObjectError + 933, , "氏名の文字コードが不正です。"
+    Next i
+    ReDim data(0 To Len(encoded) \ 2 - 1)
+    For i = 0 To UBound(data)
+        data(i) = CByte("&H" & Mid$(encoded, 2 * i + 1, 2))
+    Next i
+    Set stm = CreateObject("ADODB.Stream")
+    stm.Type = 1
+    stm.Open
+    stm.Write data
+    stm.Position = 0
+    stm.Type = 2
+    stm.Charset = "utf-8"
+    decoded = stm.ReadText(-1)
+    stm.Close
+    If Len(decoded) < 2 Or Len(decoded) > 40 Then _
+        Err.Raise vbObjectError + 934, , "氏名の文字数が不正です。"
+    For i = 1 To Len(decoded)
+        ch = Mid$(decoded, i, 1)
+        code = AscW(ch)
+        If code < 0 Then code = code + 65536
+        allowed = (code >= 65 And code <= 90) Or (code >= 97 And code <= 122) Or _
+                  (code >= 12352 And code <= 12543) Or _
+                  (code >= 13312 And code <= 40959) Or _
+                  code = 12293 Or code = 12306 Or code = 32 Or code = 45 Or code = 12539
+        If Not allowed Then Err.Raise vbObjectError + 935, , "氏名の文字種が不正です。"
+    Next i
+    If Left$(decoded, 1) = " " Or Right$(decoded, 1) = " " Then _
+        Err.Raise vbObjectError + 936, , "氏名の空白が不正です。"
+    DecodeRecipientNameHex = decoded
+End Function
+
 Private Function ParseBatchBridge(ByVal path As String) As Collection
     Dim fso As Object, handle As Object, all As Collection, record As Object
     Dim line As String, pair As Variant, name As String, val As String
@@ -176,6 +218,10 @@ Private Function ParseBatchBridge(ByVal path As String) As Collection
                     Case "YEAR"
                         If Len(val) > 0 And Not AsciiUnsigned(val) Then _
                             Err.Raise vbObjectError + 911, , "所得年が不正です。"
+                    Case "NAME_UTF8_HEX"
+                        ' The full validation is completed before any cell is changed.
+                        If Len(DecodeRecipientNameHex(val)) = 0 Then _
+                            Err.Raise vbObjectError + 937, , "氏名が読み取れません。"
                     Case "WARNINGS"
                         If Len(val) > 0 Then
                             pieces = Split(val, ";")
@@ -244,6 +290,13 @@ Private Sub PopulateBatchReview(ByVal all As Collection, ByVal ws As Worksheet)
         Set record = all(idx)
         rowNum = START_ROW + idx - 1
         ws.Cells(rowNum, "A").Value2 = CLng(record("PAGE"))
+        ' The recipient's name is a local-only label, never a tax input.
+        ' An absent or doubtful name stays blank for the operator to enter.
+        If record.Exists("NAME_UTF8_HEX") Then
+            ws.Cells(rowNum, "B").NumberFormat = "@"
+            ws.Cells(rowNum, "B").Value2 = DecodeRecipientNameHex( _
+                                             CStr(record("NAME_UTF8_HEX")))
+        End If
         ' The slip year is immutable reference metadata, not the tax year.
         ' Use the operator-selected target year for tax calculations.
         If Len(CStr(record("YEAR"))) > 0 Then _
