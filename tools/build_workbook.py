@@ -291,13 +291,14 @@ def build(source, output):
         (36, "分離所得の控除前額（任意・限度判定）", None, None),
         (38, "特定親族の人数（源泉票G72・照合）", None, None),
         (39, "特定親族特別控除額（源泉票G74・照合）", None, None),
+        (40, "参照源泉票の年分（自動・試算対象年とは別）", None, None),
     )
     for row, label, initial, choices in extra_items:
         extra[f"A{row}"] = label
         extra[f"A{row}"].alignment = Alignment(wrap_text=True, vertical="center")
         extra[f"B{row}"] = initial
         extra.row_dimensions[row].height = 27
-        if row not in (4, 7, 19, 20, 22, 27, 28, 29, 30, 32, 34, 38, 39):
+        if row not in (4, 7, 19, 20, 22, 27, 28, 29, 30, 32, 34, 38, 39, 40):
             extra[f"B{row}"].fill = PatternFill("solid", fgColor="E2F2FF")
             extra[f"B{row}"].protection = Protection(locked=False)
             extra[f"B{row}"].number_format = '#,##0'
@@ -379,7 +380,7 @@ def build(source, output):
         extra[addr].protection = Protection(locked=True)
         extra[addr].alignment = Alignment(horizontal="right")
         extra[addr].number_format = "#,##0"
-    extra.print_area = "A1:D39"
+    extra.print_area = "A1:D40"
     home.row_dimensions[3].height = 28
     field("B4", "選択する所得年", "2026", ("2025", "2026"))
     home["C4"], home["D4"] = "適用中の所得年", "=" + ref("設定・税率", "B4")
