@@ -169,7 +169,7 @@ Private Function DecodeRecipientNameHex(ByVal encoded As String) As String
         allowed = (code >= 65 And code <= 90) Or (code >= 97 And code <= 122) Or _
                   (code >= 12352 And code <= 12543) Or _
                   (code >= 13312 And code <= 40959) Or _
-                  code = 12293 Or code = 12306 Or code = 32 Or code = 45 Or code = 12539
+                  code = 12293 Or code = 12294 Or code = 32 Or code = 45 Or code = 12539
         If Not allowed Then Err.Raise vbObjectError + 935, , "氏名の文字種が不正です。"
     Next i
     If Left$(decoded, 1) = " " Or Right$(decoded, 1) = " " Then _
