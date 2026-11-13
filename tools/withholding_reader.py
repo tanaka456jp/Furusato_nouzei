@@ -1,4 +1,4 @@
-"""Local-only withholding document reader. Does not transmit or retain identifiers."""
+"""Offline withholding reader; only batch Excel imports may locally show recipient names."""
 from __future__ import annotations
 
 import argparse
@@ -434,6 +434,9 @@ def extract_pdf_batch(path):
                 else:
                     fields.update(occupancy)
                 record = finish(detect_year(text), fields, mode, warnings)
+                # The generic numeric-only status marker does not describe
+                # this explicitly requested private local batch name label.
+                record.pop("personal_identifiers", None)
                 recipient = extract_recipient_name(text, words)
                 if recipient:
                     record["recipient_name"] = recipient
