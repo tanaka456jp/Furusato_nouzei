@@ -947,14 +947,13 @@ Public Sub BatchInvalidate(ByVal changed As Range)
     Set changedRows = CreateObject("Scripting.Dictionary")
     Set taxRows = CreateObject("Scripting.Dictionary")
     For Each cell In touched.Cells
-        ' B is a non-calculation display label. Do not trigger recalc.
-        If cell.Column <> 2 Then
-            rowKey = CStr(cell.Row)
-            If Not changedRows.Exists(rowKey) Then changedRows.Add rowKey, cell.Row
-            If cell.Column = 1 Or cell.Column = 3 Or cell.Column = 4 Or _
-               cell.Column >= 11 Then
-                If Not taxRows.Exists(rowKey) Then taxRows.Add rowKey, cell.Row
-            End If
+        ' B now identifies the *person*. Reassigning a name must revoke
+        ' prior approval so tax results cannot silently move to a new person.
+        rowKey = CStr(cell.Row)
+        If Not changedRows.Exists(rowKey) Then changedRows.Add rowKey, cell.Row
+        If cell.Column = 1 Or cell.Column = 2 Or cell.Column = 3 Or _
+           cell.Column = 4 Or cell.Column >= 11 Then
+            If Not taxRows.Exists(rowKey) Then taxRows.Add rowKey, cell.Row
         End If
     Next cell
     If changedRows.Count = 0 Then Exit Sub
