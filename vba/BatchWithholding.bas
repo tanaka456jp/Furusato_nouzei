@@ -445,7 +445,7 @@ Private Function SnapshotInputs() As Object
         data.Add "H|D" & CStr(n), ws.Range("D" & CStr(n)).Formula
     Next n
     Set ws = ThisWorkbook.Worksheets(SHEET_ADV)
-    For Each addr In Split("B5 B6 B8 B9 B10 B11 B12 B13 B14 B15 B16 B17 B18 B19 B20 B21 B24 B25 B26 B32 B33 B36 B38 B39", " ")
+    For Each addr In Split("B5 B6 B8 B9 B10 B11 B12 B13 B14 B15 B16 B17 B18 B19 B20 B21 B24 B25 B26 B32 B33 B36 B38 B39 B40", " ")
         data.Add "E|" & CStr(addr), ws.Range(CStr(addr)).Formula
     Next addr
     Set SnapshotInputs = data
@@ -471,7 +471,8 @@ Private Sub ApplyCaseRow(ByVal ws As Worksheet, ByVal index As Long)
     Set home = ThisWorkbook.Worksheets(SHEET_HOME)
     Set extra = ThisWorkbook.Worksheets(SHEET_ADV)
     home.Range("B11:B12,B15:B16,B19:B25,B33:B36,D11:D24").ClearContents
-    extra.Range("B5:B6,B8:B21,B24:B26,B32,B33,B36,B38:B39").ClearContents
+    extra.Range("B5:B6,B8:B21,B24:B26,B32,B33,B36,B38:B40").ClearContents
+    extra.Range("B40").Value2 = ws.Cells(index, "AX").Value2
     home.Range("B4").Value2 = ws.Cells(index, "C").Value2
     home.Range("B11").Value2 = ws.Cells(index, "C").Value2
     home.Range("B25").Value2 = "なし"
