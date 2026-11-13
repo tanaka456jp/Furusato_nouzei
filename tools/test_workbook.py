@@ -51,6 +51,21 @@ class WorkbookTest(unittest.TestCase):
         self.assertEqual(len(sheet.data_validations.dataValidation), 3)
         self.assertEqual([s.title for s in self.book if s.sheet_state == "visible"], [HOME])
 
+    def test_batch_corrected_fields_are_editable_and_explained(self):
+        sheet = self.book[BATCH]
+        for address in ("C7", "D7", "K7", "L7", "M7", "N7",
+                        "O7", "P7", "AG7", "AJ7", "AW7",
+                        "H7", "I7", "J7"):
+            self.assertFalse(sheet[address].protection.locked, address)
+            self.assertEqual(sheet[address].fill.fgColor.rgb[-6:],
+                             "FFF6DB", address)
+        for address in ("E7", "F7", "G7"):
+            self.assertNotEqual(sheet[address].fill.fgColor.rgb[-6:],
+                                "FFF6DB", address)
+        self.assertIn("自動再試算", sheet["A5"].value)
+        self.assertIn("手入力値を優先", sheet["A5"].value)
+        self.assertIn("税制年不一致", sheet["A5"].value)
+
     def test_zero_spouse_income_first_band(self):
         # Only D=0 is special; every positive spouse-income bracket retains
         # its strict lower boundary to prevent counting adjacent bands twice.
