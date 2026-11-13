@@ -685,6 +685,13 @@ Private Function ExecuteBatch(ByVal noDialogs As Boolean, Optional ByVal onlyRow
     Set ws = ThisWorkbook.Worksheets(SHEET_BATCH)
     Set home = ThisWorkbook.Worksheets(SHEET_HOME)
     Set settings = ThisWorkbook.Worksheets("設定・税率")
+    ' Initialize the fail-closed cleanup range BEFORE any preflight check.
+    firstRow = START_ROW
+    lastRow = END_ROW
+    If onlyRow >= START_ROW And onlyRow <= END_ROW Then
+        firstRow = onlyRow
+        lastRow = onlyRow
+    End If
     If Application.CountA(ws.Range("A7:A26")) = 0 Then _
         Err.Raise vbObjectError + 923, , "まず複数ページPDFを読み取ってください。"
     priorPageCount = Application.CountA(ws.Range("A7:A26"))
