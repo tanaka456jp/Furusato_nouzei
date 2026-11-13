@@ -196,21 +196,22 @@ try {
     [IO.File]::WriteAllText($bridgeFile, ($fixtureLines -join "`n") + "`n",
                             [System.Text.Encoding]::ASCII)
     $batch = $book.Worksheets.Item('一括試算一覧')
-    $batch.Range('A7:AW26').ClearContents()
+    $batch.Range('A7:AX26').ClearContents()
     if (-not [bool]($excel.Run('BatchWithholding.BatchImportBridgeForTest', $bridgeFile))) {
         $batchCode = [string]($excel.Run('BatchWithholding.BatchImportFailureCode'))
         throw ('Valid fictional 5-page bridge failed through VBA (' + $batchCode + ')')
     }
     for ($row = 7; $row -le 11; $row++) {
         Assert-Value $batch.Range('A'+$row).Value2 ([double]($row-6)) ('Bridge page '+($row-6))
-        Assert-Value $batch.Range('C'+$row).Value2 2025.0 ('Bridge tax year '+($row-6))
+        Assert-Value $batch.Range('AX'+$row).Value2 2025.0 ('Bridge reference slip year '+($row-6))
+        Assert-Value $batch.Range('C'+$row).Value2 2026.0 ('Bridge 2026 target donation year '+($row-6))
         Assert-Value $batch.Range('F'+$row).Value2 'HOLD' ('Imported source held '+($row-6))
         Assert-BlankTaxAmount $batch.Range('E'+$row).Value2 ('No automatic limit '+($row-6))
     }
     Assert-Value $batch.Range('AE10').Value2 'REQUIRES_REVIEW' 'Fourth page requires review'
     Assert-BlankTaxAmount $batch.Range('N10').Value2 'Fourth page social insurance cannot be borrowed'
     Assert-Value $batch.Range('AE11').Value2 'READY_FOR_EXCEL_CROSSCHECK' 'Fifth page independent'
-    $batch.Range('A7:AW26').ClearContents()
+    $batch.Range('A7:AX26').ClearContents()
     QA-Stage 'synthetic-five-page-ascii-bridge-import-pass'
     QA-Stage 'synthetic-batch-restore-and-hold-start'
     # Only fictional money amounts in a throwaway QA XLSM. No real PDF.
@@ -224,10 +225,11 @@ try {
     foreach ($addr in @('B14','B15','B19','B20','B32')) {
         $extraBefore[$addr] = [string]$extraCase.Range($addr).Formula
     }
-    $batch.Range('A7:AW26').ClearContents()
+    $batch.Range('A7:AX26').ClearContents()
     foreach ($row in @(7,8)) {
         $batch.Range('A'+$row).Value2 = [double]($row-6)
         $batch.Range('C'+$row).Value2 = 2026.0
+        $batch.Range('AX'+$row).Value2 = 2026.0
         $batch.Range('D'+$row).Value2 = 7000000.0
         $batch.Range('K'+$row).Value2 = 5200000.0
         $batch.Range('L'+$row).Value2 = 1670000.0
@@ -270,13 +272,14 @@ try {
     Assert-Value $batch.Range('F7').Value2 'HOLD' 'Editing source page ID sets HOLD'
     Assert-Value $batch.Range('H7').Value2 '未確認' 'Source edits revoke prior attestation'
     Assert-Value $batch.Range('I7').Value2 '未確認' 'Source edits revoke applicability check'
-    $batch.Range('A7:AW26').ClearContents()
+    $batch.Range('A7:AX26').ClearContents()
     QA-Stage 'synthetic-five-page-batch-start'
     # Synthetic-only five-page acceptance mirrors a missing social-insurance
     # field in page 4 without embedding real source amounts or person names.
     foreach ($row in @(7,8,9,10,11)) {
         $batch.Range('A'+$row).Value2 = [double]($row-6)
         $batch.Range('C'+$row).Value2 = 2026.0
+        $batch.Range('AX'+$row).Value2 = 2026.0
         $batch.Range('D'+$row).Value2 = 7000000.0
         $batch.Range('K'+$row).Value2 = 5200000.0
         $batch.Range('L'+$row).Value2 = 1670000.0
@@ -341,7 +344,7 @@ try {
     Assert-Value $batch.Range('F8').Value2 'HOLD' 'Multiple residence credits require review'
     Assert-BlankTaxAmount $batch.Range('E8').Value2 'No amount for unsupported multiple residence credits'
     QA-Stage 'batch-mortgage-source-regression-pass'
-    $batch.Range('A7:AW26').ClearContents()
+    $batch.Range('A7:AX26').ClearContents()
     QA-Stage 'synthetic-five-page-batch-pass'
     QA-Stage 'spouse-and-dependent-fail-closed-start'
     # Taxpayer 2 has a family deduction that is present in the source slip
@@ -349,6 +352,7 @@ try {
     # A synthetic confirmed input MUST NOT produce an incorrect limit.
     $batch.Range('A7').Value2 = 1.0
     $batch.Range('C7').Value2 = 2026.0
+    $batch.Range('AX7').Value2 = 2026.0
     $batch.Range('D7').Value2 = 7000000.0
     $batch.Range('K7').Value2 = 5200000.0
     $batch.Range('L7').Value2 = 1670000.0
@@ -362,14 +366,15 @@ try {
     Assert-Value ([bool]($excel.Run('BatchWithholding.BatchCalculateForTest'))) $true 'Family flag evaluated'
     Assert-Value $batch.Range('F7').Value2 'HOLD' 'Unmapped spouse/dependent case HOLD'
     Assert-BlankTaxAmount $batch.Range('E7').Value2 'Unmapped family cannot show donation estimate'
-    $batch.Range('A7:AW26').ClearContents()
+    $batch.Range('A7:AX26').ClearContents()
     QA-Stage 'spouse-and-dependent-fail-closed-pass'
     QA-Stage 'batch-standard-family-automatic-calculation-start'
-    $batch.Range('A7:AW26').ClearContents()
+    $batch.Range('A7:AX26').ClearContents()
     foreach ($case in @('spouse','general')) {
-        $batch.Range('A7:AW26').ClearContents()
+        $batch.Range('A7:AX26').ClearContents()
         $batch.Range('A7').Value2 = 1.0
         $batch.Range('C7').Value2 = 2026.0
+        $batch.Range('AX7').Value2 = 2026.0
         $batch.Range('D7').Value2 = 7000000.0
         $batch.Range('K7').Value2 = 5200000.0
         $batch.Range('L7').Value2 = 2100000.0
@@ -400,17 +405,18 @@ try {
             throw ('Supported '+$case+' yielded an invalid donation estimate')
         }
     }
-    $batch.Range('A7:AW26').ClearContents()
+    $batch.Range('A7:AX26').ClearContents()
     QA-Stage 'batch-standard-family-automatic-calculation-pass'
 
     # Real Workbook_SheetChange acceptance: a manual correction revokes the
     # earlier attestation and calculates THIS row again as soon as H/I are
     # confirmed. Previous estimates for other people must not be altered.
     QA-Stage 'batch-manual-edit-automatic-recalc-start'
-    $batch.Range('A7:AW26').ClearContents()
+    $batch.Range('A7:AX26').ClearContents()
     foreach ($row in @(7,8)) {
         $batch.Range('A'+$row).Value2 = [double]($row-6)
         $batch.Range('C'+$row).Value2 = 2026.0
+        $batch.Range('AX'+$row).Value2 = 2026.0
         $batch.Range('D'+$row).Value2 = 7000000.0
         $batch.Range('K'+$row).Value2 = 5200000.0
         $batch.Range('L'+$row).Value2 = 1670000.0
@@ -429,6 +435,29 @@ try {
     Assert-Value ([bool]($excel.Run('BatchWithholding.BatchCalculateForTest'))) $true 'Two-row baseline calculation'
     Assert-Value $batch.Range('E7').Value2 109000.0 'First source baseline estimate'
     Assert-Value $batch.Range('E8').Value2 109000.0 'Second source baseline estimate'
+    # A 2025 reference slip is a valid starting point for a 2026 forecast:
+    # taxation uses the approved 2026 master and the revised 2026 inputs.
+    # The result must be distinguished from a same-year estimate.
+    QA-Stage 'previous-year-reference-2026-forecast-start'
+    $batch.Range('AX7').Value2 = 2025.0
+    Assert-Value ([bool]($excel.Run('BatchWithholding.BatchCalculateForTest'))) $true '2025 slip / 2026 target recalculation'
+    Assert-Value $batch.Range('C7').Value2 2026.0 '2026 forecast target is not overwritten with 2025'
+    Assert-Value $batch.Range('AX7').Value2 2025.0 '2025 source year is retained'
+    Assert-Value $batch.Range('F7').Value2 '前年参考概算' 'Previous-year result is explicitly provisional'
+    Assert-Value $batch.Range('E7').Value2 109000.0 '2026 tax engine handles previous-year source'
+    Assert-Value $batch.Range('F8').Value2 '概算' 'Same-year source remains ordinary estimate'
+    Assert-Value $batch.Range('E8').Value2 109000.0 'Other taxpayer unaffected by previous-year source'
+    $batch.Range('AX7').Value2 = 2024.0
+    Assert-Value ([bool]($excel.Run('BatchWithholding.BatchCalculateForTest'))) $true 'Old reference must be rejected'
+    Assert-Value $batch.Range('F7').Value2 'HOLD' 'Two-year-old reference requires manual review'
+    Assert-BlankTaxAmount $batch.Range('E7').Value2 'Old source cannot auto-estimate'
+    $batch.Range('AX7').Value2 = 2027.0
+    Assert-Value ([bool]($excel.Run('BatchWithholding.BatchCalculateForTest'))) $true 'Future source must be rejected'
+    Assert-Value $batch.Range('F7').Value2 'HOLD' 'Future source is not accepted'
+    $batch.Range('AX7').Value2 = 2026.0
+    Assert-Value ([bool]($excel.Run('BatchWithholding.BatchCalculateForTest'))) $true 'Same-year source restored'
+    Assert-Value $batch.Range('F7').Value2 '概算' 'Same-year result status restored'
+    QA-Stage 'previous-year-reference-2026-forecast-pass'
     $eventsBefore = [bool]$excel.EnableEvents
     # This is a disposable QA copy. The only real Excel event handler is the
     # Workbook_SheetChange VBA installed by setup.ps1.
@@ -455,7 +484,7 @@ try {
         $batch.Range('C7').Value2 = 2025.0
         Assert-BlankTaxAmount $batch.Range('E7').Value2 'Year mismatch hides amount'
         Assert-Value $batch.Range('F7').Value2 'HOLD' 'Year mismatch held'
-        Assert-Value $batch.Range('G7').Value2 '承認済み税制年と所得年が異なります' 'Visible mismatch explanation'
+        Assert-Value $batch.Range('G7').Value2 '承認済み税制年と試算対象年が異なります' 'Visible mismatch explanation'
         $batch.Range('C7').Value2 = 2026.0
         Assert-Value $batch.Range('H7').Value2 '未確認' 'Year return does not auto-approve'
         $batch.Range('H7').Value2 = '照合済'
@@ -473,7 +502,7 @@ try {
     }
     finally {
         $excel.EnableEvents = $false
-        $batch.Range('A7:AW26').ClearContents()
+        $batch.Range('A7:AX26').ClearContents()
         $excel.EnableEvents = $eventsBefore
     }
     QA-Stage 'batch-manual-edit-automatic-recalc-pass'
