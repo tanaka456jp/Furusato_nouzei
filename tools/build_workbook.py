@@ -58,7 +58,7 @@ def create_batch_review(book):
     sheet["A1"].font = Font(name="Yu Gothic", size=16, bold=True, color="FFFFFF")
     sheet.row_dimensions[1].height = 35
     sheet.merge_cells("A2:J2")
-    sheet["A2"] = "PDF 1ページ＝原則1人、最大20件。所得年・必要金額を個別照合し、追加条件なしを確認した行のみ既存計算エンジンで試算します。"
+    sheet["A2"] = "PDF 1ページ＝原則1人、最大20件。金額の手修正・照合確認後はその人だけ自動再試算し、ほかの人の計算結果は保持します。"
     sheet["A2"].alignment = Alignment(wrap_text=True, vertical="center")
     sheet.row_dimensions[2].height = 31
     sheet.merge_cells("A3:J3")
@@ -67,7 +67,7 @@ def create_batch_review(book):
     sheet["A3"].alignment = Alignment(wrap_text=True)
     sheet.row_dimensions[3].height = 29
     sheet.merge_cells("A5:J5")
-    sheet["A5"] = "PDF一括取込 → 必要5金額と源泉票記載の住宅ローン控除を確認 → 源泉票外の条件を確認 → 一括試算。税制年不一致はHOLD。"
+    sheet["A5"] = "PDF取込 → C/D/K/L/M/N列等を訂正（手入力値を優先） → H列とI列を再確認 → 自動で限度額再試算。税制年不一致・未確認はHOLD。"
     sheet["A5"].alignment = Alignment(wrap_text=True)
     sheet.row_dimensions[5].height = 29
     headers = [
@@ -121,7 +121,9 @@ def create_batch_review(book):
             cell.alignment = Alignment(vertical="center")
             if row % 2 == 0:
                 cell.fill = PatternFill("solid", fgColor="F4F8FB")
-            if col in (2, 8, 9, 10):
+            if col in (2, 3, 4, 8, 9, 10) or 11 <= col <= 30 or 33 <= col <= 49:
+                # All corrective tax fields are visibly editable. They are
+                # never overwritten by automatic Excel recalculation.
                 cell.fill = PatternFill("solid", fgColor="FFF6DB")
                 cell.protection = Protection(locked=False)
             elif col in (5, 6, 7):
