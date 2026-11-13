@@ -181,11 +181,14 @@ try {
     # bridge, generated in the disposable QA directory. No actual clients.
     $bridgeFile = Join-Path $dir 'fictional_five_pages.tsv'
     $fixtureLines = [Collections.Generic.List[string]]::new()
+    $fictionalNames = @('架空一郎','架空二郎','架空三郎','架空四郎','架空五郎')
     for ($ordinal = 1; $ordinal -le 5; $ordinal++) {
         $fixtureLines.Add("PAGE" + "`t" + [string]$ordinal)
         $fixtureLines.Add("STATUS" + "`t" + $(if ($ordinal -eq 4) { "REQUIRES_REVIEW" } else { "READY_FOR_EXCEL_CROSSCHECK" }))
         $fixtureLines.Add("YEAR" + "`t" + "2025")
         $fixtureLines.Add("WARNINGS" + "`t" + $(if ($ordinal -eq 4) { "INCOMPLETE_OR_UNVERIFIED" } else { "" }))
+        $nameHex = -join ([Text.Encoding]::UTF8.GetBytes($fictionalNames[$ordinal-1]) | ForEach-Object { $_.ToString('X2') })
+        $fixtureLines.Add("NAME_UTF8_HEX" + "`t" + $nameHex)
         $fixtureLines.Add("salary_gross" + "`t" + [string](5100000 + $ordinal * 100000))
         $fixtureLines.Add("salary_reference" + "`t" + [string](3600000 + $ordinal * 90000))
         $fixtureLines.Add("deductions_reference" + "`t" + "1400000")
@@ -203,6 +206,7 @@ try {
     }
     for ($row = 7; $row -le 11; $row++) {
         Assert-Value $batch.Range('A'+$row).Value2 ([double]($row-6)) ('Bridge page '+($row-6))
+        Assert-Value $batch.Range('B'+$row).Value2 $fictionalNames[$row-7] ('Recipient name from safe UTF8 hex '+($row-6))
         Assert-Value $batch.Range('AX'+$row).Value2 2025.0 ('Bridge reference slip year '+($row-6))
         Assert-Value $batch.Range('C'+$row).Value2 2026.0 ('Bridge 2026 target donation year '+($row-6))
         Assert-Value $batch.Range('F'+$row).Value2 'HOLD' ('Imported source held '+($row-6))
@@ -479,6 +483,17 @@ try {
         Assert-Value $batch.Range('F7').Value2 '概算' 'Final confirmation automatically recalculates'
         Assert-Value $batch.Range('E7').Value2 109000.0 'Recalculation equals explicit batch button'
         Assert-Value $batch.Range('E8').Value2 109000.0 'Confirmed taxpayer two remains intact'
+        # Reassigning the recipient's name must never retain an approval
+        # for the original person, even though the amounts are unchanged.
+        $batch.Range('B7').Value2 = '架空改姓'
+        Assert-BlankTaxAmount $batch.Range('E7').Value2 'Changing beneficiary name revokes old estimate'
+        Assert-Value $batch.Range('F7').Value2 'HOLD' 'Edited identity is held'
+        Assert-Value $batch.Range('H7').Value2 '未確認' 'Edited recipient requires fresh source confirmation'
+        Assert-Value $batch.Range('I7').Value2 '未確認' 'Edited recipient requires fresh condition confirmation'
+        Assert-Value $batch.Range('E8').Value2 109000.0 'Other beneficiary estimate survives a name change'
+        $batch.Range('H7').Value2 = '照合済'
+        $batch.Range('I7').Value2 = '未対応条件なし'
+        Assert-Value $batch.Range('E7').Value2 109000.0 'Reverified recipient name restores estimate'
         # The source year and the approved tax table must agree. They are
         # NEVER silently adjusted by the event handler.
         $batch.Range('C7').Value2 = 2025.0
