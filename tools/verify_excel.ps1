@@ -222,7 +222,7 @@ try {
     }
     $extraCase = $book.Worksheets.Item('例外・分離課税')
     $extraBefore = @{}
-    foreach ($addr in @('B14','B15','B19','B20','B32')) {
+    foreach ($addr in @('B14','B15','B19','B20','B32','B40')) {
         $extraBefore[$addr] = [string]$extraCase.Range($addr).Formula
     }
     $batch.Range('A7:AX26').ClearContents()
