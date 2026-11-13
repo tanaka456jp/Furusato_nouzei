@@ -67,7 +67,7 @@ def create_batch_review(book):
     sheet["A3"].alignment = Alignment(wrap_text=True)
     sheet.row_dimensions[3].height = 29
     sheet.merge_cells("A5:J5")
-    sheet["A5"] = "PDF取込 → C/D/K/L/M/N列等を訂正（手入力値を優先） → H列とI列を再確認 → 自動で限度額再試算。税制年不一致・未確認はHOLD。"
+    sheet["A5"] = "PDF取込 → C/D/K/L/M/N列等を訂正（手入力値を優先） → H列とI列を再確認 → 限度額を自動再試算。税制年不一致・未確認はHOLD。"
     sheet["A5"].alignment = Alignment(wrap_text=True)
     sheet.row_dimensions[5].height = 29
     headers = [
