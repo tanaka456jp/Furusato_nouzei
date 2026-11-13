@@ -671,10 +671,11 @@ Public Function BatchCalculateForTest() As Boolean
     BatchCalculateForTest = ExecuteBatch(True)
 End Function
 
-Private Function ExecuteBatch(ByVal noDialogs As Boolean) As Boolean
+Private Function ExecuteBatch(ByVal noDialogs As Boolean, Optional ByVal onlyRow As Long = 0) As Boolean
     Dim ws As Worksheet, home As Worksheet, settings As Worksheet
     Dim cache As Object, initialEvents As Boolean, initialScreen As Boolean
-    Dim index As Long, reason As String, amount As Variant, year As Long
+    Dim index As Long, firstRow As Long, lastRow As Long
+    Dim reason As String, amount As Variant, year As Long
     Dim sourceYear As Variant, header As Variant, good As Long, hold As Long
     Dim originalError As String, priorPageCount As Long
     If mWorking Then Exit Function
@@ -695,6 +696,14 @@ Private Function ExecuteBatch(ByVal noDialogs As Boolean) As Boolean
     Next index
     If priorPageCount > END_ROW - START_ROW + 1 Then _
         Err.Raise vbObjectError + 926, , "20ページ上限を超えました。"
+    firstRow = START_ROW
+    lastRow = END_ROW
+    If onlyRow <> 0 Then
+        If onlyRow < START_ROW Or onlyRow >= START_ROW + priorPageCount Then _
+            Err.Raise vbObjectError + 931, , "指定行は取込一覧の対象外です。"
+        firstRow = onlyRow
+        lastRow = onlyRow
+    End If
     For index = START_ROW + priorPageCount To END_ROW
         If Len(Trim$(CStr(ws.Cells(index, "F").Value2))) > 0 Or _
            Len(Trim$(CStr(ws.Cells(index, "E").Value2))) > 0 Then
@@ -708,20 +717,24 @@ Private Function ExecuteBatch(ByVal noDialogs As Boolean) As Boolean
     Application.ScreenUpdating = False
     Set cache = SnapshotInputs()
     sourceYear = settings.Range("B4").Value2
-    For index = START_ROW To END_ROW
+    For index = firstRow To lastRow
         If Len(Trim$(CStr(ws.Cells(index, "A").Value2))) = 0 Then Exit For
         ws.Cells(index, "E").ClearContents
         ws.Cells(index, "F").Value2 = "HOLD"
         reason = vbNullString
-        If ws.Cells(index, "H").Value2 <> "照合済" Or _
-           ws.Cells(index, "I").Value2 <> "未対応条件なし" Then
-            reason = "原票の金額・年分と未対応条件の確認待ち"
-        ElseIf Not NumericYen(ws.Cells(index, "C").Value2) Then
+        ' Show a tax-year mismatch immediately even if confirmation is
+        ' pending. Never silently rewrite C (income year) or the master year.
+        If Not NumericYen(ws.Cells(index, "C").Value2) Then
             reason = "所得年を確認できません"
-        ElseIf CLng(ws.Cells(index, "C").Value2) <> CLng(sourceYear) Then
-            reason = "承認済み税制年と所得年が異なります"
+        ElseIf Not NumericYen(sourceYear) Then
+            reason = "承認済み税制年を確認できません"
         ElseIf CLng(sourceYear) <> 2025 And CLng(sourceYear) <> 2026 Then
             reason = "未承認の税制年です"
+        ElseIf CLng(ws.Cells(index, "C").Value2) <> CLng(sourceYear) Then
+            reason = "承認済み税制年と所得年が異なります"
+        ElseIf ws.Cells(index, "H").Value2 <> "照合済" Or _
+               ws.Cells(index, "I").Value2 <> "未対応条件なし" Then
+            reason = "原票の金額・年分と未対応条件の確認待ち"
         ElseIf Len(FamilyRowIssue(ws, index)) > 0 Then
             reason = FamilyRowIssue(ws, index)
         ElseIf InStr(1, CStr(ws.Cells(index, "AF").Value2), "FAMILY_", vbBinaryCompare) > 0 _
@@ -806,7 +819,7 @@ Failed:
     ' Abort is atomic as to published estimates: no partial results survive.
     If Not ws Is Nothing Then
         ws.Range("E7:E26").ClearContents
-        For index = START_ROW To END_ROW
+        For index = firstRow To lastRow
             If Len(Trim$(CStr(ws.Cells(index, "A").Value2))) > 0 Then
                 ws.Cells(index, "F").Value2 = "HOLD"
                 ws.Cells(index, "G").Value2 = "一括試算を中断しました。全件再確認・再計算してください"
@@ -825,8 +838,11 @@ Failed:
     End If
 End Function
 
-' Every manual edit invalidates prior estimates. Monetary changes also
-' invalidate the operator's former confirmation; labels alone do not.
+' Every edit invalidates the displayed estimate immediately.
+' Numeric/source changes revoke earlier confirmation; confirming H/I or
+' changing the filing method automatically reruns ONLY the affected row.
+' Manually entered gross, salary-after-deduction, and total deductions are
+' never replaced with computed values in the batch register.
 Public Sub BatchInvalidate(ByVal changed As Range)
     Dim ws As Worksheet, touched As Range, cell As Range
     Dim changedRows As Object, taxRows As Object, rowKey As Variant
@@ -838,6 +854,7 @@ Public Sub BatchInvalidate(ByVal changed As Range)
     Set changedRows = CreateObject("Scripting.Dictionary")
     Set taxRows = CreateObject("Scripting.Dictionary")
     For Each cell In touched.Cells
+        ' B is a non-calculation display label. Do not trigger recalc.
         If cell.Column <> 2 Then
             rowKey = CStr(cell.Row)
             If Not changedRows.Exists(rowKey) Then changedRows.Add rowKey, cell.Row
@@ -851,14 +868,24 @@ Public Sub BatchInvalidate(ByVal changed As Range)
     wasEnabled = Application.EnableEvents
     On Error GoTo RestoreEvents
     Application.EnableEvents = False
+    ' Invalidate ALL edited rows before any row is recalculated. Pasted
+    ' multi-row data cannot leave an older amount on a different row.
     For Each rowKey In changedRows.Keys
         index = CLng(changedRows(rowKey))
         ws.Cells(index, "E").ClearContents
         ws.Cells(index, "F").Value2 = "HOLD"
-        ws.Cells(index, "G").Value2 = "入力変更後のため再試算が必要です"
+        ws.Cells(index, "G").Value2 = "入力変更後のため確認・自動再試算待ち"
         If taxRows.Exists(rowKey) Then
             ws.Cells(index, "H").Value2 = "未確認"
             ws.Cells(index, "I").Value2 = "未確認"
+        End If
+    Next rowKey
+    ' Reuse exactly the same review gates, input snapshot, and calculation
+    ' engine as the explicit batch button. No approval or year is inferred.
+    For Each rowKey In changedRows.Keys
+        index = CLng(changedRows(rowKey))
+        If Len(Trim$(CStr(ws.Cells(index, "A").Value2))) > 0 Then
+            Call ExecuteBatch(True, index)
         End If
     Next rowKey
 RestoreEvents:
