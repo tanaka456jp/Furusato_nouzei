@@ -234,6 +234,7 @@ End Function
 Private Sub PopulateBatchReview(ByVal all As Collection, ByVal ws As Worksheet)
     Dim idx As Long, rowNum As Long, item As Variant, col As String
     Dim record As Object, missingFields As String, warningCodes As String
+    Dim priorForecast As Boolean
     ' Reject malformed batch size even when invoked by another VBA macro.
     If all.Count < 1 Or all.Count > 20 Then _
         Err.Raise vbObjectError + 929, , "ページ数が不正です。"
@@ -261,12 +262,13 @@ Private Sub PopulateBatchReview(ByVal all As Collection, ByVal ws As Worksheet)
         ws.Cells(rowNum, "F").Value2 = "HOLD"
         missingFields = MissingBatchFields(record)
         warningCodes = CStr(record("WARNINGS"))
+        priorForecast = False
         If NumericYen(ws.Cells(rowNum, "AX").Value2) And _
-           NumericYen(ws.Cells(rowNum, "C").Value2) And _
-           CLng(ws.Cells(rowNum, "AX").Value2) < CLng(ws.Cells(rowNum, "C").Value2) Then
-            ws.Cells(rowNum, "G").Value2 = _
-                "前年源泉票を参考に対象年を試算。給与・控除・扶養・住宅控除を対象年の見込額へ補正してください"
-        ElseIf Len(missingFields) > 0 Then
+           NumericYen(ws.Cells(rowNum, "C").Value2) Then
+            priorForecast = CLng(ws.Cells(rowNum, "AX").Value2) < _
+                            CLng(ws.Cells(rowNum, "C").Value2)
+        End If
+        If Len(missingFields) > 0 Then
             ws.Cells(rowNum, "G").Value2 = _
                 "未読取：" & missingFields & "。原票照合後に値を入力し、確認してください"
         ElseIf InStr(1, warningCodes, "FAMILY_", vbBinaryCompare) > 0 Then
@@ -283,6 +285,9 @@ Private Sub PopulateBatchReview(ByVal all As Collection, ByVal ws As Worksheet)
         ElseIf CStr(record("STATUS")) <> "READY_FOR_EXCEL_CROSSCHECK" Then
             ws.Cells(rowNum, "G").Value2 = _
                 "読取要確認：原票の金額・年分・控除条件を照合してください"
+        ElseIf priorForecast Then
+            ws.Cells(rowNum, "G").Value2 = _
+                "前年源泉票を参考にした対象年試算。給与・控除・扶養・住宅控除を対象年の見込額へ補正してください"
         ElseIf record.Exists("mortgage_credit") Or _
                record.Exists("mortgage_possible_credit") Then
             ws.Cells(rowNum, "G").Value2 = _
