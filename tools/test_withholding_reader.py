@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
-from withholding_reader import CODE_MAP,detect_year,extract_codes,extract_labelled,extract_occupancy_year,extract,finish,write_bridge,extract_pdf_batch,write_batch_bridge,pdf_page_count,family_transfer_warnings
+from withholding_reader import CODE_MAP,detect_year,extract_codes,extract_labelled,extract_occupancy_year,extract,finish,write_bridge,extract_pdf_batch,write_batch_bridge,pdf_page_count,family_transfer_warnings,extract_recipient_name,normalize_recipient_name
 
 
 class WithholdingTest(unittest.TestCase):
@@ -145,6 +145,74 @@ class WithholdingTest(unittest.TestCase):
     def test_labelled(self):
         self.assertEqual(extract_labelled("支払金額：5,000,000\n社会保険料等の金額：1,000,000"),
                          {"salary_gross":5000000,"social_insurance":1000000})
+
+    def test_recipient_e03_name_only_and_safe_ascii_transport(self):
+        # All names here are FICTIONAL. Header E03 has one unambiguous
+        # recipient. The spouse, employer, identifier and relatives do not
+        # enter the name output or the numerical status JSON.
+        words = [
+            (47,154,59,160,"氏名"),
+            (77,154,88,160,"E03"),
+            (89,151,145,162,"架空一郎"),
+            (334,154,359,160,"(役職名)"),
+            (382,153,425,160,"代表取締役"),
+            (76,170,88,176,"G02"),
+            (91,168,209,177,"123456789012"),
+            (48,484,58,491,"氏名"),
+            (89,482,146,493,"配偶者氏名"),
+        ]
+        self.assertEqual(extract_recipient_name("",words),"架空一郎")
+        self.assertEqual(extract_recipient_name("氏名：架空二郎",[]),"架空二郎")
+        self.assertEqual(extract_recipient_name("氏名又は名称：架空商事",[]),None)
+        self.assertIsNone(extract_recipient_name("", words+[(78,155,88,160,"E03")]))
+        for invalid in ("=2+2","123456789012","a\tb","", "A", "住所：京都"):
+            self.assertIsNone(normalize_recipient_name(invalid))
+        self.assertEqual(normalize_recipient_name("　架空　太郎　"),"架空 太郎")
+        report = finish(2025,{
+            "salary_gross":7000000, "salary_reference":5200000,
+            "deductions_reference":1670000, "income_tax_withheld":100000,
+            "social_insurance":1000000
+        }, "PDF_TEXT")
+        with TemporaryDirectory() as tmp:
+            target = Path(tmp) / "fictional_names.tsv"
+            write_batch_bridge([{"page":1,**report,"recipient_name":"架空一郎"}],target)
+            raw = target.read_bytes()
+            self.assertTrue(raw.isascii())
+            self.assertNotIn("架空一郎".encode("utf-8"),raw)
+            self.assertNotIn(b"NAME\t",raw)
+            rows = [v.split("\t") for v in target.read_text("ascii").splitlines()]
+            hex_rows = [v[1] for v in rows if v[0] == "NAME_UTF8_HEX"]
+            self.assertEqual(len(hex_rows),1)
+            self.assertEqual(bytes.fromhex(hex_rows[0]).decode("utf-8"),"架空一郎")
+            with self.assertRaisesRegex(ValueError,"Invalid recipient name"):
+                write_batch_bridge([{"page":1,**report,
+                                   "recipient_name":"=HYPERLINK(1)"}],target)
+
+    def test_recipient_name_extracted_from_fictional_pdf_without_stdout_pii(self):
+        class FakePage:
+            def get_text(self, mode, sort=False):
+                if mode == "words":
+                    return [(77,154,88,160,"E03"),
+                            (89,151,145,162,"架空二郎"),
+                            (104,218,115,223,"G04"),
+                            (178,215,233,226,"7,000,000")]
+                return "令和 7 年分\n氏名\nE03\n架空二郎\nG04\n7,000,000"
+        class FakeDoc:
+            is_encrypted = False
+            def __enter__(self): return self
+            def __exit__(self,*_): return False
+            def __len__(self): return 1
+            def __iter__(self): return iter([FakePage()])
+        with TemporaryDirectory() as tmp:
+            source = Path(tmp) / "fictional.pdf"
+            source.write_bytes(b"fixture-only-not-a-real-pdf")
+            with patch.dict("sys.modules", {"fitz":SimpleNamespace(open=lambda _:FakeDoc())}):
+                records=extract_pdf_batch(source)
+            self.assertEqual(len(records),1)
+            self.assertEqual(records[0]["recipient_name"],"架空二郎")
+            output = Path(tmp) / "numeric_ascii.tsv"
+            write_batch_bridge(records,output)
+            self.assertNotIn("架空二郎".encode("utf-8"),output.read_bytes())
 
     def test_private_multi_page_pdf_separates_taxpayers_and_disposes_identifiers(self):
         # Entirely synthetic pages: do not place actual source slips in CI.
