@@ -236,7 +236,7 @@ Public Sub ImportWithholding()
     Dim tempBatchJson As String, probeCommand As String
     Dim command As String, line As String, pageCount As Long
     Dim inFile As Object, fields As Object, fragments As Variant
-    Dim key As Variant, value As Double, year As Long, exitCode As Long
+    Dim key As Variant, value As Double, year As Long, targetYear As Long, exitCode As Long
     Dim status As String, raw As String, backup As String, caution As String
     Dim home As Worksheet, extra As Worksheet, code As Long, problem As String
     On Error GoTo Failed
@@ -324,6 +324,16 @@ Public Sub ImportWithholding()
     If Not IsNumeric(fields("YEAR")) Then Err.Raise vbObjectError + 208, , "所得年を認識できません。"
     year = CLng(fields("YEAR"))
     If year <> 2025 And year <> 2026 Then Err.Raise vbObjectError + 209, , "未承認の年分です。"
+    ' The document YEAR is reference evidence, not a command to change
+    ' the tax year. The operator's chosen and approved year stays intact.
+    Set home = ThisWorkbook.Worksheets("操作画面")
+    If Not IsNumeric(home.Range("B4").Value2) Then _
+        Err.Raise vbObjectError + 227, , "試算対象年が不正です。"
+    targetYear = CLng(home.Range("B4").Value2)
+    If (targetYear <> 2025 And targetYear <> 2026) Or _
+       year > targetYear Or year < targetYear - 1 Then _
+        Err.Raise vbObjectError + 228, , _
+                  "参照元の源泉票は試算対象年の当年または前年である必要があります。"
     For Each key In Array("salary_gross", "income_tax_withheld", "social_insurance")
         If Not fields.Exists(CStr(key)) Then
             Err.Raise vbObjectError + 210, , "必須の支払金額・源泉税・社会保険料が読み取れていません。"
@@ -357,6 +367,12 @@ Public Sub ImportWithholding()
     Next key
     caution = "源泉徴収票の読み取れた数値を転記し、現在の入力を置換しますか？" & vbCrLf & _
               "既存データはバックアップします。"
+    If year <> targetYear Then
+        caution = caution & vbCrLf & vbCrLf & _
+                  CStr(year) & "年分の源泉票を" & CStr(targetYear) & _
+                  "年の試算の参考として取り込みます。" & vbCrLf & _
+                  "給与・所得控除・扶養などを対象年の見込値へ直してから確認してください。"
+    End If
     If status = "REQUIRES_REVIEW" Then
         caution = caution & vbCrLf & vbCrLf & _
               "このPDFは一部項目が未確定です。読み取れた数値だけを仮転記します。" & vbCrLf & _
@@ -377,8 +393,9 @@ Public Sub ImportWithholding()
     home.Range("B25").Value2 = "なし"
     home.Range("D22").Value2 = "該当なし"
     home.Range("D24").Value2 = "ワンストップ"
-    home.Range("B4").Value2 = year
-    home.Range("B11").Value2 = year
+    ' Keep the 2026 tax-year selection, even when the reference slip is 2025.
+    home.Range("B11").Value2 = targetYear
+    extra.Range("B40").Value2 = year
     For Each key In fields.Keys
         If key <> "STATUS" And key <> "YEAR" And key <> "WARNINGS" Then
             value = CDbl(fields(key))
@@ -412,10 +429,21 @@ Public Sub ImportWithholding()
     ' Housing credit is a routine on-sheet input, not an advanced-case switch.
     ' The sheet formula still blocks missing applied amounts or unsupported years.
     extra.Range("B19").Value2 = "ローカル・項目コード照合"
-    extra.Range("B20").Value2 = status
-    If fields.Exists("WARNINGS") Then extra.Range("B32").Value2 = fields("WARNINGS")
+    If year < targetYear Then
+        ' Prior-year figures are provisional until this year's income and
+        ' deduction outlook has been explicitly confirmed.
+        extra.Range("B20").Value2 = "REQUIRES_REVIEW"
+        extra.Range("B32").Value2 = "PRIOR_YEAR_REFERENCE_FORECAST"
+        If fields.Exists("WARNINGS") Then
+            If Len(CStr(fields("WARNINGS"))) > 0 Then _
+                extra.Range("B32").Value2 = "PRIOR_YEAR_REFERENCE_FORECAST;" & CStr(fields("WARNINGS"))
+        End If
+    Else
+        extra.Range("B20").Value2 = status
+        If fields.Exists("WARNINGS") Then extra.Range("B32").Value2 = fields("WARNINGS")
+    End If
     Application.Calculate
-    If status = "REQUIRES_REVIEW" Then
+    If status = "REQUIRES_REVIEW" Or year < targetYear Then
         MsgBox "読み取れた金額を仮転記しました（未確定）。" & vbCrLf & _
                "空欄・不一致を源泉徴収票と照合した後「読取内容の確認」を押してください。" & vbCrLf & _
                "住宅ローン控除可能額は所得税適用額と別項目です。", vbExclamation
@@ -592,7 +620,7 @@ Public Sub NewCase()
     End With
     With ThisWorkbook.Worksheets("例外・分離課税")
         ' Preserve calculated cells B7/B22/B28-B30.
-        .Range("B5:B6,B8:B12,B13:B21,B24:B26,B32,B36,B38:B39").ClearContents
+        .Range("B5:B6,B8:B12,B13:B21,B24:B26,B32,B36,B38:B40").ClearContents
         .Range("B25").Value2 = "なし"
         .Range("B33").Value2 = "なし"
         ' B4 is calculated from B24, and must survive NewCase.
