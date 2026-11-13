@@ -125,4 +125,16 @@ assert 'ws.Cells(index, "K").Value2' in batch
 assert 'ws.Cells(index, "L").Value2' in batch
 assert "batch-manual-edit-automatic-recalc-pass" in verify_ps
 assert "$excel.EnableEvents = $true" in verify_ps
+assert 'ws.Cells(rowNum, "AX").Value2 = CLng(record("YEAR"))' in batch
+assert 'ws.Cells(rowNum, "C").Value2 = CLng(ThisWorkbook.Worksheets(SHEET_HOME).Range("B4").Value2)' in batch
+assert 'ws.Cells(index, "AX").Value2' in batch
+assert '"前年参考概算"' in batch
+assert "previous-year-reference-2026-forecast-pass" in verify_ps
+assert "REFERENCE_PREVIOUS_YEAR_FORECAST" not in batch
+single = (ROOT / "vba/TaxLawUpdater.bas").read_text(encoding="utf-8-sig")
+assert "extra.Range(\"B40\").Value2 = year" in single
+assert "home.Range(\"B11\").Value2 = targetYear" in single
+assert "home.Range(\"B4\").Value2 = year" not in single
+assert "PRIOR_YEAR_REFERENCE_FORECAST" in single
+
 print("PASS: flat ASCII delivery ZIP; source/payload matched; Unicode VBA import and smoke run present.")
