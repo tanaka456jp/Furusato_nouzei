@@ -111,4 +111,18 @@ verify_ps = (ROOT / "tools/verify_excel.ps1").read_text(encoding="utf-8-sig")
 assert "TaxLawUpdater.TrySaveCaseToFileForTest" in verify_ps
 assert "TaxLawUpdater.TryExportDetailsToFileForTest" in verify_ps
 assert "TaxLawUpdater.TaxLawUpdateLastFailure" in verify_ps
+# Manual batch corrections are never silently approved. Excel event wiring
+# must trigger the same per-person VBA engine once H/I are reconfirmed.
+batch = (ROOT / "vba/BatchWithholding.bas").read_text(encoding="utf-8-sig")
+assert 'If Sh.Name = "一括試算一覧" Then BatchWithholding.BatchInvalidate Target' in ps
+assert 'Optional ByVal onlyRow As Long = 0' in batch
+assert 'Call ExecuteBatch(True, index)' in batch
+assert 'ws.Cells(index, "H").Value2 = "未確認"' in batch
+assert 'ws.Cells(index, "I").Value2 = "未確認"' in batch
+assert 'For index = firstRow To lastRow' in batch
+assert 'Private Sub ApplyCaseRow' in batch
+assert 'ws.Cells(index, "K").Value2' in batch
+assert 'ws.Cells(index, "L").Value2' in batch
+assert "batch-manual-edit-automatic-recalc-pass" in verify_ps
+assert "$excel.EnableEvents = $true" in verify_ps
 print("PASS: flat ASCII delivery ZIP; source/payload matched; Unicode VBA import and smoke run present.")
