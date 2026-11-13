@@ -196,7 +196,7 @@ class WithholdingTest(unittest.TestCase):
                             (89,151,145,162,"架空二郎"),
                             (104,218,115,223,"G04"),
                             (178,215,233,226,"7,000,000")]
-                return "令和 7 年分\n氏名\nE03\n架空二郎\nG04\n7,000,000"
+                return "令和 7 年分 給与所得の源泉徴収票\n氏名\nE03\n架空二郎\nG04\n7,000,000\n合計検査用の架空フォームです"
         class FakeDoc:
             is_encrypted = False
             def __enter__(self): return self
