@@ -33,15 +33,17 @@ class WorkbookTest(unittest.TestCase):
         sheet = self.book[BATCH]
         self.assertEqual(sheet.sheet_state, "veryHidden")
         self.assertEqual(sheet.max_row, 26)
-        self.assertGreaterEqual(sheet.max_column, 49)
+        self.assertGreaterEqual(sheet.max_column, 50)
         self.assertEqual(sheet["AG6"].value, "配偶者控除額（所得税）")
         self.assertEqual(sheet["AH6"].value, "配偶者控除有（1/2）")
         self.assertEqual(sheet["AK6"].value, "特定扶養人数")
         self.assertEqual(sheet["AN6"].value, "一般扶養人数")
         self.assertEqual(sheet["AW6"].value, "非居住親族人数")
+        self.assertEqual(sheet["AX6"].value, "参照源泉票の年分（読取値）")
+        self.assertEqual(sheet["C6"].value, "試算対象年")
         self.assertEqual(sheet["A6"].value, "PDF頁")
         self.assertEqual(sheet["E6"].value, "限度額の目安")
-        self.assertEqual(sheet["H6"].value, "必要5金額・年分の原票照合")
+        self.assertEqual(sheet["H6"].value, "対象年見込額・控除条件を照合済")
         self.assertEqual(sheet["I6"].value, "源泉票外の追加所得・控除なしを確認")
         self.assertEqual(sheet["AE6"].value, "読取判定")
         self.assertTrue(all(sheet[f"E{i}"].value is None for i in range(7,27)))
@@ -64,7 +66,9 @@ class WorkbookTest(unittest.TestCase):
                                 "FFF6DB", address)
         self.assertIn("自動再試算", sheet["A5"].value)
         self.assertIn("手入力値を優先", sheet["A5"].value)
-        self.assertIn("税制年不一致", sheet["A5"].value)
+        self.assertIn("原票年分はAX列", sheet["A5"].value)
+        self.assertTrue(sheet["AX7"].protection.locked)
+        self.assertNotEqual(sheet["AX7"].fill.fgColor.rgb[-6:], "FFF6DB")
 
     def test_zero_spouse_income_first_band(self):
         # Only D=0 is special; every positive spouse-income bracket retains
