@@ -334,7 +334,8 @@ class WorkbookTest(unittest.TestCase):
         self.assertEqual(self.book[INPUT]["B11"].data_type,"f")
         self.assertIn("'例外・分離課税'!B28",self.book[INPUT]["B11"].value)
         self.assertIn("源泉票", extra["A14"].value)
-        self.assertNotIn("'例外・分離課税'!B4", self.book[HOME]["B28"].value)
+        self.assertNotRegex(self.book[HOME]["B28"].value,
+                            r"'例外・分離課税'!B4(?![0-9])")
         self.assertIn("'例外・分離課税'!B14", self.book[HOME]["D31"].value)
 
     def test_auto_income_and_deductions_and_no_one_stop_attestation(self):
