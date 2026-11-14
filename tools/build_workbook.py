@@ -257,6 +257,11 @@ def build(source, output):
         + [f"B{i}" for i in range(19, 26)]
         + [f"D{i}" for i in range(11, 26)]
         + ["B31", "B33", "B34", "B35", "B36", "D35", "D24"]
+        # Separate-tax controls may alter the applicability of a reviewed
+        # source; do not reuse source verification across case-mode changes.
+        + [f"B{i}" for i in range(44, 52)]
+        + [f"D{i}" for i in range(44, 52)]
+        + [f"D{i}" for i in range(72, 78)]
     )
     fingerprint_extra = (
         [f"B{i}" for i in range(5, 19)]
@@ -266,6 +271,7 @@ def build(source, output):
     fingerprint_fields = (
         [ref(HOME, cell) for cell in fingerprint_home]
         + [ref(ADVANCED, cell) for cell in fingerprint_extra]
+        + [ref("設定・税率", "B4")]
     )
     extra["A41"] = "読取確認時の入力スナップショット（自動保存）"
     extra["A42"] = "現在の入力スナップショット（自動更新）"
