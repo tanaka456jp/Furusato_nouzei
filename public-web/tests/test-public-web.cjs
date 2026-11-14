@@ -239,6 +239,7 @@ assert.match(view.textContent,/109,000円/);
 // 2025 source slip is allowed to support a 2026 forecast only after
 // the user has revised the 2026 salary/deductions and re-attested it.
 field("year").value="2026";
+field("filing").value="one-stop";
 field("salaryGross").value="5000000";
 field("socialInsurance").value="750000";
 field("salaryIncomeReference").value="3560000";
