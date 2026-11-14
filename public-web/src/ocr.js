@@ -118,6 +118,9 @@
     acceptButton.disabled=true;
     report.replaceChildren();report.hidden=true;
     delete form.dataset.ocrYear;
+    delete form.dataset.ocrOriginalGross;
+    delete form.dataset.ocrOriginalSocial;
+    delete form.dataset.ocrOriginalDeductions;
     delete form.dataset.ocrSourceIndicators;
     delete form.dataset.ocrReviewPending;
     if(hadTransferredSource){
@@ -818,6 +821,12 @@
     var forecast=form.elements.namedItem("forecastReviewed");
     if(forecast)forecast.checked=false;
     form.dataset.ocrYear=String(review.year);
+    // The three arithmetic source values remain solely in this browser's
+    // DOM, never in logs/network or the exported result. They are stable
+    // audit evidence after the user changes forecast figures.
+    form.dataset.ocrOriginalGross=String(review.candidates.salaryGross);
+    form.dataset.ocrOriginalSocial=String(review.candidates.socialInsurance);
+    form.dataset.ocrOriginalDeductions=String(review.candidates.deductionsReference);
     form.dataset.ocrSourceIndicators=
       Object.keys(review.sourceIndicators||{}).join(",");
     form.dataset.ocrReviewPending="false";
