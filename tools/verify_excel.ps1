@@ -124,6 +124,35 @@ try {
         throw 'Unreviewed source/automatic total mismatch did not HOLD'
     }
     Assert-Value ([string]$homeSheet.Range('B8').Value2) '' 'Unreviewed source discrepancy hides limit'
+    # Model the state stored by ReviewWithholding after an EXPLICIT
+    # confirmation. A later input edit MUST revoke that exact attestation,
+    # even if the review status itself remains VERIFIED_AFTER_CORRECTION.
+    $sourceAudit.Range('B41').Value2 = [string]$sourceAudit.Range('B42').Value2
+    $sourceAudit.Range('B20').Value2 = 'VERIFIED_AFTER_CORRECTION'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Exact confirmed input snapshot is accepted'
+    $homeSheet.Range('B16').Value2 = 1060000.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    if ([string]$homeSheet.Range('B28').Value2 -eq '正常') {
+        throw 'Changing social insurance kept an old PDF confirmation alive'
+    }
+    Assert-Value ([string]$homeSheet.Range('B8').Value2) '' 'Edited input revokes confirmed donation limit'
+    $homeSheet.Range('B16').Value2 = 1050000.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Restoring the exact reviewed input restores consistency'
+    $homeSheet.Range('D25').Value2 = 1800000.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    if ([string]$homeSheet.Range('B28').Value2 -eq '正常') {
+        throw 'Manual deduction override reused a prior confirmation'
+    }
+    $homeSheet.Range('D25').ClearContents()
+    $sourceAudit.Range('B14').Value2 = 1940000.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    if ([string]$homeSheet.Range('B28').Value2 -eq '正常') {
+        throw 'Editing the source deduction total reused a prior confirmation'
+    }
+    $sourceAudit.Range('B20:B20').ClearContents()
+    $sourceAudit.Range('B41').ClearContents()
     $sourceAudit.Range('B14').ClearContents()
     $homeSheet.Range('B12').ClearContents()
     $homeSheet.Range('B15').ClearContents()
