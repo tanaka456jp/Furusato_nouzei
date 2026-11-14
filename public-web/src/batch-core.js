@@ -35,16 +35,21 @@
       row.label=name;
   }
   if(!Number.isSafeInteger(page)||page<1||page>MAX_ROWS||
-     !review||review.eligibleForManualTransfer!==true||
-     ![2025,2026].includes(review.year)||!review.candidates||
-     FIELDS.some(k=>!safeAmount(review.candidates[k]))){
-    row.reason="原票を安全に読み取れませんでした";
+     !review||![2025,2026].includes(review.year)||
+     !review.candidates||typeof review.candidates!=="object"){
+    row.reason="原票の年分・必要金額を確認できません";
     return row;
   }
   row.sourceYear=review.year;
   row.year=targetYear===undefined?review.year:targetYear;
-  row.candidates=Object.fromEntries(FIELDS.map(k=>[k,review.candidates[k]]));
-  row.sourceValid=[2025,2026].includes(row.year);
+  // Independently verified G-code fields may be complete even when one
+  // different field (e.g. blank insurance) is absent. Let the operator
+  // correct the missing field, but never treat source recognition as consent.
+  row.candidates=Object.fromEntries(FIELDS.filter(k=>
+    safeAmount(review.candidates[k])).map(k=>[k,review.candidates[k]]));
+  row.sourceValid=review.eligibleForManualTransfer===true&&
+    [2025,2026].includes(row.year)&&
+    FIELDS.every(k=>safeAmount(row.candidates[k]));
 
   return row;
  }
