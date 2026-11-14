@@ -287,6 +287,47 @@ assert.equal(view.className,"result hold","aborted-source marker cannot be bypas
 delete form.dataset.ocrReviewPending;
 delete form.dataset.ocrYear;
 form.reset();
+// Explicit override is always visible and is NOT an automatic recomputation.
+field("year").value="2026";
+field("filing").value="one-stop";
+field("salaryGross").value="7000000";
+field("socialInsurance").value="1000000";
+field("deductionsReference").value="1670000";
+field("deductionsOverride").value="1670000";
+field("deductionsOverride").dispatchEvent(new Event("input",{bubbles:true}));
+assert.equal(document.getElementById("deductionsOverrideStatus").hidden,false);
+assert.ok(form.classList.contains("deduction-override-active"));
+field("acknowledgedExclusions").checked=true;
+submit();
+assert.equal(view.className,"result");
+assert.match(view.textContent,/手入力上書き中/);
+// A social-insurance edit must not automatically change the override total.
+field("socialInsurance").value="1050000";
+field("socialInsurance").dispatchEvent(new Event("input",{bubbles:true}));
+assert.equal(field("acknowledgedExclusions").checked,false);
+field("acknowledgedExclusions").checked=true;
+submit();
+assert.equal(view.className,"result hold");
+assert.doesNotMatch(view.textContent,/109,000円/);
+field("deductionsOverride").value="1720000";
+field("deductionsOverride").dispatchEvent(new Event("input",{bubbles:true}));
+field("acknowledgedExclusions").checked=true;
+submit();
+assert.equal(view.className,"result");
+assert.match(view.textContent,/手入力上書き中/);
+// Removing the override returns to strict source/reference reconciliation.
+field("deductionsOverride").value="";
+field("deductionsOverride").dispatchEvent(new Event("input",{bubbles:true}));
+assert.equal(document.getElementById("deductionsOverrideStatus").hidden,true);
+field("acknowledgedExclusions").checked=true;
+submit();
+assert.equal(view.className,"result hold","stale source reference cannot pass");
+field("deductionsReference").value="";
+field("deductionsReference").dispatchEvent(new Event("input",{bubbles:true}));
+field("acknowledgedExclusions").checked=true;
+submit();
+assert.equal(view.className,"result");
+form.reset();
 assert.equal(view.hidden,true);
 assert.equal(view.textContent,"");
 assert.equal(document.querySelectorAll("script[src^='http']").length,0);
