@@ -431,6 +431,7 @@ Public Sub ImportWithholding()
     ' Leave independent pension, business and other income entries untouched.
     extra.Range("B13:B20").ClearContents
     extra.Range("B38:B39").ClearContents
+    extra.Range("B41").ClearContents ' Replacing source invalidates any prior attestation.
     extra.Range("B32").ClearContents
     ' B4 and home B26 are calculated indicators: never overwrite formulas.
     home.Range("B25").Value2 = "なし"
@@ -550,7 +551,10 @@ Public Sub ReviewWithholding()
     End If
     If CStr(extra.Range("B20").Value2) <> "REQUIRES_REVIEW" And _
        Not sourceTotalDifferent And _
-       Len(Trim$(CStr(home.Range("D25").Value2))) = 0 Then
+       Len(Trim$(CStr(home.Range("D25").Value2))) = 0 And _
+       Not (CStr(extra.Range("B20").Value2) = "VERIFIED_AFTER_CORRECTION" And _
+            (Len(CStr(extra.Range("B41").Value2)) = 0 Or _
+             CStr(extra.Range("B41").Value2) <> CStr(extra.Range("B42").Value2))) Then
         MsgBox "源泉徴収票の仮転記に未確認項目はありません。", vbInformation
         Exit Sub
     End If
@@ -638,9 +642,17 @@ Public Sub ReviewWithholding()
     End If
     If MsgBox("源泉徴収票の未確認項目を確認しましたか？" & vbCrLf & _
               "読取結果を照合済みにします。", vbQuestion + vbYesNo + vbDefaultButton2) <> vbYes Then Exit Sub
+    ' Bind the attestation to the actual, reviewed numerical input state.
+    ' Never preserve a prior taxpayer's confirmation or silently reuse it
+    ' after correcting social, spouse, relative, other income or source data.
+    If IsError(extra.Range("B42").Value2) Then _
+        Err.Raise vbObjectError + 248, , "確認対象の入力値を確定できません。"
+    If Len(CStr(extra.Range("B42").Value2)) = 0 Then _
+        Err.Raise vbObjectError + 249, , "入力内容の確認署名が空欄です。"
+    extra.Range("B41").Value2 = CStr(extra.Range("B42").Value2)
     extra.Range("B20").Value2 = "VERIFIED_AFTER_CORRECTION"
     Application.Calculate
-    MsgBox "原票照合状態を更新しました。未対応案件は引き続き限度額を表示しません。", vbInformation
+    MsgBox "原票照合状態を更新しました。入力値を変更すると確認は失効し再確認が必要です。未対応案件は引き続き限度額を表示しません。", vbInformation
     Exit Sub
 Failed:
     msg = Err.Description
@@ -699,7 +711,7 @@ Public Sub NewCase()
     End With
     With ThisWorkbook.Worksheets("例外・分離課税")
         ' Preserve calculated cells B7/B22/B28-B30.
-        .Range("B5:B6,B8:B12,B13:B21,B24:B26,B32,B36,B38:B39").ClearContents
+        .Range("B5:B6,B8:B12,B13:B21,B24:B26,B32,B36,B38:B39,B41").ClearContents
         .Range("B25").Value2 = "なし"
         .Range("B33").Value2 = "なし"
         ' B4 is calculated from B24, and must survive NewCase.
