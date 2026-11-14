@@ -1,7 +1,7 @@
 "use strict";
 /**
  * Local-only, serial batch processor for a PDF of one slip per page.
- * Never uploads or stores source bytes, names, employer, address or OCR text.
+ * Recipient labels stay local to the browser/CSV; never upload source or OCR text.
  * No auto-approval, no auto-merge of separate slips for the same taxpayer.
  */
 (function(){
@@ -14,6 +14,7 @@
  const status=document.getElementById("batchStatus");
  const table=document.getElementById("batchTable");
  const body=document.getElementById("batchRows");
+ const targetYear=document.querySelector('#calculator select[name="year"]');
  if(!input||!scan||!clear||!calculate||!download||!print||
     !status||!table||!body)return;
  const core=window.FurusatoBatchCore;
@@ -56,16 +57,42 @@
    const label=cell(tr,"");
    const name=formControl("input",{
     type:"text",autocomplete:"off",maxLength:"40",
-    "aria-label":"対象者 "+r.page+" の識別ラベル（任意）",
+    "aria-label":"PDF "+r.page+" ページの受給者氏名（訂正可）",
     "data-row":String(i),"data-field":"label",
-    placeholder:"対象者 "+r.page
+    placeholder:"氏名を入力"
    });
    name.value=r.label;
    label.appendChild(name);
-   cell(tr,r.year===null?"—":r.year+"年");
-   const v=r.sourceValid?r.candidates:null;
-   for(const field of monetary)
-    cell(tr,v?yen(v[field]):"—","batch-candidate");
+   const source=cell(tr,"");
+   const sourceSelect=formControl("select",{
+     "aria-label":"PDF "+r.page+" ページの参照源泉票年分",
+     "data-row":String(i),"data-field":"sourceYear"
+   });
+   for(const [value,text] of [["","未読取"],["2025","2025"],["2026","2026"]])
+     sourceSelect.appendChild(formControl("option",{value,text}));
+   sourceSelect.value=r.sourceYear===null?"":String(r.sourceYear);
+   source.appendChild(sourceSelect);
+   const target=cell(tr,"");
+   const yearSelect=formControl("select",{
+     "aria-label":"PDF "+r.page+" ページの試算対象年",
+     "data-row":String(i),"data-field":"year"
+   });
+   for(const val of ["2025","2026"])
+     yearSelect.appendChild(formControl("option",{value:val,text:val}));
+   yearSelect.value=String(r.year??2026);
+   target.appendChild(yearSelect);
+   const v=r.candidates;
+   for(const field of monetary){
+     const td=cell(tr,"","batch-candidate");
+     const control=formControl("input",{
+       type:"text",inputMode:"numeric",maxLength:"12",
+       autocomplete:"off",spellcheck:"false",
+       "data-row":String(i),"data-field":field,
+       "aria-label":"PDF "+r.page+" ページの"+field+"（円、対象年の見込額）"
+     });
+     control.value=Number.isSafeInteger(v?.[field])?String(v[field]):"";
+     td.appendChild(control);
+   }
    const filing=cell(tr,"");
    const select=formControl("select",{
     "aria-label":"対象者 "+r.page+" の手続き",
@@ -76,20 +103,24 @@
     const o=formControl("option",{value,text});
     select.appendChild(o);
    }
-   select.value=r.filing;select.disabled=!r.sourceValid;
+   select.value=r.filing;select.disabled=false;
    filing.appendChild(select);
-   for(const field of ["confirmed","noExclusions"]){
+   for(const field of ["confirmed","noExclusions","forecastReviewed"]){
     const td=cell(tr,"","batch-check");
     const checkbox=formControl("input",{
      type:"checkbox", "data-row":String(i),"data-field":field,
      "aria-label":"対象者 "+r.page+" "+(field==="confirmed"?
-       "原票と4金額・年分を照合済み":"追加控除など未対応条件なしを確認済み"),
-     checked:r[field],disabled:!r.sourceValid
+       "原票と対象年見込額を照合済み":field==="forecastReviewed"?
+       "前年参考の値を対象年の見込額に補正済み":
+       "追加控除など未対応条件なしを確認済み"),
+     checked:r[field],
+     disabled:!r.sourceValid||(field==="forecastReviewed"&&r.sourceYear===r.year)
     });
     td.appendChild(checkbox);
    }
-   cell(tr,r.status==="概算"?yen(r.donationLimitYen):"—","batch-result");
-   cell(tr,r.status==="概算"?"概算":("HOLD："+r.reason),"batch-reason");
+   const isEstimate=r.status==="概算"||r.status==="前年参考概算";
+   cell(tr,isEstimate?yen(r.donationLimitYen):"—","batch-result");
+   cell(tr,isEstimate?r.status:("HOLD："+r.reason),"batch-reason");
    body.appendChild(tr);
   });
   updateButtons();
@@ -132,7 +163,9 @@
    return;
   }
   const requested=++generation;
+  const plannedYear=Number(targetYear?.value||"2026");
   const stale=()=>requested!==generation||
+    Number(targetYear?.value||"2026")!==plannedYear||
     !(input.files&&input.files[0]===file);
   rows=[];computed=false;running=true;
   render();
@@ -153,10 +186,11 @@
     try{
      const review=await reader.readPage(doc,opened.session,page,stale);
      if(stale())break;
-     row=core.fromPage(page,review);
+     row=core.fromPage(page,review,plannedYear);
     }catch(_){
      if(stale())break;
      row=core.holdRow(page,"読取不能：手入力・原票確認が必要");
+     row.year=plannedYear;
     }
     rows.push(row);
     render();
