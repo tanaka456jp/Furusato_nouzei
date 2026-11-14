@@ -64,4 +64,30 @@ for(const args of [
  assert.equal(value.status,"HOLD");
  assert.equal(value.donationLimitYen,null);
 }
+// A 2025 slip can support 2026 only as a verified forecast. It never
+// changes the selected 2026 national/resident tax law to 2025.
+const forecastInput={
+ year:2026,sourceYear:2025,forecastReviewed:true,
+ incomeType:"salary",filing:"one-stop",
+ salaryGross:5000000,socialInsurance:750000,
+ salaryIncomeReference:3560000,deductionsReference:1790000,
+ acknowledgedExclusions:true
+};
+const forecast=engine.calculate(forecastInput);
+assert.equal(forecast.status,"ESTIMATE",forecast.reasons?.join("/"));
+assert.equal(forecast.year,2026);
+assert.equal(forecast.calculation.basicIncomeTaxDeductionYen,1040000);
+assert.equal(forecast.donationLimitYen,57000);
+for(const input of [
+ {...forecastInput,forecastReviewed:false},
+ {...forecastInput,sourceYear:2024},
+ {...forecastInput,sourceYear:2027},
+ {...forecastInput,deductionsReference:1430000},
+ {...forecastInput,hasMortgage:true},
+ {...forecastInput,forecastReviewed:"true"}
+]){
+ const out=engine.calculate(input);
+ assert.equal(out.status,"HOLD");
+ assert.equal(out.donationLimitYen,null);
+}
 console.log("PUBLIC_2025_2026_INDEPENDENT_ONE_STOP_DONATION_FIXTURES_SYNTHETIC_PASS; release HOLD");
