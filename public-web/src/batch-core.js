@@ -22,7 +22,7 @@
   return Number.isSafeInteger(value)&&value>=0&&value<=1000000000000;
  }
  function holdRow(page,reason){
-  return {page,label:"",year:null,sourceYear:null,candidates:null,sourceIndicators:{},deductionsOverrideActive:false,sourceValid:false,
+  return {page,label:"",year:null,sourceYear:null,candidates:null,originalCandidates:null,sourceIndicators:{},deductionsOverrideActive:false,sourceValid:false,
    confirmed:false,noExclusions:false,forecastReviewed:false,filing:"one-stop",
    status:"HOLD",donationLimitYen:null,reason:reason||"読取・確認待ち"};
  }
@@ -58,6 +58,8 @@
   // correct the missing field, but never treat source recognition as consent.
   row.candidates=Object.fromEntries(FIELDS.filter(k=>
     safeAmount(review.candidates[k])).map(k=>[k,review.candidates[k]]));
+  // Frozen source-year snapshot, separate from editable forecast amounts.
+  row.originalCandidates=Object.freeze({...row.candidates});
   row.sourceValid=review.eligibleForManualTransfer===true&&
     [2025,2026].includes(row.year)&&
     FIELDS.every(k=>safeAmount(row.candidates[k]));
@@ -130,10 +132,23 @@
    filing:row.filing,incomeType:"salary",
    salaryGross:String(row.candidates.salaryGross),
    salaryIncomeReference:String(row.candidates.salaryIncomeReference),
-   deductionsReference:String(row.candidates.deductionsReference),
+   // No override: the shared engine recomputes basic+social on the
+   // target-year tax law. Override: its typed number must pass strict
+   // independent display reconciliation or remain HOLD.
+   deductionsReference:row.deductionsOverrideActive?
+     String(row.candidates.deductionsReference):"",
+   deductionsOverride:row.deductionsOverrideActive?
+     String(row.candidates.deductionsReference):"",
+   sourceDeductionsReference:row.originalCandidates?.deductionsReference===undefined?
+     "":String(row.originalCandidates.deductionsReference),
    socialInsurance:String(row.candidates.socialInsurance),
    acknowledgedExclusions:true,sourceReviewPending:false
   };
+  if(row.originalCandidates&&FIELDS.every(k=>safeAmount(row.originalCandidates[k]))){
+   input.sourceOriginalGross=String(row.originalCandidates.salaryGross);
+   input.sourceOriginalSocial=String(row.originalCandidates.socialInsurance);
+   input.sourceOriginalDeductions=String(row.originalCandidates.deductionsReference);
+  }
   for(const key of FLAGS)input[key]=false;
   try{
    // Scope the previous-year bridge to this public Web estimator only.
