@@ -236,6 +236,29 @@ assert.equal(field("acknowledgedExclusions").checked,false);
 field("acknowledgedExclusions").checked=true;
 submit();
 assert.match(view.textContent,/109,000円/);
+// 2025 source slip is allowed to support a 2026 forecast only after
+// the user has revised the 2026 salary/deductions and re-attested it.
+field("year").value="2026";
+field("salaryGross").value="5000000";
+field("socialInsurance").value="750000";
+field("salaryIncomeReference").value="3560000";
+field("deductionsReference").value="1790000";
+form.dataset.ocrYear="2025";
+field("forecastReviewed").checked=false;
+field("acknowledgedExclusions").checked=true;
+submit();
+assert.equal(view.className,"result hold");
+assert.doesNotMatch(view.textContent,/57,000円/);
+field("forecastReviewed").checked=true;
+field("acknowledgedExclusions").checked=true;
+submit();
+assert.equal(view.className,"result");
+assert.match(view.textContent,/57,000円/);
+field("deductionsReference").value="1430000"; // stale 2025 basic deduction
+submit();
+assert.equal(view.className,"result hold");
+assert.doesNotMatch(view.textContent,/57,000円/);
+delete form.dataset.ocrYear;
 form.reset();
 assert.equal(view.hidden,true);
 assert.equal(view.textContent,"");
