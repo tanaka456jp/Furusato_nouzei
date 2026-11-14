@@ -41,6 +41,13 @@ assert.deepEqual(withCredits.sourceIndicators,{
  hasLifeInsurance:true,hasEarthquakeInsurance:true,
  hasMortgage:true,hasIncomeAdjustment:true,hasDependents:true
 });
+// A single compact PDF.js number is also positive evidence, even when
+// the four required amounts are independently represented per glyph.
+const compactPositive=g.review([...parts,
+ {str:"G29",transform:[1,0,0,1,620,370],width:17},
+ {str:"350,000",transform:[1,0,0,1,690,370],width:45}
+]);
+assert.equal(compactPositive.sourceIndicators.hasMortgage,true);
 const duplicateOptional=g.review([...parts,...extra,
  {str:"G29",transform:[1,0,0,1,620,400],width:10}]);
 assert.equal(duplicateOptional.sourceIndicators.hasNonstandardConditions,true);

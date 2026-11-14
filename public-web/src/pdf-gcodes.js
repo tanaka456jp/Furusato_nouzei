@@ -88,6 +88,18 @@
    if(yen===null)reasons.push("CODE_"+code+"_AMOUNT_UNVERIFIED");
    else candidates[key]=yen;
   }
+  function optionalAmount(anchor){
+   const split=toYen(numericGroup(spans,anchor,45,125));
+   if(split!==null)return split;
+   // Some PDF.js text layers keep the entire amount in one text item.
+   // Unlike the required four fields, optional evidence may be read from
+   // a uniquely anchored compact number without promoting an estimate.
+   const compact=spans.filter(i=>i.s.length>1&&
+     /^[0-9][0-9,]*$/.test(i.s)&&
+     Math.abs(i.y-anchor.y)<=3.5&&
+     i.x-anchor.x>=45&&i.x-anchor.x<=125);
+   return compact.length===1?toYen(compact[0].s):null;
+  }
   const sourceIndicators={};
   for(const [code,flag] of Object.entries(ADDITIONAL)){
    const marks=anchors(spans,code);
@@ -96,7 +108,7 @@
     continue;
    }
    if(marks.length!==1)continue;
-   const amount=toYen(numericGroup(spans,marks[0],45,125));
+   const amount=optionalAmount(marks[0]);
    if(amount!==null&&amount>0)sourceIndicators[flag]=true;
   }
   return {
