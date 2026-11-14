@@ -76,6 +76,7 @@ jobs:
           node public-web/tests/test-public-web.cjs
           node public-web/tests/test-ocr-dom.cjs
           node public-web/tests/test-batch-core.cjs
+          node public-web/tests/test-batch-name.cjs
       - name: Install isolated Chromium for on-device OCR WASM startup
         run: ./gas/node_modules/.bin/playwright install chromium
       - name: Real browser OCR startup smoke (synthetic canvas, no upload)
