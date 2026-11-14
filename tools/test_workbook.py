@@ -372,10 +372,12 @@ class WorkbookTest(unittest.TestCase):
         self.assertTrue(extra["B42"].protection.locked)
         fingerprint = extra["B42"].value
         self.assertTrue(fingerprint.startswith('=TEXTJOIN("|",FALSE,'))
-        for coordinate in ("B4","B12","B16","B31","D14","D17","D25"):
+        for coordinate in ("B4","B12","B16","B31","D14","D17","D25",
+                           "B44","B51","D45","D73","D77"):
             self.assertIn(f"'操作画面'!{coordinate}", fingerprint)
         for coordinate in ("B8","B14","B15","B16","B17","B38","B39"):
             self.assertIn(f"'例外・分離課税'!{coordinate}", fingerprint)
+        self.assertIn("'設定・税率'!B4",fingerprint)
         self.assertNotIn("'例外・分離課税'!B20",fingerprint,
                          "The attestation must not depend on its own status.")
         self.assertNotIn("'例外・分離課税'!B41",fingerprint,
