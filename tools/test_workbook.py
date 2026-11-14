@@ -335,7 +335,7 @@ class WorkbookTest(unittest.TestCase):
         self.assertIn("'例外・分離課税'!B28",self.book[INPUT]["B11"].value)
         self.assertIn("源泉票", extra["A14"].value)
         self.assertNotIn("'例外・分離課税'!B4", self.book[HOME]["B28"].value)
-        self.assertIn("'例外・分離課税'!B14", self.book[HOME]["B28"].value)
+        self.assertIn("'例外・分離課税'!B14", self.book[HOME]["D31"].value)
 
     def test_auto_income_and_deductions_and_no_one_stop_attestation(self):
         home = self.book[HOME]
@@ -351,6 +351,18 @@ class WorkbookTest(unittest.TestCase):
         self.assertIn("IF(B12<2196000,1453000,1456000)", home["B13"].value)
         self.assertIn("MAX(0,B12-IF(D4=2025,650000,740000))", home["B13"].value)
         self.assertIn("'例外・分離課税'!B13", home["B13"].value)
+        self.assertEqual(home["B14"].value,
+                         '=IF(D25<>"",IF(ISNUMBER(D25),D25,""),B31)')
+        self.assertIn("'ふるさと納税限度額計算'!F15", home["B31"].value)
+        self.assertIn("'ふるさと納税限度額計算'!F38", home["B31"].value)
+        self.assertEqual(home["D26"].value,
+                         '=IF(D25="","自動再計算","⚠ 手入力上書き中")')
+        self.assertIsNone(home["D25"].value)
+        self.assertFalse(home["D25"].protection.locked)
+        self.assertTrue(any("D25" in str(rule.sqref) for rule in home.data_validations.dataValidation))
+        self.assertTrue(home["B31"].protection.locked)
+        self.assertTrue(home["D31"].protection.locked)
+        self.assertIn("D25", home["B28"].value)
         self.assertIn("'ふるさと納税限度額計算'!F24", home["B17"].value)
         self.assertIn("'ふるさと納税限度額計算'!F25", home["B18"].value)
         self.assertEqual(home["D24"].value, "ワンストップ")
@@ -391,7 +403,7 @@ class WorkbookTest(unittest.TestCase):
             self.assertEqual(home[cell].value, defaults.get(cell), cell)
             self.assertFalse(home[cell].protection.locked, cell)
             self.assertTrue(any(cell in rule for rule in home.data_validations.dataValidation), cell)
-        for cell, source in (("B13","B15"),("B14","B14"),("B17","B16"),("B18","B17")):
+        for cell, source in (("B13","B15"),("B17","B16"),("B18","B17")):
             self.assertIn(f"ISNUMBER('例外・分離課税'!{source})", home[cell].value)
 
     def test_no_manual_unsupported_toggle_and_auto_status(self):
