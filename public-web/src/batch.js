@@ -100,7 +100,7 @@
       td.appendChild(warn);
      }
    }
-   const applied=cell(tr,"","batch-result");
+   const applied=cell(tr,"","batch-deduction-applied");
    applied.textContent=Number.isSafeInteger(r.appliedDeductionsYen)?
      yen(r.appliedDeductionsYen):"—";
    const filing=cell(tr,"");
@@ -226,7 +226,7 @@
   // and screenshots cannot retain an estimate for an edited recipient.
   const index=rows.indexOf(row),tr=body.children[index];
   if(tr){
-   const amounts=tr.querySelectorAll(".batch-result");
+   const amounts=tr.querySelectorAll(".batch-result,.batch-deduction-applied");
    const reason=tr.querySelector(".batch-reason");
    amounts.forEach(el=>{el.textContent="—";});
    if(reason)reason.textContent="HOLD："+row.reason;
