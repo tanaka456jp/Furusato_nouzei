@@ -514,7 +514,7 @@
   // Shared PDF page reader for the legacy single-slip screen and
   // page-by-page batch screening. Never assumes consecutive pages are the
   // same taxpayer; each page is isolated and must be reviewed independently.
-  async function analyzePdfPage(page,pdfSession,isStale){
+  async function analyzePdfPage(page,pdfSession,isStale,includeRecipient){
     var canvas=null,result;
     function ensureCurrent(){
       if(isStale())throw Error("OCR_SOURCE_CANCELLED");
@@ -587,6 +587,12 @@
             result=await twoPass(canvas,isStale);
           }
           }
+      if(includeRecipient&&extracted&&!extracted.emptyTextLayer&&
+         window.FurusatoBatchName&&
+         typeof window.FurusatoBatchName.extract==="function"){
+        const recipient=window.FurusatoBatchName.extract(extracted.items);
+        if(recipient)result.recipientName=recipient;
+      }
       return result;
     }finally{
       if(canvas){canvas.width=0;canvas.height=0;}
@@ -605,7 +611,7 @@
       if(isStale())throw Error("OCR_SOURCE_CANCELLED");
       var page=await pdf.getPage(pageNo);
       if(isStale())throw Error("OCR_SOURCE_CANCELLED");
-      return analyzePdfPage(page,session,isStale);
+      return analyzePdfPage(page,session,isStale,true);
     },
     async close(session){
       if(!session)return;
