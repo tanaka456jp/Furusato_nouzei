@@ -293,6 +293,10 @@ field("filing").value="one-stop";
 field("salaryGross").value="7000000";
 field("socialInsurance").value="1000000";
 field("deductionsReference").value="1670000";
+form.dataset.ocrYear="2026";
+form.dataset.ocrOriginalGross="7000000";
+form.dataset.ocrOriginalSocial="1000000";
+form.dataset.ocrOriginalDeductions="1670000";
 field("deductionsOverride").value="1670000";
 field("deductionsOverride").dispatchEvent(new Event("input",{bubbles:true}));
 assert.equal(document.getElementById("deductionsOverrideStatus").hidden,false);
@@ -315,13 +319,30 @@ field("acknowledgedExclusions").checked=true;
 submit();
 assert.equal(view.className,"result");
 assert.match(view.textContent,/手入力上書き中/);
-// Removing the override returns to strict source/reference reconciliation.
+// With independently verified ORIGINAL source figures, deleting a manual
+// override restores automatic current-year total (1.72m), even though the
+// historic source reference remains 1.67m.
 field("deductionsOverride").value="";
 field("deductionsOverride").dispatchEvent(new Event("input",{bubbles:true}));
 assert.equal(document.getElementById("deductionsOverrideStatus").hidden,true);
 field("acknowledgedExclusions").checked=true;
 submit();
-assert.equal(view.className,"result hold","stale source reference cannot pass");
+assert.equal(view.className,"result");
+assert.match(view.textContent,/1,720,000円/);
+form.dataset.ocrOriginalDeductions="1900000"; // source had unknown extra deductions
+submit();
+assert.equal(view.className,"result hold");
+assert.doesNotMatch(view.textContent,/109,000円/);
+form.dataset.ocrOriginalDeductions="1670000";
+submit();
+assert.equal(view.className,"result");
+// Without original-source evidence, a stale reference remains a hard HOLD.
+delete form.dataset.ocrYear;
+delete form.dataset.ocrOriginalGross;
+delete form.dataset.ocrOriginalSocial;
+delete form.dataset.ocrOriginalDeductions;
+submit();
+assert.equal(view.className,"result hold");
 field("deductionsReference").value="";
 field("deductionsReference").dispatchEvent(new Event("input",{bubbles:true}));
 field("acknowledgedExclusions").checked=true;
