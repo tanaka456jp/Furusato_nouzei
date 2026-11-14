@@ -346,7 +346,7 @@ try {
     # the first 100k is deducted from ordinary income, 98k from stock gains.
     QA-Stage 'split-donation-overflow-start'
     $allocation = $book.Worksheets.Item('分離課税寄附控除')
-    $sourceExtra.Range('B14').Value2 = 5100000.0
+    $homeSheet.Range('D25').Value2 = 5100000.0
     $extraSheet.Range('B24').Value2 = 20000000.0
     $extraSheet.Range('B25').Value2 = '上場株式'
     $extraSheet.Range('B33').Value2 = 'なし'
@@ -372,7 +372,7 @@ try {
     }
     Assert-Value ([string]$homeSheet.Range('B8').Value2) '' 'Legacy split solver must not publish a donation limit'
     Assert-Value $homeSheet.Range('B26').Value2 '追加確認' 'Legacy mixed case requires migration'
-    $sourceExtra.Range('B14').ClearContents()
+    $homeSheet.Range('D25').ClearContents()
     $extraSheet.Range('B24:B25').ClearContents()
     $extraSheet.Range('B25').Value2 = 'なし'
     $extraSheet.Range('B36').ClearContents()
