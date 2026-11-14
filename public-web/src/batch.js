@@ -207,13 +207,18 @@
    updateButtons();
   }
  });
+ function invalidateEditedRow(row){
+  row.status="HOLD";row.donationLimitYen=null;
+  row.reason="入力が変更されました。対象年見込額・控除条件の再確認待ち";
+  computed=false;updateButtons();
+ }
  body.addEventListener("input",ev=>{
   const idx=Number(ev.target?.dataset?.row);
   const key=ev.target?.dataset?.field;
   if(!Number.isSafeInteger(idx)||!rows[idx])return;
-  if(key==="label"){
-   rows[idx].label=String(ev.target.value).slice(0,40);
-   // A manually edited label is not an OCR quality criterion.
+  if(key==="label"||monetary.includes(key)){
+   core.edit(rows[idx],key,ev.target.value);
+   invalidateEditedRow(rows[idx]);
   }
  });
  body.addEventListener("change",ev=>{
@@ -221,13 +226,23 @@
   const key=ev.target?.dataset?.field;
   if(!Number.isSafeInteger(idx)||!rows[idx])return;
   const row=rows[idx];
-  if(key==="filing"&&["one-stop","return"].includes(ev.target.value))
+  if(key==="label"||monetary.includes(key)){
+   core.edit(row,key,ev.target.value);
+  }else if(key==="sourceYear"||key==="year"){
+   core.edit(row,key,ev.target.value);
+  }else if(key==="filing"&&["one-stop","return"].includes(ev.target.value)){
    row.filing=ev.target.value;
-  else if(["confirmed","noExclusions"].includes(key))
+   row.confirmed=false;row.noExclusions=false;row.forecastReviewed=false;
+  }else if(["confirmed","noExclusions","forecastReviewed"].includes(key)){
    row[key]=ev.target.checked===true;
-  else return;
-  clearEstimates();
+  }else return;
+  invalidateEditedRow(row);
   render();
+ });
+ if(targetYear)targetYear.addEventListener("change",()=>{
+  if(running){generation++;reader.cancel();}
+  rows.forEach(row=>core.edit(row,"year",targetYear.value));
+  computed=false;render();
  });
  calculate.addEventListener("click",()=>{
   if(running||!rows.length)return;
