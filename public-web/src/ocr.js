@@ -100,6 +100,9 @@
     if(confirmation)confirmation.checked=false;
     var forecast=form.elements.namedItem("forecastReviewed");
     if(forecast)forecast.checked=false;
+    var manualCheck=form.elements.namedItem("correctedSourceReviewed");
+    if(manualCheck)manualCheck.checked=false;
+    delete form.dataset.ocrManualReviewRequired;
     // A new file (including a cancelled selection), reset or tax-year change
     // must not leave the four values copied from an older source slip.
     // Never erase unrelated manual inputs when OCR has not been transferred.
@@ -152,12 +155,16 @@
       clearEstimate();
       show("金額の手入力が変更されたため、以前のOCR候補を無効にしました。新しい原票で再読取するか、入力をクリアして手入力してください。");
     }else if(form.dataset.ocrYear){
-      // A source/year attestation from a prior OCR transfer can no longer
-      // authenticate manually modified amounts.
-      delete form.dataset.ocrYear;
+      // Preserve the ORIGINAL source year as local evidence. The amount
+      // review is invalid until the operator explicitly re-attests the
+      // corrected figures. Removing the year would turn a prior-year slip
+      // into an apparently pure manual input and allow the wrong tax law.
       form.dataset.ocrReviewPending="true";
+      form.dataset.ocrManualReviewRequired="true";
+      var manualCheck=form.elements.namedItem("correctedSourceReviewed");
+      if(manualCheck)manualCheck.checked=false;
       clearEstimate();
-      show("OCR転記後の金額が変更されました。原票照合済みの状態を解除しました。再読取するか、入力をクリアして手入力してください。");
+      show("OCR転記後に金額が変更されました。原票年分は保持しています。修正した見込額を再照合し、再確認欄をチェックしてください。");
     }
   }
   form.addEventListener("input",amountWasEdited);
@@ -788,6 +795,9 @@
     if(forecast)forecast.checked=false;
     form.dataset.ocrYear=String(review.year);
     form.dataset.ocrReviewPending="false";
+    delete form.dataset.ocrManualReviewRequired;
+    var manualCheck=form.elements.namedItem("correctedSourceReviewed");
+    if(manualCheck)manualCheck.checked=false;
     review=null;acceptCheck.checked=false;acceptCheck.disabled=true;
     acceptButton.disabled=true;
     fileInput.value="";
