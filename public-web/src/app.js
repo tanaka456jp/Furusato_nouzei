@@ -237,6 +237,11 @@
     [
       ["給与所得額", calc.salaryIncomeYen],
       ["社会保険料等", calc.socialInsuranceYen],
+      ["所得控除合計（自動算定）", calc.basicIncomeTaxDeductionYen+calc.socialInsuranceYen],
+      ["原票・見込額の照合値", input.sourceDeductionsReference!==""?
+        strictYen(input.sourceDeductionsReference):null],
+      ["所得控除合計（手入力上書き）", input.deductionsOverride!==""?
+        strictYen(input.deductionsOverride):null],
       ["所得税の課税所得", calc.incomeTaxTaxableYen],
       ["住民税所得割の概算", calc.residentIncomeLevyYen],
       ["寄附限度額の概算", calc.donationLimitYen]
