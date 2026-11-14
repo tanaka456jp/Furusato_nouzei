@@ -6,6 +6,7 @@ installation must still pass tools/verify_excel.ps1 on a dedicated runner.
 from __future__ import annotations
 from pathlib import Path
 from zipfile import ZipFile
+import re
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,6 +30,16 @@ with ZipFile(package) as archive:
     ps = archive.read("setup.ps1").decode("utf-8-sig")
     cmd = archive.read("START_SETUP.cmd").decode("ascii")
     vba = archive.read("TaxLawUpdater.bas").decode("utf-8-sig")
+
+# The review title and installer log must identify the same candidate build.
+# A stale v4.10 setup label can make isolated evidence appear to be an old release.
+workbook_source = (ROOT / "tools/build_workbook.py").read_text(encoding="utf-8-sig")
+workbook_version = re.search(r'v[0-9]+\.[0-9]+\.[0-9]+', workbook_source)
+installer_version = re.search(r'Furusato_nouzei setup (v[0-9]+\.[0-9]+\.[0-9]+)', ps)
+assert workbook_version and installer_version, "Workbook or installer candidate version is missing"
+assert installer_version.group(1) == workbook_version.group(0), (
+    f"Installer version {installer_version.group(1)} differs from review workbook {workbook_version.group(0)}"
+)
 
 assert "VBComponents.Add(1)" in ps, "Setup must register a standard VBA module"
 assert "CodeModule.AddFromString($sourceBody)" in ps, "VBA Unicode registration missing"
@@ -67,6 +78,20 @@ assert "ImportWithholding' " not in ps
 assert "'ImportWithholding'" in ps
 assert "xl/vbaProject.bin" in ps, "VBA project save validation missing"
 assert "Furusato_nouzei.xlsm" in ps and "Furusato_nouzei.xlsx" in ps, "Naming mismatch"
+# VBA module-level declarations and constants MUST precede the first
+# procedure. Putting either below a Sub can open an unattended compile dialog
+# that hangs Windows Excel COM without an actionable Python exception.
+first_proc = re.search(r"^(?:Public|Private|Friend)\s+(?:Sub|Function|Property)\b", vba, re.M)
+assert first_proc is not None, "VBA entrypoints not found"
+module_decls = re.finditer(
+    r"^(?:(?:Private|Public|Friend|Global)\s+)?(?:Const\s+|"
+    r"m[A-Z][A-Za-z0-9_]*\s+As\s+)",
+    vba, re.M
+)
+for item in module_decls:
+    assert item.start() < first_proc.start(), (
+        "VBA module declaration occurs after a procedure: " + item.group(0)
+    )
 assert 'Public Sub TaxLawUpdate()' in vba
 assert 'Public Function TaxLawUpdateForTest() As Boolean' in vba
 assert "book.SaveCopyAs backup" in vba

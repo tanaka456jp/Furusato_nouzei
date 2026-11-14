@@ -1,5 +1,7 @@
 """Static preservation, input wiring and independent synthetic reference amounts."""
+import ast
 from decimal import Decimal
+from itertools import chain
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
@@ -19,6 +21,112 @@ class WorkbookTest(unittest.TestCase):
         build(cls.source, cls.target)
         cls.baseline = load_workbook(cls.source)
         cls.book = load_workbook(cls.target)
+
+    def test_first_open_full_recalculation_without_permanent_force_flag(self):
+        # A full initial calculation is still requested. Avoid permanent
+        # forced-full calculation because this suppresses smart dependency
+        # recalculation in Excel and can leave global xlPending.
+        self.assertEqual(self.book.calculation.calcMode, "auto")
+        self.assertTrue(self.book.calculation.fullCalcOnLoad)
+        self.assertFalse(self.book.calculation.forceFullCalc)
+
+    def test_stale_result_vba_guards(self):
+        source = (ROOT / "vba" / "TaxLawUpdater.bas").read_text(encoding="utf-8-sig")
+        setup = (ROOT / "tools" / "setup.ps1").read_text(encoding="utf-8-sig")
+        for token in ("Public Sub MaskUnverifiedResults()", "Public Sub RevealVerifiedResults()",
+                      "Public Function ResultsAreCurrent() As Boolean",
+                      "Private Sub CheckReportAvailable", "If Not ResultsAreCurrent() Then",
+                      'NumberFormat = ";;;"'):
+            self.assertIn(token, source)
+        for token in ("Private Sub Workbook_SheetChange",
+                      "TaxLawUpdater.MaskUnverifiedResults",
+                      "TaxLawUpdater.RevealVerifiedResults"):
+            self.assertIn(token, setup)
+
+    def test_pdf_visual_acceptance_has_a_static_contract(self):
+        workflow = (ROOT / ".github/workflows/workbook.yml").read_text(encoding="utf-8")
+        excel = (ROOT / "tools/verify_excel.ps1").read_text(encoding="utf-8-sig")
+        code = (ROOT / "tools/audit_pdf_layout.py").read_text(encoding="utf-8")
+        compile(code, "tools/audit_pdf_layout.py", "exec")
+        # Compile succeeds even if a mistakenly escaped newline comments out
+        # the assignment; check the executable AST actually binds rendered.
+        syntax = ast.parse(code)
+        proof_fn = next(n for n in syntax.body if isinstance(n, ast.FunctionDef)
+                        and n.name == "assert_split_print_source_proof")
+        self.assertTrue(any(isinstance(n, ast.Name) and n.id == "rendered"
+                            and isinstance(n.ctx, ast.Store)
+                            for n in ast.walk(proof_fn)),
+                        "PDF print proof must assign its normalized value")
+        for token in ("Verify synthetic Excel PDF layout and render evidence",
+                      "tools/audit_pdf_layout.py --folder", "PDF_LAYOUT_REVIEW_",
+                      "-PdfEvidencePath"):
+            self.assertIn(token, workflow)
+        self.assertIn("synthetic-pdf-audit-input-export-pass", excel)
+        for name in ("FurusatoQA.pdf", "FurusatoQA_hidden.pdf", "split-result.pdf", "home-overview.pdf"):
+            self.assertIn(name, excel)
+        self.assertIn("home-overview-pdf-pass", excel)
+        self.assertIn("home-overview.pdf", code)
+        self.assertIn('"109,000"', code)
+        self.assertIn("Home PDF review version mismatch", code)
+        self.assertIn("def assert_no_text_collision(", code)
+        self.assertIn("def collision_self_test()", code)
+        self.assertIn("checked_words = assert_no_text_collision(", code)
+        self.assertIn('"text_collision_self_test": "PASS"', code)
+        self.assertIn("def assert_split_print_source_proof(", code)
+        self.assertIn("split-result.print-inputs.json", code)
+        self.assertIn('"split_print_source_proof": "PASS"', code)
+        self.assertIn('"split_print_row_geometry": "PASS"', code)
+        self.assertIn("def assert_split_print_row_geometry(", code)
+        self.assertIn("value moved to wrong row", code)
+        self.assertIn("value moved out of source column", code)
+        self.assertIn("tools/audit_pdf_layout.py --self-test", workflow)
+        self.assertIn("pymupdf==1.26.4", workflow)
+        self.assertIn("split-result.print-inputs.json", excel)
+        self.assertIn("pdf_sha256", code)
+        live_qa = (ROOT / "tools/test_separate_excel.ps1").read_text(encoding="utf-8-sig")
+        self.assertIn("furusato-split-pdf-printed-inputs/v1", live_qa)
+        self.assertIn("Get-FileHash -LiteralPath $PdfPath -Algorithm SHA256", live_qa)
+
+    def test_second_print_page_repeats_year_and_both_versions(self):
+        home = self.book[HOME]
+        formula = str(home["A80"].value)
+        self.assertTrue(formula.startswith("=IFERROR("))
+        for token in ("D50", "B29", "A1", "CHAR(10)", 'FIND("v4.",A1)'):
+            self.assertIn(token, formula)
+        self.assertTrue(home["A80"].alignment.wrap_text)
+        self.assertGreaterEqual(home.row_dimensions[80].height, 60)
+        # Three deliberate lines are required, rather than a wrapped
+        # orphaned "版" in the first printed header line.
+        self.assertIn('"Excel版 "', formula)
+        self.assertIn('CHAR(10)&"税制版 "', formula)
+        # Detailed tax-credit page is emitted from the same area as A80.
+        source = (ROOT / "vba" / "TaxLawUpdater.bas").read_text(encoding="utf-8-sig")
+        self.assertIn('DetailsPrintArea = DetailsPrintArea & ",$A$80:$D$93"', source)
+        for row, left, right in ((89, "D72", "D73"), (90, "D74", "D75"),
+                                  (91, "D76", "D77"), (92, "D49", "D51")):
+            self.assertIn('B55="計算可能"', home[f"B{row}"].value)
+            self.assertIn(left, home[f"B{row}"].value)
+            self.assertIn('B55="計算可能"', home[f"D{row}"].value)
+            self.assertIn(right, home[f"D{row}"].value)
+            self.assertTrue(home[f"B{row}"].protection.locked)
+        self.assertEqual(home["A88"].value, "計算条件の照合（入力値の控え）")
+        self.assertTrue(home["A93"].alignment.wrap_text)
+        # Visible printing is audited too: header wrapping may be planned,
+        # but money allocation must remain on a single printed line.
+        self.assertGreaterEqual(home.row_dimensions[57].height, 40)
+        self.assertGreaterEqual(home.row_dimensions[67].height, 44)
+        for row in range(58, 65):
+            self.assertFalse(home[f"B{row}"].alignment.wrap_text)
+            self.assertTrue(home[f"B{row}"].alignment.shrink_to_fit)
+            self.assertGreaterEqual(home.row_dimensions[row].height, 29)
+        for row in range(89, 93):
+            self.assertGreaterEqual(home[f"C{row}"].alignment.indent, 1)
+            self.assertGreaterEqual(home[f"B{row}"].alignment.indent, 1)
+        audit = (ROOT / "tools/audit_pdf_layout.py").read_text(encoding="utf-8")
+        self.assertIn("Split PDF allocation wraps to multiple printed lines", audit)
+        live_qa = (ROOT / "tools/test_separate_excel.ps1").read_text(encoding="utf-8-sig")
+        self.assertIn("Split print source mismatch", live_qa)
+        self.assertIn("Split print audit value remained visible under HOLD", live_qa)
 
     def test_single_visible_home(self):
         self.assertEqual(self.book.active.title, HOME)
@@ -41,7 +149,7 @@ class WorkbookTest(unittest.TestCase):
             self.assertLess(sheet.page_margins.left, 0.4)
             self.assertLess(sheet.page_margins.right, 0.4)
         self.assertEqual(str(self.book[HOME].print_area), "'操作画面'!$A$1:$D$39")
-        self.assertEqual(str(self.book[DETAIL].print_area), "'計算根拠'!$A$1:$D$19")
+        self.assertEqual(str(self.book[DETAIL].print_area), "'計算根拠'!$A$1:$D$23")
         rules = self.book[HOME].conditional_formatting
         self.assertIn("A9:D9", {str(r.sqref) for r in rules})
         self.assertGreaterEqual(len(rules["A9:D9"]), 2)
@@ -119,7 +227,62 @@ class WorkbookTest(unittest.TestCase):
         self.assertIn("ISNUMBER(B38)", formula)
         self.assertIn("住宅ローン", self.book[HOME]["A32"].value)
         self.assertIn("B34-B33", self.book[HOME]["B38"].value)
+        mortgage = self.book[HOME]["B38"].value
+        self.assertIn("'ふるさと納税限度額計算'!J12", mortgage)
+        self.assertIn("'ふるさと納税限度額計算'!F15", mortgage)
+        self.assertIn("-480000", mortgage)
+        self.assertIn("B35>=2026", mortgage)
+        self.assertNotIn("B13-B14", mortgage)
+        self.assertIn("SAFE-TAX-028", formula)
+        self.assertIn("SAFE-TAX-029", formula)
+        # Exercise both 2022 statutory resident-credit ceilings with
+        # real Excel evaluation, including zero residual income-tax use.
+        real_qa = (ROOT / "tools/verify_excel.ps1").read_text(encoding="utf-8-sig")
+        for marker in ("mortgage-2022-cap-ceilings-start",
+                       "mortgage-2022-cap-ceilings-pass",
+                       "136500 '2022 verified 7-percent resident ceiling'",
+                       "97500 '2022 verified 5-percent resident ceiling'",
+                       "0 'No residual possible credit after full income-tax use'",
+                       "2022 mortgage guidance missing legal contract and VAT checks",
+                       "mortgage-2022-cap-rounding-boundaries-start",
+                       "mortgage-2022-cap-rounding-boundaries-pass",
+                       "136430.0", "97450.0",
+                       "Pasted unsupported 2022 mortgage eligibility escaped HOLD"):
+            self.assertIn(marker, real_qa)
+        self.assertIn("AND(ISNUMBER(B34),B34<0)", formula)
+        self.assertEqual(self.book[HOME]["D35"].value, "未確認")
+        mortgage_rules = [
+            item for item in self.book[HOME].data_validations.dataValidation
+            if str(item.sqref) == "D35"
+        ]
+        self.assertEqual(len(mortgage_rules), 1)
+        self.assertTrue(mortgage_rules[0].showInputMessage)
+        for key in ("消費税10%", "2020/10", "2021/9", "2020/12", "2021/11", "未確認"):
+            self.assertIn(key, mortgage_rules[0].prompt)
+        self.assertIn("B35=2022", mortgage)
+        self.assertIn("D35=\"経過措置7%確認\"", mortgage)
+        self.assertIn("D35=\"通常5%確認\"", mortgage)
+        self.assertIn("136500", mortgage)
+        self.assertIn("97500", mortgage)
+        self.assertIn("70,50", mortgage)
+        source = (ROOT / "vba/TaxLawUpdater.bas").read_text(encoding="utf-8-sig")
+        self.assertIn('home.Range("D35").Value2 = "未確認"', source)
+        self.assertIn("ResetSeparateInputs home", source)
+        self.assertIn('ResetSeparateInputs ThisWorkbook.Worksheets("操作画面")', source)
         self.assertTrue(self.book[HOME]["B38"].protection.locked)
+
+    def test_separate_credit_grid_cannot_leak_into_ordinary_estimate(self):
+        formula = self.book[HOME]["B28"].value
+        self.assertIn("SAFE-TAX-026", formula)
+        self.assertIn("SAFE-TAX-027", formula)
+        for row in range(72, 78):
+            self.assertIn(f"D{row}<>0", formula)
+            self.assertEqual(self.book[HOME][f"D{row}"].value, 0)
+        self.assertIn("AND(ISNUMBER(B33),B33>0", formula)
+        self.assertIn("NOT(ISNUMBER(B34))", formula)
+        self.assertIn("B34<B33", formula)
+        self.assertIn('B28<>"正常"', self.book[HOME]["B8"].value)
+        self.assertIn('B28<>"正常"', self.book[HOME]["D8"].value)
 
     def test_split_donation_allocation_is_real_tax_difference(self):
         model = self.book["分離課税寄附控除"]
@@ -172,7 +335,7 @@ class WorkbookTest(unittest.TestCase):
         self.assertIn("'例外・分離課税'!B28",self.book[INPUT]["B11"].value)
         self.assertIn("源泉票", extra["A14"].value)
         self.assertNotIn("'例外・分離課税'!B4", self.book[HOME]["B28"].value)
-        self.assertIn("'例外・分離課税'!B14", self.book[HOME]["B28"].value)
+        self.assertIn("'例外・分離課税'!B14", self.book[HOME]["D31"].value)
 
     def test_auto_income_and_deductions_and_no_one_stop_attestation(self):
         home = self.book[HOME]
@@ -182,12 +345,56 @@ class WorkbookTest(unittest.TestCase):
         self.assertIn("'源泉徴収票入力'!B34", home["B13"].value)
         self.assertIn("ROUNDDOWN(B12/4000,0)*4000", home["B13"].value)
         self.assertIn("IF(D4=2025,650000,740000)", home["B13"].value)
+        self.assertIn("IF(AND(D4=2026,B12<2200000)", home["B13"].value)
+        self.assertIn("IF(B12<2191000,B12-740000", home["B13"].value)
+        self.assertIn("IF(B12<2193000,1451000", home["B13"].value)
+        self.assertIn("IF(B12<2196000,1453000,1456000)", home["B13"].value)
+        self.assertIn("MAX(0,B12-IF(D4=2025,650000,740000))", home["B13"].value)
         self.assertIn("'例外・分離課税'!B13", home["B13"].value)
+        self.assertEqual(home["B14"].value,
+                         '=IF(D25<>"",IF(ISNUMBER(D25),D25,""),B31)')
+        self.assertIn("'ふるさと納税限度額計算'!F15", home["B31"].value)
+        self.assertIn("'ふるさと納税限度額計算'!F38", home["B31"].value)
+        self.assertEqual(home["D26"].value,
+                         '=IF(D25="","自動再計算","⚠ 手入力上書き中")')
+        self.assertIsNone(home["D25"].value)
+        self.assertFalse(home["D25"].protection.locked)
+        self.assertTrue(any("D25" in str(rule.sqref) for rule in home.data_validations.dataValidation))
+        self.assertTrue(home["B31"].protection.locked)
+        self.assertTrue(home["D31"].protection.locked)
+        self.assertIn("D25", home["B28"].value)
+        self.assertIn('ABS(\'例外・分離課税\'!B14-B31)>1',home["B28"].value)
+        self.assertIn('VERIFIED_AFTER_CORRECTION',home["B28"].value)
+        self.assertNotIn("'例外・分離課税'!B14<", home["B28"].value)
         self.assertIn("'ふるさと納税限度額計算'!F24", home["B17"].value)
         self.assertIn("'ふるさと納税限度額計算'!F25", home["B18"].value)
         self.assertEqual(home["D24"].value, "ワンストップ")
         self.assertIsNone(home["D25"].value)
         self.assertNotIn('D25<>"確認済"', home["B28"].value)
+
+    def test_2026_national_tax_salary_special_formula_boundaries(self):
+        """Regress NTA No.1410 note (2) without altering 2025 or 2.2m+."""
+        formula = self.book[HOME]["B13"].value
+        expected = {
+            690999: 0, 691000: 0, 740999: 0, 741000: 1000,
+            2190999: 1450999, 2191000: 1451000, 2192999: 1451000,
+            2193000: 1453000, 2195999: 1453000,
+            2196000: 1456000, 2199999: 1456000,
+            2200000: 1460000, 2200001: 1460000,
+        }
+        # The known 2026 bands and values must occur in the generated
+        # Excel expression. Real Excel COM asserts each result separately.
+        for bound in (741000, 2191000, 2193000, 2196000, 2200000):
+            self.assertIn(f"B12<{bound}", formula)
+        for value in (1451000, 1453000, 1456000):
+            self.assertIn(str(value), formula)
+        self.assertEqual(expected[2192999], 1451000)
+        self.assertEqual(expected[2195999], 1453000)
+        self.assertEqual(expected[2199999], 1456000)
+        self.assertIn("IF(D4=2025,1900000,2200000)", formula)
+        self.assertRegex(self.book[HOME]["A1"].value, r"\bv4\.18\.\d+ 分離課税検証版\b")
+        self.assertEqual(self.book[HOME]["A2"].hyperlink.location, "'操作画面'!A42")
+        self.assertIsNone(self.book[HOME]["A7"].hyperlink)
 
     def test_no_customer_values_in_main_inputs(self):
         home = self.book[HOME]
@@ -199,7 +406,7 @@ class WorkbookTest(unittest.TestCase):
             self.assertEqual(home[cell].value, defaults.get(cell), cell)
             self.assertFalse(home[cell].protection.locked, cell)
             self.assertTrue(any(cell in rule for rule in home.data_validations.dataValidation), cell)
-        for cell, source in (("B13","B15"),("B14","B14"),("B17","B16"),("B18","B17")):
+        for cell, source in (("B13","B15"),("B17","B16"),("B18","B17")):
             self.assertIn(f"ISNUMBER('例外・分離課税'!{source})", home[cell].value)
 
     def test_no_manual_unsupported_toggle_and_auto_status(self):
@@ -217,11 +424,24 @@ class WorkbookTest(unittest.TestCase):
         self.assertNotIn('B19:B26',source)
         self.assertNotIn('Range("B4").Value2 = "通常"',source)
 
+    def test_tax_credit_grid_and_exact_search_have_separate_inputs(self):
+        model = self.book["分離課税詳細計算"]
+        self.assertIn("AC28*200", model["O28"].value)
+        self.assertIn("AC28*200", model["P28"].value)
+        self.assertIn("MIN(MAX(0", model["AC28"].value)
+        self.assertIn("AA28", model["W28"].value)
+        self.assertIn("AB28*200", model["X28"].value)
+        self.assertIn("AB28*200", model["Y28"].value)
+
     def test_generated_formulas_have_valid_excel_parentheses(self):
         # Excel rejects a workbook when an overlong/malformed nested status
         # formula is present. This catches accidental extra closings BEFORE COM.
-        for addr in ("B13", "B14", "B17", "B18", "B28"):
-            formula = self.book[HOME][addr].value
+        home = self.book[HOME]
+        model = self.book["分離課税詳細計算"]
+        home_formulas = (home[addr] for addr in ("B13", "B14", "B17", "B18", "B28"))
+        model_formulas = (cell for row in model.iter_rows() for cell in row if cell.data_type == "f")
+        for cell in chain(home_formulas, model_formulas):
+            addr, formula = cell.coordinate, cell.value
             self.assertIsInstance(formula, str, addr)
             self.assertLess(len(formula), 8192, addr)
             depth, quoted = 0, False

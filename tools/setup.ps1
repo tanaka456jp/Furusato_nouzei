@@ -13,7 +13,7 @@ $utf8 = New-Object System.Text.UTF8Encoding($true)
 $strictUtf8 = New-Object System.Text.UTF8Encoding($false, $true)
 $excel = $null; $workbook = $null; $tempBook = $null; $stagingDir = $null; $stagedSource = $null
 $button = $null; $sheet = $null; $anchor = $null; $component = $null
-try { [System.IO.File]::WriteAllText($logFile, ('Furusato_nouzei setup v4.10 ' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + "`r`n"), $utf8) }
+try { [System.IO.File]::WriteAllText($logFile, ('Furusato_nouzei setup v4.18.34 ' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + "`r`n"), $utf8) }
 catch { Write-Host ('Unable to create setup.log: ' + $_.Exception.Message); exit 10 }
 function Log([string]$message) {
     $line = '[' + (Get-Date -Format 'HH:mm:ss') + '] [' + $script:phase + '] ' + $message
@@ -133,13 +133,23 @@ try {
     $eventCode = @'
 
 Private Sub Workbook_Open()
+    TaxLawUpdater.MaskUnverifiedResults
     TaxLawUpdater.BindButtons
     TaxLawUpdater.ReturnHome
     Application.Calculate
+    TaxLawUpdater.RevealVerifiedResults
 End Sub
 
 Private Sub Workbook_SheetChange(ByVal Sh As Object, ByVal Target As Range)
-    If Sh Is Me.Worksheets(1) Then Application.Calculate
+    If Sh Is Me.Worksheets("操作画面") Or Sh Is Me.Worksheets("例外・分離課税") Then
+        TaxLawUpdater.MaskUnverifiedResults
+        Application.Calculate
+        TaxLawUpdater.RevealVerifiedResults
+    End If
+End Sub
+
+Private Sub Workbook_SheetCalculate(ByVal Sh As Object)
+    TaxLawUpdater.RevealVerifiedResults
 End Sub
 '@
     $bookModule = $workbook.VBProject.VBComponents.Item($workbook.CodeName).CodeModule
@@ -190,9 +200,19 @@ End Sub
     $excel.CalculateFullRebuild()
     Assert ($workbook.Worksheets.Item('自動回帰テスト').Range('B49').Value2 -ceq 'PASS') 'Excelでの内蔵回帰試験が不合格です。'
     $phase = 'VBA実行スモーク'
-    Log 'マクロを実際に実行して、Excel/VBA連携を検査します。'
+    Log 'マクロ実行によるExcel/VBA連携を確認します（合成テストブック）。'
+    Log 'QA_SMOKE BindButtons START'
     $excel.Run('TaxLawUpdater.BindButtons')
+    Log 'QA_SMOKE BindButtons PASS'
+    Log 'QA_SMOKE MaskUnverifiedResults START'
+    $excel.Run('TaxLawUpdater.MaskUnverifiedResults')
+    Log 'QA_SMOKE MaskUnverifiedResults PASS'
+    Log 'QA_SMOKE RevealVerifiedResults START'
+    $excel.Run('TaxLawUpdater.RevealVerifiedResults')
+    Log 'QA_SMOKE RevealVerifiedResults RETURN'
+    Log 'QA_SMOKE RecalculateCase START'
     $excel.Run('TaxLawUpdater.RecalculateCase')
+    Log 'QA_SMOKE RecalculateCase PASS'
     Assert ($workbook.Worksheets.Item('自動回帰テスト').Range('B49').Value2 -ceq 'PASS') 'マクロの実行後、回帰試験が不合格です。'
     $phase = 'ファイル確定保存'
     Log 'マクロ付きブックを保存します。'

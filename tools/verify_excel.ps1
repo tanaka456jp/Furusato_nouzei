@@ -2,7 +2,8 @@
 # Run on a dedicated Windows Excel desktop with VBOM access configured for the build user.
 param(
     [Parameter(Mandatory=$true)][string]$Workbook,
-    [string]$EvidencePath = ''
+    [string]$EvidencePath = '',
+    [string]$PdfEvidencePath = ''
 )
 $ErrorActionPreference = 'Stop'
 $Workbook = (Resolve-Path -LiteralPath $Workbook).Path
@@ -12,7 +13,9 @@ $copy = Join-Path $dir 'FurusatoQA.xlsm'
 [IO.File]::Copy($Workbook, $copy)
 $excel = $null; $book = $null; $savedCase = $null; $homeSheet = $null; $settings = $null; $checks = $null; $detail = $null
 $passed = $false
+$splitCases = @()
 $failureSummary = ''
+$lastVbaUpdateStage = ''
 $excelVersion = ''
 $sourceSha256 = (Get-FileHash -LiteralPath $Workbook -Algorithm SHA256).Hash
 $startedUtc = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
@@ -67,6 +70,18 @@ try {
     # This is a renamed test COPY, so bind its buttons to the test workbook.
     $excel.Run('TaxLawUpdater.BindButtons')
     Assert-MacroAction ([string]$homeSheet.Buttons().Item('btnTaxLawUpdate').OnAction) 'FurusatoQA.xlsm!TaxLawUpdater.TaxLawUpdate' 'Main case macro ownership'
+    $splitLink = $homeSheet.Range('A2')
+    Assert-Value $splitLink.Hyperlinks.Count 1 'Split settings link available at A2'
+    Assert-Value ([string]$splitLink.Hyperlinks.Item(1).SubAddress) "'操作画面'!A42" 'Split settings link target'
+    $linkBottom = [double]$splitLink.Top + [double]$splitLink.Height
+    $controls = $homeSheet.Buttons()
+    for ($i=1; $i -le $controls.Count; $i++) {
+        $control = $controls.Item($i)
+        if ([double]$control.Top -lt $linkBottom -and ([double]$control.Top + [double]$control.Height) -gt [double]$splitLink.Top) {
+            throw 'Installed form control obscures the split settings link'
+        }
+    }
+    QA-Stage 'split-settings-link-unobstructed'
     QA-Stage 'initial-recalculate-start'
     $excel.Run('TaxLawUpdater.RecalculateCase')
     QA-Stage 'initial-recalculate-done'
@@ -75,6 +90,46 @@ try {
     Assert-Value $homeSheet.Range('B8').Value2 '' 'Blank input hides limit'
     Assert-Value $detail.Visible 2 'Calculation details start hidden'
     QA-Stage 'initial-regressions-pass'
+    # Synthetic live Excel COM regression: the source total is audit-only;
+    # the user-typed override persists across unrelated source edits; clearing
+    # the override restores computed deductions. No customer data is used.
+    QA-Stage 'deduction-override-synthetic-start'
+    $homeSheet.Range('B12').Value2 = 7000000.0
+    $homeSheet.Range('B15').Value2 = 285800.0
+    $homeSheet.Range('B16').Value2 = 1000000.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B31').Value2 1670000 'Computed deduction total baseline'
+    Assert-Value $homeSheet.Range('B14').Value2 1670000 'Effective deduction without override'
+    Assert-Value ([string]$homeSheet.Range('D26').Value2) '自動再計算' 'Automatic deduction mode'
+    $homeSheet.Range('D25').Value2 = 1800000.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B14').Value2 1800000 'Manual override amount used'
+    if ([string]$homeSheet.Range('D26').Value2 -notlike '*上書き中*') {
+        throw 'Manual override warning was not displayed'
+    }
+    $homeSheet.Range('B16').Value2 = 1050000.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B31').Value2 1720000 'Automatic amount follows insurance edit'
+    Assert-Value $homeSheet.Range('B14').Value2 1800000 'Override must not silently follow edit'
+    $homeSheet.Range('D25').ClearContents()
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B14').Value2 1720000 'Removing override restores automatic amount'
+    Assert-Value ([string]$homeSheet.Range('D26').Value2) '自動再計算' 'Mode restored after clearing override'
+    $sourceAudit = $book.Worksheets.Item('例外・分離課税')
+    $sourceAudit.Range('B14').Value2 = 1950000.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B14').Value2 1720000 'Source document total must not override calculation'
+    Assert-Value $homeSheet.Range('D31').Value2 1950000 'Source total retained separately'
+    if ([string]$homeSheet.Range('B28').Value2 -notlike '*原票の所得控除合計*') {
+        throw 'Unreviewed source/automatic total mismatch did not HOLD'
+    }
+    Assert-Value ([string]$homeSheet.Range('B8').Value2) '' 'Unreviewed source discrepancy hides limit'
+    $sourceAudit.Range('B14').ClearContents()
+    $homeSheet.Range('B12').ClearContents()
+    $homeSheet.Range('B15').ClearContents()
+    $homeSheet.Range('B16').ClearContents()
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    QA-Stage 'deduction-override-synthetic-pass'
     # Statutory special-relative deduction edge cases, all synthetic.
     $familyBands = @(
         @{ Year=2025; Income=580000; Expected=0 },
@@ -95,7 +150,7 @@ try {
     QA-Stage 'special-relative-income-bands-pass'
     QA-Stage 'print-setup-validation-start'
     Assert-PrintConfiguration $homeSheet 'Home' '\$A\$1:\$D\$39'
-    Assert-PrintConfiguration $detail 'Detail' '\$A\$1:\$D\$19'
+    Assert-PrintConfiguration $detail 'Detail' '\$A\$1:\$D\$23'
     QA-Stage 'print-setup-validation-done'
     foreach ($year in @(2025, 2026)) {
         QA-Stage ('synthetic-' + $year + '-input-start')
@@ -145,6 +200,28 @@ try {
             $homeSheet.Range('B12').Value2 = 5000000
             $excel.Run('TaxLawUpdater.RecalculateCase')
             Assert-Value $homeSheet.Range('B13').Value2 3560000 '2026 salary table example'
+            # Primary source: NTA No.1410, special 2026 income bands.
+            # Exercise the real Excel B13 formula on the disposable copy,
+            # including both sides of each statutory boundary.
+            $specialSalary2026 = @(
+                @{ Gross=690999; Expected=0 }, @{ Gross=691000; Expected=0 },
+                @{ Gross=740999; Expected=0 }, @{ Gross=741000; Expected=1000 },
+                @{ Gross=2190999; Expected=1450999 },
+                @{ Gross=2191000; Expected=1451000 },
+                @{ Gross=2192999; Expected=1451000 },
+                @{ Gross=2193000; Expected=1453000 },
+                @{ Gross=2195999; Expected=1453000 },
+                @{ Gross=2196000; Expected=1456000 },
+                @{ Gross=2199999; Expected=1456000 },
+                @{ Gross=2200000; Expected=1460000 },
+                @{ Gross=2200001; Expected=1460000 }
+            )
+            foreach($sample in $specialSalary2026) {
+                $homeSheet.Range('B12').Value2 = [double]$sample.Gross
+                $excel.Run('TaxLawUpdater.RecalculateCase')
+                Assert-Value $homeSheet.Range('B13').Value2 $sample.Expected ('NTA 2026 salary '+ $sample.Gross)
+            }
+            QA-Stage 'nta-2026-salary-boundaries-pass'
             $homeSheet.Range('B12').Value2 = 7000000
             $excel.Run('TaxLawUpdater.RecalculateCase')
         }
@@ -169,7 +246,8 @@ try {
     }
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value $homeSheet.Range('B13').Value2 3550000 'Source salary income preferred'
-    Assert-Value $homeSheet.Range('B14').Value2 3800000 'Source deduction total preferred'
+    Assert-Value $homeSheet.Range('B14').Value2 $homeSheet.Range('B31').Value2 'Recalculated total is used, not historical slip total'
+    Assert-Value $homeSheet.Range('D31').Value2 3800000 'Original deduction source total remains visible'
     Assert-Value $homeSheet.Range('B17').Value2 46000 'Source life deduction preferred'
     Assert-Value $homeSheet.Range('B18').Value2 17000 'Source earthquake deduction preferred'
     Assert-Value $homeSheet.Range('B25').Value2 'なし' 'Blank dependent indicator normalized'
@@ -232,16 +310,22 @@ try {
     Assert-Value $extraSheet.Range('B27').Value2 50000 'Listed shares resident tax 1m'
     Assert-Value $residentSheet.Range('B16').Value2 ($regularLevy+50000) 'Split tax included in resident income levy'
     Assert-Value $residentSheet.Range('B19').Value2 ($regularLimit+10000) 'Split special credit ceiling'
-    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Ordinary listed shares declared split case'
+    if ([string]$homeSheet.Range('B28').Value2 -notlike 'SAFE-TAX-016*') { throw 'Legacy input escaped HOLD: Ordinary listed shares declared split case' }
+    foreach ($cell in 'B16','B17','B18') {
+        Assert-Value ([string]$book.Worksheets.Item('計算根拠').Range($cell).Value2) '' "Legacy split breakdown $cell suppressed during HOLD"
+    }
+    Assert-Value ([string]$homeSheet.Range('B8').Value2) '' 'Legacy split input must hide donation amount'
     $extraSheet.Range('B24').Value2 = 500000.0
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value $extraSheet.Range('B27').Value2 25000 'Screenshot listed shares 500k resident levy'
     Assert-Value $residentSheet.Range('B16').Value2 ($regularLevy+25000) 'Screenshot total resident levy'
-    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Screenshot mixed salary plus stocks'
+    if ([string]$homeSheet.Range('B28').Value2 -notlike 'SAFE-TAX-016*') { throw 'Legacy input escaped HOLD: Screenshot mixed salary plus stocks' }
+    Assert-Value ([string]$homeSheet.Range('B8').Value2) '' 'Legacy split input must hide donation amount'
     $extraSheet.Range('B25').Value2 = '土地建物短期'
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value $extraSheet.Range('B27').Value2 45000 'Standard short land resident levy'
-    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Standard short land tax case'
+    if ([string]$homeSheet.Range('B28').Value2 -notlike 'SAFE-TAX-016*') { throw 'Legacy input escaped HOLD: Standard short land tax case' }
+    Assert-Value ([string]$homeSheet.Range('B8').Value2) '' 'Legacy split input must hide donation amount'
     $extraSheet.Range('B33').Value2 = 'あり'
     $excel.Run('TaxLawUpdater.RecalculateCase')
     if ([string]$homeSheet.Range('B28').Value2 -eq '正常') {
@@ -262,14 +346,15 @@ try {
     # the first 100k is deducted from ordinary income, 98k from stock gains.
     QA-Stage 'split-donation-overflow-start'
     $allocation = $book.Worksheets.Item('分離課税寄附控除')
-    $sourceExtra.Range('B14').Value2 = 5100000.0
+    $homeSheet.Range('D25').Value2 = 5100000.0
     $extraSheet.Range('B24').Value2 = 20000000.0
     $extraSheet.Range('B25').Value2 = '上場株式'
     $extraSheet.Range('B33').Value2 = 'なし'
     $extraSheet.Range('B36').Value2 = 20000000.0
     $homeSheet.Range('B33:B36').ClearContents()
     $excel.Run('TaxLawUpdater.RecalculateCase')
-    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Ordinary plus split supported'
+    if ([string]$homeSheet.Range('B28').Value2 -notlike 'SAFE-TAX-016*') { throw 'Legacy input escaped HOLD: Ordinary plus split supported' }
+    Assert-Value ([string]$homeSheet.Range('B8').Value2) '' 'Legacy split input must hide donation amount'
     Assert-Value $allocation.Range('B2').Value2 100000 'Ordinary taxable income before donation'
     Assert-Value $allocation.Range('B3').Value2 20000000 'Split taxable income before donation'
     Assert-Value $allocation.Range('F50').Value2 198000 '200k donation deduction'
@@ -285,9 +370,9 @@ try {
     if ($candidate -lt 2000 -or $candidate -ge 300000) {
         throw "Donation ceiling is outside validated synthetic range: $candidate"
     }
-    Assert-Value $homeSheet.Range('B8').Value2 $candidate 'Donation ceiling uses the split solver'
-    Assert-Value $homeSheet.Range('B26').Value2 '計算可能' 'Mixed case was automatically accepted'
-    $sourceExtra.Range('B14').ClearContents()
+    Assert-Value ([string]$homeSheet.Range('B8').Value2) '' 'Legacy split solver must not publish a donation limit'
+    Assert-Value $homeSheet.Range('B26').Value2 '追加確認' 'Legacy mixed case requires migration'
+    $homeSheet.Range('D25').ClearContents()
     $extraSheet.Range('B24:B25').ClearContents()
     $extraSheet.Range('B25').Value2 = 'なし'
     $extraSheet.Range('B36').ClearContents()
@@ -352,6 +437,223 @@ try {
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Mortgage case reset'
     QA-Stage 'mortgage-regressions-pass'
+    # Independent statutory resident-mortgage tests for the 2025/2026
+    # national basic deduction increase and non-salary ordinary income.
+    # No customer data; the isolated Excel state is restored afterward.
+    QA-Stage 'mortgage-2025-2026-basic-delta-start'
+    $homeSheet.Range('D25').Value2 = 5000000.0
+    $homeSheet.Range('B33').Value2 = 0.0
+    $homeSheet.Range('B34').Value2 = 150000.0
+    $homeSheet.Range('B35').Value2 = 2024.0
+    $homeSheet.Range('B36').Value2 = 1.0
+    foreach ($case in @(
+        @{ Year=2025; Basic=630000; Credit=17500 },
+        @{ Year=2026; Basic=670000; Credit=19500 }
+    )) {
+        $settings.Range('B4').Value2 = [double]$case.Year
+        $homeSheet.Range('B4').Value2 = [double]$case.Year
+        $homeSheet.Range('B11').Value2 = [double]$case.Year
+        $excel.Run('TaxLawUpdater.RecalculateCase')
+        Assert-Value $homeSheet.Range('B13').Value2 5200000 ('Housing salary '+$case.Year)
+        Assert-Value $engineSheet.Range('F15').Value2 $case.Basic ('Housing basic '+$case.Year)
+        Assert-Value $engineSheet.Range('J12').Value2 200000 ('Housing taxable '+$case.Year)
+        Assert-Value $homeSheet.Range('B38').Value2 $case.Credit ('Housing basic delta '+$case.Year)
+    }
+    $extraSheet.Range('B8').Value2 = 500000.0
+    $extraSheet.Range('B9').Value2 = 0.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $engineSheet.Range('J12').Value2 700000 'Housing ordinary extra-income taxable total'
+    Assert-Value $homeSheet.Range('B38').Value2 44500 'Housing with ordinary extra income'
+    $homeSheet.Range('B35').Value2 = 2026.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B38').Value2 35000 'Housing 2026 occupancy ordinary 5% base'
+    $homeSheet.Range('B35').Value2 = 2022.0
+    $mortgageHint = [string]$homeSheet.Range('D35').Validation.InputMessage
+    if ($mortgageHint -notlike '*消費税10%*' -or
+        $mortgageHint -notlike '*2020/10*' -or
+        $mortgageHint -notlike '*2021/11*') {
+        throw '2022 mortgage guidance missing legal contract and VAT checks'
+    }
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    if ([string]$homeSheet.Range('B28').Value2 -notlike 'SAFE-TAX-028*' -or
+        [string]$homeSheet.Range('B8').Value2 -ne '' -or
+        [string]$homeSheet.Range('B38').Value2 -ne '') {
+        throw '2022 unverified mortgage class escaped HOLD'
+    }
+    $homeSheet.Range('D35').Value2 = '通常5%確認'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B38').Value2 44500 '2022 ordinary 5-percent mortgage class'
+    if ([string]$homeSheet.Range('B28').Value2 -like 'SAFE-TAX-028*') {
+        throw '2022 verified 5-percent class still marked unverified'
+    }
+    $homeSheet.Range('D35').Value2 = '経過措置7%確認'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B38').Value2 62300 '2022 eligible 7-percent transition'
+    if ([string]$homeSheet.Range('B28').Value2 -like 'SAFE-TAX-028*') {
+        throw '2022 verified 7-percent class still marked unverified'
+    }
+    # High-income synthetic boundary scenarios: verify 2022 statutory caps
+    # against *actual* Excel formula evaluations; no real taxpayer data.
+    QA-Stage 'mortgage-2022-cap-ceilings-start'
+    $extraSheet.Range('B8').Value2 = 4500000.0
+    $homeSheet.Range('B34').Value2 = 1000000.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    if ([double]$engineSheet.Range('J12').Value2 -lt 3000000) {
+        throw 'Mortgage 2022 synthetic ceiling test is below intended taxable base'
+    }
+    Assert-Value $homeSheet.Range('B38').Value2 136500 '2022 verified 7-percent resident ceiling'
+    $homeSheet.Range('D35').Value2 = '通常5%確認'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B38').Value2 97500 '2022 verified 5-percent resident ceiling'
+    # Actual Excel statutory rounding immediately BELOW and AT both 2022
+    # resident-tax mortgage caps; independently compute national taxable
+    # base and the national basic-deduction transition for each tax year.
+    QA-Stage 'mortgage-2022-cap-rounding-boundaries-start'
+    foreach ($edge in @(
+        @{ Year=2025; ExtraBelow=1649000.0; ExtraAt=1650000.0; Basic=580000.0 },
+        @{ Year=2026; ExtraBelow=1609000.0; ExtraAt=1610000.0; Basic=620000.0 }
+    )) {
+        $settings.Range('B4').Value2 = [double]$edge.Year
+        $homeSheet.Range('B4').Value2 = [double]$edge.Year
+        $homeSheet.Range('B11').Value2 = [double]$edge.Year
+        foreach ($row in @(
+            @{ Extra=[double]$edge.ExtraBelow; TaxableBase=1949000.0; Five=97450.0; Seven=136430.0 },
+            @{ Extra=[double]$edge.ExtraAt; TaxableBase=1950000.0; Five=97500.0; Seven=136500.0 }
+        )) {
+            $extraSheet.Range('B8').Value2 = [double]$row.Extra
+            $homeSheet.Range('D35').Value2 = '経過措置7%確認'
+            $excel.Run('TaxLawUpdater.RecalculateCase')
+            Assert-Value $engineSheet.Range('F15').Value2 $edge.Basic ('Basic deduction '+$edge.Year)
+            $base = [double]$engineSheet.Range('J12').Value2 + [double]$engineSheet.Range('F15').Value2 - 480000.0
+            Assert-Value $base $row.TaxableBase ('Housing transitional taxable base '+$edge.Year)
+            Assert-Value $homeSheet.Range('B38').Value2 $row.Seven ('Housing 7-percent rounding '+$edge.Year)
+            $homeSheet.Range('D35').Value2 = '通常5%確認'
+            $excel.Run('TaxLawUpdater.RecalculateCase')
+            Assert-Value $homeSheet.Range('B38').Value2 $row.Five ('Housing 5-percent rounding '+$edge.Year)
+        }
+    }
+    # A paste can bypass the Excel drop-down validation; an unrecognised
+    # textual confirmation must still fail closed in the tax formula.
+    $homeSheet.Range('D35').Value2 = '経過措置7%（未検証）'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    if ([string]$homeSheet.Range('B28').Value2 -notlike 'SAFE-TAX-028*' -or
+        [string]$homeSheet.Range('B38').Value2 -ne '') {
+        throw 'Pasted unsupported 2022 mortgage eligibility escaped HOLD'
+    }
+    $homeSheet.Range('D35').Value2 = '通常5%確認'
+    $extraSheet.Range('B8').Value2 = 4500000.0
+    $homeSheet.Range('B33').Value2 = 1000000.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B38').Value2 0 'No residual possible credit after full income-tax use'
+    QA-Stage 'mortgage-2022-cap-rounding-boundaries-pass'
+    $settings.Range('B4').Value2 = 2026.0
+    $homeSheet.Range('B4').Value2 = 2026.0
+    $homeSheet.Range('B11').Value2 = 2026.0
+    $homeSheet.Range('B33').Value2 = 0.0
+    $homeSheet.Range('B34').Value2 = 150000.0
+    $extraSheet.Range('B8').Value2 = 500000.0
+    $homeSheet.Range('D35').Value2 = '未確認'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    if ([string]$homeSheet.Range('B28').Value2 -notlike 'SAFE-TAX-028*' -or
+        [string]$homeSheet.Range('B38').Value2 -ne '') {
+        throw '2022 ceiling case failed to restore unverified-result HOLD'
+    }
+    QA-Stage 'mortgage-2022-cap-ceilings-pass'
+    $homeSheet.Range('B35').Value2 = 2024.0
+    $homeSheet.Range('D35').Value2 = '経過措置7%確認'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    if ([string]$homeSheet.Range('B28').Value2 -notlike 'SAFE-TAX-029*' -or
+        [string]$homeSheet.Range('B8').Value2 -ne '') {
+        throw 'Stale 2022-specific mortgage class accepted in another year'
+    }
+    $homeSheet.Range('D35').Value2 = '未確認'
+    $homeSheet.Range('B34').Value2 = -1.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    if ([string]$homeSheet.Range('B28').Value2 -eq '正常') {
+        throw 'Negative housing possible credit was accepted'
+    }
+    $homeSheet.Range('D25').ClearContents()
+    $extraSheet.Range('B8:B9').ClearContents()
+    $homeSheet.Range('B33:B36').ClearContents()
+    $homeSheet.Range('D35').Value2 = '未確認'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Housing statutory corrections restored'
+    QA-Stage 'mortgage-2025-2026-basic-delta-pass'
+    # Unused split-credit inputs must never silently affect an ordinary
+    # estimate. All tests use the isolated synthetic Excel workbook.
+    QA-Stage 'ordinary-tax-credit-fail-closed-start'
+    foreach ($test in @(
+        @('D72', 2024.0), @('D73', 30000000.0), @('D74', 140000.0),
+        @('D75', 10000.0), @('D76', 5000.0), @('D77', 100000.0))) {
+        $address = [string]$test[0]
+        $homeSheet.Range($address).Value2 = [double]$test[1]
+        $excel.Run('TaxLawUpdater.RecalculateCase')
+        if ([string]$homeSheet.Range('B28').Value2 -notlike 'SAFE-TAX-026*' -or
+            [string]$homeSheet.Range('B8').Value2 -ne '' -or
+            [string]$homeSheet.Range('D8').Value2 -ne '' -or
+            [string]$homeSheet.Range('B26').Value2 -ne '追加確認') {
+            throw ('Ordinary credit was silently ignored: ' + $address)
+        }
+        $homeSheet.Range($address).Value2 = 0.0
+        $excel.Run('TaxLawUpdater.RecalculateCase')
+        Assert-Value $homeSheet.Range('B28').Value2 '正常' ('Credit reset ' + $address)
+    }
+    foreach ($possible in @($null, 0.0)) {
+        $homeSheet.Range('B33').Value2 = 50000.0
+        if ($null -eq $possible) { $homeSheet.Range('B34').ClearContents() }
+        else { $homeSheet.Range('B34').Value2 = [double]$possible }
+        $excel.Run('TaxLawUpdater.RecalculateCase')
+        if ([string]$homeSheet.Range('B28').Value2 -notlike 'SAFE-TAX-027*' -or
+            [string]$homeSheet.Range('B8').Value2 -ne '') {
+            throw 'Mortgage applied credit without possible credit escaped safety gate'
+        }
+    }
+    $homeSheet.Range('B33:B36').ClearContents()
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Mortgage missing possible reset'
+    QA-Stage 'ordinary-tax-credit-fail-closed-pass'
+    # FAIL-14: Excel manual mode with pending formula caches must never leave
+    # the old donation amount or a false "計算可能" visible to the operator.
+    # Only a freshly owned synthetic workbook and this Excel COM instance
+    # are changed; no global Excel options or other processes are touched.
+    QA-Stage 'stale-result-manual-calculation-start'
+    $originalCalculation = [int]$excel.Calculation
+    $originalMortgage = $homeSheet.Range('B34').Value2
+    try {
+        $excel.EnableEvents = $true
+        $excel.Calculation = -4135 # xlCalculationManual
+        $homeSheet.Range('B34').Value2 = 300000.0
+        if ([string]$homeSheet.Range('B8').Text -ne '') {
+            throw 'Old donation amount remains visibly exposed while calculation is manual'
+        }
+        if ([string]$homeSheet.Range('B26').Text -eq '計算可能') {
+            throw 'Stale "計算可能" status remains visible while calculation is manual'
+        }
+        if ([string]$homeSheet.Range('A9').Text -notlike '*計算未完了*') {
+            throw 'Visible recalculation hold message was not shown'
+        }
+        $blockedPdf = Join-Path $dir 'must-not-export-stale.pdf'
+        if ([bool]$excel.Run('TaxLawUpdater.TryExportDetailsToFileForTest', $blockedPdf)) {
+            throw 'Stale result was allowed to export as PDF'
+        }
+        if (Test-Path -LiteralPath $blockedPdf) {
+            throw 'Stale result created an unsafe PDF file'
+        }
+    } finally {
+        if ($null -eq $originalMortgage -or [string]$originalMortgage -eq '') {
+            $homeSheet.Range('B34').ClearContents()
+        } else {
+            $homeSheet.Range('B34').Value2 = $originalMortgage
+        }
+        $excel.Calculation = -4105 # xlCalculationAutomatic
+        $excel.Run('TaxLawUpdater.RecalculateCase')
+        $excel.EnableEvents = $false
+    }
+    Assert-Value ([string]$homeSheet.Range('B26').Text) '計算可能' 'Status restored after automatic calculation'
+    Assert-Value $homeSheet.Range('B8').Value2 109000 'Amount restored after automatic calculation'
+    Assert-Value ([string]$homeSheet.Range('B8').Text) '109,000' 'Actual visible amount restored after automatic calculation'
+    QA-Stage 'stale-result-manual-calculation-pass'
+
     # Exercise the actual GitHub-approved update transaction, not only recalculation.
     # The test runs on an isolated copy; no customer workbook is touched.
     QA-Stage 'approved-update-start'
@@ -482,6 +784,8 @@ try {
     $homeSheet.Range('B4').Value2 = 2026.0
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value $homeSheet.Range('B8').Value2 109000 'Amount before reopen'
+
+
     $book.Save()
 
     # Inject a failed update *after* the applied year changes (test copy only).
@@ -532,6 +836,38 @@ try {
     $excel.Run('TaxLawUpdater.BindButtons')
     Assert-MacroAction ([string]$homeSheet.Buttons().Item('btnTaxLawUpdate').OnAction) 'FurusatoQA.xlsm!TaxLawUpdater.TaxLawUpdate' 'Reloaded case macro ownership'
     if (-not $detail.PageSetup.PrintArea) { throw 'Calculation details lack print area' }
+    # Electronic home print audit on synthetic data; no real user document.
+    QA-Stage 'home-overview-pdf-start'
+    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Home print valid status'
+    Assert-Value $homeSheet.Range('B8').Value2 109000 'Home print donation estimate'
+    $homePdf = Join-Path $dir 'home-overview.pdf'
+    $homeSheet.ExportAsFixedFormat(0, $homePdf, 0, $true, $false)
+    if (-not (Test-Path -LiteralPath $homePdf -PathType Leaf) -or
+        (Get-Item -LiteralPath $homePdf).Length -lt 500) {
+        throw 'Synthetic home overview PDF missing or empty'
+    }
+    QA-Stage 'home-overview-pdf-pass'
+    QA-Stage 'statutory-split-cases-start'
+    . (Join-Path $PSScriptRoot 'test_separate_excel.ps1')
+    $splitCases = @(Test-SeparateTaxCases -Excel $excel -Book $book -FixturePath (Join-Path $PSScriptRoot '../taxdata/separate-tax-cases-v1.json') -PdfPath (Join-Path $dir 'split-result.pdf'))
+    if ($splitCases.Count -ne 70) { throw 'Split evidence is incomplete' }
+    QA-Stage 'statutory-split-70-exact-pass'
+    QA-Stage 'statutory-split-pdf-and-safety-recovery-pass'
+    # Export only this isolated runner's synthetic PDF output for layout QA.
+    if (-not [string]::IsNullOrWhiteSpace($PdfEvidencePath)) {
+        if (Test-Path -LiteralPath $PdfEvidencePath) {
+            throw 'PDF layout evidence destination already exists'
+        }
+        [void][IO.Directory]::CreateDirectory($PdfEvidencePath)
+        foreach ($name in @('FurusatoQA.pdf', 'FurusatoQA_hidden.pdf', 'split-result.pdf', 'split-result.print-inputs.json', 'home-overview.pdf')) {
+            $inputPdf = Join-Path $dir $name
+            if (-not (Test-Path -LiteralPath $inputPdf -PathType Leaf)) {
+                throw ('Synthetic PDF/layout proof is missing: ' + $name)
+            }
+            Copy-Item -LiteralPath $inputPdf -Destination (Join-Path $PdfEvidencePath $name) -ErrorAction Stop
+        }
+        QA-Stage 'synthetic-pdf-audit-input-export-pass'
+    }
     QA-Stage 'all-acceptance-checks-pass'
     $passed = $true
     Write-Output 'PASS: Windows Excel 52 fixtures; 2025/2026 amounts; approved/rejected updates; persisted fault rollback; backup; VBA PDF/hidden UI/no-overwrite; isolated no-overwrite case-save; save/reopen; button wiring.'
@@ -558,6 +894,18 @@ try {
     }
     [GC]::Collect()
     [GC]::WaitForPendingFinalizers()
+    # Only sanitized stage identifiers are collected before deleting the
+    # disposable QA directory. Credentials and the workbook are never logged.
+    $traceFile = Join-Path $dir '_furusato_tax_update_qa.trace'
+    if (Test-Path -LiteralPath $traceFile -PathType Leaf) {
+        try {
+            $traceItems = @(Get-Content -LiteralPath $traceFile -ErrorAction Stop)
+            if ($traceItems.Count -gt 0) {
+                $lastVbaUpdateStage = [string]$traceItems[-1]
+                Write-Host ('QA_TAX_UPDATE_LAST_STAGE ' + $lastVbaUpdateStage)
+            }
+        } catch { $lastVbaUpdateStage = 'TRACE_READ_FAILED' }
+    }
     try { Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction Stop }
     catch { Write-Warning ('QA temporary folder cleanup failed: ' + $_.Exception.Message) }
     # Only synthetic test identifiers are recorded. Do not log machine names,
@@ -584,10 +932,12 @@ try {
                     'physical printing', 'three desktop display conditions',
                     'product signature and production deployment'
                 )
+                separate_cases = $splitCases
                 failure = $failureSummary
                 last_stage = $script:qaStage
+                last_tax_update_macro_stage = $lastVbaUpdateStage
             }
-            $json = $report | ConvertTo-Json -Depth 4
+            $json = $report | ConvertTo-Json -Depth 8
             $encoding = New-Object System.Text.UTF8Encoding($false)
             [IO.File]::WriteAllText($EvidencePath, $json, $encoding)
         } catch {

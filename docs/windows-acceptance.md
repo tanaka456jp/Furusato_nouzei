@@ -1,6 +1,32 @@
-# Windows Excel実機受入手順（Draft PR #1 / v4.1）
+# Windows Excel実機受入手順（現行 Draft PR #5／旧PR #1の履歴を含む）
 
-**状態：未実行。正式判定はHOLD。**
+## 現行受入状況（2026年11月8日現在）
+
+この文書の下部はv4.1〜v4.9の**当時の開発履歴**です。
+「実機未実行」「runner未登録」「PR #1」などの記述を現在の判定と
+誤読しないでください。現行ソース・検証対象は
+[Draft PR #5](https://github.com/tanaka456jp/Furusato_nouzei/pull/5)です。
+
+- 検証済みの例：v4.18.25 [GitHub Actions #42438917733](https://github.com/tanaka456jp/Furusato_nouzei/actions/runs/42438917733) は
+  `static / windows_compat / document_reader / excel` 全4ジョブSUCCESS。
+  PC①で税額機能、52基準ケース、分離課税70ケース、PDF電子印刷、
+  VBAUpdater隔離書戻し、Excel/GAS合成41ケース数値照合を実行。
+- 後続の版は必ず**対応するSHAのGitHub Actionsを確認**してください。
+  古い版のPASSを新しい版の実機PASSとして流用しません。
+- 現在の正式販売・本番配布判定は**HOLD**。合成データでの合格と、
+  実顧客の税額・匿名化原票・自治体通知書による照合は区別します。
+- 未解消項目：実際のプリンタによる印刷・印刷プレビュー、
+  Windows 1920×1080（100%/125%）および1366×768（150%）の
+  実デスクトップ表示、顧客情報を含まない実税務資料による独立突合、
+  GASの独立実Google再受入、署名済み最終配布。
+  PDFのPNGは実Windows画面のスクリーンショットではありません。
+- main、本番GAS、既存正式版にはDraft PRの修正を自動展開しません。
+
+---
+
+## v4.1当時の受入メモ（以下は履歴）
+
+**当時の状態：実機未実行。正式判定はHOLD。**
 
 ## CIで自動化した項目
 

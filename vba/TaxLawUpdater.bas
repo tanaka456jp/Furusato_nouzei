@@ -3,9 +3,141 @@ Option Explicit
 
 ' Only isolated tests use this nonmodal diagnostic state.
 Private mLastTestFailure As String
-
+Private mResultUnverified As Boolean
+Private mResultMaskBusy As Boolean
+Private mSavedResultFormats As Object
 Private Const CATALOG_URL As String = "https://raw.githubusercontent.com/tanaka456jp/Furusato_nouzei/main/taxdata/catalog.tsv"
 Private Const BUNDLED_REVISION As String = "2026-11-05-bundled"
+
+' Isolated QA only: record coarse stages, never taxpayer data, IDs, URLs or tokens.
+' The forensic trace is kept beside the disposable test workbook and is not
+' produced by the normal TaxLawUpdate user command.
+Private Sub RecordTestUpdateStage(ByVal stage As String)
+    Dim fileNumber As Integer
+    If Len(ThisWorkbook.Path) = 0 Then Exit Sub
+    On Error Resume Next
+    fileNumber = FreeFile
+    Open ThisWorkbook.Path & Application.PathSeparator & _
+        "_furusato_tax_update_qa.trace" For Append As #fileNumber
+    Print #fileNumber, stage
+    Close #fileNumber
+    On Error GoTo 0
+End Sub
+
+
+' Fail closed if Excel keeps a cached amount/status while recalculation is pending.
+' Masking is visual (formulas are retained), and print/PDF entrypoints also
+' independently require trusted, completed, automatic calculation.
+
+' Diagnostic-only trace for the build-time disposable XLSM. Never writes when
+' customers use a saved workbook, and never records cell contents or credentials.
+Private Sub TraceBuildMaskStage(ByVal stage As String)
+    Dim f As Integer
+    If Left$(ThisWorkbook.Name, Len("_furusato_build_")) <> "_furusato_build_" Then Exit Sub
+    On Error Resume Next
+    f = FreeFile
+    Open ThisWorkbook.Path & Application.PathSeparator & _
+        "_furusato_mask_qa.trace" For Append As #f
+    Print #f, stage
+    Close #f
+    On Error GoTo 0
+End Sub
+
+Private Function OutputAreas() As Variant
+    OutputAreas = Array("B8", "D8", "B26", "B55", "B56", "D56", _
+        "B58:D64", "B65", "D65", "B66", "D66", "B68", "D68", _
+        "B69", "D69", "B81:B86", "D81:D86")
+End Function
+
+Private Function OriginalResultFormat(ByVal address As String) As String
+    Select Case address
+        Case "B26", "B55"
+            OriginalResultFormat = "General"
+        Case "D68"
+            OriginalResultFormat = "0.000%"
+        Case Else
+            OriginalResultFormat = "#,##0"
+    End Select
+End Function
+
+Public Sub MaskUnverifiedResults()
+    Dim home As Worksheet, address As Variant, oldEvents As Boolean
+    Dim original As String, problem As String
+    If mResultMaskBusy Then Exit Sub
+    mResultMaskBusy = True
+    mResultUnverified = True
+    TraceBuildMaskStage "entered"
+    oldEvents = Application.EnableEvents
+    On Error GoTo Failed
+    Application.EnableEvents = False
+    Set home = ThisWorkbook.Worksheets("操作画面")
+    TraceBuildMaskStage "sheet"
+    If mSavedResultFormats Is Nothing Then Set mSavedResultFormats = CreateObject("Scripting.Dictionary")
+    TraceBuildMaskStage "dictionary"
+    For Each address In OutputAreas()
+        TraceBuildMaskStage "before:" & CStr(address)
+        If Not mSavedResultFormats.Exists(CStr(address)) Then
+            original = CStr(home.Range(CStr(address)).NumberFormat)
+            If original = ";;;" Then original = OriginalResultFormat(CStr(address))
+            mSavedResultFormats.Add CStr(address), original
+        End If
+        home.Range(CStr(address)).NumberFormat = ";;;"
+        TraceBuildMaskStage "after:" & CStr(address)
+    Next address
+    TraceBuildMaskStage "before-status"
+    home.Range("A9").Value2 = "計算未完了：旧結果を非表示にしました。自動計算に戻して「計算」を実行してください。"
+    TraceBuildMaskStage "after-status"
+    Application.EnableEvents = oldEvents
+    mResultMaskBusy = False
+    Exit Sub
+Failed:
+    problem = Err.Description
+    Application.EnableEvents = oldEvents
+    mResultMaskBusy = False
+    Err.Raise vbObjectError + 301, "TaxLawUpdater.MaskUnverifiedResults", problem
+End Sub
+
+Public Sub RevealVerifiedResults()
+    Dim home As Worksheet, address As Variant, oldEvents As Boolean
+    If Not mResultUnverified Or mResultMaskBusy Then Exit Sub
+    ' Manual mode may retain xlPending and old formula caches. Never reveal.
+    If Application.Calculation <> xlCalculationAutomatic Then Exit Sub
+    If Application.CalculationState <> xlDone Then Exit Sub
+    mResultMaskBusy = True
+    oldEvents = Application.EnableEvents
+    On Error GoTo Failed
+    Application.EnableEvents = False
+    Set home = ThisWorkbook.Worksheets("操作画面")
+    For Each address In OutputAreas()
+        If Not mSavedResultFormats Is Nothing Then
+            If mSavedResultFormats.Exists(CStr(address)) Then
+                home.Range(CStr(address)).NumberFormat = mSavedResultFormats(CStr(address))
+            Else
+                home.Range(CStr(address)).NumberFormat = OriginalResultFormat(CStr(address))
+            End If
+        Else
+            home.Range(CStr(address)).NumberFormat = OriginalResultFormat(CStr(address))
+        End If
+    Next address
+    home.Range("A9").Formula = "=B28"
+    mResultUnverified = False
+    Application.EnableEvents = oldEvents
+    mResultMaskBusy = False
+    Exit Sub
+Failed:
+    Application.EnableEvents = oldEvents
+    mResultMaskBusy = False
+    Err.Raise vbObjectError + 302, "TaxLawUpdater.RevealVerifiedResults", _
+        "計算結果の表示を復旧できません。ブックを閉じずに安全確認してください。"
+End Sub
+
+Public Function ResultsAreCurrent() As Boolean
+    ResultsAreCurrent = (Not mResultUnverified) And _
+        Application.Calculation = xlCalculationAutomatic And _
+        Application.CalculationState = xlDone
+End Function
+
+
 
 ' User-facing command. The test entrypoint executes the very same transaction,
 ' but reports failures as exceptions instead of modal dialogs.
@@ -35,7 +167,9 @@ Private Function ApplyApprovedYear(ByVal noDialogs As Boolean) As Boolean
     If selectedYear <> "2025" And selectedYear <> "2026" Then
         Err.Raise vbObjectError + 101, , "この版に収録された承認対象年は2025年と2026年です。"
     End If
+    If noDialogs Then RecordTestUpdateStage "catalog-start"
     CheckCatalog selectedYear
+    If noDialogs Then RecordTestUpdateStage "catalog-pass"
     If book.ReadOnly Or Len(book.Path) = 0 Then
         Err.Raise vbObjectError + 102, , "書き込み可能なローカルのブックを開いてください。"
     End If
@@ -43,8 +177,10 @@ Private Function ApplyApprovedYear(ByVal noDialogs As Boolean) As Boolean
     oldYear = settings.Range("B4").Value2
     oldRevision = home.Range("B29").Value2
     oldStatus = home.Range("B30").Value2
+    If noDialogs Then RecordTestUpdateStage "backup-start"
     backup = UniqueBackupPath(book)
     book.SaveCopyAs backup
+    If noDialogs Then RecordTestUpdateStage "backup-pass"
     If Len(Dir$(backup, vbNormal)) = 0 Then
         Err.Raise vbObjectError + 114, , "更新前のバックアップが作成されませんでした。"
     End If
@@ -52,6 +188,7 @@ Private Function ApplyApprovedYear(ByVal noDialogs As Boolean) As Boolean
         Err.Raise vbObjectError + 115, , "更新前のバックアップが空です。"
     End If
     changed = True
+    If noDialogs Then RecordTestUpdateStage "year-apply-start"
     settings.Range("B4").Value2 = CLng(selectedYear)
     book.Worksheets("自動回帰テスト").Calculate
     book.Worksheets("整合性チェック").Calculate
@@ -61,10 +198,14 @@ Private Function ApplyApprovedYear(ByVal noDialogs As Boolean) As Boolean
     If Application.CountIf(book.Worksheets("整合性チェック").Range("B4:B12"), "OK") <> 9 Then
         Err.Raise vbObjectError + 104, , "内蔵税制マスタに不整合があります。"
     End If
+    If noDialogs Then RecordTestUpdateStage "regression-pass"
     home.Range("B29").Value2 = BUNDLED_REVISION
     home.Range("B30").Value2 = "適用済 " & Format$(Now, "yyyy/mm/dd hh:nn")
+    If noDialogs Then RecordTestUpdateStage "calculate-start"
     Application.Calculate
+    If noDialogs Then RecordTestUpdateStage "calculate-pass"
     book.Save
+    If noDialogs Then RecordTestUpdateStage "saved-pass"
     ApplyApprovedYear = True
     If Not noDialogs Then
         MsgBox selectedYear & "年分の承認済み税制を適用しました。" & vbCrLf & _
@@ -285,7 +426,8 @@ Public Sub ImportWithholding()
     If Not fso.FileExists(backup) Then Err.Raise vbObjectError + 214, , "更新前のバックアップを作成できません。"
     Set home = ThisWorkbook.Worksheets("操作画面")
     Set extra = ThisWorkbook.Worksheets("例外・分離課税")
-    home.Range("B11:B12,B15:B16,B19:B25,B33:B36,D11:D23").ClearContents
+    ResetSeparateInputs home
+    home.Range("B11:B12,B15:B16,B19:B25,B33:B36,D11:D23,D25").ClearContents
     ' Leave independent pension, business and other income entries untouched.
     extra.Range("B13:B20").ClearContents
     extra.Range("B38:B39").ClearContents
@@ -396,10 +538,19 @@ Public Sub ReviewWithholding()
     Dim value As Double, refCell As Variant, calcCell As Variant
     Dim familyCell As Variant, specialTotal As Double, specialCount As Long
     Dim familyIncome As Double, specialDeduction As Double
+    Dim sourceTotalDifferent As Boolean
     On Error GoTo Failed
     Set home = ThisWorkbook.Worksheets("操作画面")
     Set extra = ThisWorkbook.Worksheets("例外・分離課税")
-    If CStr(extra.Range("B20").Value2) <> "REQUIRES_REVIEW" Then
+    Application.Calculate
+    sourceTotalDifferent = False
+    If IsNumeric(extra.Range("B14").Value2) And IsNumeric(home.Range("B31").Value2) Then
+        sourceTotalDifferent = Abs(CDbl(extra.Range("B14").Value2) - _
+                                   CDbl(home.Range("B31").Value2)) > 1
+    End If
+    If CStr(extra.Range("B20").Value2) <> "REQUIRES_REVIEW" And _
+       Not sourceTotalDifferent And _
+       Len(Trim$(CStr(home.Range("D25").Value2))) = 0 Then
         MsgBox "源泉徴収票の仮転記に未確認項目はありません。", vbInformation
         Exit Sub
     End If
@@ -446,6 +597,12 @@ Public Sub ReviewWithholding()
         End If
     End If
     Application.Calculate
+    If Len(Trim$(CStr(home.Range("D25").Value2))) > 0 Then
+        If MsgBox("所得控除合計は手入力上書き中です。" & vbCrLf & _
+           "社会保険料・扶養・本人所得などの変更に自動追随しません。" & vbCrLf & _
+           "自動算定額と原票額を確認し、上書きを維持しますか？", _
+           vbExclamation + vbYesNo + vbDefaultButton2) <> vbYes Then Exit Sub
+    End If
     For Each refCell In Array("B14", "B15", "B16", "B17")
         Select Case CStr(refCell)
             Case "B14": Set calcCell = home.Range("B14")
@@ -453,16 +610,32 @@ Public Sub ReviewWithholding()
             Case "B16": Set calcCell = home.Range("B17")
             Case "B17": Set calcCell = home.Range("B18")
         End Select
-        If IsNumeric(extra.Range(CStr(refCell)).Value2) Then
+        If IsNumeric(extra.Range(CStr(refCell)).Value2) And _
+           Not (CStr(refCell) = "B14" And _
+           Len(Trim$(CStr(home.Range("D25").Value2))) > 0) Then
             If Not IsNumeric(calcCell.Value2) Then
                 Err.Raise vbObjectError + 242, , "自動控除額を算定できません。"
             End If
             If Abs(CDbl(extra.Range(CStr(refCell)).Value2) - CDbl(calcCell.Value2)) > 1 Then
-                Err.Raise vbObjectError + 243, , "源泉徴収票の金額と自動計算に差があります。控除内訳を見直してください。"
+                If CStr(refCell) = "B14" Then
+                    ' Source total is retained for audit; it cannot veto a
+                    ' tax-year projection after explicit detailed review.
+                    sourceTotalDifferent = True
+                Else
+                    Err.Raise vbObjectError + 243, , "源泉徴収票の金額と自動計算に差があります。控除内訳を見直してください。"
+                End If
             End If
         End If
         Set calcCell = Nothing
     Next refCell
+    If sourceTotalDifferent And _
+       Len(Trim$(CStr(home.Range("D25").Value2))) = 0 Then
+        If MsgBox("源泉徴収票の所得控除合計と自動再計算額が異なります。" & vbCrLf & _
+           "原票額は照合用に残し、修正後の社会保険料・扶養・配偶者等に" & _
+           "基づく自動算定額を使用します。" & vbCrLf & _
+           "控除の漏れがないことを原票・証憑で確認しましたか？", _
+           vbExclamation + vbYesNo + vbDefaultButton2) <> vbYes Then Exit Sub
+    End If
     If MsgBox("源泉徴収票の未確認項目を確認しましたか？" & vbCrLf & _
               "読取結果を照合済みにします。", vbQuestion + vbYesNo + vbDefaultButton2) <> vbYes Then Exit Sub
     extra.Range("B20").Value2 = "VERIFIED_AFTER_CORRECTION"
@@ -475,6 +648,7 @@ Failed:
 End Sub
 
 Public Sub RecalculateCase()
+    MaskUnverifiedResults
     ' Optional blanks are not errors. Only when explicitly recalculating,
     ' normalize the categorical fields to their conventional default values.
     Dim home As Worksheet
@@ -493,13 +667,31 @@ Public Sub RecalculateCase()
         End If
     End If
     Application.Calculate
+    RevealVerifiedResults
+End Sub
+
+Private Sub ResetSeparateInputs(ByVal home As Worksheet)
+    ' Only templates with this detail section own these ranges.
+    If CStr(home.Range("A42").Value2) <> "詳細設定 | 申告分離課税（検証版）" Then Exit Sub
+    ' The 2022 eligibility attestation is case-specific; an imported PDF
+    ' or NewCase must not inherit it from a previous taxpayer.
+    home.Range("D35").Value2 = "未確認"
+    home.Range("B44").Value2 = "給与・通常"
+    home.Range("B45:B51,D45:D48").ClearContents
+    home.Range("D44").Value2 = "確定申告"
+    home.Range("D49").Value2 = "未確認"
+    home.Range("D50").Value2 = 2026
+    home.Range("D51").Value2 = "標準市町村"
+    If CStr(home.Range("A71").Value2) = "詳細設定 | 税額控除（該当なしは0）" Then home.Range("D72:D77").Value2 = 0
 End Sub
 
 Public Sub NewCase()
     If MsgBox("現在の入力を消去しますか？保存が必要な場合は先に案件保存してください。", _
               vbQuestion + vbYesNo + vbDefaultButton2, "新規入力") <> vbYes Then Exit Sub
+    MaskUnverifiedResults
+    ResetSeparateInputs ThisWorkbook.Worksheets("操作画面")
     With ThisWorkbook.Worksheets("操作画面")
-        .Range("B11:B12,B15:B16,B19:B25,B33:B36,D11:D23").ClearContents
+        .Range("B11:B12,B15:B16,B19:B25,B33:B36,D11:D23,D25").ClearContents
         .Range("B11").Value2 = .Range("B4").Value2
         .Range("B25").Value2 = "なし"
         .Range("D22").Value2 = "該当なし"
@@ -515,6 +707,7 @@ Public Sub NewCase()
         .Range("B19:B20").ClearContents
     End With
     Application.Calculate
+    RevealVerifiedResults
 End Sub
 
 ' Save-copy core is shared between the UI and an isolated Windows acceptance test.
@@ -598,6 +791,16 @@ Public Sub ReturnFromAdvanced()
 End Sub
 
 Public Sub ShowDetails()
+    Dim screen As Worksheet
+    Set screen = ThisWorkbook.Worksheets("操作画面")
+    If Not ResultsAreCurrent() Then
+        MsgBox "計算未完了のため古い計算根拠は表示できません。自動計算に戻して再計算してください。", vbExclamation
+        Exit Sub
+    End If
+    If SeparateMode(screen) Then
+        Application.Goto screen.Range("A55"), True
+        Exit Sub
+    End If
     With ThisWorkbook.Worksheets("計算根拠")
         .Visible = xlSheetVisible
         .Activate
@@ -609,17 +812,57 @@ Public Sub ReturnHome()
     ThisWorkbook.Worksheets("計算根拠").Visible = xlSheetVeryHidden
 End Sub
 
+Private Function SeparateMode(ByVal screen As Worksheet) As Boolean
+    SeparateMode = (CStr(screen.Range("A42").Value2) = "詳細設定 | 申告分離課税（検証版）" And _
+                    CStr(screen.Range("B44").Value2) = "申告分離")
+End Function
+
+Private Sub CheckReportAvailable(ByVal screen As Worksheet)
+    If Not ResultsAreCurrent() Then
+        Err.Raise vbObjectError + 310, , "計算未完了です。古い結果は使用できません。自動計算に戻して再計算してください。"
+    End If
+    If SeparateMode(screen) Then
+        If CStr(screen.Range("B55").Value2) <> "計算可能" Then
+            Err.Raise vbObjectError + 111, , CStr(screen.Range("B55").Value2)
+        End If
+    ElseIf CStr(screen.Range("B28").Value2) <> "正常" Then
+        Err.Raise vbObjectError + 111, , "入力と計算状態を確認してください。"
+    End If
+End Sub
+
+Private Function DetailsPrintArea(ByVal screen As Worksheet) As String
+    DetailsPrintArea = "$A$55:$D$70"
+    If CStr(screen.Range("A71").Value2) <> "詳細設定 | 税額控除（該当なしは0）" Then Exit Function
+    If Application.Sum(screen.Range("D74:D76")) > 0 Then
+        DetailsPrintArea = DetailsPrintArea & ",$A$80:$D$93"
+    End If
+End Function
+
 Public Sub PrintDetails()
+    Dim screen As Worksheet, previousArea As String, areaChanged As Boolean
+    Dim problem As String
     On Error GoTo Failed
     Application.Calculate
-    If CStr(ThisWorkbook.Worksheets("操作画面").Range("B28").Value2) <> "正常" Then
-        Err.Raise vbObjectError + 110, , "入力と計算状態を確認してください。"
+    RevealVerifiedResults
+    Set screen = ThisWorkbook.Worksheets("操作画面")
+    CheckReportAvailable screen
+    If SeparateMode(screen) Then
+        previousArea = screen.PageSetup.PrintArea
+        screen.PageSetup.PrintArea = DetailsPrintArea(screen)
+        areaChanged = True
+        screen.PrintPreview
+        screen.PageSetup.PrintArea = previousArea
+    Else
+        ShowDetails
+        ThisWorkbook.Worksheets("計算根拠").PrintPreview
     End If
-    ShowDetails
-    ThisWorkbook.Worksheets("計算根拠").PrintPreview
     Exit Sub
 Failed:
-    MsgBox Err.Description, vbExclamation, "印刷"
+    problem = Err.Description
+    On Error Resume Next
+    If areaChanged Then screen.PageSetup.PrintArea = previousArea
+    On Error GoTo 0
+    MsgBox problem, vbExclamation, "印刷"
 End Sub
 
 ' PDF export is verified and staged exactly like case saving.
@@ -627,11 +870,12 @@ End Sub
 Public Function ExportDetailsToFile(ByVal destination As String) As Boolean
     Dim fso As Object, folder As String, temporary As String
     Dim i As Long, code As Long, problem As String, openedDetail As Boolean
+    Dim screen As Worksheet, previousArea As String, areaChanged As Boolean
     On Error GoTo Failed
     Application.Calculate
-    If CStr(ThisWorkbook.Worksheets("操作画面").Range("B28").Value2) <> "正常" Then
-        Err.Raise vbObjectError + 111, , "入力と計算状態を確認してください。"
-    End If
+    RevealVerifiedResults
+    Set screen = ThisWorkbook.Worksheets("操作画面")
+    CheckReportAvailable screen
     Set fso = CreateObject("Scripting.FileSystemObject")
     If Len(Trim$(destination)) = 0 Or LCase$(Right$(destination, 4)) <> ".pdf" Then
         Err.Raise vbObjectError + 112, , ".pdfの拡張子で保存してください。"
@@ -651,12 +895,21 @@ Public Function ExportDetailsToFile(ByVal destination As String) As Boolean
     If i > 1000 Then
         Err.Raise vbObjectError + 122, , "PDF用一時ファイル名を確保できません。"
     End If
-    If ThisWorkbook.Worksheets("計算根拠").Visible <> xlSheetVisible Then
-        ShowDetails
-        openedDetail = True
+    If SeparateMode(screen) Then
+        previousArea = screen.PageSetup.PrintArea
+        screen.PageSetup.PrintArea = DetailsPrintArea(screen)
+        areaChanged = True
+        screen.ExportAsFixedFormat Type:=xlTypePDF, Filename:=temporary
+        screen.PageSetup.PrintArea = previousArea
+        areaChanged = False
+    Else
+        If ThisWorkbook.Worksheets("計算根拠").Visible <> xlSheetVisible Then
+            ShowDetails
+            openedDetail = True
+        End If
+        ThisWorkbook.Worksheets("計算根拠").ExportAsFixedFormat _
+            Type:=xlTypePDF, Filename:=temporary
     End If
-    ThisWorkbook.Worksheets("計算根拠").ExportAsFixedFormat _
-        Type:=xlTypePDF, Filename:=temporary
     If Not fso.FileExists(temporary) Then
         Err.Raise vbObjectError + 123, , "PDFの作成を確認できません。"
     End If
@@ -671,6 +924,7 @@ Failed:
     code = Err.Number
     problem = Err.Description
     On Error Resume Next
+    If areaChanged Then screen.PageSetup.PrintArea = previousArea
     If Not fso Is Nothing Then
         If Len(temporary) > 0 Then
             If fso.FileExists(temporary) Then fso.DeleteFile temporary, True
@@ -685,9 +939,8 @@ Public Sub ExportDetails()
     Dim destination As Variant
     On Error GoTo Failed
     Application.Calculate
-    If CStr(ThisWorkbook.Worksheets("操作画面").Range("B28").Value2) <> "正常" Then
-        Err.Raise vbObjectError + 111, , "入力と計算状態を確認してください。"
-    End If
+    RevealVerifiedResults
+    CheckReportAvailable ThisWorkbook.Worksheets("操作画面")
     destination = Application.GetSaveAsFilename(InitialFileName:="Furusato_result.pdf", _
                    FileFilter:="PDF (*.pdf),*.pdf")
     If VarType(destination) = vbBoolean Then Exit Sub

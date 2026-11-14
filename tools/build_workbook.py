@@ -10,6 +10,8 @@ from openpyxl.formatting.rule import FormulaRule
 from openpyxl.worksheet.page import PageMargins
 from openpyxl.worksheet.datavalidation import DataValidation
 from rebuild_xlsx import reconstruct
+from separate_tax_sheet import add_separate_tax
+from openpyxl.worksheet.hyperlink import Hyperlink
 
 ROOT = Path(__file__).resolve().parents[1]
 HOME = "操作画面"
@@ -119,7 +121,7 @@ def build(source, output):
         home.add_data_validation(validation)
         validation.add(home[cell])
 
-    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.18.2 正式版")
+    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.18.34 分離課税検証版")
     bar(extra, 1, "追加所得・分離課税（所得年内で事前試算）")
     extra.merge_cells("A3:D3")
     extra["A3"] = "翌年度の住民税通知書は参照せず、所得年内の収入・経費・控除と法定税率表から計算します。"
@@ -228,7 +230,7 @@ def build(source, output):
     extra["A23"].alignment = Alignment(wrap_text=True)
     extra.row_dimensions[23].height = 34
     extra.merge_cells("A31:D31")
-    extra["A31"] = "分離課税のB24は所得控除後の課税所得です。特別控除・繰越損失・軽減税率等はB33「あり」で安全停止します。"
+    extra["A31"] = "B24は旧入力です。分離課税は操作画面の詳細設定で控除前の所得と税目別控除を入力してください。"
     extra["A31"].alignment = Alignment(wrap_text=True)
     extra.row_dimensions[31].height = 36
     extra.row_dimensions[32].height = 42
@@ -253,6 +255,12 @@ def build(source, output):
     home["C5"], home["D5"] = "住民税課税年度", "=" + ref(RESIDENT, "B5")
     note(home, 6, '="税制版 "&B29&" ｜ "&B30')
     home["B29"] = "2026-11-05-bundled"
+    home.merge_cells("A2:D2")
+    home["A2"] = "詳細設定・申告分離課税へ"
+    home["A2"].hyperlink = Hyperlink(ref="A2", location="'操作画面'!A42")
+    home["A2"].style = "Hyperlink"
+    home["A2"].alignment = Alignment(vertical="center")
+    home.row_dimensions[2].height = 25
     home["B30"] = "内蔵マスタ"
     home.row_dimensions[29].hidden = True
     home.row_dimensions[30].hidden = True
@@ -317,22 +325,89 @@ def build(source, output):
     field("D22", "本人の控除区分", "該当なし", ("該当なし", "寡婦", "ひとり親（母）", "ひとり親（父）", "勤労学生"))
     field("D23", "16歳未満の扶養（人数）", maximum=30)
     field("D24", "申告方式", "ワンストップ", ("ワンストップ", "確定申告"))
-    note(home, 27, "公的年金・事業所得・雑所得・通常の申告分離課税は追加所得から入力できます。申告不要の上場株式・特例譲渡・繰越損失は区別してください。住宅ローン控除は通常欄です。")
-    home.row_dimensions[27].height = 42
-    note(home, 31, "対象外の手動判定は不要。原票の所得控除を優先し、入力内容に応じて計算可否を自動判定します。")
+    # The source slip's total stays in ADVANCED B14 for audit only. D25 is
+    # the user's independent manual override; clearing it restores auto.
+    field("D25", "所得控除合計（手入力上書き）")
+    home["C25"].font = Font(name="Yu Gothic", bold=True, color="9C4100")
+    home["D25"].fill = PatternFill("solid", fgColor="FFF0C2")
+    home["C26"] = "所得控除額の計算状態"
+    home["C26"].alignment = Alignment(wrap_text=True)
+    home["D26"] = '=IF(D25="","自動再計算","⚠ 手入力上書き中")'
+    home["D26"].font = Font(name="Yu Gothic", bold=True, color="9C4100")
+    home["D26"].alignment = Alignment(wrap_text=True)
+    home["D26"].protection = Protection(locked=True)
+    home.row_dimensions[26].height = 38
+    note(home, 27, '=IF(D25="","所得控除合計は社会保険料・扶養・配偶者等の変更により自動再計算します。D25で手入力上書きが可能です。","⚠ 所得控除合計は手入力上書き中：社会保険料・扶養・配偶者・本人所得の変更に自動追随しません。D25を消すと自動計算に戻ります。")')
+    home.row_dimensions[27].height = 56
+    home["A31"] = "所得控除合計（自動算定）"
+    home["B31"] = ('=IF(OR(B13="",B16=""),"",'
+                   f'SUM(B16:B18,{ref(ENGINE,"F15")},'
+                   f'{ref(ENGINE,"F38")},{ref("追加人的控除","C12")}))')
+    home["C31"] = "所得控除合計（原票記載）"
+    home["D31"] = f'=IF(ISNUMBER({ref(ADVANCED,"B14")}),{ref(ADVANCED,"B14")},"")'
+    for a in ("A31","C31"):
+        home[a].alignment = Alignment(wrap_text=True, vertical="center")
+    for a in ("B31","D31"):
+        home[a].number_format = '#,##0'
+        home[a].fill = PatternFill("solid", fgColor="EAF3EA")
+        home[a].protection = Protection(locked=True)
+        home[a].alignment = Alignment(horizontal="right")
+    home.row_dimensions[31].height = 42
+    for region in ("A14:B14", "C25:D26", "A27:D27"):
+        home.conditional_formatting.add(region,
+            FormulaRule(formula=['ISNUMBER($D$25)'],
+                fill=PatternFill("solid", fgColor="FFF0C2"),
+                font=Font(name="Yu Gothic", bold=True, color="9C4100")))
     bar(home, 32, "住宅ローン控除（通常処理・源泉徴収票から転記）")
     field("B33", "住宅ローン控除の所得税適用額")
     field("B34", "住宅ローン控除可能額（G36）")
     field("B35", "居住開始年（西暦）", maximum=2035)
+    field("D35", "2022年入居の特例区分", "未確認",
+          ("未確認", "通常5%確認", "経過措置7%確認"))
+    # Tax-law eligibility is not derivable from a withholding statement.
+    # Show the statutory conditions in Excel's native input guidance
+    # rather than silently treating a selected 7% rate as eligibility proof.
+    for rule in home.data_validations.dataValidation:
+        if str(rule.sqref) == "D35":
+            rule.showInputMessage = True
+            rule.promptTitle = "2022年入居・7%経過措置"
+            rule.prompt = (
+                "7%は消費税10%の住宅取得と所定の契約時期等が条件。"
+                "新築2020/10～2021/9、建売・中古・増改築2020/12～2021/11。"
+                "原資料未確認なら「未確認」を選択。"
+            )
+            break
+    else:
+        raise AssertionError("Missing D35 2022 mortgage classification validation")
     field("B36", "住宅ローン控除適用数", maximum=3)
     note(home, 37, "可能額と所得税適用額は別物です。控除可能額があって適用額が空欄なら、原票確認まで試算額を表示しません。")
     home["A38"] = "住民税住宅ローン控除見込額"
-    home["B38"] = ('=IF(B34="",0,IF(AND(ISNUMBER(B33),ISNUMBER(B35),B35>=2022,B35<=D4),'
-                   'MIN(MAX(0,B34-B33),97500,ROUNDDOWN(MAX(0,B13-B14)/1000,0)*50),""))')
+    # From 2026 resident-tax year, the ordinary 5% housing-credit cap for
+    # occupancies through 2025 uses taxable national total PLUS the excess
+    # of the national basic deduction over the former ¥480,000 baseline.
+    # The 2026-occupancy cap is defined on the taxable total itself.
+    # J12 includes ordinary pension/business income; B13-B14 does not.
+    mortgage_taxable = f'N({ref(ENGINE,"J12")})'
+    mortgage_basic_delta = f'MAX(0,N({ref(ENGINE,"F15")})-480000)'
+    # 2022 occupancy can be 5%/97,500 or an exceptional 7%/136,500.
+    # No tax-credit amount is displayed before the operator identifies
+    # which legal acquisition/contract conditions the source proves.
+    housing_2022_seven = 'AND(B35=2022,D35="経過措置7%確認")'
+    housing_2022_unknown = (
+        'AND(B35=2022,NOT(OR(D35="通常5%確認",D35="経過措置7%確認")))'
+    )
+    home["B38"] = (
+        '=IF(B34="",0,IF(' + housing_2022_unknown + ',"",'
+        'IF(AND(ISNUMBER(B33),ISNUMBER(B35),B35>=2022,B35<=D4),'
+        f'MIN(MAX(0,B34-B33),IF({housing_2022_seven},136500,97500),'
+        f'ROUNDDOWN(MAX(0,{mortgage_taxable}+'
+        f'IF(B35>=2026,0,{mortgage_basic_delta}))/1000,0)*'
+        f'IF({housing_2022_seven},70,50)),"")))'
+    )
     home["B38"].number_format = '#,##0'
     home["B38"].fill = PatternFill("solid", fgColor="EAF3EA")
     home["B38"].protection = Protection(locked=True)
-    note(home, 39, "住民税控除の自動見込は居住年2022年以降・通常の5%/97,500円枠のみ。古い住宅・複数適用・残余税額不足は追加照合で安全停止します。")
+    note(home, 39, "2022年入居は契約・取得条件で通常5%／経過措置7%を必ず選択（未確認は停止）。2025・2026年分は所得税基礎控除差を反映。その他の特例・複数適用は個別照合。")
     home.row_dimensions[39].height = 36
     home.print_area = "A1:D39"
 
@@ -362,7 +437,13 @@ def build(source, output):
         "B13": (f'=IF(ISNUMBER({ref(ADVANCED,"B15")}),{ref(ADVANCED,"B15")},IF(B12="","",MAX(0,'
                  'IF(B12<6600000,'
                  'IF(B12<=IF(D4=2025,1900000,2200000),'
-                 'MAX(0,B12-IF(D4=2025,650000,740000)),'
+                 # Income Tax Act / Special Measures Act 2026 NTA No.1410 note (2).
+                 # 2026 salary 2,191,000..2,199,999: fixed income rather than
+                 # gross minus the ordinary 740,000-yen minimum deduction.
+                 'IF(AND(D4=2026,B12<2200000),'
+                 'IF(B12<741000,0,IF(B12<2191000,B12-740000,'
+                 'IF(B12<2193000,1451000,IF(B12<2196000,1453000,1456000)))),'
+                 'MAX(0,B12-IF(D4=2025,650000,740000))),'
                  'ROUNDDOWN(B12/4000,0)*4000*'
                  'IF(B12<=3600000,0.7,0.8)-IF(B12<=3600000,80000,440000)),'
                  f'{ref(INPUT,"B34")})-'
@@ -372,10 +453,7 @@ def build(source, output):
                  '(MIN(B12,10000000)-8500000)*0.1,0)))))'),
         "B17": f'=IF(ISNUMBER({ref(ADVANCED,"B16")}),{ref(ADVANCED,"B16")},IF(B12="","",{ref(ENGINE, "F24")}))',
         "B18": f'=IF(ISNUMBER({ref(ADVANCED,"B17")}),{ref(ADVANCED,"B17")},IF(B12="","",{ref(ENGINE, "F25")}))',
-        "B14": (f'=IF(ISNUMBER({ref(ADVANCED,"B14")}),{ref(ADVANCED,"B14")},'
-                'IF(OR(B13="",B16=""),"",'
-                f'SUM(B16:B18,{ref(ENGINE,"F15")},'
-                f'{ref(ENGINE,"F38")},{ref("追加人的控除","C12")})))'),
+        "B14": '=IF(D25<>"",IF(ISNUMBER(D25),D25,""),B31)',
     }
     for addr, formula in derived.items():
         home[addr] = formula
@@ -386,7 +464,7 @@ def build(source, output):
         home[addr].protection = Protection(locked=True)
     for addr, label in (
         ("A13", "給与所得控除後の金額（自動）"),
-        ("A14", "所得控除の額の合計額（自動）"),
+        ("A14", "所得控除の額の合計額（適用値）"),
         ("A17", "生命保険料控除額（自動）"),
         ("A18", "地震保険料控除額（自動）"),
     ):
@@ -411,16 +489,17 @@ def build(source, output):
         'AND(N(B34)>0,OR(NOT(ISNUMBER(B33)),NOT(ISNUMBER(B35)),B35<2022,B35>D4))',
         'AND(N(B34)>0,OR(NOT(ISNUMBER(B36)),B36<>1))',
         'AND(N(B34)>0,ISNUMBER(B33),B33>B34)',
-        'AND(ISNUMBER(B33),B33<0)',
+        'AND(ISNUMBER(B33),B33<0)', 'AND(ISNUMBER(B34),B34<0)',
         # Source reference totals include omitted special and family deductions.
         # They are authoritative when extracted from the withholding form.
-        f'AND(ISNUMBER({ref(ADVANCED,"B14")}),{ref(ADVANCED,"B14")}<B16)',
+        'AND(D25<>"",OR(NOT(ISNUMBER(D25)),D25<0,D25>100000000,D25<>INT(D25)))',
+        # Source total is provenance only. A manual adjustment of current-year
+        # social insurance must not be rejected against historic slip totals.
         'MAX(D11:D13,D19:D21)>30', 'COUNT(D17:D18)>1', 'B13>B12', 'B15>B12', 'B16>B14',
                 'AND(COUNT(D14:D16,D23)>0,B25="なし",OR(COUNT(D14:D16)>0,D23>0))',
                 f'OR(AND(NOT(ISNUMBER({ref(ADVANCED,"B16")})),B17<>{ref(ENGINE,"F24")}),'
                 f'AND(NOT(ISNUMBER({ref(ADVANCED,"B17")})),B18<>{ref(ENGINE,"F25")}))',
-                f'AND(NOT(ISNUMBER({ref(ADVANCED,"B14")})),'
-                f'B14<>SUM(B16:B18,{ref(ENGINE,"F15")},{ref(ENGINE,"F38")},{ref("追加人的控除","C12")}))']
+                'AND(D25="",B14<>B31)']
     unsupported = (
         'OR('
         +f'AND(N({ref(ADVANCED,"B24")})>0,NOT(OR('
@@ -558,7 +637,25 @@ def build(source, output):
         f'MAX(0,N({candidate})-2000)*'
         f'IF(D24="ワンストップ",1,MAX(0,1-N({rate})*1.021))'
     )
+    add_separate_tax(book, home, field, bar, note, income_tax_progressive)
+    # D72:D77 belong exclusively to the split-tax reviewed model.  If any
+    # separate-case credit remains populated in ordinary salary mode, the
+    # ordinary donation estimate does NOT account for it and must not show.
+    # Compare raw cells (not N()), so pasted text and negative entries also
+    # fail closed rather than silently being interpreted as zero.
+    unhandled_ordinary_credits = 'OR(' + ','.join(f'D{row}<>0' for row in range(72, 78)) + ')'
     status = [
+        ('B44<>"給与・通常"', "詳細設定の55行目以降で状態と試算額を確認してください。"),
+        (unhandled_ordinary_credits,
+         "SAFE-TAX-026 要確認。詳細設定の税額控除は通常計算に反映されません。入力内容を個別に照合してください。"),
+        ('AND(ISNUMBER(B33),B33>0,OR(NOT(ISNUMBER(B34)),B34<B33))',
+         "SAFE-TAX-027 要確認。住宅ローン控除の所得税適用額があるため、控除可能額（G36）を確認してください。"),
+        ('AND(N(B34)>0,' + housing_2022_unknown + ')',
+         "SAFE-TAX-028 要確認。2022年入居の住宅ローン控除は取得・契約条件を照合し、5%／7%の適用区分を選択してください。"),
+        ('AND(D35<>"",D35<>"未確認",OR(B35<>2022,N(B34)<=0))',
+         "SAFE-TAX-029 要確認。2022年以外の住宅ローン控除に2022年入居の特例区分が残っています。"),
+        (f'OR({ref(ADVANCED,"B24")}<>"",{ref(ADVANCED,"B36")}<>"")',
+         "SAFE-TAX-016 要確認。旧・控除後の分離課税入力です。詳細設定で控除前の所得と税目別控除を入力し、再計算してください。"),
         ('OR(IFERROR(1*B4,0)<>D4,IFERROR(1*B11,0)<>D4)', "警告：源泉徴収票と適用中の所得年を一致させてください"),
         ('OR(COUNT(B12:B18)<>7,AND(B25<>"あり",B25<>"なし"),'
          'AND(D24<>"ワンストップ",D24<>"確定申告"),'
@@ -579,6 +676,10 @@ def build(source, output):
          "警告：申告分離課税の所得区分を選択してください"),
         (f'AND(N({ref(ADVANCED,"B24")})>0,{ref(ADVANCED,"B33")}<>"なし")',
          "警告：特例・繰越損失を伴う分離課税は個別照合が必要です"),
+        (f'AND(ISNUMBER({ref(ADVANCED,"B14")}),ISNUMBER(B31),'
+         f'ABS({ref(ADVANCED,"B14")}-B31)>1,'
+         f'{ref(ADVANCED,"B20")}<>"VERIFIED_AFTER_CORRECTION")',
+         "警告：原票の所得控除合計と自動再計算額が異なります。原票と修正額を確認して読取内容の確認を行ってください"),
         (f'{ref(ADVANCED,"B20")}="REQUIRES_REVIEW"',
          "警告：源泉徴収票の読取内容を確認してください"),
         (unsupported, "警告：入力内容から個別照合が必要と判定しました"),
@@ -629,31 +730,46 @@ def build(source, output):
         detail[f"B{row}"].alignment = Alignment(horizontal="right", vertical="center")
         detail.merge_cells(start_row=row, start_column=3, end_row=row, end_column=4)
         detail[f"C{row}"] = explanation
-        detail[f"C{row}"].alignment = Alignment(wrap_text=True, vertical="center")
+        detail[f"C{row}"].alignment = Alignment(wrap_text=True, vertical="center", indent=1)
         detail.row_dimensions[row].height = 28
     note(detail, 15, "申告分離課税では所得税の実際の減税額・住民税を寄附額ごとに再計算し、自己負担2,000円以内の最大額を探索します。")
     detail["A16"] = "分離課税（課税所得）"
-    detail["B16"] = f'=IF(N({ref(ADVANCED,"B24")})>0,{ref(SPLIT_ALLOC,"B3")},"")'
+    detail["B16"] = f'=IF(AND({ref(HOME,"B28")}="正常",N({ref(ADVANCED,"B24")})>0),{ref(SPLIT_ALLOC,"B3")},"")'
     detail["C16"] = "総合課税の税率だけでは分離課税部分の減税額を算定できません。"
     detail["A17"] = "寄附金控除前：総合課税の課税所得"
-    detail["B17"] = f'=IF(N({ref(ADVANCED,"B24")})>0,{ref(SPLIT_ALLOC,"B2")},"")'
+    detail["B17"] = f'=IF(AND({ref(HOME,"B28")}="正常",N({ref(ADVANCED,"B24")})>0),{ref(SPLIT_ALLOC,"B2")},"")'
     detail["C17"] = "所得控除を差し引いた後。寄附金控除は総合課税から先に適用。"
     detail["A18"] = "最終寄附目安で分離課税に配分した控除"
-    detail["B18"] = f'=IF(N({ref(ADVANCED,"B24")})>0,MAX(0,MIN({ref(RESIDENT,"B26")},{ref(SPLIT_ALLOC,"B8")})-2000-{ref(SPLIT_ALLOC,"B2")}),"")'
+    detail["B18"] = f'=IF(AND({ref(HOME,"B28")}="正常",N({ref(ADVANCED,"B24")})>0),MAX(0,MIN({ref(RESIDENT,"B26")},{ref(SPLIT_ALLOC,"B8")})-2000-{ref(SPLIT_ALLOC,"B2")}),"")'
     detail["C18"] = "所得税の寄附金控除のうち総合課税から引ききれない部分。"
     for row in range(16,19):
         detail[f"B{row}"].number_format = '#,##0'
         detail[f"B{row}"].alignment = Alignment(horizontal="right")
         detail.merge_cells(start_row=row,start_column=3,end_row=row,end_column=4)
-        detail[f"C{row}"].alignment = Alignment(wrap_text=True)
+        detail[f"C{row}"].alignment = Alignment(wrap_text=True, indent=1)
         detail.row_dimensions[row].height = 32
-    note(detail, 19, "分離課税所得B24は他の所得控除適用後の課税所得。源泉所得税額ではなく寄附前後の所得税額の差を用います。")
-    detail.print_area = "A1:D19"
+    note(detail, 19, "分離課税の新規試算は操作画面の詳細設定に表示します。")
+    detail["A20"] = "所得控除合計（原票記載）"
+    detail["B20"] = "=" + ref(HOME,"D31")
+    detail["A21"] = "所得控除合計（自動算定）"
+    detail["B21"] = "=" + ref(HOME,"B31")
+    detail["A22"] = "所得控除合計（計算使用額）"
+    detail["B22"] = "=" + ref(HOME,"B14")
+    detail["A23"] = "所得控除額の計算状態"
+    detail["B23"] = "=" + ref(HOME,"D26")
+    for row in (20,21,22):
+        detail[f"B{row}"].number_format = '#,##0'
+    detail["B23"].font = Font(name="Yu Gothic", bold=True, color="9C4100")
+    detail.print_area = "A1:D23"
     for sheet in book:
         sheet.sheet_state = "visible" if sheet == home else "veryHidden"
         sheet.sheet_view.tabSelected = sheet == home
     book.active = 0
-    book.calculation = CalcProperties(calcMode="auto", fullCalcOnLoad=True, forceFullCalc=True)
+    # Retain a complete first-open calculation while allowing Excel to use
+    # smart dependency recalculation thereafter. This is isolated to the
+    # v4.18.3 review; compare its xlPending state in a freshly owned Excel
+    # process before claiming the calculation-state defect resolved.
+    book.calculation = CalcProperties(calcMode="auto", fullCalcOnLoad=True, forceFullCalc=False)
     output.parent.mkdir(parents=True, exist_ok=True)
     book.save(output)
 
