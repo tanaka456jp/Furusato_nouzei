@@ -98,6 +98,8 @@
     // for a newly selected source or a different income year.
     var confirmation=form.elements.namedItem("acknowledgedExclusions");
     if(confirmation)confirmation.checked=false;
+    var forecast=form.elements.namedItem("forecastReviewed");
+    if(forecast)forecast.checked=false;
     // A new file (including a cancelled selection), reset or tax-year change
     // must not leave the four values copied from an older source slip.
     // Never erase unrelated manual inputs when OCR has not been transferred.
@@ -621,6 +623,12 @@
       batchBusy=false;runButton.disabled=busy;
     }
   });
+  function isAllowedReferenceYear(referenceYear){
+    var selected=Number(taxYear.value);
+    return [2025,2026].includes(referenceYear)&&
+      [2025,2026].includes(selected)&&
+      (referenceYear===selected||referenceYear===selected-1);
+  }
   function displayReview(r){
     // A pre-checked consent made during the asynchronous scan is invalid.
     acceptCheck.checked=false;
@@ -650,11 +658,16 @@
     var y=document.createElement("p");
     y.textContent="所得年："+r.year+"年（申告年分と一致することを確認）";
     report.appendChild(y);
-    if(Number(form.elements.namedItem("year").value)!==r.year){
+    if(!isAllowedReferenceYear(r.year)){
       var mismatch=document.createElement("p");
-      mismatch.textContent="選択した所得年と原票の年が一致しません。反映せず、年分を確認してください。";
+      mismatch.textContent="参照源泉票は、選択した試算対象年と同じ年か前年に限ります。";
       report.appendChild(mismatch);
       return;
+    }
+    if(r.year!==Number(taxYear.value)){
+      var note=document.createElement("p");
+      note.textContent=r.year+"年分は"+taxYear.value+"年の参考資料です。転記後に当年の見込額へ修正し、別途確認チェックを行ってください。";
+      report.appendChild(note);
     }
     acceptCheck.disabled=false;
     acceptButton.disabled=false;
@@ -740,7 +753,7 @@
        reviewGeneration!==generation||
        reviewManualRevision!==manualRevision||
        reviewYear!==Number(taxYear.value)||
-       review.year!==Number(taxYear.value))acceptCheck.checked=false;
+       !isAllowedReferenceYear(review.year))acceptCheck.checked=false;
   });
   acceptButton.addEventListener("click",function(){
     if(!review?.eligibleForManualTransfer||acceptCheck.disabled||
@@ -749,7 +762,7 @@
       reviewManualRevision!==manualRevision||
       reviewFile!==(fileInput.files&&fileInput.files[0])||
       reviewYear!==Number(taxYear.value)||
-      Number(taxYear.value)!==review.year){
+      !isAllowedReferenceYear(review.year)){
       show("原票の4金額・年分と控除状況を確認してから反映してください。");return;
     }
     var previousValues={};
@@ -765,6 +778,8 @@
     // mortgage and other deduction exclusions have been rechecked.
     var confirmation=form.elements.namedItem("acknowledgedExclusions");
     if(confirmation)confirmation.checked=false;
+    var forecast=form.elements.namedItem("forecastReviewed");
+    if(forecast)forecast.checked=false;
     form.dataset.ocrYear=String(review.year);
     form.dataset.ocrReviewPending="false";
     review=null;acceptCheck.checked=false;acceptCheck.disabled=true;
