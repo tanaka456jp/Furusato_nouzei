@@ -37,12 +37,18 @@
       // Only the explicit override becomes the working total on request.
       sourceDeductionsReference: get("deductionsReference").value.trim(),
       deductionsOverride: get("deductionsOverride").value.trim(),
-      deductionsReference: get("deductionsOverride").value.trim()!==""?
-        get("deductionsOverride").value.trim():get("deductionsReference").value.trim(),
+      // Only an explicit override is submitted as a deduction total.
+      // Otherwise the engine recomputes its supported basic/social total.
+      deductionsReference: get("deductionsOverride").value.trim(),
       acknowledgedExclusions: get("acknowledgedExclusions").checked,
       forecastReviewed: get("forecastReviewed").checked
     };
     if(form.dataset.ocrYear)input.sourceYear=form.dataset.ocrYear;
+    if(form.dataset.ocrOriginalGross!==undefined){
+      input.sourceOriginalGross=form.dataset.ocrOriginalGross;
+      input.sourceOriginalSocial=form.dataset.ocrOriginalSocial;
+      input.sourceOriginalDeductions=form.dataset.ocrOriginalDeductions;
+    }
     if(form.dataset.ocrSourceIndicators){
       // Strict whitelist prevents a malformed local marker from weakening HOLD.
       var recognized=["hasLifeInsurance","hasEarthquakeInsurance",
@@ -70,6 +76,24 @@
     if (typeof value!=="string"||!/^(0|[1-9][0-9]{0,11})$/.test(value))
       return null;
     return Number(value);
+  }
+  // The imported source's own basic/social totals are checked at its OWN
+  // year, before it is treated as the reference for a revised target-year
+  // estimate. This prevents dropping an unrecognized source deduction by
+  // editing the social amount or entering a smaller manual override.
+  function supportedSourceTotal(year,gross,social,total){
+    if(typeof FurusatoEngine==="undefined"||!FurusatoEngine||
+       typeof FurusatoEngine.salaryIncome!=="function"||
+       typeof FurusatoEngine.statutoryRows!=="function")return false;
+    var salary=FurusatoEngine.salaryIncome(gross,year);
+    if(!Number.isSafeInteger(salary))return false;
+    var rows=FurusatoEngine.statutoryRows();
+    for(var i=0;i<rows.length;i++){
+      var entry=rows[i];
+      if(entry[0]===year&&salary<=entry[1])
+        return Number.isSafeInteger(entry[2])&&entry[2]+social===total;
+    }
+    return false;
   }
   // National income-tax band thresholds are different at the exact edges
   // from municipal resident special-credit bands. Keep separate auditors.
@@ -142,12 +166,24 @@
       // Never promote a manually typed unverified family/insurance sum
       // into a falsely certified donation amount.
       if(typedTotal===null||typedTotal!==autoTotal)return false;
-      // Same-year imported evidence cannot be erased by entering a lower
-      // override total. Prior-year forecasting has its separate review gate.
-      if(input.sourceYear!==undefined&&sourceYear===year&&
-         input.sourceDeductionsReference!==""&&
-         strictYen(input.sourceDeductionsReference)!==autoTotal)
+    }
+    var autoTotal=calc.basicIncomeTaxDeductionYen+social;
+    var imported=input.sourceOriginalGross!==undefined||
+                 input.sourceOriginalSocial!==undefined||
+                 input.sourceOriginalDeductions!==undefined;
+    if(imported){
+      var originalGross=strictYen(input.sourceOriginalGross),
+          originalSocial=strictYen(input.sourceOriginalSocial),
+          originalTotal=strictYen(input.sourceOriginalDeductions);
+      if(originalGross===null||originalSocial===null||
+         originalTotal===null||!supportedSourceTotal(
+           sourceYear,originalGross,originalSocial,originalTotal))
         return false;
+    }else if(input.sourceDeductionsReference!==""&&
+             strictYen(input.sourceDeductionsReference)!==autoTotal){
+      // A freely typed "source reference" that contradicts the model
+      // cannot be silently discarded as soon as override is removed.
+      return false;
     }
     var reference=input.salaryIncomeReference;
     if(reference!==""){
@@ -363,6 +399,9 @@
     form.classList.remove("deduction-override-active");
     if(overrideNotice)overrideNotice.hidden=true;
     delete form.dataset.ocrYear;
+    delete form.dataset.ocrOriginalGross;
+    delete form.dataset.ocrOriginalSocial;
+    delete form.dataset.ocrOriginalDeductions;
     delete form.dataset.ocrSourceIndicators;
     delete form.dataset.ocrReviewPending;
     delete form.dataset.ocrManualReviewRequired;
