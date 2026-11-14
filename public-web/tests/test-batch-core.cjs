@@ -90,5 +90,48 @@ const x=batch.fromPage(5,basic2026);x.confirmed=true;x.noExclusions=true;
 batch.calculate(x,invented,guard);
 assert.equal(x.status,"HOLD");
 assert.equal(x.donationLimitYen,null);
+// A verified prior-year source can become a *2026* forecast only after
+// the income-tax basic deduction and all source figures are corrected.
+const future=batch.fromPage(6,basic2025,2026);
+assert.equal(future.sourceYear,2025);
+assert.equal(future.year,2026);
+future.confirmed=true;future.noExclusions=true;
+batch.calculate(future,win.FurusatoEngine,guard);
+assert.equal(future.status,"HOLD","prior-year forecast is not automatically approved");
+batch.edit(future,"deductionsReference","1790000");
+assert.equal(future.confirmed,false);
+assert.equal(future.noExclusions,false);
+assert.equal(future.candidates.deductionsReference,1790000);
+future.confirmed=true;future.noExclusions=true;future.forecastReviewed=true;
+batch.calculate(future,win.FurusatoEngine,guard);
+assert.equal(future.status,"前年参考概算");
+assert.equal(future.donationLimitYen,57000);
+assert.match(batch.csv([future]),/前年参考概算/);
+batch.edit(future,"label","架空受給者");
+assert.equal(future.status,"HOLD");
+assert.equal(future.donationLimitYen,null);
+assert.equal(future.confirmed,false);
+assert.equal(future.forecastReviewed,false);
+assert.match(batch.csv([future]),/架空受給者/);
+const patched=batch.fromPage(7,basic2026);
+batch.edit(patched,"socialInsurance","");
+assert.equal(patched.sourceValid,false);
+patched.confirmed=true;patched.noExclusions=true;
+batch.calculate(patched,win.FurusatoEngine,guard);
+assert.equal(patched.donationLimitYen,null);
+batch.edit(patched,"socialInsurance","1000000");
+assert.equal(patched.sourceValid,true);
+assert.equal(patched.confirmed,false);
+batch.edit(patched,"sourceYear","2024");
+assert.equal(patched.sourceValid,false);
+batch.calculate(patched,win.FurusatoEngine,guard);
+assert.equal(patched.status,"HOLD");
+const supplied=batch.fromPage(8,{...basic2026,recipientName:"架空一郎"});
+assert.equal(supplied.label,"架空一郎");
+const incoming=batch.fromPage(9,{
+ eligibleForManualTransfer:false,recipientName:"架空二郎"
+},2026);
+assert.equal(incoming.label,"架空二郎");
+assert.equal(incoming.sourceValid,false);
 dom.window.close();
 console.log("PUBLIC_BATCH_PER_PAGE_LOCAL_SAFETY_SYNTHETIC_PASS; no private slips; no deploy");
