@@ -42,7 +42,11 @@
  function numericGroup(spans,anchor,low,high){
   const candidates=spans.filter(i=>token.test(i.s)&&
     Math.abs(i.y-anchor.y)<=3.5&&
-    i.x-anchor.x>=low&&i.x-anchor.x<=high)
+    i.x-anchor.x>=low&&i.x-anchor.x<=high&&
+    // The NEXT G-code may share this same baseline; its own '0' and
+    // final digit are NOT part of the previous amount.
+    !spans.some(g=>g.s==="G"&&g.y===i.y&&
+       i.x>=g.x&&i.x<g.x+14))
     .sort((a,b)=>a.x-b.x);
   if(!candidates.length||candidates.length>16)return null;
   for(let j=1;j<candidates.length;j++)
