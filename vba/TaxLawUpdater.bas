@@ -538,10 +538,19 @@ Public Sub ReviewWithholding()
     Dim value As Double, refCell As Variant, calcCell As Variant
     Dim familyCell As Variant, specialTotal As Double, specialCount As Long
     Dim familyIncome As Double, specialDeduction As Double
+    Dim sourceTotalDifferent As Boolean
     On Error GoTo Failed
     Set home = ThisWorkbook.Worksheets("操作画面")
     Set extra = ThisWorkbook.Worksheets("例外・分離課税")
-    If CStr(extra.Range("B20").Value2) <> "REQUIRES_REVIEW" Then
+    Application.Calculate
+    sourceTotalDifferent = False
+    If IsNumeric(extra.Range("B14").Value2) And IsNumeric(home.Range("B31").Value2) Then
+        sourceTotalDifferent = Abs(CDbl(extra.Range("B14").Value2) - _
+                                   CDbl(home.Range("B31").Value2)) > 1
+    End If
+    If CStr(extra.Range("B20").Value2) <> "REQUIRES_REVIEW" And _
+       Not sourceTotalDifferent And _
+       Len(Trim$(CStr(home.Range("D25").Value2))) = 0 Then
         MsgBox "源泉徴収票の仮転記に未確認項目はありません。", vbInformation
         Exit Sub
     End If
@@ -608,11 +617,25 @@ Public Sub ReviewWithholding()
                 Err.Raise vbObjectError + 242, , "自動控除額を算定できません。"
             End If
             If Abs(CDbl(extra.Range(CStr(refCell)).Value2) - CDbl(calcCell.Value2)) > 1 Then
-                Err.Raise vbObjectError + 243, , "源泉徴収票の金額と自動計算に差があります。控除内訳を見直してください。"
+                If CStr(refCell) = "B14" Then
+                    ' Source total is retained for audit; it cannot veto a
+                    ' tax-year projection after explicit detailed review.
+                    sourceTotalDifferent = True
+                Else
+                    Err.Raise vbObjectError + 243, , "源泉徴収票の金額と自動計算に差があります。控除内訳を見直してください。"
+                End If
             End If
         End If
         Set calcCell = Nothing
     Next refCell
+    If sourceTotalDifferent And _
+       Len(Trim$(CStr(home.Range("D25").Value2))) = 0 Then
+        If MsgBox("源泉徴収票の所得控除合計と自動再計算額が異なります。" & vbCrLf & _
+           "原票額は照合用に残し、修正後の社会保険料・扶養・配偶者等に" & _
+           "基づく自動算定額を使用します。" & vbCrLf & _
+           "控除の漏れがないことを原票・証憑で確認しましたか？", _
+           vbExclamation + vbYesNo + vbDefaultButton2) <> vbYes Then Exit Sub
+    End If
     If MsgBox("源泉徴収票の未確認項目を確認しましたか？" & vbCrLf & _
               "読取結果を照合済みにします。", vbQuestion + vbYesNo + vbDefaultButton2) <> vbYes Then Exit Sub
     extra.Range("B20").Value2 = "VERIFIED_AFTER_CORRECTION"
