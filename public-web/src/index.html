@@ -97,6 +97,7 @@
               <label><input type="checkbox" name="hasNonstandardConditions"> 標準条件外・不明な控除</label>
             </div>
           </fieldset>
+          <label class="confirm"><input type="checkbox" name="correctedSourceReviewed"> OCRで取り込んだ金額を手修正した場合、原票・見込額の根拠を再照合しました（変更前のOCR判定は無効）</label>
           <label class="confirm"><input type="checkbox" name="forecastReviewed"> 前年の源泉徴収票を使う場合、給与・社会保険料・給与所得額・所得控除額を試算対象年の見込額に補正し、扶養等の条件を改めて確認しました（前年資料を使わない場合は不要）</label>
           <label class="confirm"><input type="checkbox" name="acknowledgedExclusions" required> 上記の該当有無を確認しました（チェックがない場合は計算を停止します）</label>
           <div class="actions"><button type="submit" class="primary">寄附目安額を試算する</button><button type="reset" class="secondary">入力をクリア</button></div>
