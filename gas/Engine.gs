@@ -133,9 +133,23 @@ var FurusatoEngine = (function () {
           reasons.push("源泉徴収票で検出した控除・扶養は未対応です: " + flag);
       });
     }
-    if (typeof input.sourceYear !== "undefined" &&
-        (String(input.sourceYear) !== String(input.year))) {
-      reasons.push("取込んだ源泉徴収票と選択した所得年が一致しません");
+    // The year printed on a previous withholding slip is *evidence*,
+    // not necessarily the tax year for which the donation is planned.
+    // 2025 slip -> 2026 forecast is allowed only after a separate explicit
+    // review of 2026 expected income and deductions. All unsupported
+    // relatives, housing and extra-income cases still HOLD as before.
+    if (input.forecastReviewed !== undefined &&
+        input.forecastReviewed !== true &&
+        input.forecastReviewed !== false)
+      reasons.push("対象年見込みの確認状態が不正です");
+    if (typeof input.sourceYear !== "undefined") {
+      var slipYear = Number(input.sourceYear);
+      if (!Number.isSafeInteger(slipYear) ||
+          (slipYear !== year && slipYear !== year - 1)) {
+        reasons.push("参照源泉徴収票の年分が試算対象年の当年・前年ではありません");
+      } else if (slipYear !== year && input.forecastReviewed !== true) {
+        reasons.push("前年の源泉徴収票を参考にする場合は、試算対象年の見込額・控除条件の再確認が必要です");
+      }
     }
     var gross = money(input.salaryGross, "給与支払金額", true, reasons);
     var social = money(input.socialInsurance, "社会保険料等の金額", true, reasons);
