@@ -38,6 +38,7 @@ a.noExclusions=true;
 batch.calculate(a,win.FurusatoEngine,guard);
 assert.equal(a.status,"概算");
 assert.equal(a.donationLimitYen,109000);
+assert.equal(a.appliedDeductionsYen,1670000);
 b.confirmed=true;b.noExclusions=true;
 batch.calculate(b,win.FurusatoEngine,guard);
 assert.equal(b.status,"概算");
@@ -107,6 +108,7 @@ future.confirmed=true;future.noExclusions=true;future.forecastReviewed=true;
 batch.calculate(future,win.FurusatoEngine,guard);
 assert.equal(future.status,"前年参考概算");
 assert.equal(future.donationLimitYen,57000);
+assert.equal(future.appliedDeductionsYen,1790000);
 assert.match(batch.csv([future]),/前年参考概算/);
 assert.match(batch.csv([future]),/手入力上書き・自動追随なし/);
 assert.match(future.reason,/手入力上書き中/);
@@ -126,6 +128,26 @@ assert.equal(future.donationLimitYen,null);
 assert.equal(future.confirmed,false);
 assert.equal(future.forecastReviewed,false);
 assert.match(batch.csv([future]),/架空受給者/);
+// With a clean original-source snapshot, a social edit uses the target
+// year's independent basic/social deduction calculation automatically.
+const autoForecast=batch.fromPage(14,basic2025,2026);
+batch.edit(autoForecast,"socialInsurance","800000");
+autoForecast.confirmed=true;autoForecast.noExclusions=true;autoForecast.forecastReviewed=true;
+batch.calculate(autoForecast,win.FurusatoEngine,guard);
+assert.equal(autoForecast.status,"前年参考概算");
+assert.equal(autoForecast.appliedDeductionsYen,1840000);
+assert.equal(autoForecast.originalCandidates.deductionsReference,1430000);
+assert.equal(autoForecast.deductionsOverrideActive,false);
+assert.match(batch.csv([autoForecast]),/1840000/);
+// An original slip containing unrecognized extra deductions must never be
+// silently converted into a basic/social-only estimate.
+const unsupportedSource=batch.fromPage(15,{...basic2026,
+ candidates:{...basic2026.candidates,deductionsReference:1800000}});
+unsupportedSource.confirmed=true;unsupportedSource.noExclusions=true;
+batch.calculate(unsupportedSource,win.FurusatoEngine,guard);
+assert.equal(unsupportedSource.status,"HOLD");
+assert.equal(unsupportedSource.donationLimitYen,null);
+assert.equal(unsupportedSource.appliedDeductionsYen,null);
 const patched=batch.fromPage(7,basic2026);
 batch.edit(patched,"socialInsurance","");
 assert.equal(patched.sourceValid,false);
