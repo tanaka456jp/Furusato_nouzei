@@ -325,9 +325,39 @@ def build(source, output):
     field("D22", "本人の控除区分", "該当なし", ("該当なし", "寡婦", "ひとり親（母）", "ひとり親（父）", "勤労学生"))
     field("D23", "16歳未満の扶養（人数）", maximum=30)
     field("D24", "申告方式", "ワンストップ", ("ワンストップ", "確定申告"))
-    note(home, 27, "公的年金・事業所得・雑所得は追加所得欄へ。申告分離課税は上部の詳細設定リンクから入力。")
-    home.row_dimensions[27].height = 30
-    note(home, 31, "対象外の手動判定は不要。原票の所得控除を優先し、入力内容に応じて計算可否を自動判定します。")
+    # The source slip's total stays in ADVANCED B14 for audit only. D25 is
+    # the user's independent manual override; clearing it restores auto.
+    field("D25", "所得控除合計（手入力上書き）")
+    home["C25"].font = Font(name="Yu Gothic", bold=True, color="9C4100")
+    home["D25"].fill = PatternFill("solid", fgColor="FFF0C2")
+    home["C26"] = "所得控除額の計算状態"
+    home["C26"].alignment = Alignment(wrap_text=True)
+    home["D26"] = '=IF(D25="","自動再計算","⚠ 手入力上書き中")'
+    home["D26"].font = Font(name="Yu Gothic", bold=True, color="9C4100")
+    home["D26"].alignment = Alignment(wrap_text=True)
+    home["D26"].protection = Protection(locked=True)
+    home.row_dimensions[26].height = 38
+    note(home, 27, '=IF(D25="","所得控除合計は社会保険料・扶養・配偶者等の変更により自動再計算します。D25で手入力上書きが可能です。","⚠ 所得控除合計は手入力上書き中：社会保険料・扶養・配偶者・本人所得の変更に自動追随しません。D25を消すと自動計算に戻ります。")')
+    home.row_dimensions[27].height = 56
+    home["A31"] = "所得控除合計（自動算定）"
+    home["B31"] = ('=IF(OR(B13="",B16=""),"",'
+                   f'SUM(B16:B18,{ref(ENGINE,"F15")},'
+                   f'{ref(ENGINE,"F38")},{ref("追加人的控除","C12")}))')
+    home["C31"] = "所得控除合計（原票記載）"
+    home["D31"] = f'=IF(ISNUMBER({ref(ADVANCED,"B14")}),{ref(ADVANCED,"B14")},"")'
+    for a in ("A31","C31"):
+        home[a].alignment = Alignment(wrap_text=True, vertical="center")
+    for a in ("B31","D31"):
+        home[a].number_format = '#,##0'
+        home[a].fill = PatternFill("solid", fgColor="EAF3EA")
+        home[a].protection = Protection(locked=True)
+        home[a].alignment = Alignment(horizontal="right")
+    home.row_dimensions[31].height = 42
+    for region in ("A14:B14", "C25:D26", "A27:D27"):
+        home.conditional_formatting.add(region,
+            FormulaRule(formula=['ISNUMBER($D$25)'],
+                fill=PatternFill("solid", fgColor="FFF0C2"),
+                font=Font(name="Yu Gothic", bold=True, color="9C4100")))
     bar(home, 32, "住宅ローン控除（通常処理・源泉徴収票から転記）")
     field("B33", "住宅ローン控除の所得税適用額")
     field("B34", "住宅ローン控除可能額（G36）")
@@ -423,10 +453,7 @@ def build(source, output):
                  '(MIN(B12,10000000)-8500000)*0.1,0)))))'),
         "B17": f'=IF(ISNUMBER({ref(ADVANCED,"B16")}),{ref(ADVANCED,"B16")},IF(B12="","",{ref(ENGINE, "F24")}))',
         "B18": f'=IF(ISNUMBER({ref(ADVANCED,"B17")}),{ref(ADVANCED,"B17")},IF(B12="","",{ref(ENGINE, "F25")}))',
-        "B14": (f'=IF(ISNUMBER({ref(ADVANCED,"B14")}),{ref(ADVANCED,"B14")},'
-                'IF(OR(B13="",B16=""),"",'
-                f'SUM(B16:B18,{ref(ENGINE,"F15")},'
-                f'{ref(ENGINE,"F38")},{ref("追加人的控除","C12")})))'),
+        "B14": '=IF(D25<>"",IF(ISNUMBER(D25),D25,""),B31)',
     }
     for addr, formula in derived.items():
         home[addr] = formula
@@ -437,7 +464,7 @@ def build(source, output):
         home[addr].protection = Protection(locked=True)
     for addr, label in (
         ("A13", "給与所得控除後の金額（自動）"),
-        ("A14", "所得控除の額の合計額（自動）"),
+        ("A14", "所得控除の額の合計額（適用値）"),
         ("A17", "生命保険料控除額（自動）"),
         ("A18", "地震保険料控除額（自動）"),
     ):
@@ -465,13 +492,13 @@ def build(source, output):
         'AND(ISNUMBER(B33),B33<0)', 'AND(ISNUMBER(B34),B34<0)',
         # Source reference totals include omitted special and family deductions.
         # They are authoritative when extracted from the withholding form.
+        'AND(D25<>"",OR(NOT(ISNUMBER(D25)),D25<0,D25>100000000,D25<>INT(D25)))',
         f'AND(ISNUMBER({ref(ADVANCED,"B14")}),{ref(ADVANCED,"B14")}<B16)',
         'MAX(D11:D13,D19:D21)>30', 'COUNT(D17:D18)>1', 'B13>B12', 'B15>B12', 'B16>B14',
                 'AND(COUNT(D14:D16,D23)>0,B25="なし",OR(COUNT(D14:D16)>0,D23>0))',
                 f'OR(AND(NOT(ISNUMBER({ref(ADVANCED,"B16")})),B17<>{ref(ENGINE,"F24")}),'
                 f'AND(NOT(ISNUMBER({ref(ADVANCED,"B17")})),B18<>{ref(ENGINE,"F25")}))',
-                f'AND(NOT(ISNUMBER({ref(ADVANCED,"B14")})),'
-                f'B14<>SUM(B16:B18,{ref(ENGINE,"F15")},{ref(ENGINE,"F38")},{ref("追加人的控除","C12")}))']
+                'AND(D25="",B14<>B31)']
     unsupported = (
         'OR('
         +f'AND(N({ref(ADVANCED,"B24")})>0,NOT(OR('
@@ -717,7 +744,18 @@ def build(source, output):
         detail[f"C{row}"].alignment = Alignment(wrap_text=True, indent=1)
         detail.row_dimensions[row].height = 32
     note(detail, 19, "分離課税の新規試算は操作画面の詳細設定に表示します。")
-    detail.print_area = "A1:D19"
+    detail["A20"] = "所得控除合計（原票記載）"
+    detail["B20"] = "=" + ref(HOME,"D31")
+    detail["A21"] = "所得控除合計（自動算定）"
+    detail["B21"] = "=" + ref(HOME,"B31")
+    detail["A22"] = "所得控除合計（計算使用額）"
+    detail["B22"] = "=" + ref(HOME,"B14")
+    detail["A23"] = "所得控除額の計算状態"
+    detail["B23"] = "=" + ref(HOME,"D26")
+    for row in (20,21,22):
+        detail[f"B{row}"].number_format = '#,##0'
+    detail["B23"].font = Font(name="Yu Gothic", bold=True, color="9C4100")
+    detail.print_area = "A1:D23"
     for sheet in book:
         sheet.sheet_state = "visible" if sheet == home else "veryHidden"
         sheet.sheet_view.tabSelected = sheet == home
