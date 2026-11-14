@@ -288,7 +288,17 @@
         return;
       }
       var snapshot=getInput();
-      render(FurusatoEngine.calculate(snapshot),snapshot);
+      // The shared private GAS engine must retain its strict same-year
+      // contract. This WEB-ONLY adapter forecasts using the selected
+      // target-year tax law after explicit prior-year re-attestation.
+      // Preserve ORIGINAL sourceYear in the displayed snapshot and guard.
+      var engineInput=snapshot;
+      if(snapshot.sourceYear!==undefined&&
+         Number(snapshot.sourceYear)===Number(snapshot.year)-1&&
+         snapshot.forecastReviewed===true){
+        engineInput=Object.assign({},snapshot,{sourceYear:snapshot.year});
+      }
+      render(FurusatoEngine.calculate(engineInput),snapshot);
     } catch (_) {
       render({status:"HOLD",reasons:["計算中に異常が発生しました。目安額は表示しません。"]});
     }
