@@ -78,10 +78,15 @@
             <label>給与所得控除後の金額 <small>試算対象年の見込額を入力（前年原票の金額は参考値、手入力可）</small>
               <input type="text" inputmode="numeric" autocomplete="off" spellcheck="false" name="salaryIncomeReference" placeholder="任意：源泉徴収票の記載額" maxlength="12">
             </label>
-            <label>所得控除の額の合計額 <small>試算対象年の見込額を入力（手入力可）</small>
-              <input type="text" inputmode="numeric" autocomplete="off" spellcheck="false" name="deductionsReference" placeholder="任意：源泉徴収票の記載額" maxlength="12">
+            <label>所得控除の額の合計額 <small>原票・当年見込額の照合用。追加控除があればHOLDします。</small>
+              <input type="text" inputmode="numeric" autocomplete="off" spellcheck="false" name="deductionsReference" placeholder="原票・見込額の照合値" maxlength="12">
+            </label>
+            <label class="deduction-override-input">所得控除合計額を手入力上書き（任意）
+              <small>入力すると上記の照合額よりこちらを優先します。対応外の控除額は計算せずHOLDします。</small>
+              <input type="text" inputmode="numeric" autocomplete="off" spellcheck="false" name="deductionsOverride" placeholder="空欄なら通常計算" maxlength="12" aria-describedby="deductionsOverrideStatus">
             </label>
           </div>
+          <p id="deductionsOverrideStatus" class="deductions-override-status" role="status" aria-live="polite" hidden>⚠ 所得控除合計額を手入力上書き中。社会保険料・扶養・本人所得の変更に自動追随しません。空欄にすると通常計算に戻ります。未検証の控除額はHOLDします。</p>
           <fieldset class="conditions">
             <legend>追加の控除・所得がある場合</legend>
             <p>次の項目に該当する場合はチェックしてください。未対応条件では目安額を表示せず、安全のため停止します。</p>
