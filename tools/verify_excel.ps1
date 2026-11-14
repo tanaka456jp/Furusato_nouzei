@@ -429,6 +429,33 @@ try {
     Assert-Value $homeSheet.Range('B26').Value2 '計算可能' 'Automatic eligibility restores after correcting input'
     QA-Stage 'auto-eligibility-verdict-pass'
     QA-Stage 'other-income-regressions-pass'
+    # A spouse deduction is conditional on the recipient's own total income.
+    # Adding business income must change F38 AND the computed deduction
+    # total, not leave the slip's earlier total frozen. Synthetic only.
+    QA-Stage 'spouse-own-income-reassessment-start'
+    $homeSheet.Range('D17').Value2 = 0.0
+    $extraSheet.Range('B12').ClearContents()
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    $spouseBefore = [double]$engineSheet.Range('F38').Value2
+    $autoBefore = [double]$homeSheet.Range('B31').Value2
+    if ($spouseBefore -le 0) {
+        throw 'Zero-income ordinary spouse was not deductible before extra income'
+    }
+    $extraSheet.Range('B12').Value2 = 6000000.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    $spouseAfter = [double]$engineSheet.Range('F38').Value2
+    if ($spouseAfter -ge $spouseBefore) {
+        throw 'Spouse deduction did not decline when taxpayer income exceeded upper limit'
+    }
+    $autoAfter = [double]$homeSheet.Range('B31').Value2
+    if ($autoAfter -eq $autoBefore) {
+        throw 'Computed deduction total ignored spouse and additional-income change'
+    }
+    Assert-Value $homeSheet.Range('B14').Value2 $autoAfter 'Applied total auto-recalculated after spouse threshold'
+    $extraSheet.Range('B12').ClearContents()
+    $homeSheet.Range('D17').ClearContents()
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    QA-Stage 'spouse-own-income-reassessment-pass'
     # Mortgage tax credit is routine input. Check the resident-tax credit and
     # every missing/unsupported branch against *real* Excel formula evaluation.
     QA-Stage 'mortgage-normal-start'
