@@ -246,6 +246,8 @@ def build(source, output):
     for addr in ("B38", "B39"):
         extra[addr].fill = PatternFill("solid", fgColor="EAF3EA")
         extra[addr].protection = Protection(locked=True)
+        extra[addr].alignment = Alignment(horizontal="right")
+        extra[addr].number_format = "#,##0"
     # Source attestation is valid for the exact reviewed INPUT snapshot only.
     # VBA persists B42 in B41 on explicit review; every relevant edited
     # number, relative's income, tax year and source value changes B42. The
@@ -274,9 +276,6 @@ def build(source, output):
         extra[addr].number_format = "@"
     extra.row_dimensions[41].hidden = True
     extra.row_dimensions[42].hidden = True
-
-        extra[addr].alignment = Alignment(horizontal="right")
-        extra[addr].number_format = "#,##0"
     extra.print_area = "A1:D39"
     home.row_dimensions[3].height = 28
     field("B4", "選択する所得年", "2026", ("2025", "2026"))
