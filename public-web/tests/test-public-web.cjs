@@ -259,6 +259,22 @@ field("deductionsReference").value="1430000"; // stale 2025 basic deduction
 submit();
 assert.equal(view.className,"result hold");
 assert.doesNotMatch(view.textContent,/57,000円/);
+// A corrected imported slip keeps its year. A failed/cancelled OCR must not
+// be resumable via this checkbox, only an edited previously-transferred source.
+field("deductionsReference").value="1790000";
+form.dataset.ocrReviewPending="true";
+form.dataset.ocrManualReviewRequired="true";
+field("correctedSourceReviewed").checked=false;
+submit();
+assert.equal(view.className,"result hold");
+field("correctedSourceReviewed").checked=true;
+submit();
+assert.equal(view.className,"result");
+assert.match(view.textContent,/57,000円/);
+delete form.dataset.ocrManualReviewRequired;
+submit();
+assert.equal(view.className,"result hold","aborted-source marker cannot be bypassed");
+delete form.dataset.ocrReviewPending;
 delete form.dataset.ocrYear;
 form.reset();
 assert.equal(view.hidden,true);
