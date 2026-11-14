@@ -115,7 +115,12 @@
   };
   for(const key of FLAGS)input[key]=false;
   try{
-   const result=engine.calculate(input);
+   // Scope the previous-year bridge to this public Web estimator only.
+   // Keep the shared private GAS engine's strict source-year contract.
+   // The independent UI display guard still checks the TRUE source year.
+   const taxInput=row.sourceYear===row.year-1&&row.forecastReviewed===true
+    ?Object.assign({},input,{sourceYear:String(row.year)}):input;
+   const result=engine.calculate(taxInput);
    if(!displayGuard(result,input)){
     row.reason="計算条件または税額整合性の不一致";
     return row;
