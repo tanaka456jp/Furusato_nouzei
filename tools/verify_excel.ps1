@@ -90,6 +90,46 @@ try {
     Assert-Value $homeSheet.Range('B8').Value2 '' 'Blank input hides limit'
     Assert-Value $detail.Visible 2 'Calculation details start hidden'
     QA-Stage 'initial-regressions-pass'
+    # Synthetic live Excel COM regression: the source total is audit-only;
+    # the user-typed override persists across unrelated source edits; clearing
+    # the override restores computed deductions. No customer data is used.
+    QA-Stage 'deduction-override-synthetic-start'
+    $homeSheet.Range('B12').Value2 = 7000000.0
+    $homeSheet.Range('B15').Value2 = 285800.0
+    $homeSheet.Range('B16').Value2 = 1000000.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B31').Value2 1670000 'Computed deduction total baseline'
+    Assert-Value $homeSheet.Range('B14').Value2 1670000 'Effective deduction without override'
+    Assert-Value ([string]$homeSheet.Range('D26').Value2) '自動再計算' 'Automatic deduction mode'
+    $homeSheet.Range('D25').Value2 = 1800000.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B14').Value2 1800000 'Manual override amount used'
+    if ([string]$homeSheet.Range('D26').Value2 -notlike '*上書き中*') {
+        throw 'Manual override warning was not displayed'
+    }
+    $homeSheet.Range('B16').Value2 = 1050000.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B31').Value2 1720000 'Automatic amount follows insurance edit'
+    Assert-Value $homeSheet.Range('B14').Value2 1800000 'Override must not silently follow edit'
+    $homeSheet.Range('D25').ClearContents()
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B14').Value2 1720000 'Removing override restores automatic amount'
+    Assert-Value ([string]$homeSheet.Range('D26').Value2) '自動再計算' 'Mode restored after clearing override'
+    $sourceAudit = $book.Worksheets.Item('例外・分離課税')
+    $sourceAudit.Range('B14').Value2 = 1950000.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B14').Value2 1720000 'Source document total must not override calculation'
+    Assert-Value $homeSheet.Range('D31').Value2 1950000 'Source total retained separately'
+    if ([string]$homeSheet.Range('B28').Value2 -notlike '*原票の所得控除合計*') {
+        throw 'Unreviewed source/automatic total mismatch did not HOLD'
+    }
+    Assert-Value ([string]$homeSheet.Range('B8').Value2) '' 'Unreviewed source discrepancy hides limit'
+    $sourceAudit.Range('B14').ClearContents()
+    $homeSheet.Range('B12').ClearContents()
+    $homeSheet.Range('B15').ClearContents()
+    $homeSheet.Range('B16').ClearContents()
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    QA-Stage 'deduction-override-synthetic-pass'
     # Statutory special-relative deduction edge cases, all synthetic.
     $familyBands = @(
         @{ Year=2025; Income=580000; Expected=0 },
