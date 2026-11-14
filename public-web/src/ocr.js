@@ -542,6 +542,9 @@
              typeof window.FurusatoPdfLayout.extract!=="function")
             throw Error("PDF_POSITION_AUDIT_MISSING");
           var positioned=window.FurusatoPdfLayout.extract(extracted.items);
+          var coded=window.FurusatoPdfGCodes &&
+            typeof window.FurusatoPdfGCodes.review==="function"
+            ?window.FurusatoPdfGCodes.review(extracted.items):null;
           // A PDF text layer can concatenate several separate table cells into
           // one text line: FIELD_INVALID alone is not decisive if all four
           // independent positioned cell anchors were uniquely verified.
@@ -561,7 +564,22 @@
             throw Error("PDF_CROSS_SOURCE_AUDIT_MISSING");
           var crossCheck=window.FurusatoPdfLayout.crossCheckExtracted(
             digital,positioned);
-          if(positioned.positionStatus==="CONFLICT"||
+          const codedTaxFields=coded&&[2025,2026].includes(coded.year)&&
+            !digital.yearConflict&&
+            (positioned.year===null||positioned.year===coded.year)&&
+            !(digital.reasons||[]).some(r=>/^FIELD_(?:CONFLICT|DUPLICATE)_/.test(r))&&
+            (positioned.reasons||[]).every(r=>
+              /^LAYOUT_AMBIGUOUS_AMOUNT_/.test(r))&&
+            Object.entries(coded.candidates||{}).every(([key,val])=>
+              digital.candidates?.[key]===undefined||
+              digital.candidates[key]===val);
+          if(codedTaxFields){
+            // A rigorously anchored L01+G-code slip can be parsed even when
+            // PDF.js emits each yen digit separately and label-based parsing
+            // (correctly) flags those groups as ambiguous. The G-code
+            // numbers stay review-only. Missing social insurance stays HOLD.
+            result=coded;
+          }else if(positioned.positionStatus==="CONFLICT"||
              hardTextFailure||digital.yearConflict===true||
              conflictingYears||crossCheck.status==="CONFLICT"){
             result={
