@@ -12,6 +12,18 @@ const fixture=[
  item("架空商事",380,680,50)
 ];
 assert.equal(extractor.extract(fixture),"架空太郎");
+// Actual Japanese PDF generators often split each E03 code glyph; the
+// name can be on a baseline ~2px above the printed field-code baseline.
+const split=[
+ item("E",76.7,683.2,5.5),item("0",79.4,683.2,5.5),
+ item("3",82.2,683.2,5.5),item("架空",89.3,681.1,22),
+ item("二",111.3,681.1,11),item("郎",122.3,681.1,11),
+ item("々",87.7,683.2,246.8), // bogus full-width font placeholder
+ item("家族",89.3,350,22),item("会社",380,683.2,30)
+];
+assert.equal(extractor.extract(split),"架空二郎");
+assert.equal(extractor.extract([...split,item("E03",76.7,683.2,11)]),null,
+ "Ambiguous duplicated code must never guess a recipient");
 assert.equal(extractor.extract([
  item("E03",77,680,12),item("架空",91,680,23),
  item("二郎",117,680,23)
