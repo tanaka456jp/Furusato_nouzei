@@ -356,8 +356,10 @@ async function main(){
  assert.equal(field("socialInsurance").value,"1000000");
  field("salaryGross").value="7150000";
  field("salaryGross").dispatchEvent(new win.Event("input",{bubbles:true}));
- assert.equal(form.dataset.ocrYear,undefined);
+ assert.equal(form.dataset.ocrYear,"2026","manual correction retains original reference year");
  assert.equal(form.dataset.ocrReviewPending,"true");
+ assert.equal(form.dataset.ocrManualReviewRequired,"true");
+ assert.equal(field("correctedSourceReviewed").checked,false);
  Object.defineProperty(file,"files",{configurable:true,value:[syntheticRasterFile("replacement-after-manual-edit.png","image/png",1024)]});
  file.dispatchEvent(new win.Event("change",{bubbles:true}));
  assert.equal(field("salaryGross").value,"7150000"); // manual edit retained
@@ -431,8 +433,10 @@ async function main(){
  assert.equal(field("socialInsurance").value,"1000000");
  field("salaryGross").value="7150000";
  field("salaryGross").dispatchEvent(new win.Event("input",{bubbles:true}));
- assert.equal(form.dataset.ocrYear,undefined);
+ assert.equal(form.dataset.ocrYear,"2026","manual correction retains original reference year");
  assert.equal(form.dataset.ocrReviewPending,"true");
+ assert.equal(form.dataset.ocrManualReviewRequired,"true");
+ assert.equal(field("correctedSourceReviewed").checked,false);
  // At this point fileInput was cleared on transfer; the old guard looked
  // only at dataset.ocrYear and the file chooser and silently un-HOLDed.
  assert.equal(file.value,"");
