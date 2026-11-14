@@ -92,6 +92,13 @@
      });
      control.value=Number.isSafeInteger(v?.[field])?String(v[field]):"";
      td.appendChild(control);
+     if(field==="deductionsReference"&&r.deductionsOverrideActive){
+      td.classList.add("batch-deduction-manual");
+      const warn=document.createElement("span");
+      warn.className="batch-override-tag";
+      warn.textContent="⚠ 手入力上書き中・自動追随なし";
+      td.appendChild(warn);
+     }
    }
    const filing=cell(tr,"");
    const select=formControl("select",{
