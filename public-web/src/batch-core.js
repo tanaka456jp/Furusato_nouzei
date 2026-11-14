@@ -22,7 +22,7 @@
   return Number.isSafeInteger(value)&&value>=0&&value<=1000000000000;
  }
  function holdRow(page,reason){
-  return {page,label:"",year:null,sourceYear:null,candidates:null,sourceIndicators:{},sourceValid:false,
+  return {page,label:"",year:null,sourceYear:null,candidates:null,sourceIndicators:{},deductionsOverrideActive:false,sourceValid:false,
    confirmed:false,noExclusions:false,forecastReviewed:false,filing:"one-stop",
    status:"HOLD",donationLimitYen:null,reason:reason||"読取・確認待ち"};
  }
@@ -84,6 +84,7 @@
     const numeric=/^(0|[1-9][0-9]{0,11})$/.test(raw)?Number(raw):null;
     if(row.candidates===null)row.candidates={};
     row.candidates[key]=safeAmount(numeric)?numeric:null;
+    if(key==="deductionsReference")row.deductionsOverrideActive=true;
   }else throw Error("BATCH_EDIT_FIELD_NOT_ALLOWED");
   row.sourceValid=!!row.candidates&&
     [2025,2026].includes(row.sourceYear)&&
@@ -147,9 +148,11 @@
    }
    row.status=row.sourceYear<row.year?"前年参考概算":"概算";
    row.donationLimitYen=result.donationLimitYen;
-   row.reason=row.sourceYear<row.year
+   row.reason=(row.deductionsOverrideActive
+    ?"⚠ 所得控除合計は手入力上書き中・他の入力変更に自動追随しません。":"")+
+    (row.sourceYear<row.year
     ?"前年の源泉票を参考にした当年の見込額による概算（確定額ではありません）"
-    :"対応条件内の概算（確定額ではありません）";
+    :"対応条件内の概算（確定額ではありません）");
    return row;
   }catch(_){
    row.reason="計算異常";
@@ -172,14 +175,14 @@
   if(!Array.isArray(rows)||rows.length>MAX_ROWS)
    throw Error("BATCH_CSV_ROWS_INVALID");
   const header=["PDFページ","氏名","参照源泉票年分","試算対象年","給与支払金額",
-   "給与所得控除後の金額","所得控除合計","社会保険料等","手続き",
+   "給与所得控除後の金額","所得控除合計","所得控除合計の入力区分","社会保険料等","手続き",
    "寄附上限額の概算","状態","確認状況"];
   const lines=[header.map(csvValue).join(",")];
   for(const r of rows){
    const v=r.sourceValid?r.candidates:null;
    lines.push([r.page,labelFor(r),r.sourceYear??"",r.year??"",
     v?.salaryGross??"",v?.salaryIncomeReference??"",
-    v?.deductionsReference??"",v?.socialInsurance??"",
+    v?.deductionsReference??"",r.deductionsOverrideActive?"手入力上書き・自動追随なし":"原票／自動照合",v?.socialInsurance??"",
     r.filing==="return"?"確定申告":"ワンストップ",
     (r.status==="概算"||r.status==="前年参考概算")&&
       Number.isSafeInteger(r.donationLimitYen)
