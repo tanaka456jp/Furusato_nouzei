@@ -38,7 +38,13 @@
       forecastReviewed: get("forecastReviewed").checked
     };
     if(form.dataset.ocrYear)input.sourceYear=form.dataset.ocrYear;
-    if(form.dataset.ocrReviewPending==="true")input.sourceReviewPending=true;
+    // Re-attest a previously transferred OCR source after editing figures.
+    // This must NOT bypass cancellation/failed OCR: only explicit edits to
+    // an already transferred source may set ocrManualReviewRequired.
+    if(form.dataset.ocrReviewPending==="true"&&
+       !(form.dataset.ocrManualReviewRequired==="true"&&
+         get("correctedSourceReviewed").checked===true))
+      input.sourceReviewPending=true;
     flags.forEach(function (name) {
       input[name] = get(name).checked === true;
     });
@@ -291,6 +297,7 @@
     printableInputSnapshot=null;printableResult=null;
     delete form.dataset.ocrYear;
     delete form.dataset.ocrReviewPending;
+    delete form.dataset.ocrManualReviewRequired;
     output.replaceChildren();
     output.hidden = true;
     output.className = "result";
