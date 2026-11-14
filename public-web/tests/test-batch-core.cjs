@@ -133,5 +133,27 @@ const incoming=batch.fromPage(9,{
 },2026);
 assert.equal(incoming.label,"架空二郎");
 assert.equal(incoming.sourceValid,false);
+// The actual 2025 source PDF may have a blank G26 insurance slot.
+// All uniquely verified other numbers must survive for manual completion,
+// but the row must not show a ceiling until the required field is supplied
+// and confirmed explicitly.
+const partial=batch.fromPage(10,{
+ year:2025,eligibleForManualTransfer:false,recipientName:"架空四郎",
+ candidates:{salaryGross:960000,salaryIncomeReference:310000,
+  deductionsReference:1012828}
+},2026);
+assert.equal(partial.label,"架空四郎");
+assert.equal(partial.sourceYear,2025);
+assert.equal(partial.candidates.socialInsurance,undefined);
+assert.equal(partial.candidates.salaryGross,960000);
+assert.equal(partial.sourceValid,false);
+partial.confirmed=true;partial.noExclusions=true;partial.forecastReviewed=true;
+batch.calculate(partial,win.FurusatoEngine,guard);
+assert.equal(partial.donationLimitYen,null);
+batch.edit(partial,"socialInsurance","0");
+assert.equal(partial.sourceValid,true);
+assert.equal(partial.confirmed,false,"Manual fill must revoke source confirmation");
+batch.calculate(partial,win.FurusatoEngine,guard);
+assert.equal(partial.status,"HOLD");
 dom.window.close();
 console.log("PUBLIC_BATCH_PER_PAGE_LOCAL_SAFETY_SYNTHETIC_PASS; no private slips; no deploy");
