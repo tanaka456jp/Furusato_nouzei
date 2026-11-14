@@ -26,7 +26,7 @@ if(!html.includes('name="robots" content="noindex,nofollow,noarchive"')||
  throw Error("PUBLIC_REVIEW_PRIVACY_CONTRACT_FAILED");
 const files=["index.html","style.css","app.js","about.html","privacy.html",
  "ocr.js","ocr-review.js","ocr-quality.js","ocr-layout.js","ocr-perspective.js","ocr-regions.js","ocr-image-header.js","pdf-compat.js",
- "batch-core.js","batch.js"];
+ "batch-name.js","batch-core.js","batch.js"];
 for(const name of files){
  const contents=fs.readFileSync(path.join(sourceDir,name),"utf8");
  if(!contents.trim())throw Error("MISSING_PUBLIC_SOURCE");
