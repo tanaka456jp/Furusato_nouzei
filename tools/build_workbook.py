@@ -676,6 +676,10 @@ def build(source, output):
          "警告：申告分離課税の所得区分を選択してください"),
         (f'AND(N({ref(ADVANCED,"B24")})>0,{ref(ADVANCED,"B33")}<>"なし")',
          "警告：特例・繰越損失を伴う分離課税は個別照合が必要です"),
+        (f'AND(ISNUMBER({ref(ADVANCED,"B14")}),ISNUMBER(B31),'
+         f'ABS({ref(ADVANCED,"B14")}-B31)>1,'
+         f'{ref(ADVANCED,"B20")}<>"VERIFIED_AFTER_CORRECTION")',
+         "警告：原票の所得控除合計と自動再計算額が異なります。原票と修正額を確認して読取内容の確認を行ってください"),
         (f'{ref(ADVANCED,"B20")}="REQUIRES_REVIEW"',
          "警告：源泉徴収票の読取内容を確認してください"),
         (unsupported, "警告：入力内容から個別照合が必要と判定しました"),
