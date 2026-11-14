@@ -427,7 +427,7 @@ Public Sub ImportWithholding()
     Set home = ThisWorkbook.Worksheets("操作画面")
     Set extra = ThisWorkbook.Worksheets("例外・分離課税")
     ResetSeparateInputs home
-    home.Range("B11:B12,B15:B16,B19:B25,B33:B36,D11:D23").ClearContents
+    home.Range("B11:B12,B15:B16,B19:B25,B33:B36,D11:D23,D25").ClearContents
     ' Leave independent pension, business and other income entries untouched.
     extra.Range("B13:B20").ClearContents
     extra.Range("B38:B39").ClearContents
@@ -588,6 +588,12 @@ Public Sub ReviewWithholding()
         End If
     End If
     Application.Calculate
+    If Len(Trim$(CStr(home.Range("D25").Value2))) > 0 Then
+        If MsgBox("所得控除合計は手入力上書き中です。" & vbCrLf & _
+           "社会保険料・扶養・本人所得などの変更に自動追随しません。" & vbCrLf & _
+           "自動算定額と原票額を確認し、上書きを維持しますか？", _
+           vbExclamation + vbYesNo + vbDefaultButton2) <> vbYes Then Exit Sub
+    End If
     For Each refCell In Array("B14", "B15", "B16", "B17")
         Select Case CStr(refCell)
             Case "B14": Set calcCell = home.Range("B14")
@@ -595,7 +601,9 @@ Public Sub ReviewWithholding()
             Case "B16": Set calcCell = home.Range("B17")
             Case "B17": Set calcCell = home.Range("B18")
         End Select
-        If IsNumeric(extra.Range(CStr(refCell)).Value2) Then
+        If IsNumeric(extra.Range(CStr(refCell)).Value2) And _
+           Not (CStr(refCell) = "B14" And _
+           Len(Trim$(CStr(home.Range("D25").Value2))) > 0) Then
             If Not IsNumeric(calcCell.Value2) Then
                 Err.Raise vbObjectError + 242, , "自動控除額を算定できません。"
             End If
@@ -660,7 +668,7 @@ Public Sub NewCase()
     MaskUnverifiedResults
     ResetSeparateInputs ThisWorkbook.Worksheets("操作画面")
     With ThisWorkbook.Worksheets("操作画面")
-        .Range("B11:B12,B15:B16,B19:B25,B33:B36,D11:D23").ClearContents
+        .Range("B11:B12,B15:B16,B19:B25,B33:B36,D11:D23,D25").ClearContents
         .Range("B11").Value2 = .Range("B4").Value2
         .Range("B25").Value2 = "なし"
         .Range("D22").Value2 = "該当なし"
