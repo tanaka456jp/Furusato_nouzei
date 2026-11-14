@@ -13,7 +13,7 @@ assert.equal(result.ads,"NOT_ENABLED");
 assert.equal(result.ocr,"LOCAL_ONLY_REVIEW");
 assert.equal(result.deployment,"NOT_RUN");
 for(const name of ["index.html","style.css","app.js","about.html","privacy.html",
- "engine.js","robots.txt","_headers", "ocr.js","batch.js","batch-core.js","ocr-review.js","ocr-quality.js","ocr-layout.js","ocr-regions.js","ocr-image-header.js","pdf-compat.js",
+ "engine.js","robots.txt","_headers", "ocr.js","batch.js","batch-name.js","batch-core.js","ocr-review.js","ocr-quality.js","ocr-layout.js","ocr-regions.js","ocr-image-header.js","pdf-compat.js",
  "vendor/tesseract/tesseract.min.js","vendor/tesseract/worker.min.js",
  "vendor/tesseract/lang/jpn.traineddata.gz","vendor/pdf.mjs","vendor/pdf.worker.mjs",
  "licenses/THIRD_PARTY_NOTICES.txt"])
