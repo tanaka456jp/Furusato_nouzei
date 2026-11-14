@@ -196,7 +196,7 @@
     render();
    }
    if(!stale())
-    say(doc.numPages+"ページを処理しました。各対象者の金額・年分と追加控除を個別に確認し、「一括試算」を押してください。");
+    say(doc.numPages+"ページを処理しました。受給者氏名、参照原票年分、対象年見込額と追加控除を個別に確認してください。");
   }catch(_){
    if(!stale())say("PDFを解析できません。1～20ページ、8MB以下、各ページ1人分か確認してください。数値は表示しません。");
   }finally{
@@ -250,9 +250,9 @@
   const guard=window.FurusatoEstimateGuard?.canDisplayEstimate;
   rows.forEach(row=>core.calculate(row,engine,guard));
   computed=true;render();
-  const allowed=rows.filter(row=>row.status==="概算").length;
+  const allowed=rows.filter(row=>row.status==="概算"||row.status==="前年参考概算").length;
   say("対象 "+rows.length+"件：概算 "+allowed+"件、HOLD "+(rows.length-allowed)+
-    "件。HOLDの金額は空欄です。氏名や会社名はOCRしていません。");
+    "件。前年資料は見込額としての確認が必要です。HOLDの金額は空欄です。");
  });
  function validOutput(){
   return computed&&!running&&rows.length>0;
