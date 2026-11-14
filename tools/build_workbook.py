@@ -18,6 +18,7 @@ INPUT = "源泉徴収票入力"
 RESIDENT = "住民税再計算"
 DETAIL = "計算根拠"
 ADVANCED = "例外・分離課税"
+BATCH = "一括試算一覧"
 SPLIT_ALLOC = "分離課税寄附控除"
 
 
@@ -42,6 +43,126 @@ def income_tax_progressive(taxable):
         f"IF({x}<=40000000,{x}*0.4-2796000,"
         f"{x}*0.45-4796000)))))),0))"
     )
+
+
+
+def create_batch_review(book):
+    """Review-only page/individual register. NO tax engine logic is replaced."""
+    sheet = book.create_sheet(BATCH)
+    sheet.sheet_view.showGridLines = False
+    sheet.sheet_view.zoomScale = 80
+    sheet.freeze_panes = "D7"
+    sheet.merge_cells("A1:J1")
+    sheet["A1"] = "ふるさと納税｜源泉徴収票PDFの複数人一括試算"
+    sheet["A1"].fill = PatternFill("solid", fgColor="163A56")
+    sheet["A1"].font = Font(name="Yu Gothic", size=16, bold=True, color="FFFFFF")
+    sheet.row_dimensions[1].height = 35
+    sheet.merge_cells("A2:J2")
+    sheet["A2"] = "原票年分と試算対象年を分離。例：2025年源泉票を参考に2026年の見込給与・控除を入力し、2026年税制で試算します。"
+    sheet["A2"].alignment = Alignment(wrap_text=True, vertical="center")
+    sheet.row_dimensions[2].height = 31
+    sheet.merge_cells("A3:J3")
+    sheet["A3"] = "受給者本人の氏名だけをPDFからB列へ自動転記します。読めない場合はB列に手入力してください。住所・勤務先・個人番号は取り込みません。個人情報を含む一覧の保存・印刷に注意してください。"
+    sheet["A3"].font = Font(name="Yu Gothic", size=10, color="8A3D28")
+    sheet["A3"].alignment = Alignment(wrap_text=True)
+    sheet.row_dimensions[3].height = 29
+    sheet.merge_cells("A5:J5")
+    sheet["A5"] = "原票年分はAX列、C列は試算対象年。C/D/K/L/M/N列を対象年見込額へ訂正（手入力値を優先） → H/I列を確認 → 自動再試算。未確認はHOLD。"
+    sheet["A5"].alignment = Alignment(wrap_text=True)
+    sheet.row_dimensions[5].height = 29
+    headers = [
+        "PDF頁", "氏名（源泉票から自動読取・訂正可）", "試算対象年", "支払金額",
+        "限度額の目安", "状態", "理由・確認事項",
+        "対象年見込額・控除条件を照合済", "源泉票外の追加所得・控除なしを確認", "申告方法",
+        "給与所得控除後", "所得控除合計", "源泉徴収税額", "社会保険料",
+        "生命保険控除", "地震保険控除", "住宅控除（適用）",
+        "住宅控除（可能）", "入居開始年", "住宅控除適用数",
+        "新生命保険料", "旧生命保険料", "介護医療保険料",
+        "新個人年金保険料", "旧個人年金保険料", "地震保険支払額",
+        "所得金額調整控除", "16歳未満人数", "特定親族人数",
+        "特定親族控除", "読取判定", "機械警告コード",
+        # All family source fields are non-identifying values. Keep them
+        # separate from the tax engine's mapped inputs for reconciliation.
+        "配偶者控除額（所得税）", "配偶者控除有（1/2）",
+        "老人配偶者有（1/2）", "配偶者の合計所得",
+        "特定扶養人数", "同居老親人数", "老人扶養総人数",
+        "一般扶養人数", "同居特別障害人数", "特別障害総人数",
+        "普通障害人数", "従たる配偶者（1/2）", "特定扶養従人数",
+        "老人扶養従人数", "一般扶養従人数", "特親従人数",
+        "非居住親族人数", "参照源泉票の年分（読取値）",
+    ]
+    assert len(headers) == 50
+    for index, header in enumerate(headers, 1):
+        cell = sheet.cell(6, index, header)
+        cell.fill = PatternFill("solid", fgColor="244D69")
+        cell.font = Font(name="Yu Gothic", bold=True, color="FFFFFF", size=10)
+        cell.alignment = Alignment(horizontal="center", vertical="center",
+                                   wrap_text=True)
+    sheet.row_dimensions[6].height = 44
+    widths = {
+        "A": 9, "B": 29, "C": 11, "D": 18, "E": 19, "F": 13,
+        "G": 50, "H": 24, "I": 20, "J": 15,
+    }
+    for col in "KLMNOPQRSTUVWXYZ":
+        widths[col] = 17
+    for col in ("AA", "AB", "AC", "AD", "AE"):
+        widths[col] = 17
+    for col in ("AG", "AH", "AI", "AJ", "AK", "AL", "AM", "AN",
+                "AO", "AP", "AQ", "AR", "AS", "AT", "AU", "AV", "AW"):
+        widths[col] = 17
+    widths["AF"] = 45
+    widths["AX"] = 22
+    for col, width in widths.items():
+        sheet.column_dimensions[col].width = width
+    for row in range(7, 27):
+        sheet.row_dimensions[row].height = 27
+        for col in range(1, 51):
+            cell = sheet.cell(row, col)
+            cell.font = Font(name="Yu Gothic", size=10, color="254052")
+            cell.alignment = Alignment(vertical="center")
+            if row % 2 == 0:
+                cell.fill = PatternFill("solid", fgColor="F4F8FB")
+            if col in (2, 3, 4, 8, 9, 10) or 11 <= col <= 30 or 33 <= col <= 49:
+                # All corrective tax fields are visibly editable. They are
+                # never overwritten by automatic Excel recalculation.
+                cell.fill = PatternFill("solid", fgColor="FFF6DB")
+                cell.protection = Protection(locked=False)
+            elif col in (5, 6, 7):
+                cell.fill = PatternFill("solid", fgColor="E7F1F7")
+            elif col == 50:
+                # Source document year is provenance, not user-forecast year.
+                cell.fill = PatternFill("solid", fgColor="E9EDF1")
+                cell.protection = Protection(locked=True)
+            if col == 2:
+                cell.number_format = "@"
+                cell.alignment = Alignment(horizontal="left", vertical="center")
+            if col in (4, 5) or 11 <= col <= 30 or 33 <= col <= 49:
+                cell.number_format = '#,##0'
+                cell.alignment = Alignment(horizontal="right", vertical="center")
+        sheet.cell(row, 7).alignment = Alignment(wrap_text=True,
+                                               vertical="center")
+    for column, choices in (
+        ("H", '"未確認,照合済"'),
+        ("I", '"未確認,未対応条件なし"'),
+        ("J", '"ワンストップ,確定申告"'),
+    ):
+        validation = DataValidation(type="list", formula1=choices,
+                                    allow_blank=False)
+        validation.error = "一覧から選択してください。"
+        validation.errorTitle = "入力値を確認"
+        validation.showErrorMessage = True
+        sheet.add_data_validation(validation)
+        validation.add(f"{column}7:{column}26")
+    sheet.auto_filter.ref = "A6:AX26"
+    sheet.sheet_properties.pageSetUpPr.fitToPage = True
+    sheet.page_setup.fitToWidth = 1
+    sheet.page_setup.fitToHeight = 0
+    sheet.page_setup.orientation = "landscape"
+    sheet.page_setup.paperSize = sheet.PAPERSIZE_A3
+    sheet.print_area = "A1:J26"
+    sheet.print_options.gridLines = False
+    sheet.sheet_state = "veryHidden"
+    return sheet
 
 
 def build(source, output):
@@ -70,6 +191,21 @@ def build(source, output):
     extra.page_setup.paperSize = extra.PAPERSIZE_A4
     extra.print_area = "A1:D25"
     original, withholding, resident = (book[name] for name in (ENGINE, INPUT, RESIDENT))
+
+    # Zero-yen spouse income must match the first legally valid income band.
+    # The frozen baseline uses a strict lower threshold (< D36/D37), which
+    # inadvertently omits the 0-yen first band. Preserve strict comparisons
+    # at every positive boundary to avoid counting adjacent bands twice.
+    for spouse_row in (36, 37):
+        for result_col in ("F", "H"):
+            address = f"{result_col}{spouse_row}"
+            old_floor = f'"<"&$D{spouse_row}'
+            first_band_floor = f'"<"&IF($D{spouse_row}=0,1,$D{spouse_row})'
+            existing = original[address].value
+            if not isinstance(existing, str) or existing.count(old_floor) != 1:
+                raise ValueError(f"Unexpected spouse tax-table formula: {address}")
+            original[address] = existing.replace(old_floor, first_band_floor)
+
 
     for view, widths in ((home, (33, 16, 32, 18)), (detail, (33, 16, 32, 18))):
         view.sheet_view.showGridLines = False
@@ -119,7 +255,7 @@ def build(source, output):
         home.add_data_validation(validation)
         validation.add(home[cell])
 
-    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.18.2 検証版")
+    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.18.9 検証版")
     bar(extra, 1, "追加所得・分離課税（所得年内で事前試算）")
     extra.merge_cells("A3:D3")
     extra["A3"] = "翌年度の住民税通知書は参照せず、所得年内の収入・経費・控除と法定税率表から計算します。"
@@ -158,13 +294,14 @@ def build(source, output):
         (36, "分離所得の控除前額（任意・限度判定）", None, None),
         (38, "特定親族の人数（源泉票G72・照合）", None, None),
         (39, "特定親族特別控除額（源泉票G74・照合）", None, None),
+        (40, "参照源泉票の年分（自動・試算対象年とは別）", None, None),
     )
     for row, label, initial, choices in extra_items:
         extra[f"A{row}"] = label
         extra[f"A{row}"].alignment = Alignment(wrap_text=True, vertical="center")
         extra[f"B{row}"] = initial
         extra.row_dimensions[row].height = 27
-        if row not in (4, 7, 19, 20, 22, 27, 28, 29, 30, 32, 34, 38, 39):
+        if row not in (4, 7, 19, 20, 22, 27, 28, 29, 30, 32, 34, 38, 39, 40):
             extra[f"B{row}"].fill = PatternFill("solid", fgColor="E2F2FF")
             extra[f"B{row}"].protection = Protection(locked=False)
             extra[f"B{row}"].number_format = '#,##0'
@@ -246,7 +383,7 @@ def build(source, output):
         extra[addr].protection = Protection(locked=True)
         extra[addr].alignment = Alignment(horizontal="right")
         extra[addr].number_format = "#,##0"
-    extra.print_area = "A1:D39"
+    extra.print_area = "A1:D40"
     home.row_dimensions[3].height = 28
     field("B4", "選択する所得年", "2026", ("2025", "2026"))
     home["C4"], home["D4"] = "適用中の所得年", "=" + ref("設定・税率", "B4")
@@ -649,6 +786,7 @@ def build(source, output):
         detail.row_dimensions[row].height = 32
     note(detail, 19, "分離課税所得B24は他の所得控除適用後の課税所得。源泉所得税額ではなく寄附前後の所得税額の差を用います。")
     detail.print_area = "A1:D19"
+    create_batch_review(book)
     for sheet in book:
         sheet.sheet_state = "visible" if sheet == home else "veryHidden"
         sheet.sheet_view.tabSelected = sheet == home

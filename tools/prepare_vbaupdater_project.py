@@ -14,6 +14,7 @@ from zipfile import ZipFile
 
 ROOT = Path(__file__).resolve().parents[1]
 CANONICAL_VBA = ROOT / "vba" / "TaxLawUpdater.bas"
+CANONICAL_BATCH_VBA = ROOT / "vba" / "BatchWithholding.bas"
 
 
 def checksum(path: Path) -> str:
@@ -35,18 +36,24 @@ def prepare(workbook: Path, destination: Path) -> dict:
     canonical = CANONICAL_VBA.read_text(encoding="utf-8-sig")
     if not canonical.startswith('Attribute VB_Name = "TaxLawUpdater"'):
         raise ValueError("Canonical VBA module declaration was not found")
+    batch_canonical = CANONICAL_BATCH_VBA.read_text(encoding="utf-8-sig")
+    if not batch_canonical.startswith('Attribute VB_Name = "BatchWithholding"'):
+        raise ValueError("Batch VBA module declaration missing")
     if destination.exists() or destination.is_symlink():
         raise FileExistsError("Refusing to replace an existing staging project")
     source_hash = checksum(workbook)
     vba_hash = checksum(CANONICAL_VBA)
+    batch_hash = checksum(CANONICAL_BATCH_VBA)
     destination.mkdir(parents=True, exist_ok=False)
     src = destination / "source" / "standard"
     target = destination / "target"
     src.mkdir(parents=True)
     target.mkdir()
     source_copy = src / "TaxLawUpdater.bas"
+    batch_source_copy = src / "BatchWithholding.bas"
     target_copy = target / "Furusato_nouzei.xlsm"
     shutil.copyfile(CANONICAL_VBA, source_copy)
+    shutil.copyfile(CANONICAL_BATCH_VBA, batch_source_copy)
     shutil.copyfile(workbook, target_copy)
     manifest = {
         "schemaVersion": "1.0",
@@ -61,6 +68,10 @@ def prepare(workbook: Path, destination: Path) -> dict:
             "type": "standard",
             "name": "TaxLawUpdater",
             "file": "standard/TaxLawUpdater.bas",
+        }, {
+            "type": "standard",
+            "name": "BatchWithholding",
+            "file": "standard/BatchWithholding.bas",
         }],
         "validation": {"compileAfterPush": False, "requireBackup": True},
     }
@@ -72,6 +83,8 @@ def prepare(workbook: Path, destination: Path) -> dict:
         raise RuntimeError("Original workbook / isolated copy checksum mismatch")
     if checksum(CANONICAL_VBA) != vba_hash or checksum(source_copy) != vba_hash:
         raise RuntimeError("Canonical VBA / isolated copy checksum mismatch")
+    if checksum(CANONICAL_BATCH_VBA) != batch_hash or checksum(batch_source_copy) != batch_hash:
+        raise RuntimeError("Batch VBA / isolated copy checksum mismatch")
     return {
         "schema": "furusato-vbaupdater-staging/v1",
         "status": "PREPARED_ONLY",
@@ -79,6 +92,8 @@ def prepare(workbook: Path, destination: Path) -> dict:
         "staged_workbook_sha256": checksum(target_copy),
         "canonical_vba_sha256": vba_hash,
         "staged_vba_sha256": checksum(source_copy),
+        "canonical_batch_vba_sha256": batch_hash,
+        "staged_batch_vba_sha256": checksum(batch_source_copy),
         "project_name": manifest["projectName"],
         "warning": "Isolated synthetic-review copy only; not a client workbook or production release.",
     }

@@ -19,6 +19,13 @@ $startedUtc = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
 function Assert-Value($actual, $expected, [string]$label) {
     if ($actual -cne $expected) { throw "$label expected [$expected], got [$actual]" }
 }
+function Assert-BlankTaxAmount($actual, [string]$label) {
+    # Excel COM Empty can be marshaled as null (not an empty string).
+    # Both represent truly blank cells; numeric zero is NOT blank.
+    if ($null -ne $actual -and [string]$actual -ne '') {
+        throw "$label expected an empty amount, got [$actual]"
+    }
+}
 function Assert-PrintConfiguration($sheet, [string]$label, [string]$rangePattern) {
     $page = $sheet.PageSetup
     $area = [string]$page.PrintArea
@@ -66,6 +73,15 @@ try {
     QA-Stage 'worksheet-handles-acquired'
     # This is a renamed test COPY, so bind its buttons to the test workbook.
     $excel.Run('TaxLawUpdater.BindButtons')
+    $excel.Run('BatchWithholding.BindButtons')
+    Assert-Value ([bool]($excel.Run('BatchWithholding.BatchReadyForTest'))) $true 'Batch VBA module installed'
+    $batchSheet = $book.Worksheets.Item('一括試算一覧')
+    Assert-Value $batchSheet.Visible 2 'Batch sheet is hidden until explicitly requested'
+    Assert-MacroAction ([string]$homeSheet.Buttons().Item('btnShowBatch').OnAction) 'FurusatoQA.xlsm!BatchWithholding.ShowBatch' 'Batch entry button ownership'
+    $excel.Run('BatchWithholding.ShowBatch')
+    Assert-Value $batchSheet.Visible -1 'Batch sheet visible after explicit opening'
+    $excel.Run('BatchWithholding.BatchReturnHome')
+    Assert-Value $batchSheet.Visible 2 'Batch sheet hidden after return'
     Assert-MacroAction ([string]$homeSheet.Buttons().Item('btnTaxLawUpdate').OnAction) 'FurusatoQA.xlsm!TaxLawUpdater.TaxLawUpdate' 'Main case macro ownership'
     QA-Stage 'initial-recalculate-start'
     $excel.Run('TaxLawUpdater.RecalculateCase')
@@ -152,6 +168,401 @@ try {
         Assert-Value $homeSheet.Range('B8').Value2 109000 "$year donation estimate"
     }
     QA-Stage 'synthetic-years-pass'
+
+    QA-Stage 'private-batch-import-invalid-path-start'
+    # The private local acceptance entry point must fail quietly on an
+    # invalid local source and never mutate the user's original workbook.
+    $invalidSource = Join-Path $dir ('does_not_exist_' + [Guid]::NewGuid().ToString('N') + '.pdf')
+    Assert-Value ([bool]($excel.Run('BatchWithholding.BatchImportLocalFile', $invalidSource))) $false 'Private batch rejects absent PDF without a dialog'
+    Assert-Value ([int]$excel.Worksheets.Item('一括試算一覧').Range('A7').Value2) 0 'Failed private import leaves batch list empty'
+    QA-Stage 'private-batch-import-invalid-path-pass'
+    QA-Stage 'synthetic-five-page-ascii-bridge-import-start'
+    # End-to-end VB parser + worksheet transfer using a fictional local
+    # bridge, generated in the disposable QA directory. No actual clients.
+    $bridgeFile = Join-Path $dir 'fictional_five_pages.tsv'
+    $fixtureLines = [Collections.Generic.List[string]]::new()
+    $fictionalNames = @('架空一郎','架空二郎','架空三郎','架空四郎','架空五郎')
+    for ($ordinal = 1; $ordinal -le 5; $ordinal++) {
+        $fixtureLines.Add("PAGE" + "`t" + [string]$ordinal)
+        $fixtureLines.Add("STATUS" + "`t" + $(if ($ordinal -eq 4) { "REQUIRES_REVIEW" } else { "READY_FOR_EXCEL_CROSSCHECK" }))
+        $fixtureLines.Add("YEAR" + "`t" + "2025")
+        $fixtureLines.Add("WARNINGS" + "`t" + $(if ($ordinal -eq 4) { "INCOMPLETE_OR_UNVERIFIED" } else { "" }))
+        $nameHex = -join ([Text.Encoding]::UTF8.GetBytes($fictionalNames[$ordinal-1]) | ForEach-Object { $_.ToString('X2') })
+        $fixtureLines.Add("NAME_UTF8_HEX" + "`t" + $nameHex)
+        $fixtureLines.Add("salary_gross" + "`t" + [string](5100000 + $ordinal * 100000))
+        $fixtureLines.Add("salary_reference" + "`t" + [string](3600000 + $ordinal * 90000))
+        $fixtureLines.Add("deductions_reference" + "`t" + "1400000")
+        $fixtureLines.Add("income_tax_withheld" + "`t" + "100000")
+        if ($ordinal -ne 4) { $fixtureLines.Add("social_insurance" + "`t" + "800000") }
+        $fixtureLines.Add("ENDPAGE" + "`t" + [string]$ordinal)
+    }
+    [IO.File]::WriteAllText($bridgeFile, ($fixtureLines -join "`n") + "`n",
+                            [System.Text.Encoding]::ASCII)
+    $batch = $book.Worksheets.Item('一括試算一覧')
+    $batch.Range('A7:AX26').ClearContents()
+    if (-not [bool]($excel.Run('BatchWithholding.BatchImportBridgeForTest', $bridgeFile))) {
+        $batchCode = [string]($excel.Run('BatchWithholding.BatchImportFailureCode'))
+        throw ('Valid fictional 5-page bridge failed through VBA (' + $batchCode + ')')
+    }
+    for ($row = 7; $row -le 11; $row++) {
+        Assert-Value $batch.Range('A'+$row).Value2 ([double]($row-6)) ('Bridge page '+($row-6))
+        Assert-Value $batch.Range('B'+$row).Value2 $fictionalNames[$row-7] ('Recipient name from safe UTF8 hex '+($row-6))
+        Assert-Value $batch.Range('AX'+$row).Value2 2025.0 ('Bridge reference slip year '+($row-6))
+        Assert-Value $batch.Range('C'+$row).Value2 2026.0 ('Bridge 2026 target donation year '+($row-6))
+        Assert-Value $batch.Range('F'+$row).Value2 'HOLD' ('Imported source held '+($row-6))
+        Assert-BlankTaxAmount $batch.Range('E'+$row).Value2 ('No automatic limit '+($row-6))
+    }
+    Assert-Value $batch.Range('AE10').Value2 'REQUIRES_REVIEW' 'Fourth page requires review'
+    Assert-BlankTaxAmount $batch.Range('N10').Value2 'Fourth page social insurance cannot be borrowed'
+    Assert-Value $batch.Range('AE11').Value2 'READY_FOR_EXCEL_CROSSCHECK' 'Fifth page independent'
+    $batch.Range('A7:AX26').ClearContents()
+    QA-Stage 'synthetic-five-page-ascii-bridge-import-pass'
+    QA-Stage 'synthetic-batch-restore-and-hold-start'
+    # Only fictional money amounts in a throwaway QA XLSM. No real PDF.
+    $batch = $book.Worksheets.Item('一括試算一覧')
+    $baseBefore = @{}
+    foreach ($addr in @('B4','B11','B12','B15','B16','B25','D22','D24')) {
+        $baseBefore[$addr] = [string]$homeSheet.Range($addr).Formula
+    }
+    $extraCase = $book.Worksheets.Item('例外・分離課税')
+    $extraBefore = @{}
+    foreach ($addr in @('B14','B15','B19','B20','B32','B40')) {
+        $extraBefore[$addr] = [string]$extraCase.Range($addr).Formula
+    }
+    $batch.Range('A7:AX26').ClearContents()
+    foreach ($row in @(7,8)) {
+        $batch.Range('A'+$row).Value2 = [double]($row-6)
+        $batch.Range('C'+$row).Value2 = 2026.0
+        $batch.Range('AX'+$row).Value2 = 2026.0
+        $batch.Range('D'+$row).Value2 = 7000000.0
+        $batch.Range('K'+$row).Value2 = 5200000.0
+        $batch.Range('L'+$row).Value2 = 1670000.0
+        $batch.Range('M'+$row).Value2 = 285800.0
+        $batch.Range('N'+$row).Value2 = 1000000.0
+        $batch.Range('AG'+$row).Value2 = 0.0
+        $batch.Range('AH'+$row).Value2 = 2.0
+        $batch.Range('AI'+$row).Value2 = 2.0
+        $batch.Range('AR'+$row).Value2 = 2.0
+        $batch.Range('AE'+$row).Value2 = 'READY_FOR_EXCEL_CROSSCHECK'
+        $batch.Range('AF'+$row).Value2 = ''
+        $batch.Range('J'+$row).Value2 = '確定申告'
+        $batch.Range('H'+$row).Value2 = '未確認'
+        $batch.Range('I'+$row).Value2 = '未確認'
+    }
+    # A valid fictional taxpayer gets an amount; an unverified taxpayer
+    # in the same PDF must never inherit the first person's attestation.
+    $batch.Range('H7').Value2 = '照合済'
+    $batch.Range('I7').Value2 = '未対応条件なし'
+    Assert-Value ([bool]($excel.Run('BatchWithholding.BatchCalculateForTest'))) $true 'Nonmodal batch calculation completed'
+    Assert-Value $batch.Range('E7').Value2 109000 'Independent synthetic page 1 estimate'
+    Assert-Value $batch.Range('F7').Value2 '概算' 'Page 1 calculation status'
+    Assert-BlankTaxAmount $batch.Range('E8').Value2 'Unconfirmed page 2 has no tax amount'
+    Assert-Value $batch.Range('F8').Value2 'HOLD' 'Page 2 remains HOLD'
+    foreach ($addr in $baseBefore.Keys) {
+        Assert-Value ([string]$homeSheet.Range($addr).Formula) $baseBefore[$addr] ('Original single-person input restored: '+$addr)
+    }
+    foreach ($addr in $extraBefore.Keys) {
+        Assert-Value ([string]$extraCase.Range($addr).Formula) $extraBefore[$addr] ('Original advanced input restored: '+$addr)
+    }
+    $batch.Range('C7').Value2 = 2025.0
+    Assert-Value ([bool]($excel.Run('BatchWithholding.BatchCalculateForTest'))) $true 'Year mismatch evaluated safely'
+    Assert-BlankTaxAmount $batch.Range('E7').Value2 'Mismatched-year page hides prior amount'
+    Assert-Value $batch.Range('F7').Value2 'HOLD' 'Mismatched-year page is HOLD'
+    $batch.Range('C7').Value2 = 2026.0
+    Assert-Value ([bool]($excel.Run('BatchWithholding.BatchCalculateForTest'))) $true 'Fresh batch restored for invalidation check'
+    Assert-Value $batch.Range('E7').Value2 109000 'Recovered page can calculate again'
+    $excel.Run('BatchWithholding.BatchInvalidate', $batch.Range('A7'))
+    Assert-BlankTaxAmount $batch.Range('E7').Value2 'Editing source page ID invalidates estimate'
+    Assert-Value $batch.Range('F7').Value2 'HOLD' 'Editing source page ID sets HOLD'
+    Assert-Value $batch.Range('H7').Value2 '未確認' 'Source edits revoke prior attestation'
+    Assert-Value $batch.Range('I7').Value2 '未確認' 'Source edits revoke applicability check'
+    $batch.Range('A7:AX26').ClearContents()
+    QA-Stage 'synthetic-five-page-batch-start'
+    # Synthetic-only five-page acceptance mirrors a missing social-insurance
+    # field in page 4 without embedding real source amounts or person names.
+    foreach ($row in @(7,8,9,10,11)) {
+        $batch.Range('A'+$row).Value2 = [double]($row-6)
+        $batch.Range('C'+$row).Value2 = 2026.0
+        $batch.Range('AX'+$row).Value2 = 2026.0
+        $batch.Range('D'+$row).Value2 = 7000000.0
+        $batch.Range('K'+$row).Value2 = 5200000.0
+        $batch.Range('L'+$row).Value2 = 1670000.0
+        $batch.Range('M'+$row).Value2 = 285800.0
+        $batch.Range('AG'+$row).Value2 = 0.0
+        $batch.Range('AH'+$row).Value2 = 2.0
+        $batch.Range('AI'+$row).Value2 = 2.0
+        $batch.Range('AR'+$row).Value2 = 2.0
+        if ($row -ne 10) {
+            $batch.Range('N'+$row).Value2 = 1000000.0
+            $batch.Range('AE'+$row).Value2 = 'READY_FOR_EXCEL_CROSSCHECK'
+        } else {
+            $batch.Range('AE'+$row).Value2 = 'REQUIRES_REVIEW'
+            $batch.Range('AF'+$row).Value2 = 'INCOMPLETE_OR_UNVERIFIED'
+        }
+        $batch.Range('J'+$row).Value2 = '確定申告'
+        $batch.Range('H'+$row).Value2 = '照合済'
+        $batch.Range('I'+$row).Value2 = '未対応条件なし'
+    }
+    Assert-Value ([bool]($excel.Run('BatchWithholding.BatchCalculateForTest'))) $true 'Synthetic five-person batch completed'
+    foreach ($row in @(7,8,9,11)) {
+        Assert-Value $batch.Range('E'+$row).Value2 109000 ('Synthetic page '+($row-6)+' estimated separately')
+        Assert-Value $batch.Range('F'+$row).Value2 '概算' ('Synthetic page '+($row-6)+' accepted status')
+    }
+    Assert-BlankTaxAmount $batch.Range('E10').Value2 'Missing social insurance page 4 must be HOLD'
+    Assert-Value $batch.Range('F10').Value2 'HOLD' 'Missing social insurance page 4 status'
+    $batch.Range('N10').Value2 = 1000000.0
+    # A manual correction must never silently inherit the old checks.
+    $batch.Range('H10').Value2 = '照合済'
+    $batch.Range('I10').Value2 = '未対応条件なし'
+    Assert-Value ([bool]($excel.Run('BatchWithholding.BatchCalculateForTest'))) $true 'Reverified page 4 accepted for recomputation'
+    Assert-Value $batch.Range('E10').Value2 109000 'Reverified synthetic fourth person receives own estimate'
+    QA-Stage 'batch-mortgage-source-regression-start'
+    # A standard residence-credit entry on a withholding slip is ordinary
+    # tax data, not an unsupported deduction. Page 2 has a fictional 2024
+    # occupancy year and one claim, with non-zero possible credit.
+    $batch.Range('Q8').Value2 = 0.0
+    $batch.Range('R8').Value2 = 5000.0
+    $batch.Range('S8').Value2 = 2024.0
+    $batch.Range('T8').Value2 = 1.0
+    $batch.Range('AE8').Value2 = 'READY_FOR_EXCEL_CROSSCHECK'
+    $batch.Range('AF8').Value2 = ''
+    $batch.Range('H8').Value2 = '照合済'
+    $batch.Range('I8').Value2 = '未対応条件なし'
+    Assert-Value ([bool]($excel.Run('BatchWithholding.BatchCalculateForTest'))) $true 'Ordinary mortgage batch calculation completed'
+    Assert-Value $batch.Range('F8').Value2 '概算' 'Source-documented mortgage must not be blanket-HOLD'
+    if ([double]$batch.Range('E8').Value2 -le 0) { throw 'Normal 2024 mortgage produced no estimate' }
+    # A previously missing mortgage field can be filled from the source,
+    # without remaining permanently blocked by its stale OCR warning.
+    $batch.Range('AE8').Value2 = 'REQUIRES_REVIEW'
+    $batch.Range('AF8').Value2 = 'MORTGAGE_APPLIED_CREDIT_MISSING;INCOMPLETE_OR_UNVERIFIED'
+    $batch.Range('H8').Value2 = '照合済'
+    $batch.Range('I8').Value2 = '未対応条件なし'
+    Assert-Value ([bool]($excel.Run('BatchWithholding.BatchCalculateForTest'))) $true 'Reconciled mortgage credit calculation completed'
+    Assert-Value $batch.Range('F8').Value2 '概算' 'Reconciled mortgage can calculate after verification'
+    # Multiple housing claims and older-year treatment require separate
+    # evidence and must stay HOLD rather than guessed from year alone.
+    $batch.Range('AF8').Value2 = 'MULTIPLE_MORTGAGE_CREDITS_REQUIRE_REVIEW;INCOMPLETE_OR_UNVERIFIED'
+    $batch.Range('H8').Value2 = '照合済'
+    $batch.Range('I8').Value2 = '未対応条件なし'
+    Assert-Value ([bool]($excel.Run('BatchWithholding.BatchCalculateForTest'))) $true 'Multiple mortgage review test completed'
+    Assert-Value $batch.Range('F8').Value2 'HOLD' 'Multiple residence credits require review'
+    Assert-BlankTaxAmount $batch.Range('E8').Value2 'No amount for unsupported multiple residence credits'
+    QA-Stage 'batch-mortgage-source-regression-pass'
+    $batch.Range('A7:AX26').ClearContents()
+    QA-Stage 'synthetic-five-page-batch-pass'
+    QA-Stage 'spouse-and-dependent-fail-closed-start'
+    # Taxpayer 2 has a family deduction that is present in the source slip
+    # but not yet carried through to resident-tax personal-deduction logic.
+    # A synthetic confirmed input MUST NOT produce an incorrect limit.
+    $batch.Range('A7').Value2 = 1.0
+    $batch.Range('C7').Value2 = 2026.0
+    $batch.Range('AX7').Value2 = 2026.0
+    $batch.Range('D7').Value2 = 7000000.0
+    $batch.Range('K7').Value2 = 5200000.0
+    $batch.Range('L7').Value2 = 1670000.0
+    $batch.Range('M7').Value2 = 285800.0
+    $batch.Range('N7').Value2 = 1000000.0
+    $batch.Range('J7').Value2 = '確定申告'
+    $batch.Range('H7').Value2 = '照合済'
+    $batch.Range('I7').Value2 = '未対応条件なし'
+    $batch.Range('AE7').Value2 = 'REQUIRES_REVIEW'
+    $batch.Range('AF7').Value2 = 'FAMILY_DEDUCTION_NOT_TRANSFERRED;INCOMPLETE_OR_UNVERIFIED'
+    Assert-Value ([bool]($excel.Run('BatchWithholding.BatchCalculateForTest'))) $true 'Family flag evaluated'
+    Assert-Value $batch.Range('F7').Value2 'HOLD' 'Unmapped spouse/dependent case HOLD'
+    Assert-BlankTaxAmount $batch.Range('E7').Value2 'Unmapped family cannot show donation estimate'
+    $batch.Range('A7:AX26').ClearContents()
+    QA-Stage 'spouse-and-dependent-fail-closed-pass'
+    QA-Stage 'batch-standard-family-automatic-calculation-start'
+    $batch.Range('A7:AX26').ClearContents()
+    foreach ($case in @('spouse','general')) {
+        $batch.Range('A7:AX26').ClearContents()
+        $batch.Range('A7').Value2 = 1.0
+        $batch.Range('C7').Value2 = 2026.0
+        $batch.Range('AX7').Value2 = 2026.0
+        $batch.Range('D7').Value2 = 7000000.0
+        $batch.Range('K7').Value2 = 5200000.0
+        $batch.Range('L7').Value2 = 2100000.0
+        $batch.Range('M7').Value2 = 220000.0
+        $batch.Range('N7').Value2 = 1000000.0
+        $batch.Range('J7').Value2 = '確定申告'
+        $batch.Range('H7').Value2 = '照合済'
+        $batch.Range('I7').Value2 = '未対応条件なし'
+        $batch.Range('AE7').Value2 = 'READY_FOR_EXCEL_CROSSCHECK'
+        $batch.Range('AF7').Value2 = ''
+        $batch.Range('AG7').Value2 = 0.0
+        $batch.Range('AH7').Value2 = 2.0
+        $batch.Range('AI7').Value2 = 2.0
+        $batch.Range('AR7').Value2 = 2.0
+        if ($case -eq 'spouse') {
+            # Regular year-end-adjusted spouse deduction, not spouse
+            # SPECIAL deduction; matching source applied tax amount.
+            $batch.Range('AG7').Value2 = 380000.0
+            $batch.Range('AH7').Value2 = 1.0
+            $batch.Range('AJ7').Value2 = 300000.0
+        } else {
+            $batch.Range('AN7').Value2 = 1.0
+        }
+        Assert-Value ([bool]($excel.Run('BatchWithholding.BatchCalculateForTest'))) $true ('Synthetic '+$case+' batch returned')
+        Assert-Value $batch.Range('F7').Value2 '概算' ('Supported '+$case+' should not be held')
+        $donation=[double]$batch.Range('E7').Value2
+        if ($donation -lt 2000.0) {
+            throw ('Supported '+$case+' yielded an invalid donation estimate')
+        }
+    }
+    $batch.Range('A7:AX26').ClearContents()
+    QA-Stage 'batch-standard-family-automatic-calculation-pass'
+
+    # Real Workbook_SheetChange acceptance: a manual correction revokes the
+    # earlier attestation and calculates THIS row again as soon as H/I are
+    # confirmed. Previous estimates for other people must not be altered.
+    QA-Stage 'batch-manual-edit-automatic-recalc-start'
+    $batch.Range('A7:AX26').ClearContents()
+    foreach ($row in @(7,8)) {
+        $batch.Range('A'+$row).Value2 = [double]($row-6)
+        $batch.Range('C'+$row).Value2 = 2026.0
+        $batch.Range('AX'+$row).Value2 = 2026.0
+        $batch.Range('D'+$row).Value2 = 7000000.0
+        $batch.Range('K'+$row).Value2 = 5200000.0
+        $batch.Range('L'+$row).Value2 = 1670000.0
+        $batch.Range('M'+$row).Value2 = 285800.0
+        $batch.Range('N'+$row).Value2 = 1000000.0
+        $batch.Range('AG'+$row).Value2 = 0.0
+        $batch.Range('AH'+$row).Value2 = 2.0
+        $batch.Range('AI'+$row).Value2 = 2.0
+        $batch.Range('AR'+$row).Value2 = 2.0
+        $batch.Range('AE'+$row).Value2 = 'READY_FOR_EXCEL_CROSSCHECK'
+        $batch.Range('AF'+$row).Value2 = ''
+        $batch.Range('J'+$row).Value2 = '確定申告'
+        $batch.Range('H'+$row).Value2 = '照合済'
+        $batch.Range('I'+$row).Value2 = '未対応条件なし'
+    }
+    Assert-Value ([bool]($excel.Run('BatchWithholding.BatchCalculateForTest'))) $true 'Two-row baseline calculation'
+    Assert-Value $batch.Range('E7').Value2 109000.0 'First source baseline estimate'
+    Assert-Value $batch.Range('E8').Value2 109000.0 'Second source baseline estimate'
+    # A 2025 reference slip is a valid starting point for a 2026 forecast:
+    # taxation uses the approved 2026 master and the revised 2026 inputs.
+    # The result must be distinguished from a same-year estimate.
+    QA-Stage 'previous-year-reference-2026-forecast-start'
+    $batch.Range('AX7').Value2 = 2025.0
+    Assert-Value ([bool]($excel.Run('BatchWithholding.BatchCalculateForTest'))) $true '2025 slip / 2026 target recalculation'
+    Assert-Value $batch.Range('C7').Value2 2026.0 '2026 forecast target is not overwritten with 2025'
+    Assert-Value $batch.Range('AX7').Value2 2025.0 '2025 source year is retained'
+    Assert-Value $batch.Range('F7').Value2 '前年参考概算' 'Previous-year result is explicitly provisional'
+    Assert-Value $batch.Range('E7').Value2 109000.0 '2026 tax engine handles previous-year source'
+    Assert-Value $batch.Range('F8').Value2 '概算' 'Same-year source remains ordinary estimate'
+    Assert-Value $batch.Range('E8').Value2 109000.0 'Other taxpayer unaffected by previous-year source'
+    $batch.Range('AX7').Value2 = 2024.0
+    Assert-Value ([bool]($excel.Run('BatchWithholding.BatchCalculateForTest'))) $true 'Old reference must be rejected'
+    Assert-Value $batch.Range('F7').Value2 'HOLD' 'Two-year-old reference requires manual review'
+    Assert-BlankTaxAmount $batch.Range('E7').Value2 'Old source cannot auto-estimate'
+    $batch.Range('AX7').Value2 = 2027.0
+    Assert-Value ([bool]($excel.Run('BatchWithholding.BatchCalculateForTest'))) $true 'Future source must be rejected'
+    Assert-Value $batch.Range('F7').Value2 'HOLD' 'Future source is not accepted'
+    $batch.Range('AX7').Value2 = 2026.0
+    Assert-Value ([bool]($excel.Run('BatchWithholding.BatchCalculateForTest'))) $true 'Same-year source restored'
+    Assert-Value $batch.Range('F7').Value2 '概算' 'Same-year result status restored'
+    QA-Stage 'previous-year-reference-2026-forecast-pass'
+    $eventsBefore = [bool]$excel.EnableEvents
+    # This is a disposable QA copy. The only real Excel event handler is the
+    # Workbook_SheetChange VBA installed by setup.ps1.
+    $excel.EnableEvents = $true
+    try {
+        # Re-enter the manually verified salary-income value; Excel fires an
+        # event even if the value is the same. Neither K nor L is overwritten.
+        $batch.Range('K7').Value2 = 5200000.0
+        Assert-BlankTaxAmount $batch.Range('E7').Value2 'Manual K7 correction immediately removes stale estimate'
+        Assert-Value $batch.Range('F7').Value2 'HOLD' 'K7 corrected row held until attested'
+        Assert-Value $batch.Range('H7').Value2 '未確認' 'Correction revokes source amount attestation'
+        Assert-Value $batch.Range('I7').Value2 '未確認' 'Correction revokes outside-income attestation'
+        Assert-Value $batch.Range('E8').Value2 109000.0 'Editing taxpayer one preserves taxpayer two'
+        Assert-Value $batch.Range('K7').Value2 5200000.0 'Manual salary income is preserved'
+        Assert-Value $batch.Range('L7').Value2 1670000.0 'Manual income deductions are preserved'
+        $batch.Range('H7').Value2 = '照合済'
+        Assert-BlankTaxAmount $batch.Range('E7').Value2 'H-only confirmation not enough for estimate'
+        $batch.Range('I7').Value2 = '未対応条件なし'
+        Assert-Value $batch.Range('F7').Value2 '概算' 'Final confirmation automatically recalculates'
+        Assert-Value $batch.Range('E7').Value2 109000.0 'Recalculation equals explicit batch button'
+        Assert-Value $batch.Range('E8').Value2 109000.0 'Confirmed taxpayer two remains intact'
+        # Reassigning the recipient's name must never retain an approval
+        # for the original person, even though the amounts are unchanged.
+        $batch.Range('B7').Value2 = '架空改姓'
+        Assert-BlankTaxAmount $batch.Range('E7').Value2 'Changing beneficiary name revokes old estimate'
+        Assert-Value $batch.Range('F7').Value2 'HOLD' 'Edited identity is held'
+        Assert-Value $batch.Range('H7').Value2 '未確認' 'Edited recipient requires fresh source confirmation'
+        Assert-Value $batch.Range('I7').Value2 '未確認' 'Edited recipient requires fresh condition confirmation'
+        Assert-Value $batch.Range('E8').Value2 109000.0 'Other beneficiary estimate survives a name change'
+        $batch.Range('H7').Value2 = '照合済'
+        $batch.Range('I7').Value2 = '未対応条件なし'
+        Assert-Value $batch.Range('E7').Value2 109000.0 'Reverified recipient name restores estimate'
+        # The source year and the approved tax table must agree. They are
+        # NEVER silently adjusted by the event handler.
+        $batch.Range('C7').Value2 = 2025.0
+        Assert-BlankTaxAmount $batch.Range('E7').Value2 'Year mismatch hides amount'
+        Assert-Value $batch.Range('F7').Value2 'HOLD' 'Year mismatch held'
+        Assert-Value $batch.Range('G7').Value2 '承認済み税制年と試算対象年が異なります' 'Visible mismatch explanation'
+        $batch.Range('C7').Value2 = 2026.0
+        Assert-Value $batch.Range('H7').Value2 '未確認' 'Year return does not auto-approve'
+        $batch.Range('H7').Value2 = '照合済'
+        $batch.Range('I7').Value2 = '未対応条件なし'
+        Assert-Value $batch.Range('E7').Value2 109000.0 'Fresh year verification recalculates'
+        # Dropping a required monetary field may NEVER reuse the earlier
+        # value or show a donation estimate, even after operator reapproval.
+        $batch.Range('N7').ClearContents()
+        $batch.Range('H7').Value2 = '照合済'
+        $batch.Range('I7').Value2 = '未対応条件なし'
+        Assert-BlankTaxAmount $batch.Range('E7').Value2 'Missing insurance remains blank'
+        Assert-Value $batch.Range('F7').Value2 'HOLD' 'Missing insurance remains HOLD'
+        Assert-Value $batch.Range('G7').Value2 '計算用の5金額に欠落または異常があります' 'Missing insurance explicit reason'
+        Assert-Value $batch.Range('E8').Value2 109000.0 'Unrelated taxpayer cannot be changed'
+    }
+    finally {
+        $excel.EnableEvents = $false
+        $batch.Range('A7:AX26').ClearContents()
+        $excel.EnableEvents = $eventsBefore
+    }
+    QA-Stage 'batch-manual-edit-automatic-recalc-pass'
+
+
+    # Regression: Excel must distinguish numeric zero from an empty spouse
+    # income cell. A regular spouse with income 0 still receives the normal
+    # 380k income-tax and 330k resident-tax deductions. Synthetic-only.
+    QA-Stage 'zero-income-spouse-tax-table-start'
+    $savedMasterYear = $settings.Range('B4').Value2
+    $savedHomeYear = $homeSheet.Range('B4').Value2
+    $savedIncomeYear = $homeSheet.Range('B11').Value2
+    $savedSalary = $homeSheet.Range('B12').Value2
+    $savedSpouse = $homeSheet.Range('D17').Value2
+    $savedElderSpouse = $homeSheet.Range('D18').Value2
+    try {
+        $settings.Range('B4').Value2 = 2025.0
+        $homeSheet.Range('B4').Value2 = 2025.0
+        $homeSheet.Range('B11').Value2 = 2025.0
+        $homeSheet.Range('B12').Value2 = 7600000.0
+        $homeSheet.Range('D18').ClearContents()
+        $calcSheet = $book.Worksheets.Item('ふるさと納税限度額計算')
+        foreach ($spouseIncome in @(0.0, 300000.0)) {
+            $homeSheet.Range('D17').Value2 = $spouseIncome
+            $excel.Run('TaxLawUpdater.RecalculateCase')
+            Assert-Value ([double]$calcSheet.Range('F36').Value2) 380000.0 ('Ordinary spouse income-tax deduction / ' + $spouseIncome)
+            Assert-Value ([double]$calcSheet.Range('H36').Value2) 330000.0 ('Ordinary spouse resident-tax deduction / ' + $spouseIncome)
+        }
+    }
+    finally {
+        $settings.Range('B4').Value2 = $savedMasterYear
+        $homeSheet.Range('B4').Value2 = $savedHomeYear
+        $homeSheet.Range('B11').Value2 = $savedIncomeYear
+        if ($null -eq $savedSalary) { $homeSheet.Range('B12').ClearContents() }
+        else { $homeSheet.Range('B12').Value2 = $savedSalary }
+        if ($null -eq $savedSpouse) { $homeSheet.Range('D17').ClearContents() }
+        else { $homeSheet.Range('D17').Value2 = $savedSpouse }
+        if ($null -eq $savedElderSpouse) { $homeSheet.Range('D18').ClearContents() }
+        else { $homeSheet.Range('D18').Value2 = $savedElderSpouse }
+        $excel.Run('TaxLawUpdater.RecalculateCase')
+    }
+    QA-Stage 'zero-income-spouse-tax-table-pass'
+
+    QA-Stage 'synthetic-batch-restore-and-hold-pass'
+
     # Regression: certified source subtotals are not invalid just because a
     # simplified entry screen omits special-dependent deduction components.
     # All values below are synthetic and must never contain taxpayer data.
@@ -530,6 +941,9 @@ try {
     Assert-Value $detail.Visible 2 'Calculation details remain hidden after reopen'
     $book.Save()
     $excel.Run('TaxLawUpdater.BindButtons')
+    $excel.Run('BatchWithholding.BindButtons')
+    Assert-Value ([bool]($excel.Run('BatchWithholding.BatchReadyForTest'))) $true 'Reopened batch macro ownership'
+    Assert-MacroAction ([string]$homeSheet.Buttons().Item('btnShowBatch').OnAction) 'FurusatoQA.xlsm!BatchWithholding.ShowBatch' 'Reloaded batch entry macro'
     Assert-MacroAction ([string]$homeSheet.Buttons().Item('btnTaxLawUpdate').OnAction) 'FurusatoQA.xlsm!TaxLawUpdater.TaxLawUpdate' 'Reloaded case macro ownership'
     if (-not $detail.PageSetup.PrintArea) { throw 'Calculation details lack print area' }
     QA-Stage 'all-acceptance-checks-pass'

@@ -1,0 +1,648 @@
+"use strict";
+/** Synthetic document ONLY. A DOM integration test, NOT real OCR accuracy. */
+const assert=require("node:assert/strict");
+const fs=require("node:fs"),path=require("node:path");
+const {JSDOM}=require("../../gas/node_modules/jsdom");
+const root=path.resolve(__dirname,"..");
+const dist=path.join(root,"dist");
+const html=fs.readFileSync(path.join(dist,"index.html"),"utf8");
+const script=function(name){return fs.readFileSync(path.join(dist,name),"utf8");};
+const text=[
+ "令和8年分 給与所得の源泉徴収票",
+ "支払金額 7,000,000円",
+ "給与所得控除後の金額 5,200,000円",
+ "所得控除の額の合計額 1,670,000円",
+ "社会保険料等の金額 1,000,000円"
+].join("\n");
+// Minimal binary headers for synthetic JPEG/PNG file objects.
+const pngHeader=Uint8Array.from([
+ 137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,4,176,0,0,3,32
+]);
+const jpegHeader=Uint8Array.from([
+ 255,216,255,224,0,4,1,1,255,192,0,7,8,3,32,4,176,255,218
+]);
+function syntheticRasterFile(name,type="image/png",size=1024){
+ return {name,type,size,slice(){
+  return {arrayBuffer:async()=>{
+   const data=type==="image/jpeg"?jpegHeader:pngHeader;
+   return data.buffer.slice(data.byteOffset,data.byteOffset+data.byteLength);
+  }};
+ }};
+}
+
+async function main(){
+ const dom=new JSDOM(html,{url:"https://offline-review.invalid/index.html",
+  runScripts:"outside-only"});
+ const win=dom.window,doc=win.document;
+ const form=doc.getElementById("calculator");
+ const file=doc.getElementById("slipFile");
+ const scan=doc.getElementById("slipScan");
+ const transfer=doc.getElementById("slipTransfer");
+ const check=doc.getElementById("slipConfirm");
+ assert.equal(check.disabled,true,"confirmation disabled until candidates appear");
+ let recognized=0,terminated=0,networkAttempts=0;
+ let holdRecognizer=false,releaseRecognition=null;
+ win.fetch=function(){networkAttempts++;throw Error("NETWORK_FORBIDDEN");};
+ win.createImageBitmap=async()=>({width:1200,height:800,close(){}});
+ win.HTMLCanvasElement.prototype.getContext=function(){
+   return {
+    fillStyle:"white",drawImage(){},fillRect(){},
+    getImageData(x,y,width,height){
+      const w=width||1200,h=height||800;
+      const data=new Uint8ClampedArray(w*h*4);
+      for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+        let i=(y*w+x)*4;
+        let v=(x%29<4||y%41<3)?38:247;
+        data[i]=data[i+1]=data[i+2]=v;data[i+3]=255;
+      }
+      return {data};
+    },
+    putImageData(){}
+   };
+ };
+ win.Tesseract={
+   OEM:{LSTM_ONLY:1},
+   createWorker:async(lang,oem,opts)=>{
+     assert.equal(lang,"jpn");
+     assert.equal(oem,1);
+     assert.equal(opts.workerBlobURL,false);
+     assert.equal(opts.cacheMethod,"none");
+     assert.ok(opts.workerPath.includes("/vendor/tesseract/worker.min.js"));
+     assert.ok(opts.langPath.includes("/vendor/tesseract/lang"));
+     return {
+       recognize:async()=>{
+         recognized++;
+         // The synthetic page-wide confidence is intentionally low:
+         // irrelevant identity/address text must not veto correct tax fields.
+         if(holdRecognizer)return await new Promise(resolve=>{
+           releaseRecognition=()=>resolve({data:{text:text,confidence:0}});
+         });
+         return {data:{text:text,confidence:0}};
+       },
+       terminate:async()=>{terminated++;}
+     };
+   }
+ };
+ win.eval(script("engine.js"));
+ win.eval(script("app.js"));
+ win.eval(script("ocr-review.js"));
+ win.eval(script("ocr-quality.js"));
+ win.eval(script("ocr-image-header.js"));
+ win.eval(script("ocr-perspective.js"));
+ win.eval(script("ocr.js"));
+ function field(name){return form.elements.namedItem(name);}
+ field("year").value="2026";
+ field("salaryGross").value="7000000";
+ field("socialInsurance").value="1000000";
+ function calc(){
+   form.dispatchEvent(new win.Event("submit",{bubbles:true,cancelable:true}));
+   return doc.getElementById("result");
+ }
+ Object.defineProperty(file,"files",{configurable:true,value:[syntheticRasterFile("synthetic-slip.png","image/png",1024)]});
+ field("acknowledgedExclusions").checked=true;
+ file.dispatchEvent(new win.Event("change",{bubbles:true}));
+ assert.equal(field("acknowledgedExclusions").checked,false,
+   "a new source must revoke a previous deductions review");
+ assert.equal(form.dataset.ocrReviewPending,"true");
+ assert.equal(doc.getElementById("result").hidden,true);
+ assert.equal(calc().className,"result hold");
+ assert.equal(transfer.disabled,true);
+ check.checked=true;
+ check.dispatchEvent(new win.Event("change",{bubbles:true}));
+ assert.equal(check.checked,false,"pre-approval is forbidden");
+ field("acknowledgedExclusions").checked=true;
+ scan.click();
+ assert.equal(field("acknowledgedExclusions").checked,false,
+   "reread must revoke deductions confirmation");
+ for(let i=0;i<100 && (scan.disabled||recognized<2);i++)
+   await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(scan.disabled,false);
+ assert.equal(recognized,2);
+ assert.equal(terminated,1);
+ assert.equal(transfer.disabled,false);
+ assert.equal(check.disabled,false);
+ assert.equal(check.checked,false);
+ assert.equal(field("salaryIncomeReference").value,"");
+ // Candidate exists, but a manual edit made before transfer must invalidate
+ // it without touching the user's newly typed value.
+ field("salaryGross").value="7100000";
+ field("salaryGross").dispatchEvent(new win.Event("input",{bubbles:true}));
+ assert.equal(field("salaryGross").value,"7100000");
+ assert.equal(transfer.disabled,true);
+ assert.equal(check.disabled,true);
+ assert.equal(form.dataset.ocrReviewPending,"true");
+ // The user may explicitly re-run OCR, then confirm a fresh candidate.
+ scan.click();
+ for(let i=0;i<100&&scan.disabled;i++)
+   await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(scan.disabled,false);
+ assert.equal(transfer.disabled,false);
+ transfer.click();
+ assert.equal(field("salaryIncomeReference").value,"");
+ field("acknowledgedExclusions").checked=true;
+ check.checked=true;
+ transfer.click();
+ assert.equal(field("acknowledgedExclusions").checked,false,
+   "new OCR amounts require a fresh exclusions review");
+ assert.equal(field("salaryGross").value,"7000000");
+ assert.equal(field("socialInsurance").value,"1000000");
+ assert.equal(field("salaryIncomeReference").value,"5200000");
+ assert.equal(field("deductionsReference").value,"1670000");
+ assert.equal(form.dataset.ocrYear,"2026");
+ assert.equal(form.dataset.ocrReviewPending,"false");
+ assert.equal(check.checked,false);
+ assert.equal(check.disabled,true);
+ assert.equal(transfer.disabled,true);
+ assert.equal(file.value,"");
+ assert.equal(calc().className,"result hold"); // exclusions not acknowledged
+ field("acknowledgedExclusions").checked=true;
+ assert.equal(calc().className,"result");
+ assert.match(calc().textContent,/109,000円/);
+ field("hasMortgage").checked=true;
+ field("hasMortgage").dispatchEvent(new win.Event("change",{bubbles:true}));
+ assert.equal(field("acknowledgedExclusions").checked,false,
+   "a changed mortgage flag must invalidate prior attestation");
+ assert.equal(doc.getElementById("result").hidden,true);
+
+ assert.equal(calc().className,"result hold");
+ assert.doesNotMatch(calc().textContent,/109,000円/);
+ // A tax-year change after field transfer must not silently retain an
+ // apparent source verification for a different tax year.
+ field("hasMortgage").checked=false;
+ field("year").value="2025";
+ field("year").dispatchEvent(new win.Event("change",{bubbles:true}));
+ assert.equal(form.dataset.ocrReviewPending,"true");
+ assert.equal(form.dataset.ocrYear,undefined);
+ assert.equal(transfer.disabled,true);
+ assert.equal(field("salaryIncomeReference").value,"");
+ assert.equal(calc().className,"result hold");
+ // Any later direct edit of an OCR-transferred amount invalidates the
+ // source attestation, so the previous amount is not silently reused.
+ // (This case is checked on a fresh transfer before resetting below.)
+ form.reset();
+ assert.equal(form.dataset.ocrYear,undefined);
+ assert.equal(form.dataset.ocrReviewPending,undefined);
+ assert.equal(field("salaryIncomeReference").value,"");
+ // A file swap WHILE the asynchronous OCR task is in flight must not
+ // re-enable transfer of the previous source's amounts.
+ Object.defineProperty(file,"files",{configurable:true,value:[syntheticRasterFile("older-synthetic.png","image/png",1024)]});
+ file.dispatchEvent(new win.Event("change",{bubbles:true}));
+ holdRecognizer=true;
+ let oldCount=recognized;
+ scan.click();
+ for(let i=0;i<100&&!releaseRecognition;i++)
+   await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(recognized,oldCount+1);
+ const oldRelease=releaseRecognition;releaseRecognition=null;
+ const stoppedBeforeSwap=terminated;
+ Object.defineProperty(file,"files",{configurable:true,value:[syntheticRasterFile("newer-synthetic.png","image/png",1024)]});
+ file.dispatchEvent(new win.Event("change",{bubbles:true}));
+ assert.equal(form.dataset.ocrReviewPending,"true");
+ for(let i=0;i<20&&terminated===stoppedBeforeSwap;i++)
+   await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(terminated,stoppedBeforeSwap+1,
+   "source swap must request immediate worker shutdown without waiting for recognize()");
+ assert.equal(scan.disabled,true,
+   "overlapping scans remain locked until cancelled run actually finishes");
+ holdRecognizer=false;
+ oldRelease();
+ for(let i=0;i<100 && scan.disabled;i++)
+   await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(scan.disabled,false);
+ assert.equal(recognized,oldCount+1,
+   "cancelled old file must not run a second full-page OCR pass");
+ assert.equal(transfer.disabled,true);
+ assert.equal(field("salaryIncomeReference").value,"");
+ assert.equal(doc.getElementById("slipReview").textContent.includes("older-synthetic"),false);
+ holdRecognizer=false;
+ // A manual monetary edit while the first OCR pass is still pending must
+ // invalidate the late answer, even if both recognitions agree afterward.
+ holdRecognizer=true;
+ releaseRecognition=null;
+ const duringManualBefore=recognized;
+ scan.click();
+ for(let i=0;i<100&&!releaseRecognition;i++)
+   await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(recognized,duringManualBefore+1);
+ const releasePendingRecognition=releaseRecognition;
+ releaseRecognition=null;
+ field("salaryGross").value="7150000";
+ const stoppedBeforeManual=terminated;
+ field("salaryGross").dispatchEvent(new win.Event("input",{bubbles:true}));
+ assert.equal(form.dataset.ocrReviewPending,"true");
+ assert.equal(transfer.disabled,true);
+ for(let i=0;i<20&&terminated===stoppedBeforeManual;i++)
+   await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(terminated,stoppedBeforeManual+1,
+   "manual edit must interrupt stale recognition, not wait for it to return");
+ holdRecognizer=false;
+ releasePendingRecognition();
+ for(let i=0;i<100&&scan.disabled;i++)
+   await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(scan.disabled,false);
+ assert.equal(recognized,duringManualBefore+1,
+   "an edit during the first pass must stop subsequent OCR passes");
+ assert.equal(field("salaryGross").value,"7150000");
+ assert.equal(transfer.disabled,true);
+ // A real worker often rejects recognize() immediately when terminate()
+ // is requested. Simulate that to prove no external test-release is needed.
+ // Old candidates stay blocked while the worker is interrupted.
+ form.reset();
+ field("year").value="2026";
+ Object.defineProperty(file,"files",{configurable:true,value:[
+  syntheticRasterFile("synthetic-immediate-terminate.png","image/png",1024)
+ ]});
+ file.dispatchEvent(new win.Event("change",{bubbles:true}));
+ const factoryBeforeInterrupt=win.Tesseract.createWorker;
+ let interruptReject=null,interruptRecognitions=0,interruptStops=0;
+ win.Tesseract.createWorker=async()=>({
+  recognize:()=>{
+   interruptRecognitions++;
+   return new Promise((resolve,reject)=>{interruptReject=reject;});
+  },
+  terminate:async()=>{
+   interruptStops++;
+   if(interruptReject)interruptReject(Error("SYNTHETIC_WORKER_ABORTED"));
+  }
+ });
+ try{
+  scan.click();
+  for(let i=0;i<100&&!interruptReject;i++)
+   await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(interruptRecognitions,1);
+  Object.defineProperty(file,"files",{configurable:true,value:[
+   syntheticRasterFile("synthetic-after-interrupt.png","image/png",1024)
+  ]});
+  file.dispatchEvent(new win.Event("change",{bubbles:true}));
+  for(let i=0;i<100&&scan.disabled;i++)
+   await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(scan.disabled,false,
+   "interrupted recognize must settle and release busy state");
+  assert.equal(interruptStops,1,"stale worker must terminate exactly once");
+  assert.equal(interruptRecognitions,1,"interrupted job must skip follow-up OCR");
+  assert.equal(transfer.disabled,true);
+  assert.equal(form.dataset.ocrReviewPending,"true");
+  assert.equal(calc().className,"result hold");
+ }finally{
+  win.Tesseract.createWorker=factoryBeforeInterrupt;
+ }
+ // Reset must invalidate any old source data even when no result exists.
+ form.reset();
+ assert.equal(form.dataset.ocrReviewPending,undefined);
+ assert.equal(transfer.disabled,true);
+ // A cancelled second file chooser must NOT silently restore the earlier
+ // source amounts and permit a new estimate on the old income figures.
+ field("year").value="2026";
+ Object.defineProperty(file,"files",{configurable:true,value:[syntheticRasterFile("synthetic-replacement.png","image/png",1024)]});
+ file.dispatchEvent(new win.Event("change",{bubbles:true}));
+ scan.click();
+ for(let i=0;i<100&&(scan.disabled||recognized<oldCount+4);i++)
+   await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(scan.disabled,false);
+ assert.equal(transfer.disabled,false);
+ check.checked=true;
+ transfer.click();
+ assert.equal(field("salaryGross").value,"7000000");
+ Object.defineProperty(file,"files",{configurable:true,value:[]});
+ file.dispatchEvent(new win.Event("change",{bubbles:true}));
+ assert.equal(form.dataset.ocrReviewPending,"true");
+ assert.equal(field("salaryGross").value,"");
+ assert.equal(field("socialInsurance").value,"");
+ assert.equal(field("salaryIncomeReference").value,"");
+ assert.equal(field("deductionsReference").value,"");
+ field("acknowledgedExclusions").checked=true;
+ assert.equal(calc().className,"result hold");
+ // Safari compatibility: some implementations expose createImageBitmap
+ // but reject a JPEG or imageOrientation option. Native <img> decoding is
+ // allowed, is local-only, and still goes through the same OCR/quality gates.
+ let revoked=0,objectUrls=0;
+ const oldBitmap=win.createImageBitmap,oldImage=win.Image;
+ const oldMakeUrl=win.URL.createObjectURL,oldRevokeUrl=win.URL.revokeObjectURL;
+ win.createImageBitmap=async()=>{throw Error("SYNTHETIC_BITMAP_DECODE_REJECTED");};
+ win.URL.createObjectURL=()=>{objectUrls++;return "blob:offline-synthetic-jpeg";};
+ win.URL.revokeObjectURL=()=>{revoked++;};
+ win.Image=class SyntheticLocalImage{
+   constructor(){this.naturalWidth=1200;this.naturalHeight=800;}
+   set src(url){
+     assert.match(url,/^blob:offline-synthetic-jpeg$/);
+     Promise.resolve().then(()=>this.onload());
+   }
+ };
+ try{
+   Object.defineProperty(file,"files",{configurable:true,value:[syntheticRasterFile("synthetic-safari.jpg","image/jpeg",1024)]});
+   file.dispatchEvent(new win.Event("change",{bubbles:true}));
+   const beforeFallback=recognized;
+   scan.click();
+   for(let i=0;i<100&&(scan.disabled||recognized<beforeFallback+2);i++)
+     await new Promise(resolve=>setImmediate(resolve));
+   assert.equal(scan.disabled,false);
+   assert.equal(recognized,beforeFallback+2);
+   assert.equal(transfer.disabled,false);
+   assert.equal(objectUrls,1);
+   assert.equal(revoked,1);
+   assert.equal(networkAttempts,0);
+ }finally{
+   win.createImageBitmap=oldBitmap;
+   win.Image=oldImage;
+   win.URL.createObjectURL=oldMakeUrl;
+   win.URL.revokeObjectURL=oldRevokeUrl;
+ }
+ // The Safari fallback yielded a manually gated OCR candidate. Transferring
+ // it, then editing one amount invalidates the source attestation, but must
+ // not lose provenance of the OTHER three old OCR values.
+ check.checked=true;
+ transfer.click();
+ assert.equal(form.dataset.ocrYear,"2026");
+ assert.equal(field("socialInsurance").value,"1000000");
+ field("salaryGross").value="7150000";
+ field("salaryGross").dispatchEvent(new win.Event("input",{bubbles:true}));
+ assert.equal(form.dataset.ocrYear,"2026","manual correction retains original reference year");
+ assert.equal(form.dataset.ocrReviewPending,"true");
+ assert.equal(form.dataset.ocrManualReviewRequired,"true");
+ assert.equal(field("correctedSourceReviewed").checked,false);
+ Object.defineProperty(file,"files",{configurable:true,value:[syntheticRasterFile("replacement-after-manual-edit.png","image/png",1024)]});
+ file.dispatchEvent(new win.Event("change",{bubbles:true}));
+ assert.equal(field("salaryGross").value,"7150000"); // manual edit retained
+ assert.equal(field("socialInsurance").value,""); // stale OCR removed
+ assert.equal(field("salaryIncomeReference").value,"");
+ assert.equal(field("deductionsReference").value,"");
+ assert.equal(form.dataset.ocrReviewPending,"true");
+ // Completely manual reference fields are unrelated to a cancelled OCR
+ // picker; they must never be silently erased by clearReview().
+ form.reset();
+ field("salaryIncomeReference").value="5100000";
+ field("deductionsReference").value="1650000";
+ Object.defineProperty(file,"files",{configurable:true,value:[syntheticRasterFile("manual-reference-preservation.png","image/png",1024)]});
+ file.dispatchEvent(new win.Event("change",{bubbles:true}));
+ assert.equal(field("salaryIncomeReference").value,"5100000");
+ assert.equal(field("deductionsReference").value,"1650000");
+ Object.defineProperty(file,"files",{configurable:true,value:[]});
+ file.dispatchEvent(new win.Event("change",{bubbles:true}));
+ assert.equal(field("salaryIncomeReference").value,"5100000");
+ assert.equal(field("deductionsReference").value,"1650000");
+ assert.equal(form.dataset.ocrReviewPending,"true");
+ // Cancelling after a selected (but unconfirmed) OCR file must keep HOLD
+ // even if the user finishes filling all nominally required manual fields.
+ field("year").value="2026";
+ field("salaryGross").value="7000000";
+ field("socialInsurance").value="1000000";
+ field("acknowledgedExclusions").checked=true;
+ assert.equal(calc().className,"result hold");
+ assert.doesNotMatch(calc().textContent,/109,000円/);
+ // A cancelled file selection can leave NO selected file and NO transferred
+ // values, but the OCR review hold must survive year changes both ways.
+ field("year").value="2025";
+ field("year").dispatchEvent(new win.Event("change",{bubbles:true}));
+ assert.equal(file.files.length,0);
+ assert.equal(form.dataset.ocrReviewPending,"true");
+ assert.equal(field("salaryGross").value,"7000000");
+ assert.equal(field("socialInsurance").value,"1000000");
+ field("acknowledgedExclusions").checked=true;
+ assert.equal(calc().className,"result hold");
+ assert.doesNotMatch(calc().textContent,/寄附上限額の概算/);
+ field("year").value="2026";
+ field("year").dispatchEvent(new win.Event("change",{bubbles:true}));
+ assert.equal(form.dataset.ocrReviewPending,"true");
+ field("acknowledgedExclusions").checked=true;
+ assert.equal(calc().className,"result hold");
+ // An explicit reset, not year toggling, is needed to leave OCR review.
+ form.reset();
+ field("year").value="2026";
+ field("salaryGross").value="7000000";
+ field("socialInsurance").value="1000000";
+ field("acknowledgedExclusions").checked=true;
+ assert.equal(form.dataset.ocrReviewPending,undefined);
+ assert.equal(calc().className,"result");
+ // After a fresh OCR transfer, manual edits invalidate the source year.
+ // Switching the income year *again* must still require source review;
+ // otherwise it could be mistaken for a purely manually entered record.
+ form.reset();
+ field("year").value="2026";
+ Object.defineProperty(file,"files",{configurable:true,value:[
+   syntheticRasterFile("synthetic-year-after-edit.png","image/png",1024)
+ ]});
+ file.dispatchEvent(new win.Event("change",{bubbles:true}));
+ scan.click();
+ for(let i=0;i<100&&scan.disabled;i++)
+   await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(scan.disabled,false);
+ assert.equal(transfer.disabled,false);
+ check.checked=true;
+ transfer.click();
+ assert.equal(form.dataset.ocrYear,"2026");
+ assert.equal(field("socialInsurance").value,"1000000");
+ field("salaryGross").value="7150000";
+ field("salaryGross").dispatchEvent(new win.Event("input",{bubbles:true}));
+ assert.equal(form.dataset.ocrYear,"2026","manual correction retains original reference year");
+ assert.equal(form.dataset.ocrReviewPending,"true");
+ assert.equal(form.dataset.ocrManualReviewRequired,"true");
+ assert.equal(field("correctedSourceReviewed").checked,false);
+ // At this point fileInput was cleared on transfer; the old guard looked
+ // only at dataset.ocrYear and the file chooser and silently un-HOLDed.
+ assert.equal(file.value,"");
+ field("year").value="2025";
+ field("year").dispatchEvent(new win.Event("change",{bubbles:true}));
+ assert.equal(form.dataset.ocrReviewPending,"true");
+ assert.equal(field("salaryGross").value,"7150000"); // edited input retained
+ assert.equal(field("socialInsurance").value,""); // old OCR source removed
+ assert.equal(field("salaryIncomeReference").value,"");
+ assert.equal(field("deductionsReference").value,"");
+ // Header claims 1200x800, browser bitmap claims 20000x800.
+ const beforeCorrupt=recognized;
+ const normalBitmap=win.createImageBitmap;
+ let closedCorrupt=0;
+ win.createImageBitmap=async()=>({width:20000,height:800,
+   close(){closedCorrupt++;}});
+ Object.defineProperty(file,"files",{configurable:true,value:[
+   syntheticRasterFile("synthetic-size-mismatch.png","image/png",1024)
+ ]});
+ file.dispatchEvent(new win.Event("change",{bubbles:true}));
+ scan.click();
+ for(let i=0;i<100&&scan.disabled;i++)
+   await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(scan.disabled,false);
+ assert.equal(transfer.disabled,true);
+ assert.equal(check.disabled,true);
+ assert.equal(recognized,beforeCorrupt);
+ assert.equal(closedCorrupt,1);
+ assert.equal(form.dataset.ocrReviewPending,"true");
+ win.createImageBitmap=normalBitmap;
+ field("socialInsurance").value="1000000";
+ field("acknowledgedExclusions").checked=true;
+ assert.equal(calc().className,"result hold");
+ // Async OCR may complete AFTER a cancelled source selection. Its late
+ // result must not clear HOLD or restore an old candidate.
+ form.reset();
+ field("year").value="2026";
+ field("salaryGross").value="7000000";
+ field("socialInsurance").value="1000000";
+ field("acknowledgedExclusions").checked=true;
+ Object.defineProperty(file,"files",{configurable:true,value:[
+   syntheticRasterFile("synthetic-cancel-in-flight.png","image/png",1024)
+ ]});
+ file.dispatchEvent(new win.Event("change",{bubbles:true}));
+ holdRecognizer=true;
+ releaseRecognition=null;
+ const cancelBefore=recognized;
+ scan.click();
+ for(let i=0;i<100&&!releaseRecognition;i++)
+   await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(recognized,cancelBefore+1);
+ const finishCancelled=releaseRecognition;
+ releaseRecognition=null;
+ Object.defineProperty(file,"files",{configurable:true,value:[]});
+ file.dispatchEvent(new win.Event("change",{bubbles:true}));
+ assert.equal(form.dataset.ocrReviewPending,"true");
+ assert.equal(calc().className,"result hold");
+ holdRecognizer=false;
+ finishCancelled();
+ for(let i=0;i<100&&scan.disabled;i++)
+   await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(scan.disabled,false);
+ assert.equal(recognized,cancelBefore+1,
+   "cancellation must stop after the currently running OCR recognition");
+ assert.equal(transfer.disabled,true);
+ assert.equal(check.disabled,true);
+ assert.equal(form.dataset.ocrReviewPending,"true");
+ assert.equal(calc().className,"result hold");
+ // A failed worker.terminate() must not prevent the OCR source canvas or
+ // the high-contrast intermediate canvas from being released.
+ form.reset();
+ field("year").value="2026";
+ Object.defineProperty(file,"files",{configurable:true,value:[
+   syntheticRasterFile("synthetic-worker-exit-error.png","image/png",1024)
+ ]});
+ file.dispatchEvent(new win.Event("change",{bubbles:true}));
+ const originalCreate=doc.createElement.bind(doc);
+ const createdCanvases=[];
+ const originalWorkerFactory=win.Tesseract.createWorker;
+ let failedTerminateCount=0;
+ doc.createElement=function(tag,options){
+   const element=originalCreate(tag,options);
+   if(tag==="canvas")createdCanvases.push(element);
+   return element;
+ };
+ win.Tesseract.createWorker=async()=>({
+   recognize:async()=>({data:{text,confidence:98}}),
+   terminate:async()=>{failedTerminateCount++;throw Error("SYNTHETIC_WORKER_TERMINATION_FAILURE");}
+ });
+ try{
+   scan.click();
+   for(let i=0;i<100&&scan.disabled;i++)
+     await new Promise(resolve=>setImmediate(resolve));
+   assert.equal(scan.disabled,false);
+   assert.equal(failedTerminateCount,1);
+   assert.ok(createdCanvases.length>=2);
+   for(const canvas of createdCanvases){
+     assert.equal(canvas.width,0,"canvas retained after failed worker exit");
+     assert.equal(canvas.height,0,"canvas retained after failed worker exit");
+   }
+   assert.equal(transfer.disabled,true);
+   assert.equal(check.disabled,true);
+   assert.equal(form.dataset.ocrReviewPending,"true");
+ }finally{
+   doc.createElement=originalCreate;
+   win.Tesseract.createWorker=originalWorkerFactory;
+ }
+ // A reread with no file AFTER a completed transfer must invalidate
+ // the old source. It must not resurrect an estimate when exclusions are
+ // checked again. A reset intentionally restores normal manual input.
+ form.reset();
+ field("year").value="2026";
+ Object.defineProperty(file,"files",{configurable:true,value:[
+   syntheticRasterFile("synthetic-before-empty-retry.png","image/png",1024)
+ ]});
+ file.dispatchEvent(new win.Event("change",{bubbles:true}));
+ scan.click();
+ for(let i=0;i<100&&scan.disabled;i++)
+   await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(scan.disabled,false);
+ assert.equal(transfer.disabled,false);
+ check.checked=true;
+ transfer.click();
+ assert.equal(form.dataset.ocrYear,"2026");
+ assert.equal(field("salaryGross").value,"7000000");
+ Object.defineProperty(file,"files",{configurable:true,value:[]});
+ field("acknowledgedExclusions").checked=true;
+ assert.equal(calc().className,"result");
+ scan.click(); // no file: invalid retry
+ assert.equal(scan.disabled,false);
+ assert.equal(form.dataset.ocrYear,undefined);
+ assert.equal(form.dataset.ocrReviewPending,"true");
+ assert.equal(field("salaryGross").value,"");
+ assert.equal(field("socialInsurance").value,"");
+ assert.equal(field("salaryIncomeReference").value,"");
+ assert.equal(field("deductionsReference").value,"");
+ assert.equal(field("acknowledgedExclusions").checked,false);
+ assert.equal(transfer.disabled,true);
+ assert.equal(check.disabled,true);
+ field("salaryGross").value="7000000";
+ field("socialInsurance").value="1000000";
+ field("acknowledgedExclusions").checked=true;
+ assert.equal(calc().className,"result hold");
+ assert.doesNotMatch(calc().textContent,/109,000円/);
+ form.reset();
+ field("year").value="2026";
+ field("salaryGross").value="7000000";
+ field("socialInsurance").value="1000000";
+ field("acknowledgedExclusions").checked=true;
+ assert.equal(form.dataset.ocrReviewPending,undefined);
+ assert.equal(calc().className,"result",
+   "explicit reset may return to regular manual input");
+ // A file picker can issue cancel but no change. Reject old candidates.
+ Object.defineProperty(file,"files",{configurable:true,value:[
+   syntheticRasterFile("synthetic-cancel-event.png","image/png",1024)
+ ]});
+ file.dispatchEvent(new win.Event("change",{bubbles:true}));
+ scan.click();
+ for(let i=0;i<100&&scan.disabled;i++)
+   await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(scan.disabled,false);
+ assert.equal(transfer.disabled,false);
+ assert.equal(check.disabled,false);
+ check.checked=true;
+ file.dispatchEvent(new win.Event("cancel",{bubbles:true}));
+ assert.equal(transfer.disabled,true);
+ assert.equal(check.checked,false);
+ assert.equal(check.disabled,true);
+ assert.equal(form.dataset.ocrReviewPending,"true");
+ assert.equal(calc().className,"result hold");
+ assert.doesNotMatch(doc.getElementById("slipReview").textContent,
+   /項目候補を抽出しました/);
+ // Without change, the still-selected file can be reread, but consent
+ // must be explicitly renewed for the fresh candidate.
+ const beforeCancelRetry=recognized;
+ scan.click();
+ for(let i=0;i<100&&scan.disabled;i++)
+   await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(scan.disabled,false);
+ assert.equal(recognized,beforeCancelRetry+2);
+ assert.equal(transfer.disabled,false);
+ assert.equal(check.checked,false);
+ check.checked=true;
+ transfer.click();
+ assert.equal(form.dataset.ocrYear,"2026");
+ assert.equal(field("salaryGross").value,"7000000");
+ Object.defineProperty(file,"files",{configurable:true,value:[]});
+ file.dispatchEvent(new win.Event("cancel",{bubbles:true}));
+ assert.equal(form.dataset.ocrYear,undefined);
+ assert.equal(form.dataset.ocrReviewPending,"true");
+ assert.equal(field("salaryGross").value,"");
+ assert.equal(field("socialInsurance").value,"");
+ assert.equal(transfer.disabled,true);
+ // No source and no file: cancel must not break a purely manual entry.
+ form.reset();
+ field("year").value="2026";
+ field("salaryGross").value="7000000";
+ field("socialInsurance").value="1000000";
+ field("acknowledgedExclusions").checked=true;
+ file.dispatchEvent(new win.Event("cancel",{bubbles:true}));
+ assert.equal(form.dataset.ocrReviewPending,undefined);
+ assert.equal(field("salaryGross").value,"7000000");
+ assert.equal(field("acknowledgedExclusions").checked,true);
+ assert.equal(calc().className,"result");
+ assert.equal(networkAttempts,0);
+ dom.window.close();
+ console.log("PUBLIC_OCR_MANUAL_TRANSFER_DOM_PASS; synthetic; no network; not accuracy proof");
+}
+main().catch(error=>{console.error(error);process.exitCode=1;});

@@ -1,0 +1,5 @@
+# Never commit generated OCR language models, WASM binaries or personal slips.
+node_modules/
+dist/
+.private/
+*.log

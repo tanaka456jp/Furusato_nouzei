@@ -16,6 +16,7 @@ def package(destination, reader=None):
             "START_SETUP.cmd": ROOT / "tools/START_SETUP.cmd",
             "setup.ps1": ROOT / "tools/setup.ps1",
             "TaxLawUpdater.bas": ROOT / "vba/TaxLawUpdater.bas",
+            "BatchWithholding.bas": ROOT / "vba/BatchWithholding.bas",
             "README.txt": ROOT / "docs/user-guide.md",
         }
         if reader is None:
@@ -26,6 +27,20 @@ def package(destination, reader=None):
             if not reader.is_file() or reader.stat().st_size < 10000:
                 raise ValueError("Verified standalone Windows reader EXE required")
             files["FurusatoDocumentReader.exe"] = reader
+            # Private source acceptance is available only in the actual
+            # Python-free Windows bundle, never on public Actions with
+            # uploaded tax documents.
+            files["PRIVATE_5PAGE_CHECK.cmd"] = ROOT / "tools/PRIVATE_5PAGE_CHECK.cmd"
+            files["private_batch_excel_acceptance.ps1"] = (
+                ROOT / "tools/private_batch_excel_acceptance.ps1"
+            )
+            # Private oracle logic ships WITHOUT any confidential fixture.
+            files["PRIVATE_5PERSON_ORACLE_CHECK.cmd"] = (
+                ROOT / "tools/PRIVATE_5PERSON_ORACLE_CHECK.cmd"
+            )
+            files["private_5person_oracle_acceptance.ps1"] = (
+                ROOT / "tools/private_5person_oracle_acceptance.ps1"
+            )
         with ZipFile(destination, "w", ZIP_DEFLATED) as archive:
             for name, source in files.items():
                 archive.write(source, name)

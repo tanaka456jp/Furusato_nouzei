@@ -1,4 +1,4 @@
-"""Local-only withholding document reader. Does not transmit or retain identifiers."""
+"""Offline withholding reader; only batch Excel imports may locally show recipient names."""
 from __future__ import annotations
 
 import argparse
@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import re
 import sys
+import unicodedata
 
 SUPPORTED = {".pdf",".png",".jpg",".jpeg",".webp",".tif",".tiff",".bmp",
              ".heic",".heif",".txt",".csv",".tsv",".json"}
@@ -17,7 +18,20 @@ CODE_MAP = {
     "G29":"mortgage_credit","G30":"life_new","G31":"life_old",
     "G32":"medical_care","G33":"annuity_new","G34":"annuity_old",
     "G35":"mortgage_claim_count","G36":"mortgage_possible_credit",
-    "G72":"special_relative_count", "G73":"under16_count",
+    # G09–G24 are anonymous checkbox/count/amount slots on the 2025/26
+    # withholding format. They are not names, addresses or family identifiers.
+    "G09":"spouse_deduction_flag", "G10":"secondary_spouse_flag",
+    "G11":"elderly_spouse_flag", "G12":"spouse_tax_deduction",
+    "G13":"specific_dependent_count", "G14":"secondary_specific_count",
+    "G15":"cohabiting_elder_count", "G16":"elder_dependent_count",
+    "G17":"secondary_elder_count", "G18":"general_dependent_count",
+    "G19":"secondary_general_count",
+    "G21":"cohabiting_special_disabled_count",
+    "G22":"special_disabled_count", "G23":"ordinary_disabled_count",
+    "G24":"nonresident_relative_count",
+    "G43":"spouse_total_income",  # G42 is spouse personal number: NEVER ingest it.
+    "G73":"secondary_special_relative_count",
+    "G72":"special_relative_count", "G20":"under16_count",
     "G74":"special_relative_deduction_reference",
     "G46":"basic_reference",
     "G47":"income_adjustment",
@@ -80,13 +94,61 @@ def extract_codes(words):
                    and abs(a[1]-code[1])<=9 for a in anchors): continue
             choices.append(w)
         if len(choices)!=1:
-            if len(choices)>1: flags.append("AMBIGUOUS_"+key)
+            if len(choices)>1: flags.append("AMBIGUOUS_"+key.upper())
             continue
         val=number(choices[0][4])
         if key in out and out[key]!=val:
-            flags.append("CONFLICT_"+key); out.pop(key,None)
-        elif "CONFLICT_"+key not in flags: out[key]=val
+            flags.append("CONFLICT_"+key.upper()); out.pop(key,None)
+        elif "CONFLICT_"+key.upper() not in flags: out[key]=val
     return out, flags
+
+
+
+# The statutory form exposes only numeric/checkbox/count fields. Every code
+# below is source-level and contains no name, address, or date of birth.
+# The workbook must not guess "no family" if the expected tax-field row is absent.
+FAMILY_FORM_CODES = frozenset(
+    ("G09", "G10", "G11", "G12", "G13", "G14", "G15", "G16",
+     "G17", "G18", "G19", "G20", "G21", "G22", "G23", "G24")
+)
+
+
+def family_transfer_warnings(words):
+    code_names = {w[4] for w in words if re.fullmatch(r"G[0-9]{2}", w[4])}
+    if not FAMILY_FORM_CODES.issubset(code_names):
+        return ["FAMILY_LAYOUT_UNVERIFIED"]
+    parsed, errors = extract_codes(words)
+    warnings = [x for x in errors if x.startswith(("AMBIGUOUS_", "CONFLICT_"))]
+    for field in ("spouse_deduction_flag", "secondary_spouse_flag",
+                  "elderly_spouse_flag"):
+        if parsed.get(field) not in (1, 2):
+            warnings.append("FAMILY_CHECKBOX_UNVERIFIED")
+    if parsed.get("secondary_spouse_flag") == 1:
+        warnings.append("FAMILY_SECONDARY_SPOUSE_REQUIRES_REVIEW")
+    if any(parsed.get(key, 0) > 0 for key in (
+        "secondary_specific_count", "secondary_elder_count",
+        "secondary_general_count", "secondary_special_relative_count",
+        "nonresident_relative_count"
+    )):
+        warnings.append("FAMILY_SECONDARY_OR_NONRESIDENT_REQUIRES_REVIEW")
+    if parsed.get("cohabiting_elder_count", 0) > parsed.get("elder_dependent_count", 0):
+        warnings.append("FAMILY_ELDERLY_SUBCOUNT_INVALID")
+    if parsed.get("cohabiting_special_disabled_count", 0) > parsed.get("special_disabled_count", 0):
+        warnings.append("FAMILY_DISABLED_SUBCOUNT_INVALID")
+    if parsed.get("specific_dependent_count", 0) > 3:
+        warnings.append("FAMILY_SPECIFIC_OVER_THREE")
+    spouse_claimed = parsed.get("spouse_deduction_flag") == 1
+    tax_ded = parsed.get("spouse_tax_deduction", 0)
+    if spouse_claimed and tax_ded == 0:
+        warnings.append("FAMILY_SPOUSE_DEDUCTION_INCONSISTENT")
+    if not spouse_claimed and tax_ded > 0 and "spouse_total_income" not in parsed:
+        # Spouse SPECIAL deduction cannot be inferred exactly from its tax
+        # amount alone: different income bands may have a resident-tax effect.
+        warnings.append("FAMILY_SPOUSE_INCOME_NEEDED")
+    if spouse_claimed and parsed.get("spouse_total_income", 0) > 620000:
+        warnings.append("FAMILY_SPOUSE_INCOME_INCONSISTENT")
+    return sorted(set(warnings))
+
 
 
 def extract_labelled(text):
@@ -176,7 +238,7 @@ def finish(year,fields,mode,warnings=None):
         enough=False;warnings.append("MORTGAGE_OCCUPANCY_YEAR_MISSING")
     if possible>0 and used is not None and used>possible:
         enough=False;warnings.append("MORTGAGE_APPLIED_EXCEEDS_POSSIBLE")
-    # G72 is the special-relative count, G73 the under-16 count, and
+    # G72 is the special-relative count, G20 the under-16 count, and
     # G74 the special-relative tax deduction. The slip does not reveal all
     # qualifying relatives' incomes, so require an explicit reconciliation.
     special_count=fields.get("special_relative_count",0)
@@ -198,7 +260,7 @@ def finish(year,fields,mode,warnings=None):
         enough=False;warnings.append("OCR_REQUIRES_VERIFICATION")
     if "MULTIPAGE" in mode:
         enough=False;warnings.append("MULTIPAGE_REQUIRES_REVIEW")
-    if any(x.startswith(("AMBIGUOUS_","CONFLICT_")) for x in warnings):
+    if any(x.startswith(("AMBIGUOUS_", "CONFLICT_", "FAMILY_")) for x in warnings):
         enough=False
     if year not in (2025,2026): warnings.append("YEAR_NOT_APPROVED")
     if not enough: warnings.append("INCOMPLETE_OR_UNVERIFIED")
@@ -233,16 +295,189 @@ def extract(path):
         return finish(year,{k:v for k,v in fields.items() if v is not None},"STRUCTURED_TEXT")
     text,words,mode=document_content(path)
     vals,flags=extract_codes(words) if words else ({},[])
+    if words:
+        flags.extend(family_transfer_warnings(words))
     if not vals: vals=extract_labelled(text)
     # Occupancy year is an anchored field, not the document income year.
     # Never override a disagreeing structured value.
     occupancy=extract_occupancy_year(text)
     if occupancy and "mortgage_occupancy_year" in vals and vals["mortgage_occupancy_year"]!=occupancy["mortgage_occupancy_year"]:
-        flags.append("CONFLICT_mortgage_occupancy_year")
+        flags.append("CONFLICT_MORTGAGE_OCCUPANCY_YEAR")
         vals.pop("mortgage_occupancy_year",None)
     elif occupancy:
         vals.update(occupancy)
     return finish(detect_year(text),vals,mode,flags)
+
+
+
+# Local batch PDF reader. Each page is treated as an INDEPENDENT taxpayer.
+# Recipient name is displayed only in the local batch list. Never log it.
+BATCH_MAX_PAGES = 20
+BATCH_FIELDS = tuple(sorted(set(CODE_MAP.values()) | set(TEXT_MAP.values())))
+# Only a requested, local multiperson register may contain the recipient's
+# name. The EXE's JSON summary, stdout and public CI artifacts MUST NOT.
+# The transport remains ASCII-only: UTF-8 bytes encoded in UPPERCASE hex.
+_NAME_SEGMENT = r"[A-Za-z\u3040-\u30ff\u3400-\u9fff々〆ヵヶ]+"
+_NAME_VALID = re.compile(rf"{_NAME_SEGMENT}(?:[ ・\-]{_NAME_SEGMENT})*")
+
+
+def normalize_recipient_name(value):
+    """Accept only a plausible human name; never IDs, labels or formulas."""
+    if not isinstance(value, str) or any(unicodedata.category(c) == "Cc" for c in value):
+        return None
+    clean = unicodedata.normalize("NFKC", value)
+    clean = re.sub(r"\s+", " ", clean).strip()
+    if not 2 <= len(clean) <= 40 or not _NAME_VALID.fullmatch(clean):
+        return None
+    if len(clean.encode("utf-8")) > 120:
+        return None
+    return clean
+
+
+def extract_recipient_name(text, words):
+    """Read only the PAYEE/recipient's header E03 name, not employer or kin.
+
+    This function is invoked solely by the multi-person local PDF workflow.
+    It does not touch G42 (the spouse's personal number), address or employer.
+    A missing/ambiguous name is blank for a human to correct; never guess.
+    """
+    anchors = [w for w in words if w[4] == "E03" and w[1] < 260]
+    if len(anchors) == 0:
+        # OCR may omit the E03 code, but the first upper-left "氏名" label
+        # still identifies the document recipient (not family detail rows).
+        anchors = [w for w in words if w[4] == "氏名" and
+                   w[0] < 140 and w[1] < 240]
+    if len(anchors) == 1:
+        anchor = anchors[0]
+        center_y = (anchor[1] + anchor[3]) / 2
+        candidates = sorted(
+            [w for w in words
+             if anchor[2] + 0.5 < w[0] < min(anchor[2] + 205, 320)
+             and abs((w[1] + w[3]) / 2 - center_y) <= 8
+             and normalize_recipient_name(w[4])],
+            key=lambda w: w[0],
+        )
+        if candidates and len(candidates) <= 4:
+            # Reject a jump to another form field or repeated/overlaid text.
+            if all(b[0] - a[2] < 38 for a, b in zip(candidates, candidates[1:])):
+                value = " ".join(w[4] for w in candidates)
+                name = normalize_recipient_name(value)
+                if name is not None:
+                    return name
+        # Never fall back to another relative's name when header is unclear.
+        return None
+    if anchors:
+        return None
+    # Strict text-only / structured OCR fallback (source header lines only).
+    for line in text.splitlines()[:22]:
+        m = re.fullmatch(r"\s*(?:受給者\s*)?氏\s*名\s*[:：]\s*(.*?)\s*", line)
+        if m:
+            return normalize_recipient_name(m.group(1))
+    return None
+
+
+def pdf_page_count(path):
+    """Read only PDF structure: never parse or report names or financial data."""
+    path = Path(path)
+    if path.suffix.lower() != ".pdf" or not path.is_file():
+        raise ValueError("PDF_PAGE_PROBE_INPUT_INVALID")
+    if not 0 < path.stat().st_size <= 25 * 1024 * 1024:
+        raise ValueError("PDF_PAGE_PROBE_SIZE_INVALID")
+    try:
+        import fitz
+    except ImportError as exc:
+        raise RuntimeError("PyMuPDF is required") from exc
+    with fitz.open(str(path)) as document:
+        if document.is_encrypted or len(document) < 1:
+            raise ValueError("PDF_PAGE_PROBE_UNSUPPORTED")
+        return len(document)
+
+
+def extract_pdf_batch(path):
+    """Local-only records with optional recipient name; no PII in logs."""
+    path = Path(path)
+    if path.suffix.lower() != ".pdf":
+        raise ValueError("Batch source must be a PDF")
+    if not path.is_file() or not 0 < path.stat().st_size <= 25 * 1024 * 1024:
+        raise ValueError("Batch PDF exceeds 25MiB")
+    try:
+        import fitz
+    except ImportError as exc:
+        raise RuntimeError("PyMuPDF required") from exc
+    records = []
+    with fitz.open(str(path)) as doc:
+        if doc.is_encrypted or not 1 <= len(doc) <= BATCH_MAX_PAGES:
+            raise ValueError("Unsupported encrypted PDF or page count")
+        for page_number, page in enumerate(doc, 1):
+            try:
+                text = page.get_text("text", sort=True)
+                words = page.get_text("words", sort=True)
+                mode = "PDF_TEXT"
+                if len(text.strip()) < 40:
+                    from PIL import Image
+                    pix = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+                    if pix.width * pix.height > 25_000_000:
+                        raise ValueError("Page raster too large")
+                    pic = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+                    text, words = image_words(pic, 2)
+                    mode = "SCAN_OCR"
+                fields, warnings = extract_codes(words) if words else ({}, [])
+                if words:
+                    warnings.extend(family_transfer_warnings(words))
+                if not fields:
+                    fields = extract_labelled(text)
+                occupancy = extract_occupancy_year(text)
+                if (occupancy and "mortgage_occupancy_year" in fields and
+                        fields["mortgage_occupancy_year"] != occupancy["mortgage_occupancy_year"]):
+                    warnings.append("CONFLICT_MORTGAGE_OCCUPANCY_YEAR")
+                    fields.pop("mortgage_occupancy_year", None)
+                else:
+                    fields.update(occupancy)
+                record = finish(detect_year(text), fields, mode, warnings)
+                # The generic numeric-only status marker does not describe
+                # this explicitly requested private local batch name label.
+                record.pop("personal_identifiers", None)
+                recipient = extract_recipient_name(text, words)
+                if recipient:
+                    record["recipient_name"] = recipient
+            except Exception:
+                record = finish(None, {}, "PAGE_ERROR", ["PAGE_READ_FAILED"])
+            records.append({"page": page_number, **record})
+    return records
+
+
+def write_batch_bridge(records, output):
+    """ASCII-only page-separated TSV consumed by VBA after full validation."""
+    if not 1 <= len(records) <= BATCH_MAX_PAGES:
+        raise ValueError("Unsupported page count")
+    with Path(output).open("w", encoding="ascii", newline="") as fp:
+        writer = csv.writer(fp, delimiter="\t", lineterminator="\n")
+        for ordinal, record in enumerate(records, 1):
+            if record.get("page") != ordinal:
+                raise ValueError("PDF pages not sequential")
+            writer.writerow(["PAGE", ordinal])
+            writer.writerow(["STATUS", record["status"]])
+            writer.writerow(["YEAR", record["year"] or ""])
+            warnings = record.get("warnings", [])
+            if any(not re.fullmatch(r"[A-Z_0-9]+", flag) for flag in warnings):
+                raise ValueError("Unsafe warning code")
+            writer.writerow(["WARNINGS", ";".join(warnings)])
+            # Explicitly permitted recipient name, encoded for the existing
+            # ASCII VBA bridge. Never print, write to JSON, or embed in logs.
+            original_name = record.get("recipient_name")
+            if original_name is not None:
+                safe_name = normalize_recipient_name(original_name)
+                if safe_name is None or safe_name != original_name:
+                    raise ValueError("Invalid recipient name")
+                writer.writerow(["NAME_UTF8_HEX", safe_name.encode("utf-8").hex().upper()])
+            for key in BATCH_FIELDS:
+                value = record["fields"].get(key)
+                if value is not None:
+                    if (isinstance(value, bool) or not isinstance(value, int) or
+                            not 0 <= value <= 10**12):
+                        raise ValueError("Unsafe numeric field")
+                    writer.writerow([key, value])
+            writer.writerow(["ENDPAGE", ordinal])
 
 
 def write_bridge(result,output):
@@ -263,12 +498,34 @@ if __name__=="__main__":
     ap.add_argument("--input",required=True,type=Path)
     ap.add_argument("--output",required=True,type=Path)
     ap.add_argument("--bridge",type=Path)
+    ap.add_argument("--batch-bridge",type=Path)
+    ap.add_argument("--probe-pages",action="store_true")
     args=ap.parse_args()
     try:
-        data=extract(args.input)
-        args.output.write_text(json.dumps(data,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
-        if args.bridge: write_bridge(data,args.bridge)
-        print("READER_"+data["status"])
+        if args.probe_pages:
+            if args.bridge or args.batch_bridge:
+                raise ValueError("PDF_PAGE_PROBE_CONFLICTING_OPTIONS")
+            # The ASCII probe contains exactly one non-identifying integer.
+            # Single-slip VBA routes 2+ page PDFs to the isolated batch UI.
+            count = pdf_page_count(args.input)
+            with args.output.open("w",encoding="ascii",newline="\n") as probe:
+                probe.write("PDF_PAGES\t" + str(count) + "\n")
+            print("READER_PDF_PAGE_PROBE_OK")
+        elif args.batch_bridge:
+            records=extract_pdf_batch(args.input)
+            write_batch_bridge(records,args.batch_bridge)
+            args.output.write_text(json.dumps({
+                "schema":"furusato-batch-summary/v1",
+                "pages":len(records),
+                "review_required":sum(
+                    r["status"]!="READY_FOR_EXCEL_CROSSCHECK" for r in records),
+            },ensure_ascii=True)+"\n",encoding="ascii")
+            print("READER_BATCH_PAGES_"+str(len(records)))
+        else:
+            data=extract(args.input)
+            args.output.write_text(json.dumps(data,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+            if args.bridge: write_bridge(data,args.bridge)
+            print("READER_"+data["status"])
     except Exception as exc:
         print("READ_ERROR_"+type(exc).__name__,file=sys.stderr)
         sys.exit(2)

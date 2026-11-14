@@ -23,7 +23,8 @@ foreach ($source in @(
     'tools/verify_windows_hosted.ps1',
     'tools/probe_excel_open.ps1',
     'tools/run_excel_open_probe.ps1',
-    'tools/verify_vbaupdater_bridge.ps1'
+    'tools/verify_vbaupdater_bridge.ps1',
+    'tools/private_batch_excel_acceptance.ps1'
 )) {
     $tokens = $null
     $errors = $null
@@ -42,7 +43,7 @@ try {
     $actual = @(Get-ChildItem -LiteralPath $extracted -File | ForEach-Object Name | Sort-Object)
     $expected = @(
         'Furusato_nouzei.xlsx', 'README.txt', 'START_SETUP.cmd',
-        'TaxLawUpdater.bas', 'setup.ps1', 'withholding_reader.py'
+        'TaxLawUpdater.bas', 'BatchWithholding.bas', 'setup.ps1', 'withholding_reader.py'
     ) | Sort-Object
     Require (($actual -join '|') -ceq ($expected -join '|')) 'Unexpected files in review ZIP'
 
@@ -50,6 +51,7 @@ try {
         'START_SETUP.cmd' = 'tools/START_SETUP.cmd'
         'setup.ps1' = 'tools/setup.ps1'
         'TaxLawUpdater.bas' = 'vba/TaxLawUpdater.bas'
+        'BatchWithholding.bas' = 'vba/BatchWithholding.bas'
         'README.txt' = 'docs/user-guide.md'
         'withholding_reader.py' = 'tools/withholding_reader.py'
     }
@@ -67,6 +69,11 @@ try {
     Require ($bas.Contains('Attribute VB_Name = "TaxLawUpdater"')) 'VBA source encoding is damaged'
     Require ($bas.Contains('Public Sub TaxLawUpdate()')) 'VBA tax-update procedure missing'
     Require ($bas.Contains('Public Function ExportDetailsToFile(')) 'VBA PDF export procedure missing'
+    $batchBas = [IO.File]::ReadAllText((Join-Path $extracted 'BatchWithholding.bas'), $strictUtf8)
+    Require ($batchBas.Contains('Attribute VB_Name = "BatchWithholding"')) 'Batch module encoding is damaged'
+    Require ($batchBas.Contains('Public Sub BatchCalculate()')) 'Batch macro missing'
+    Require ($batchBas.Contains('Public Sub BatchInvalidate(')) 'Batch edit-invalidating guard missing'
+    Require ($batchBas.Contains('Public Function BatchImportLocalFile(')) 'Private offline import VBA missing'
 
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $xlsx = [IO.Compression.ZipFile]::OpenRead((Join-Path $extracted 'Furusato_nouzei.xlsx'))
