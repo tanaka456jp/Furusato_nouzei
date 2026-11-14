@@ -28,6 +28,12 @@
  }
  function fromPage(page,review,targetYear){
   const row=holdRow(page,"原票の確認待ち");
+  if(typeof review?.recipientName==="string"){
+    const name=review.recipientName.normalize("NFKC").trim();
+    if(name.length>=2&&name.length<=40&&!/^[=+@-]/.test(name)&&
+       !/[\u0000-\u001f\u007f-\u009f]/.test(name))
+      row.label=name;
+  }
   if(!Number.isSafeInteger(page)||page<1||page>MAX_ROWS||
      !review||review.eligibleForManualTransfer!==true||
      ![2025,2026].includes(review.year)||!review.candidates||
@@ -39,8 +45,7 @@
   row.year=targetYear===undefined?review.year:targetYear;
   row.candidates=Object.fromEntries(FIELDS.map(k=>[k,review.candidates[k]]));
   row.sourceValid=[2025,2026].includes(row.year);
-  row.label=typeof review.recipientName==="string"
-    ?review.recipientName.slice(0,40):"";
+
   return row;
  }
  function canEstimate(row){
