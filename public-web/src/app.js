@@ -33,7 +33,12 @@
       salaryGross: get("salaryGross").value.trim(),
       socialInsurance: get("socialInsurance").value.trim(),
       salaryIncomeReference: get("salaryIncomeReference").value.trim(),
-      deductionsReference: get("deductionsReference").value.trim(),
+      // The previous-year/source reference is retained independently.
+      // Only the explicit override becomes the working total on request.
+      sourceDeductionsReference: get("deductionsReference").value.trim(),
+      deductionsOverride: get("deductionsOverride").value.trim(),
+      deductionsReference: get("deductionsOverride").value.trim()!==""?
+        get("deductionsOverride").value.trim():get("deductionsReference").value.trim(),
       acknowledgedExclusions: get("acknowledgedExclusions").checked,
       forecastReviewed: get("forecastReviewed").checked
     };
@@ -129,6 +134,21 @@
        calc.salaryIncomeYen>gross||
        calc.residentBasicDeductionYen!==430000)
       return false;
+    var override=input.deductionsOverride;
+    if(override!==undefined&&override!==""){
+      var typedTotal=strictYen(override);
+      var autoTotal=calc.basicIncomeTaxDeductionYen+social;
+      // The shared engine only certifies basic plus social deductions.
+      // Never promote a manually typed unverified family/insurance sum
+      // into a falsely certified donation amount.
+      if(typedTotal===null||typedTotal!==autoTotal)return false;
+      // Same-year imported evidence cannot be erased by entering a lower
+      // override total. Prior-year forecasting has its separate review gate.
+      if(input.sourceYear!==undefined&&sourceYear===year&&
+         input.sourceDeductionsReference!==""&&
+         strictYen(input.sourceDeductionsReference)!==autoTotal)
+        return false;
+    }
     var reference=input.salaryIncomeReference;
     if(reference!==""){
       var salaryRef=strictYen(reference);
@@ -179,6 +199,13 @@
     canDisplayEstimate:canDisplayEstimate
   });
   var printableInputSnapshot=null,printableResult=null;
+  var overrideNotice=document.getElementById("deductionsOverrideStatus");
+  function updateOverrideNotice(){
+    var control=form.elements.namedItem("deductionsOverride");
+    var active=!!(control&&control.value.trim());
+    form.classList.toggle("deduction-override-active",active);
+    if(overrideNotice)overrideNotice.hidden=!active;
+  }
   function render(result,input) {
     output.replaceChildren();
     output.hidden = false;
@@ -186,6 +213,11 @@
     printableInputSnapshot=isEstimate?JSON.stringify(input):null;
     printableResult=isEstimate?result:null;
     output.className = isEstimate ? "result" : "result hold";
+    if(input&&input.deductionsOverride){
+      add("p",output,"⚠ 所得控除合計額を手入力上書き中（"+
+        input.deductionsOverride+"円）。他の入力変更には自動追随しません。"+
+        "源泉票額・自動算定額の両方を確認してください。","deductions-override-warning");
+    }
     if (!isEstimate) {
       add("h3", output, "試算を停止しました（HOLD）");
       add("p", output, "条件や入力値の確認が必要です。限度額の数値は表示しません。");
@@ -272,6 +304,7 @@
     if(name==="year"||name==="filing"||
        name==="salaryGross"||name==="socialInsurance"||
        name==="salaryIncomeReference"||name==="deductionsReference"||
+       name==="deductionsOverride"||
        name==="forecastReviewed"||flags.includes(name)){
       if(conditionsConfirmation)conditionsConfirmation.checked=false;
       // A prior-year forecast must be re-confirmed after any change to its
@@ -290,6 +323,8 @@
   }
   // Never continue displaying an amount calculated for previous inputs:
   // exclusions, year, income figures and filing mode can change its validity.
+  form.addEventListener("input",updateOverrideNotice);
+  form.addEventListener("change",updateOverrideNotice);
   form.addEventListener("input",invalidateEstimate);
   form.addEventListener("change",invalidateEstimate);
   form.addEventListener("input",revokeOldConditionsConfirmation);
@@ -320,6 +355,8 @@
   });
   form.addEventListener("reset", function () {
     printableInputSnapshot=null;printableResult=null;
+    form.classList.remove("deduction-override-active");
+    if(overrideNotice)overrideNotice.hidden=true;
     delete form.dataset.ocrYear;
     delete form.dataset.ocrSourceIndicators;
     delete form.dataset.ocrReviewPending;
