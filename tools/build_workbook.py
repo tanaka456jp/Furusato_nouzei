@@ -280,7 +280,10 @@ def build(source, output):
     extra["A41"] = "読取確認時の入力スナップショット（自動保存）"
     extra["A42"] = "現在の入力スナップショット（自動更新）"
     extra["B41"] = None
-    extra["B42"] = '=TEXTJOIN("|",FALSE,' + ",".join(fingerprint_fields) + ')'
+    # Plain Excel 2007-compatible concatenation. OOXML produced by openpyxl
+    # cannot reliably invoke newer TEXTJOIN without an _xlfn prefix on all
+    # Windows Excel builds; a #NAME? here would abort even normal taxpayers.
+    extra["B42"] = "=" + '&"|"&'.join(fingerprint_fields)
     for addr in ("B41", "B42"):
         extra[addr].protection = Protection(locked=True)
         extra[addr].number_format = "@"
