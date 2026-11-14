@@ -94,9 +94,19 @@ jobs:
             echo 'Unexpected advertising or analytics script detected'
             exit 1
           fi
-      # The full Japanese OCR model and WASM assets are intentionally omitted
-      # from review artifacts to preserve GitHub storage quota. The built
-      # assets were validated in this job; package builds them locally.
+      # Short-lived full offline preview for production acceptance. This
+      # contains ONLY application assets, NEVER a user's tax slips, OCR data,
+      # account credentials, user-entered names or input values. No publish.
+      - name: Upload complete OFFLINE PREVIEW (NO DEPLOY; expires in 1 day)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Furusato_Public_Web_COMPLETE_OFFLINE_QA_${{ github.run_id }}
+          path: public-web/dist/
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+      # Small UI-only copy is kept for issue review. The complete preview
+      # is short-lived to limit artifact storage, especially WASM assets.
       - name: Upload small NONDEPLOYABLE UI review only (no model/WASM)
         uses: actions/upload-artifact@v4
         with:
