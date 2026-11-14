@@ -84,7 +84,7 @@
   return {
    schema:"furusato-positioned-gcodes/v1",
    status:"REQUIRES_SOURCE_REVIEW",year,
-   candidates:reasons.length?{}:candidates,
+   candidates, // Each numeric field independently validated; missing fields stay blank.
    reasons,
    eligibleForManualTransfer:reasons.length===0,
    autoApproved:false,originalCompared:false
