@@ -110,7 +110,7 @@ try {
     QA-Stage 'special-relative-income-bands-pass'
     QA-Stage 'print-setup-validation-start'
     Assert-PrintConfiguration $homeSheet 'Home' '\$A\$1:\$D\$39'
-    Assert-PrintConfiguration $detail 'Detail' '\$A\$1:\$D\$19'
+    Assert-PrintConfiguration $detail 'Detail' '\$A\$1:\$D\$23'
     QA-Stage 'print-setup-validation-done'
     foreach ($year in @(2025, 2026)) {
         QA-Stage ('synthetic-' + $year + '-input-start')
