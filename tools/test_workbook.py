@@ -363,6 +363,8 @@ class WorkbookTest(unittest.TestCase):
         self.assertTrue(home["B31"].protection.locked)
         self.assertTrue(home["D31"].protection.locked)
         self.assertIn("D25", home["B28"].value)
+        self.assertIn('ABS(\'例外・分離課税\'!B14-B31)>1',home["B28"].value)
+        self.assertIn('VERIFIED_AFTER_CORRECTION',home["B28"].value)
         self.assertNotIn("'例外・分離課税'!B14<", home["B28"].value)
         self.assertIn("'ふるさと納税限度額計算'!F24", home["B17"].value)
         self.assertIn("'ふるさと納税限度額計算'!F25", home["B18"].value)
