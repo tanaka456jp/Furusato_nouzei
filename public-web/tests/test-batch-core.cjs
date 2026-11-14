@@ -126,6 +126,24 @@ batch.edit(patched,"sourceYear","2024");
 assert.equal(patched.sourceValid,false);
 batch.calculate(patched,win.FurusatoEngine,guard);
 assert.equal(patched.status,"HOLD");
+// Original source deductions cannot be waived by checkboxes or edits.
+const credited=batch.fromPage(11,{
+ ...basic2026,sourceIndicators:{hasMortgage:true,hasLifeInsurance:true}
+});
+credited.confirmed=true;credited.noExclusions=true;
+batch.calculate(credited,win.FurusatoEngine,guard);
+assert.equal(credited.status,"HOLD");
+assert.equal(credited.donationLimitYen,null);
+batch.edit(credited,"salaryGross","7000000");
+assert.equal(credited.sourceIndicators.hasMortgage,true);
+credited.confirmed=true;credited.noExclusions=true;
+batch.calculate(credited,win.FurusatoEngine,guard);
+assert.equal(credited.status,"HOLD");
+assert.doesNotMatch(batch.csv([credited]),/,"109000",/);
+const malformedIndicator=batch.fromPage(12,{
+ ...basic2026,sourceIndicators:{unsafeField:true}
+});
+assert.equal(malformedIndicator.sourceIndicators.hasNonstandardConditions,true);
 const supplied=batch.fromPage(8,{...basic2026,recipientName:"架空一郎"});
 assert.equal(supplied.label,"架空一郎");
 const incoming=batch.fromPage(9,{

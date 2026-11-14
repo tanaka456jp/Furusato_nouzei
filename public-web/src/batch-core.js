@@ -22,7 +22,7 @@
   return Number.isSafeInteger(value)&&value>=0&&value<=1000000000000;
  }
  function holdRow(page,reason){
-  return {page,label:"",year:null,sourceYear:null,candidates:null,sourceValid:false,
+  return {page,label:"",year:null,sourceYear:null,candidates:null,sourceIndicators:{},sourceValid:false,
    confirmed:false,noExclusions:false,forecastReviewed:false,filing:"one-stop",
    status:"HOLD",donationLimitYen:null,reason:reason||"読取・確認待ち"};
  }
@@ -42,6 +42,17 @@
   }
   row.sourceYear=review.year;
   row.year=targetYear===undefined?review.year:targetYear;
+  // Never let a checkbox or an amount edit override positive source facts.
+  if(review.sourceIndicators&&typeof review.sourceIndicators==="object"&&
+     !Array.isArray(review.sourceIndicators)){
+    for(const [key,value] of Object.entries(review.sourceIndicators)){
+     if(!FLAGS.includes(key)||value!==true)
+      row.sourceIndicators.hasNonstandardConditions=true;
+     else row.sourceIndicators[key]=true;
+    }
+  }else if(review.sourceIndicators!==undefined){
+   row.sourceIndicators.hasNonstandardConditions=true;
+  }
   // Independently verified G-code fields may be complete even when one
   // different field (e.g. blank insurance) is absent. Let the operator
   // correct the missing field, but never treat source recognition as consent.
@@ -95,6 +106,10 @@
     return row;
   }
   if(row.confirmed!==true){row.reason="原票と4金額・年分の目視照合待ち";return row;}
+  if(Object.keys(row.sourceIndicators||{}).length>0){
+    row.reason="原票で検出した追加控除・扶養等は簡易試算の対象外です。原票の控除明細を確認してください";
+    return row;
+  }
   if(row.noExclusions!==true){
     row.reason="追加控除・扶養・複数給与などの適用条件が未確認";
     return row;

@@ -38,6 +38,17 @@
       forecastReviewed: get("forecastReviewed").checked
     };
     if(form.dataset.ocrYear)input.sourceYear=form.dataset.ocrYear;
+    if(form.dataset.ocrSourceIndicators){
+      // Strict whitelist prevents a malformed local marker from weakening HOLD.
+      var recognized=["hasLifeInsurance","hasEarthquakeInsurance",
+        "hasMortgage","hasIncomeAdjustment","hasDependents",
+        "hasNonstandardConditions"];
+      input.sourceIndicators={};
+      form.dataset.ocrSourceIndicators.split(",").forEach(function(key){
+        input.sourceIndicators[recognized.includes(key)?
+          key:"hasNonstandardConditions"]=true;
+      });
+    }
     // Re-attest a previously transferred OCR source after editing figures.
     // This must NOT bypass cancellation/failed OCR: only explicit edits to
     // an already transferred source may set ocrManualReviewRequired.
@@ -85,6 +96,10 @@
        input.sourceReviewPending===true||
        flags.some(function(name){return input[name]!==false;}))
       return false;
+    if(input.sourceIndicators!==undefined&&
+       (!input.sourceIndicators||typeof input.sourceIndicators!=="object"||
+        Array.isArray(input.sourceIndicators)||
+        Object.keys(input.sourceIndicators).length>0))return false;
     var year=Number(input.year),gross=strictYen(input.salaryGross);
     var social=strictYen(input.socialInsurance);
     var sourceYear=input.sourceYear===undefined?year:Number(input.sourceYear);
@@ -306,6 +321,7 @@
   form.addEventListener("reset", function () {
     printableInputSnapshot=null;printableResult=null;
     delete form.dataset.ocrYear;
+    delete form.dataset.ocrSourceIndicators;
     delete form.dataset.ocrReviewPending;
     delete form.dataset.ocrManualReviewRequired;
     output.replaceChildren();

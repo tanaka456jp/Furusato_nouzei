@@ -255,6 +255,16 @@ field("acknowledgedExclusions").checked=true;
 submit();
 assert.equal(view.className,"result");
 assert.match(view.textContent,/57,000円/);
+// An OCR source's detected mortgage/insurance amounts remain a hard HOLD
+// regardless of the UI exclusion checkbox or forecast re-attestation.
+form.dataset.ocrSourceIndicators="hasMortgage,hasLifeInsurance";
+submit();
+assert.equal(view.className,"result hold");
+assert.doesNotMatch(view.textContent,/57,000円/);
+delete form.dataset.ocrSourceIndicators;
+submit();
+assert.equal(view.className,"result");
+assert.match(view.textContent,/57,000円/);
 field("deductionsReference").value="1430000"; // stale 2025 basic deduction
 submit();
 assert.equal(view.className,"result hold");

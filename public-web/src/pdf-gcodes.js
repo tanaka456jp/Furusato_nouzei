@@ -16,6 +16,13 @@
   G04:"salaryGross",G05:"salaryIncomeReference",
   G06:"deductionsReference",G26:"socialInsurance"
  });
+ // Positive statutory amounts found in a digital withholding slip are
+ // independently preserved as unsupported-condition evidence. Missing or
+ // unreadable fields never certify the absence of a deduction.
+ const ADDITIONAL=Object.freeze({
+  G27:"hasLifeInsurance",G28:"hasEarthquakeInsurance",
+  G29:"hasMortgage",G47:"hasIncomeAdjustment",G74:"hasDependents"
+ });
  const CODES=Object.freeze(["L01",...Object.keys(FIELDS)]);
  const token=/^[0-9,]$/;
  function spansOf(items){
@@ -81,10 +88,22 @@
    if(yen===null)reasons.push("CODE_"+code+"_AMOUNT_UNVERIFIED");
    else candidates[key]=yen;
   }
+  const sourceIndicators={};
+  for(const [code,flag] of Object.entries(ADDITIONAL)){
+   const marks=anchors(spans,code);
+   if(marks.length>1){
+    sourceIndicators.hasNonstandardConditions=true;
+    continue;
+   }
+   if(marks.length!==1)continue;
+   const amount=toYen(numericGroup(spans,marks[0],45,125));
+   if(amount!==null&&amount>0)sourceIndicators[flag]=true;
+  }
   return {
    schema:"furusato-positioned-gcodes/v1",
    status:"REQUIRES_SOURCE_REVIEW",year,
    candidates, // Each numeric field independently validated; missing fields stay blank.
+   sourceIndicators, // Only categorical flags; no raw OCR or identifying fields.
    reasons,
    eligibleForManualTransfer:reasons.length===0,
    autoApproved:false,originalCompared:false

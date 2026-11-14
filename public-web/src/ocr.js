@@ -118,6 +118,7 @@
     acceptButton.disabled=true;
     report.replaceChildren();report.hidden=true;
     delete form.dataset.ocrYear;
+    delete form.dataset.ocrSourceIndicators;
     delete form.dataset.ocrReviewPending;
     if(hadTransferredSource){
       // Remove the *unchanged* OCR fields from the old source, preserving
@@ -612,6 +613,11 @@
             result=await twoPass(canvas,isStale);
           }
           }
+      // Propagate source-detected deductions through every PDF extraction
+      // route, including layout and OCR fallbacks; manual correction must
+      // not silently erase a positive finding.
+      if(coded&&coded.sourceIndicators&&Object.keys(coded.sourceIndicators).length)
+        result.sourceIndicators=Object.assign({},coded.sourceIndicators);
       if(includeRecipient&&extracted&&!extracted.emptyTextLayer&&
          window.FurusatoBatchName&&
          typeof window.FurusatoBatchName.extract==="function"){
@@ -812,6 +818,8 @@
     var forecast=form.elements.namedItem("forecastReviewed");
     if(forecast)forecast.checked=false;
     form.dataset.ocrYear=String(review.year);
+    form.dataset.ocrSourceIndicators=
+      Object.keys(review.sourceIndicators||{}).join(",");
     form.dataset.ocrReviewPending="false";
     delete form.dataset.ocrManualReviewRequired;
     var manualCheck=form.elements.namedItem("correctedSourceReviewed");
