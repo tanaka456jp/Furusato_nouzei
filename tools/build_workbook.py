@@ -493,7 +493,8 @@ def build(source, output):
         # Source reference totals include omitted special and family deductions.
         # They are authoritative when extracted from the withholding form.
         'AND(D25<>"",OR(NOT(ISNUMBER(D25)),D25<0,D25>100000000,D25<>INT(D25)))',
-        f'AND(ISNUMBER({ref(ADVANCED,"B14")}),{ref(ADVANCED,"B14")}<B16)',
+        # Source total is provenance only. A manual adjustment of current-year
+        # social insurance must not be rejected against historic slip totals.
         'MAX(D11:D13,D19:D21)>30', 'COUNT(D17:D18)>1', 'B13>B12', 'B15>B12', 'B16>B14',
                 'AND(COUNT(D14:D16,D23)>0,B25="なし",OR(COUNT(D14:D16)>0,D23>0))',
                 f'OR(AND(NOT(ISNUMBER({ref(ADVANCED,"B16")})),B17<>{ref(ENGINE,"F24")}),'
