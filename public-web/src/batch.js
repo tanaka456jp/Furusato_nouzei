@@ -210,7 +210,18 @@
  function invalidateEditedRow(row){
   row.status="HOLD";row.donationLimitYen=null;
   row.reason="入力が変更されました。対象年見込額・控除条件の再確認待ち";
-  computed=false;updateButtons();
+  computed=false;
+  // Do not rebuild the table while typing (that would steal focus).
+  // Immediately erase the prior number from the LIVE DOM so native Ctrl+P
+  // and screenshots cannot retain an estimate for an edited recipient.
+  const index=rows.indexOf(row),tr=body.children[index];
+  if(tr){
+   const amount=tr.querySelector(".batch-result");
+   const reason=tr.querySelector(".batch-reason");
+   if(amount)amount.textContent="—";
+   if(reason)reason.textContent="HOLD："+row.reason;
+  }
+  updateButtons();
  }
  body.addEventListener("input",ev=>{
   const idx=Number(ev.target?.dataset?.row);
