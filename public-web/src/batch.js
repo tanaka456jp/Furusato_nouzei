@@ -100,6 +100,9 @@
       td.appendChild(warn);
      }
    }
+   const applied=cell(tr,"","batch-result");
+   applied.textContent=Number.isSafeInteger(r.appliedDeductionsYen)?
+     yen(r.appliedDeductionsYen):"—";
    const filing=cell(tr,"");
    const select=formControl("select",{
     "aria-label":"対象者 "+r.page+" の手続き",
@@ -135,7 +138,7 @@
  function clearEstimates(){
   computed=false;
   for(const row of rows){
-   row.status="HOLD";row.donationLimitYen=null;
+   row.status="HOLD";row.donationLimitYen=null;row.appliedDeductionsYen=null;
    row.reason=row.sourceValid?"再試算・個別確認待ち":
      "原票を安全に読み取れませんでした";
   }
@@ -215,7 +218,7 @@
   }
  });
  function invalidateEditedRow(row){
-  row.status="HOLD";row.donationLimitYen=null;
+  row.status="HOLD";row.donationLimitYen=null;row.appliedDeductionsYen=null;
   row.reason="入力が変更されました。対象年見込額・控除条件の再確認待ち";
   computed=false;
   // Do not rebuild the table while typing (that would steal focus).
@@ -223,9 +226,9 @@
   // and screenshots cannot retain an estimate for an edited recipient.
   const index=rows.indexOf(row),tr=body.children[index];
   if(tr){
-   const amount=tr.querySelector(".batch-result");
+   const amounts=tr.querySelectorAll(".batch-result");
    const reason=tr.querySelector(".batch-reason");
-   if(amount)amount.textContent="—";
+   amounts.forEach(el=>{el.textContent="—";});
    if(reason)reason.textContent="HOLD："+row.reason;
   }
   updateButtons();
