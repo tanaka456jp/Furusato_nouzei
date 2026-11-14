@@ -85,3 +85,7 @@
 .deductions-override-status,.deductions-override-warning{background:#fff0c2;color:#724200;border:2px solid #ba750f;border-radius:9px;padding:12px;font-weight:750;font-size:14px;margin:12px 0}
 .deduction-override-active .deduction-override-input{box-shadow:inset 0 0 0 2px #ba750f}
 @media print{.result .deductions-override-warning{display:block;color:#000;border:2px solid #000;background:#fff}}
+
+.batch-deduction-manual{background:#fff0c2 !important;outline:2px solid #c57d15;outline-offset:-2px}
+.batch-override-tag{display:block;font-size:11px;font-weight:800;color:#724200;white-space:normal;line-height:1.4;margin-top:5px}
+@media print{.batch-deduction-manual{outline:2px solid #000;background:#fff !important}.batch-override-tag{color:#000}}
