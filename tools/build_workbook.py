@@ -246,6 +246,35 @@ def build(source, output):
     for addr in ("B38", "B39"):
         extra[addr].fill = PatternFill("solid", fgColor="EAF3EA")
         extra[addr].protection = Protection(locked=True)
+    # Source attestation is valid for the exact reviewed INPUT snapshot only.
+    # VBA persists B42 in B41 on explicit review; every relevant edited
+    # number, relative's income, tax year and source value changes B42. The
+    # independent stamp never includes its own review status or B41/B42.
+    fingerprint_home = (
+        ["B4", "B11", "B12", "B13", "B14", "B15", "B16", "B17", "B18"]
+        + [f"B{i}" for i in range(19, 26)]
+        + [f"D{i}" for i in range(11, 26)]
+        + ["B31", "B33", "B34", "B35", "B36", "D35", "D24"]
+    )
+    fingerprint_extra = (
+        [f"B{i}" for i in range(5, 19)]
+        + ["B19", "B21", "B24", "B25", "B26",
+           "B32", "B33", "B36", "B38", "B39", "B40"]
+    )
+    fingerprint_fields = (
+        [ref(HOME, cell) for cell in fingerprint_home]
+        + [ref(ADVANCED, cell) for cell in fingerprint_extra]
+    )
+    extra["A41"] = "読取確認時の入力スナップショット（自動保存）"
+    extra["A42"] = "現在の入力スナップショット（自動更新）"
+    extra["B41"] = None
+    extra["B42"] = '=TEXTJOIN("|",FALSE,' + ",".join(fingerprint_fields) + ')'
+    for addr in ("B41", "B42"):
+        extra[addr].protection = Protection(locked=True)
+        extra[addr].number_format = "@"
+    extra.row_dimensions[41].hidden = True
+    extra.row_dimensions[42].hidden = True
+
         extra[addr].alignment = Alignment(horizontal="right")
         extra[addr].number_format = "#,##0"
     extra.print_area = "A1:D39"
@@ -678,8 +707,14 @@ def build(source, output):
          "警告：特例・繰越損失を伴う分離課税は個別照合が必要です"),
         (f'AND(ISNUMBER({ref(ADVANCED,"B14")}),ISNUMBER(B31),'
          f'ABS({ref(ADVANCED,"B14")}-B31)>1,'
-         f'{ref(ADVANCED,"B20")}<>"VERIFIED_AFTER_CORRECTION")',
+         f'OR({ref(ADVANCED,"B20")}<>"VERIFIED_AFTER_CORRECTION",'
+         f'{ref(ADVANCED,"B41")}="",'
+         f'{ref(ADVANCED,"B41")}<>{ref(ADVANCED,"B42")}))',
          "警告：原票の所得控除合計と自動再計算額が異なります。原票と修正額を確認して読取内容の確認を行ってください"),
+        (f'AND({ref(ADVANCED,"B20")}="VERIFIED_AFTER_CORRECTION",'
+         f'OR({ref(ADVANCED,"B41")}="",'
+         f'{ref(ADVANCED,"B41")}<>{ref(ADVANCED,"B42")}))',
+         "警告：前回の原票確認後に入力値が変わりました。読取内容を再確認してください"),
         (f'{ref(ADVANCED,"B20")}="REQUIRES_REVIEW"',
          "警告：源泉徴収票の読取内容を確認してください"),
         (unsupported, "警告：入力内容から個別照合が必要と判定しました"),
