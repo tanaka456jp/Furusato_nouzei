@@ -441,7 +441,7 @@ try {
     # national basic deduction increase and non-salary ordinary income.
     # No customer data; the isolated Excel state is restored afterward.
     QA-Stage 'mortgage-2025-2026-basic-delta-start'
-    $sourceExtra.Range('B14').Value2 = 5000000.0
+    $homeSheet.Range('D25').Value2 = 5000000.0
     $homeSheet.Range('B33').Value2 = 0.0
     $homeSheet.Range('B34').Value2 = 150000.0
     $homeSheet.Range('B35').Value2 = 2024.0
@@ -572,7 +572,7 @@ try {
     if ([string]$homeSheet.Range('B28').Value2 -eq '正常') {
         throw 'Negative housing possible credit was accepted'
     }
-    $sourceExtra.Range('B14').ClearContents()
+    $homeSheet.Range('D25').ClearContents()
     $extraSheet.Range('B8:B9').ClearContents()
     $homeSheet.Range('B33:B36').ClearContents()
     $homeSheet.Range('D35').Value2 = '未確認'
