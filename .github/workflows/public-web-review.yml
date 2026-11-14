@@ -44,6 +44,7 @@ jobs:
           node --check public-web/tests/test-statutory-boundaries.cjs
           node --check public-web/tests/test-donation-oracle.cjs
           node --check public-web/src/ocr-layout.js
+          node --check public-web/src/pdf-gcodes.js
           node --check public-web/src/pdf-compat.js
           node --check public-web/tests/test-ocr-pdf-compat.cjs
           node --check public-web/src/ocr-perspective.js
