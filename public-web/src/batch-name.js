@@ -49,7 +49,7 @@
   const found=spans.filter(i=>i.x>endX-1&&i.x<endX+170&&
     Math.abs(i.y-anchor.y)<=8&&
     i.s.length>0&&i.width>=0&&i.width<=i.s.length*24&&
-    normalize(i.s)).sort((a,b)=>a.x-b.x);
+    TOKEN.test(i.s)).sort((a,b)=>a.x-b.x);
   if(!found.length||found.length>7)return null;
   if(found[0].x-endX>17)return null;
   let value=found[0].s;
