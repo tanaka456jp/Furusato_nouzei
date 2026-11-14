@@ -22,7 +22,7 @@
   return Number.isSafeInteger(value)&&value>=0&&value<=1000000000000;
  }
  function holdRow(page,reason){
-  return {page,label:"",year:null,sourceYear:null,candidates:null,originalCandidates:null,sourceIndicators:{},deductionsOverrideActive:false,sourceValid:false,
+  return {page,label:"",year:null,sourceYear:null,candidates:null,originalCandidates:null,sourceIndicators:{},deductionsOverrideActive:false,appliedDeductionsYen:null,sourceValid:false,
    confirmed:false,noExclusions:false,forecastReviewed:false,filing:"one-stop",
    status:"HOLD",donationLimitYen:null,reason:reason||"読取・確認待ち"};
  }
@@ -93,12 +93,12 @@
     [2025,2026].includes(row.year)&&
     FIELDS.every(k=>safeAmount(row.candidates[k]));
   row.confirmed=false;row.noExclusions=false;row.forecastReviewed=false;
-  row.status="HOLD";row.donationLimitYen=null;
+  row.status="HOLD";row.donationLimitYen=null;row.appliedDeductionsYen=null;
   row.reason="手入力を変更しました。原票と試算対象年の見込額・控除条件を再確認してください";
   return row;
  }
  function calculate(row,engine,displayGuard){
-  row.status="HOLD";row.donationLimitYen=null;
+  row.status="HOLD";row.donationLimitYen=null;row.appliedDeductionsYen=null;
   // Bad page/year/amount or a changed choice must never publish an amount.
   if(!canEstimate(row)){
     row.reason="参照源泉票の年分・試算対象年・4金額を確認できません";
@@ -163,6 +163,8 @@
    }
    row.status=row.sourceYear<row.year?"前年参考概算":"概算";
    row.donationLimitYen=result.donationLimitYen;
+   row.appliedDeductionsYen=result.calculation.basicIncomeTaxDeductionYen+
+     result.calculation.socialInsuranceYen;
    row.reason=(row.deductionsOverrideActive
     ?"⚠ 所得控除合計は手入力上書き中・他の入力変更に自動追随しません。":"")+
     (row.sourceYear<row.year
@@ -190,14 +192,15 @@
   if(!Array.isArray(rows)||rows.length>MAX_ROWS)
    throw Error("BATCH_CSV_ROWS_INVALID");
   const header=["PDFページ","氏名","参照源泉票年分","試算対象年","給与支払金額",
-   "給与所得控除後の金額","所得控除合計","所得控除合計の入力区分","社会保険料等","手続き",
+   "給与所得控除後の金額","所得控除合計の入力値","所得控除合計の計算使用額","所得控除合計の入力区分","社会保険料等","手続き",
    "寄附上限額の概算","状態","確認状況"];
   const lines=[header.map(csvValue).join(",")];
   for(const r of rows){
    const v=r.sourceValid?r.candidates:null;
    lines.push([r.page,labelFor(r),r.sourceYear??"",r.year??"",
     v?.salaryGross??"",v?.salaryIncomeReference??"",
-    v?.deductionsReference??"",r.deductionsOverrideActive?"手入力上書き・自動追随なし":"原票／自動照合",v?.socialInsurance??"",
+    v?.deductionsReference??"",r.appliedDeductionsYen??"",
+    r.deductionsOverrideActive?"手入力上書き・自動追随なし":"自動算定（原票照合）",v?.socialInsurance??"",
     r.filing==="return"?"確定申告":"ワンストップ",
     (r.status==="概算"||r.status==="前年参考概算")&&
       Number.isSafeInteger(r.donationLimitYen)
