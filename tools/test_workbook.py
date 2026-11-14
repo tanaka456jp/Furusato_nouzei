@@ -149,7 +149,7 @@ class WorkbookTest(unittest.TestCase):
             self.assertLess(sheet.page_margins.left, 0.4)
             self.assertLess(sheet.page_margins.right, 0.4)
         self.assertEqual(str(self.book[HOME].print_area), "'操作画面'!$A$1:$D$39")
-        self.assertEqual(str(self.book[DETAIL].print_area), "'計算根拠'!$A$1:$D$19")
+        self.assertEqual(str(self.book[DETAIL].print_area), "'計算根拠'!$A$1:$D$23")
         rules = self.book[HOME].conditional_formatting
         self.assertIn("A9:D9", {str(r.sqref) for r in rules})
         self.assertGreaterEqual(len(rules["A9:D9"]), 2)
@@ -363,6 +363,7 @@ class WorkbookTest(unittest.TestCase):
         self.assertTrue(home["B31"].protection.locked)
         self.assertTrue(home["D31"].protection.locked)
         self.assertIn("D25", home["B28"].value)
+        self.assertNotIn("'例外・分離課税'!B14<", home["B28"].value)
         self.assertIn("'ふるさと納税限度額計算'!F24", home["B17"].value)
         self.assertIn("'ふるさと納税限度額計算'!F25", home["B18"].value)
         self.assertEqual(home["D24"].value, "ワンストップ")
