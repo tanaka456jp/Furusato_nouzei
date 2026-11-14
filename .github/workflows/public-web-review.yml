@@ -36,6 +36,7 @@ jobs:
           node --check public-web/src/batch.js
           node --check public-web/src/batch-core.js
           node --check public-web/tests/test-batch-core.cjs
+          node --check public-web/tests/test-batch-name.cjs
           node --check public-web/src/ocr-quality.js
           node --check public-web/src/ocr-image-header.js
           node --check public-web/tests/test-ocr-image-header.cjs
