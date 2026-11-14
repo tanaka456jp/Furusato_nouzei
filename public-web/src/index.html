@@ -34,7 +34,7 @@
       <p class="eyebrow">無料 · ログイン不要 · 入力値はブラウザ内のみ</p>
       <h1>ふるさと納税の寄附目安額を、<br>わかりやすく試算。</h1>
       <p class="lead">給与と社会保険料などを入力するだけ。個人情報の送信や会員登録をせず、対応する条件で概算を確認できます。</p>
-      <p class="notice"><strong>検証中：</strong>このWebページは公開前の検証用です。現在は2025年・2026年の単一給与所得など限られた条件だけに対応し、申告・寄附額の確定には使えません。</p>
+      <p class="notice"><strong>検証中：</strong>このWebページは公開前の検証用です。現在は2025年・2026年の単一給与所得など限られた条件だけに対応し、申告・寄附額の確定には使えません。2025年源泉票を用いた2026年試算は、2026年見込額へ訂正・再確認した場合のみ行います。</p>
     </section>
     <div class="layout">
       <section class="panel" aria-labelledby="calc-title">
@@ -73,10 +73,10 @@
             <label>社会保険料等の金額
               <input type="text" inputmode="numeric" autocomplete="off" spellcheck="false" name="socialInsurance" placeholder="例：1000000" maxlength="12" required>
             </label>
-            <label>給与所得控除後の金額 <small>OCRから転記した場合の検証値（手入力可）</small>
+            <label>給与所得控除後の金額 <small>試算対象年の見込額を入力（前年原票の金額は参考値、手入力可）</small>
               <input type="text" inputmode="numeric" autocomplete="off" spellcheck="false" name="salaryIncomeReference" placeholder="任意：源泉徴収票の記載額" maxlength="12">
             </label>
-            <label>所得控除の額の合計額 <small>OCRから転記した場合の検証値（手入力可）</small>
+            <label>所得控除の額の合計額 <small>試算対象年の見込額を入力（手入力可）</small>
               <input type="text" inputmode="numeric" autocomplete="off" spellcheck="false" name="deductionsReference" placeholder="任意：源泉徴収票の記載額" maxlength="12">
             </label>
           </div>
@@ -96,6 +96,7 @@
               <label><input type="checkbox" name="hasNonstandardConditions"> 標準条件外・不明な控除</label>
             </div>
           </fieldset>
+          <label class="confirm"><input type="checkbox" name="forecastReviewed"> 前年の源泉徴収票を使う場合、給与・社会保険料・給与所得額・所得控除額を試算対象年の見込額に補正し、扶養等の条件を改めて確認しました（前年資料を使わない場合は不要）</label>
           <label class="confirm"><input type="checkbox" name="acknowledgedExclusions" required> 上記の該当有無を確認しました（チェックがない場合は計算を停止します）</label>
           <div class="actions"><button type="submit" class="primary">寄附目安額を試算する</button><button type="reset" class="secondary">入力をクリア</button></div>
         </form>
