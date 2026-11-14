@@ -34,7 +34,8 @@
       socialInsurance: get("socialInsurance").value.trim(),
       salaryIncomeReference: get("salaryIncomeReference").value.trim(),
       deductionsReference: get("deductionsReference").value.trim(),
-      acknowledgedExclusions: get("acknowledgedExclusions").checked
+      acknowledgedExclusions: get("acknowledgedExclusions").checked,
+      forecastReviewed: get("forecastReviewed").checked
     };
     if(form.dataset.ocrYear)input.sourceYear=form.dataset.ocrYear;
     if(form.dataset.ocrReviewPending==="true")input.sourceReviewPending=true;
@@ -80,8 +81,11 @@
       return false;
     var year=Number(input.year),gross=strictYen(input.salaryGross);
     var social=strictYen(input.socialInsurance);
+    var sourceYear=input.sourceYear===undefined?year:Number(input.sourceYear);
     if((year!==2025&&year!==2026)||
-       (input.sourceYear!==undefined&&String(input.sourceYear)!==String(year))||
+       !Number.isSafeInteger(sourceYear)||
+       (sourceYear!==year&&sourceYear!==year-1)||
+       (sourceYear!==year&&input.forecastReviewed!==true)||
        gross===null||social===null||gross<=0||social>gross||
        result.year!==year||result.residentYear!==year+1||
        !Array.isArray(result.reasons)||result.reasons.length!==0)
@@ -247,8 +251,14 @@
     if(name==="year"||name==="filing"||
        name==="salaryGross"||name==="socialInsurance"||
        name==="salaryIncomeReference"||name==="deductionsReference"||
-       flags.includes(name)){
+       name==="forecastReviewed"||flags.includes(name)){
       if(conditionsConfirmation)conditionsConfirmation.checked=false;
+      // A prior-year forecast must be re-confirmed after any change to its
+      // year, amounts or tax conditions. Never clear on its own click.
+      if(name!=="forecastReviewed"){
+        var forecast=form.elements.namedItem("forecastReviewed");
+        if(forecast)forecast.checked=false;
+      }
     }
   }
   function invalidateEstimate(){
