@@ -365,6 +365,26 @@ class WorkbookTest(unittest.TestCase):
         self.assertIn("D25", home["B28"].value)
         self.assertIn('ABS(\'例外・分離課税\'!B14-B31)>1',home["B28"].value)
         self.assertIn('VERIFIED_AFTER_CORRECTION',home["B28"].value)
+        extra = self.book[ADVANCED]
+        self.assertIsNone(extra["B41"].value)
+        self.assertTrue(extra["B41"].protection.locked)
+        self.assertTrue(extra["B42"].protection.locked)
+        fingerprint = extra["B42"].value
+        self.assertTrue(fingerprint.startswith('=TEXTJOIN("|",FALSE,'))
+        for coordinate in ("B4","B12","B16","B31","D14","D17","D25"):
+            self.assertIn(f"'操作画面'!{coordinate}", fingerprint)
+        for coordinate in ("B8","B14","B15","B16","B17","B38","B39"):
+            self.assertIn(f"'例外・分離課税'!{coordinate}", fingerprint)
+        self.assertNotIn("'例外・分離課税'!B20",fingerprint,
+                         "The attestation must not depend on its own status.")
+        self.assertNotIn("'例外・分離課税'!B41",fingerprint,
+                         "The attestation cannot depend on itself.")
+        self.assertIn("'例外・分離課税'!B41",home["B28"].value)
+        self.assertIn("'例外・分離課税'!B42",home["B28"].value)
+        vb = (ROOT/"vba/TaxLawUpdater.bas").read_text(encoding="utf-8-sig")
+        self.assertIn('extra.Range("B41").Value2 = CStr(extra.Range("B42").Value2)',vb)
+        self.assertIn('extra.Range("B41").ClearContents',vb)
+
         self.assertNotIn("'例外・分離課税'!B14<", home["B28"].value)
         self.assertIn("'ふるさと納税限度額計算'!F24", home["B17"].value)
         self.assertIn("'ふるさと納税限度額計算'!F25", home["B18"].value)
