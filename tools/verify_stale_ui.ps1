@@ -35,7 +35,12 @@ try {
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Write-Output 'QA_STALE_BASELINE_RECALCULATED'
     if ([string]$homeSheet.Range('B28').Value2 -ne '正常' -or [int]$homeSheet.Range('B8').Value2 -ne 109000) {
-        throw 'Baseline synthetic result was not 109000'
+        $syntheticStatus = [string]$homeSheet.Range('B28').Value2
+        $syntheticAmount = [string]$homeSheet.Range('B8').Value2
+        $fingerprintCell = $book.Worksheets.Item('例外・分離課税').Range('B42')
+        $fingerprintError = [bool]([string]$fingerprintCell.Text -like '#*')
+        throw ('Baseline synthetic result not 109000; status=' + $syntheticStatus +
+            '; amount=' + $syntheticAmount + '; fingerprintError=' + $fingerprintError)
     }
     $excel.EnableEvents = $true
     $excel.Calculation = -4135 # manual
