@@ -125,7 +125,7 @@
     <section class="batch-panel panel" aria-labelledby="batch-title">
       <p class="eyebrow">OPTIONAL · MULTI-PERSON LOCAL REVIEW</p>
       <h2 id="batch-title">複数人を一括試算（複数ページPDF）</h2>
-      <p>1ページにつき<strong>1人分の源泉徴収票</strong>があるPDFを、端末内でページ順に読み取ります（最大20ページ・8MB）。氏名・住所・会社名は自動抽出しません。各ページに任意の識別ラベルを付けて一覧管理できます。</p>
+      <p>1ページにつき<strong>1人分の源泉徴収票</strong>があるPDFを、端末内でページ順に読み取ります（最大20ページ・8MB）。受給者氏名はB列相当欄へ入力・訂正でき、参照源泉票の年分と試算対象年を別々に扱います。2025年原票から2026年を試算する場合は2026年の見込額へ修正してください。</p>
       <p class="notice">同じ方の複数勤務先の源泉徴収票や1ページに複数人分を配置したPDFは自動合算できません。扶養・配偶者・生命保険料控除・住宅ローン控除・複数給与など未対応条件がある方は、確認チェックを付けずHOLDのままにしてください。</p>
       <label class="batch-file-label">複数ページの源泉徴収票PDF（端末内のみ）
         <input id="batchPdf" type="file" accept="application/pdf">
@@ -142,18 +142,20 @@
         <table id="batchTable" class="batch-table" hidden>
           <caption>源泉徴収票の個別試算一覧（HOLDは金額非表示）</caption>
           <thead><tr>
-            <th scope="col">ページ</th><th scope="col">識別ラベル（任意）</th>
-            <th scope="col">所得年</th><th scope="col">支払金額</th>
+            <th scope="col">ページ</th><th scope="col">氏名（訂正可）</th>
+            <th scope="col">参照源泉票年</th><th scope="col">試算対象年</th>
+            <th scope="col">支払金額（見込額）</th>
             <th scope="col">給与所得</th><th scope="col">所得控除合計</th>
             <th scope="col">社会保険料等</th><th scope="col">手続き</th>
-            <th scope="col">4金額と年分を原票照合</th>
+            <th scope="col">対象年見込額を確認</th>
             <th scope="col">追加控除等の未対応条件なし</th>
+            <th scope="col">前年参考額を当年見込額へ補正済み</th>
             <th scope="col">寄附上限額の概算</th><th scope="col">状態</th>
           </tr></thead>
           <tbody id="batchRows"></tbody>
         </table>
       </div>
-      <p class="smallprint">各対象者の2つの確認欄を個別にチェックした後、一括試算してください。判定できない対象者はHOLDにし、計算済みの方のみ概算を表示します。CSVは明示的に保存操作した場合のみ生成され、OCR結果やCSVはサーバーへ送信・自動保存しません。PDFのページ数と対象者数が一致することを原票で確認してください。</p>
+      <p class="smallprint">各対象者の氏名・年分・見込額を確認し、原票照合と未対応条件確認の2つをチェックしてください。前年の源泉票を参考に翌年を試算するときだけ、さらに見込額補正の確認が必要です。未確認・未対応はHOLDで金額非表示。CSVは明示保存のみ生成し、氏名・所得・PDFはサーバーへ送信しません。端末上のCSV・印刷物には個人情報が残ります。</p>
     </section>
     <section class="explainer">
       <h2>試算前に知っておきたいこと</h2>
