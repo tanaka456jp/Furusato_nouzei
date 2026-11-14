@@ -253,10 +253,13 @@ def build(source, output):
     # number, relative's income, tax year and source value changes B42. The
     # independent stamp never includes its own review status or B41/B42.
     fingerprint_home = (
-        ["B4", "B11", "B12", "B13", "B14", "B15", "B16", "B17", "B18"]
+        # Input ONLY. No B13/B14/B17/B18/B31: calculated values may depend
+        # on this review gate, so referencing them can cause a circular
+        # calculation and block even otherwise-valid source-free cases.
+        ["B4", "B11", "B12", "B15", "B16"]
         + [f"B{i}" for i in range(19, 26)]
         + [f"D{i}" for i in range(11, 26)]
-        + ["B31", "B33", "B34", "B35", "B36", "D35", "D24"]
+        + ["B33", "B34", "B35", "B36", "D35", "D24"]
         # Separate-tax controls may alter the applicability of a reviewed
         # source; do not reuse source verification across case-mode changes.
         + [f"B{i}" for i in range(44, 52)]
@@ -264,7 +267,8 @@ def build(source, output):
         + [f"D{i}" for i in range(72, 78)]
     )
     fingerprint_extra = (
-        [f"B{i}" for i in range(5, 19)]
+        # B7/B22/B27-B30/B34 are formula results, never snapshot drivers.
+        [f"B{i}" for i in (5,6,8,9,10,11,12,13,14,15,16,17,18)]
         + ["B19", "B21", "B24", "B25", "B26",
            "B32", "B33", "B36", "B38", "B39", "B40"]
     )
