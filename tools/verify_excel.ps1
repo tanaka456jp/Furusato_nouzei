@@ -246,7 +246,8 @@ try {
     }
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value $homeSheet.Range('B13').Value2 3550000 'Source salary income preferred'
-    Assert-Value $homeSheet.Range('B14').Value2 3800000 'Source deduction total preferred'
+    Assert-Value $homeSheet.Range('B14').Value2 $homeSheet.Range('B31').Value2 'Recalculated total is used, not historical slip total'
+    Assert-Value $homeSheet.Range('D31').Value2 3800000 'Original deduction source total remains visible'
     Assert-Value $homeSheet.Range('B17').Value2 46000 'Source life deduction preferred'
     Assert-Value $homeSheet.Range('B18').Value2 17000 'Source earthquake deduction preferred'
     Assert-Value $homeSheet.Range('B25').Value2 'なし' 'Blank dependent indicator normalized'
