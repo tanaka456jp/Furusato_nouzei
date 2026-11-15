@@ -1220,6 +1220,13 @@ try {
     # ImportWithholding, on this disposable FurusatoQA.xlsm only.
     QA-Stage 'import-taxpayer-switch-isolation-start'
     $importExtra = $book.Worksheets.Item('例外・分離課税')
+    # Same person, SAME income year may retain independent entries.
+    # Same person, DIFFERENT year MUST clear them to avoid mixing 2025
+    # business/pension income into a 2026 salary slip.
+    $book.Worksheets.Item('操作画面').Range('B11').Value2 = 2026.0
+    Assert-Value ([bool]($excel.Run('TaxLawUpdater.ImportResetDecisionForTest', 2026, $false))) $false 'Same person and year preserves independent inputs'
+    Assert-Value ([bool]($excel.Run('TaxLawUpdater.ImportResetDecisionForTest', 2025, $false))) $true 'Same person but different year forces reset'
+    Assert-Value ([bool]($excel.Run('TaxLawUpdater.ImportResetDecisionForTest', 2026, $true))) $true 'Different person same year forces reset'
     $importExtra.Range('B5').Value2 = 2500000.0
     $importExtra.Range('B6').Value2 = '65歳以上'
     $importExtra.Range('B8').Value2 = 900000.0
