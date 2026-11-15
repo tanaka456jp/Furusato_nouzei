@@ -546,10 +546,13 @@ Private Sub ValidateSpecialRelativeSource(ByVal home As Worksheet, _
     Dim sourceCountRaw As Variant, sourceAmountRaw As Variant
     Dim currentIncome As Double, statutory As Double
     Dim category As String
+    Dim hasSourceCount As Boolean, hasSourceAmount As Boolean
 
     sourceCountRaw = extra.Range("B38").Value2
     sourceAmountRaw = extra.Range("B39").Value2
-    If Len(Trim$(CStr(sourceCountRaw))) > 0 Then
+    hasSourceCount = Len(Trim$(CStr(sourceCountRaw))) > 0
+    hasSourceAmount = Len(Trim$(CStr(sourceAmountRaw))) > 0
+    If hasSourceCount Then
         If Not IsNumeric(sourceCountRaw) Then _
             Err.Raise vbObjectError + 244, , "特定親族の人数（G72）が数値ではありません。"
         If CDbl(sourceCountRaw) < 0# Or CDbl(sourceCountRaw) > 30# Or _
@@ -557,7 +560,7 @@ Private Sub ValidateSpecialRelativeSource(ByVal home As Worksheet, _
             Err.Raise vbObjectError + 251, , "特定親族の人数（G72）が入力上限または整数条件に合致しません。"
         sourceCount = CLng(sourceCountRaw)
     End If
-    If Len(Trim$(CStr(sourceAmountRaw))) > 0 Then
+    If hasSourceAmount Then
         If Not IsNumeric(sourceAmountRaw) Then _
             Err.Raise vbObjectError + 245, , "特定親族特別控除額（G74）が数値ではありません。"
         If CDbl(sourceAmountRaw) < 0# Or _
@@ -567,8 +570,11 @@ Private Sub ValidateSpecialRelativeSource(ByVal home As Worksheet, _
     End If
     If sourceAmount > 0# And sourceCount = 0 Then _
         Err.Raise vbObjectError + 244, , "特定親族の人数（G72）が原票から読み取れていません。"
-    If sourceCount = 0 Then Exit Sub
-    If Len(Trim$(CStr(sourceAmountRaw))) = 0 Then _
+    ' Distinguish an absent G72/G74 from an explicitly extracted zero.
+    ' G72=0 MUST NOT bypass checking income entries that classify as
+    ' special-relative deductions.  It is an assertion that count = zero.
+    If Not hasSourceCount And Not hasSourceAmount Then Exit Sub
+    If sourceCount > 0 And Not hasSourceAmount Then _
         Err.Raise vbObjectError + 245, , "特定親族特別控除額（G74）を確認してください。"
 
     For row = 4 To 33
@@ -622,6 +628,8 @@ Public Sub ReviewWithholding()
     If CStr(extra.Range("B20").Value2) <> "REQUIRES_REVIEW" And _
        Not sourceTotalDifferent And _
        Len(Trim$(CStr(home.Range("D25").Value2))) = 0 And _
+       Len(Trim$(CStr(extra.Range("B38").Value2))) = 0 And _
+       Len(Trim$(CStr(extra.Range("B39").Value2))) = 0 And _
        Not (CStr(extra.Range("B20").Value2) = "VERIFIED_AFTER_CORRECTION" And _
             (Len(CStr(extra.Range("B41").Value2)) = 0 Or _
              CStr(extra.Range("B41").Value2) <> CStr(extra.Range("B42").Value2))) Then
