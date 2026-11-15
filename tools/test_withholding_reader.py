@@ -301,6 +301,43 @@ class WithholdingTest(unittest.TestCase):
             write_bridge(parsed,bridge)
             self.assertIn("STATUS\tREQUIRES_REVIEW",bridge.read_text(encoding="utf-8"))
 
+    def test_invalid_labelled_optional_amount_never_disappears_silently(self):
+        # A recognizable optional deduction may be illegible; this must
+        # produce HOLD, not an apparently successful salary-only estimate.
+        with TemporaryDirectory() as tmp:
+            path=Path(tmp)/"synthetic-labelled.txt"
+            base=("令和 8 年分 給与所得の源泉徴収票\n"
+                  "支払金額：7,000,000\n"
+                  "社会保険料等の金額：1,000,000\n"
+                  "源泉徴収税額：0\n")
+            for unreadable in ("金額不明","10,000円",""):
+                path.write_text(base+
+                    "地震保険料の支払額："+unreadable+"\n",encoding="utf-8")
+                report=extract(path)
+                self.assertEqual(report["status"],"REQUIRES_REVIEW")
+                self.assertIn("INVALID_LABELLED_earthquake_paid",report["warnings"])
+                self.assertNotIn("earthquake_paid",report["fields"])
+                self.assertEqual(report["fields"]["salary_gross"],7000000)
+                bridge=Path(tmp)/"bridge.tsv"
+                write_bridge(report,bridge)
+                content=bridge.read_text(encoding="ascii")
+                self.assertIn("STATUS\tREQUIRES_REVIEW",content)
+                self.assertNotIn("earthquake_paid\t",content)
+            # Identical amounts in a fully numeric document remain eligible.
+            path.write_text(base+"地震保険料の支払額：10,000\n",encoding="utf-8")
+            report=extract(path)
+            self.assertEqual(report["status"],"READY_FOR_EXCEL_CROSSCHECK")
+            self.assertEqual(report["fields"]["earthquake_paid"],10000)
+            # If a known label becomes illegible after a readable duplicate,
+            # no earlier value may be silently retained.
+            path.write_text(base+
+                "地震保険料の支払額：10,000\n"+
+                "地震保険料の支払額：不明\n",encoding="utf-8")
+            report=extract(path)
+            self.assertEqual(report["status"],"REQUIRES_REVIEW")
+            self.assertIn("INVALID_LABELLED_earthquake_paid",report["warnings"])
+            self.assertNotIn("earthquake_paid",report["fields"])
+
     def test_conflicting_labelled_amounts_require_review(self):
         # A plain-text source without G-codes previously selected the last
         # value for a repeated label, which could hide an earlier conflict.

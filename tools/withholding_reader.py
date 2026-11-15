@@ -108,14 +108,25 @@ def extract_codes(words):
 
 
 def extract_labelled(text,with_flags=False):
-    """Preserve compatibility while refusing conflicting duplicate tax labels."""
+    """Refuse invalid or conflicting labelled amounts before Excel crosscheck.
+
+    Unrecognized labels are ignored. Recognized labels with unreadable
+    numbers are never silently dropped just because the required salary
+    fields happen to be present. Flags contain field codes, not source text.
+    """
     result, flags = {}, []
     for row in text.splitlines():
-        m=re.match(r"^\s*(.+?)\s*[:：\t]\s*([0-9０-９,，]+)\s*$",row)
+        m=re.match(r"^\s*(.+?)\s*[:：\t]\s*(.*?)\s*$",row)
         if not m: continue
         field=TEXT_MAP.get(m.group(1).strip())
+        if field is None: continue
         val=number(m.group(2))
-        if field is None or val is None: continue
+        invalid="INVALID_LABELLED_"+field
+        if val is None:
+            result.pop(field,None)
+            flags.append(invalid)
+            continue
+        if invalid in flags: continue
         conflict="CONFLICT_"+field
         if field in result and result[field]!=val:
             result.pop(field,None)
@@ -251,7 +262,7 @@ def finish(year,fields,mode,warnings=None):
         enough=False;warnings.append("MULTIPAGE_SELECTED_PAGE_REVIEW")
     if "MULTIPAGE" in mode:
         enough=False;warnings.append("MULTIPAGE_REQUIRES_REVIEW")
-    if any(x.startswith(("AMBIGUOUS_","CONFLICT_","INVALID_STRUCTURED_","UNSUPPORTED_")) for x in warnings):
+    if any(x.startswith(("AMBIGUOUS_","CONFLICT_","INVALID_STRUCTURED_","INVALID_LABELLED_","UNSUPPORTED_")) for x in warnings):
         enough=False
     if type(year) is not int or year not in (2025,2026):
         warnings.append("YEAR_NOT_APPROVED")
