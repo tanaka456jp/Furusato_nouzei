@@ -6,6 +6,13 @@ HEAD = "a" * 40
 
 
 class ReleaseReadinessTest(unittest.TestCase):
+    def test_pr_report_uses_actual_pr_head_not_ephemeral_merge_sha(self):
+        from pathlib import Path
+        workflow = (Path(__file__).resolve().parents[1] /
+                    ".github/workflows/workbook.yml").read_text(encoding="utf-8")
+        self.assertIn("github.event.pull_request.head.sha || github.sha", workflow)
+        self.assertNotIn('--head "${GITHUB_SHA}"', workflow)
+
     def test_no_evidence_always_hold(self):
         report = evaluate(HEAD)
         self.assertEqual(report["release_decision"], "HOLD")

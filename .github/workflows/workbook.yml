@@ -40,7 +40,7 @@ jobs:
           python tools/test_workbook.py
           python tools/test_salary_donation_oracle.py
           python tools/test_release_readiness.py
-          python tools/release_readiness.py --head "${GITHUB_SHA}" --output release_readiness_hold.json
+          python tools/release_readiness.py --head "${{ github.event.pull_request.head.sha || github.sha }}" --output release_readiness_hold.json
           python tools/verify_separate_oracle.py
           node tools/test_excel_gas_v4183.cjs
           python tools/build_workbook.py Furusato_nouzei_audit.xlsx
