@@ -924,6 +924,11 @@ try {
     # manual calculation mode must never leave a previously approved
     # donation limit or printable PDF visible.
     QA-Stage 'relative-sheet-manual-stale-result-start'
+    $previousRelativeReturnMode = [string]$homeSheet.Range('D24').Value2
+    # This fixture tests edit-event masking, not a return-mode deduction
+    # requiring independent income-tax relief verification.
+    $homeSheet.Range('D24').Value2 = 'ワンストップ'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
     $previousCalc = [int]$excel.Calculation
     try {
         $excel.EnableEvents = $true
@@ -960,6 +965,7 @@ try {
     Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Thirtieth-relative confirmation restores eligibility'
     $relativeSheet.Range('B33,C33').ClearContents()
     $relativeSheet.Range('D33').Value2 = '未確認'
+    $homeSheet.Range('D24').Value2 = $previousRelativeReturnMode
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value $homeSheet.Range('B8').Value2 109000 'Normal result restored after clearing test relative'
     QA-Stage 'relative-sheet-manual-stale-result-pass'
@@ -1051,6 +1057,8 @@ try {
     # that age, income, eligibility, calculated deductions, and the overall
     # donation result survive SaveCopyAs and reopen. The test is isolated.
     QA-Stage 'relative-thirtieth-case-persistence-start'
+    $previousCaseReturnMode = [string]$homeSheet.Range('D24').Value2
+    $homeSheet.Range('D24').Value2 = 'ワンストップ'
     $relativeSheet.Range('B33').Value2 = 21.0
     $relativeSheet.Range('C33').Value2 = 900000.0
     $relativeSheet.Range('D33').Value2 = '要件確認済'
@@ -1111,6 +1119,7 @@ try {
     # isolated main QA copy returns to the original salary-only baseline.
     $relativeSheet.Range('B33,C33').ClearContents()
     $relativeSheet.Range('D33').Value2 = '未確認'
+    $homeSheet.Range('D24').Value2 = $previousCaseReturnMode
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value $homeSheet.Range('B8').Value2 109000 'Main QA copy restored after relative case-save'
     QA-Stage 'relative-thirtieth-case-persistence-pass'
