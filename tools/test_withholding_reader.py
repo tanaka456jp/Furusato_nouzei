@@ -298,11 +298,13 @@ class WithholdingTest(unittest.TestCase):
         # Anonymous coordinates model the 2026 form, not any private document.
         words=[
             (380,265,391,271,"G72"),(395,264,402,271,"1"),
-            (408,265,419,271,"G73"),(423,264,430,271,"2"),
+            (408,265,419,271,"G73"),
+            (435,265,446,271,"G20"),(451,264,458,271,"2"),
             (33,300,44,305,"G74"),(102,296,138,305,"630,000"),
         ]
         self.assertEqual(CODE_MAP["G72"],"special_relative_count")
-        self.assertEqual(CODE_MAP["G73"],"under16_count")
+        self.assertEqual(CODE_MAP["G20"],"under16_count")
+        self.assertNotIn("G73",CODE_MAP)
         self.assertEqual(CODE_MAP["G74"],"special_relative_deduction_reference")
         fields,flags=extract_codes(words)
         self.assertEqual(flags,[])
@@ -318,6 +320,27 @@ class WithholdingTest(unittest.TestCase):
         self.assertEqual(report["status"],"REQUIRES_REVIEW")
         self.assertIn("SPECIAL_RELATIVE_REQUIRES_INCOME_DETAILS",report["warnings"])
         self.assertNotIn("SPECIAL_RELATIVE_COUNT_MISSING",report["warnings"])
+
+    def test_2025_under16_and_special_relative_secondary_are_distinct(self):
+        # Synthetic count data and anchor coordinates; never private originals.
+        words=[
+            (408,265,419,271,"G73"),
+            (435,265,446,271,"G20"),(451,264,458,271,"4"),
+        ]
+        fields,flags=extract_codes(words)
+        self.assertEqual(fields,{"under16_count":4})
+        self.assertEqual(flags,[])
+        words.insert(1,(423,264,430,271,"1"))
+        fields,flags=extract_codes(words)
+        self.assertEqual(fields,{"under16_count":4})
+        self.assertIn("UNSUPPORTED_SPECIAL_RELATIVE_SUBORDINATE_COUNT",flags)
+        source={"salary_gross":5000000,
+                "social_insurance":800000,"income_tax_withheld":0,**fields}
+        report=finish(2025,source,"PDF_TEXT",flags)
+        self.assertEqual(report["status"],"REQUIRES_REVIEW")
+        self.assertIn("UNSUPPORTED_SPECIAL_RELATIVE_SUBORDINATE_COUNT",
+                      report["warnings"])
+        self.assertNotIn("special_relative_subordinate_count",report["fields"])
 
     def test_special_relative_amount_without_count_requires_review(self):
         source={"salary_gross":5000000,"social_insurance":1000000,

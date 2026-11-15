@@ -17,7 +17,7 @@ CODE_MAP = {
     "G29":"mortgage_credit","G30":"life_new","G31":"life_old",
     "G32":"medical_care","G33":"annuity_new","G34":"annuity_old",
     "G35":"mortgage_claim_count","G36":"mortgage_possible_credit",
-    "G72":"special_relative_count", "G73":"under16_count",
+    "G72":"special_relative_count", "G20":"under16_count",
     "G74":"special_relative_deduction_reference",
     "G46":"basic_reference",
     "G47":"income_adjustment",
@@ -81,7 +81,10 @@ def extract_codes(words):
     anchors = [w for w in words if re.fullmatch(r"G[0-9]{2}",w[4])]
     nums = [w for w in words if number(w[4]) is not None]
     for code in anchors:
-        key = CODE_MAP.get(code[4])
+        # G73 is the secondary special-relative count, not the under-16 count.
+        # G20 is the correct under-16 field in both attached form years.
+        key = ("special_relative_subordinate_count" if code[4] == "G73"
+               else CODE_MAP.get(code[4]))
         if key is None: continue
         choices = []
         for w in nums:
@@ -94,6 +97,10 @@ def extract_codes(words):
             if len(choices)>1: flags.append("AMBIGUOUS_"+key)
             continue
         val=number(choices[0][4])
+        if code[4] == "G73":
+            if val > 0:
+                flags.append("UNSUPPORTED_SPECIAL_RELATIVE_SUBORDINATE_COUNT")
+            continue
         if key in out and out[key]!=val:
             flags.append("CONFLICT_"+key); out.pop(key,None)
         elif "CONFLICT_"+key not in flags: out[key]=val
@@ -244,7 +251,7 @@ def finish(year,fields,mode,warnings=None):
         enough=False;warnings.append("MULTIPAGE_SELECTED_PAGE_REVIEW")
     if "MULTIPAGE" in mode:
         enough=False;warnings.append("MULTIPAGE_REQUIRES_REVIEW")
-    if any(x.startswith(("AMBIGUOUS_","CONFLICT_","INVALID_STRUCTURED_")) for x in warnings):
+    if any(x.startswith(("AMBIGUOUS_","CONFLICT_","INVALID_STRUCTURED_","UNSUPPORTED_")) for x in warnings):
         enough=False
     if type(year) is not int or year not in (2025,2026):
         warnings.append("YEAR_NOT_APPROVED")
