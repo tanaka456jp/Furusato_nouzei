@@ -220,6 +220,50 @@ try {
     Assert-Value $relativeSheet.Range('E37').Value2 1360000 'Four-special-relative G74 income-tax total'
     $sourceAudit.Range('B38').Value2 = 4.0
     $sourceAudit.Range('B39').Value2 = 1360000.0
+    # Exercise the *real VBA* source reconciler rather than copying the
+    # verified label/stamp without checking that G72/G74 are coherent.
+    Assert-Value ([string]($excel.Run('TaxLawUpdater.SpecialRelativeSourceCheckForTest'))) 'OK' 'Four-person G72/G74 reconciliation'
+    $sourceAudit.Range('B39').Value2 = 1360001.0
+    $errorText = [string]($excel.Run('TaxLawUpdater.SpecialRelativeSourceCheckForTest'))
+    if ($errorText -notlike '*G74*') {
+        throw 'One-yen discrepant G74 source total was not rejected'
+    }
+    $sourceAudit.Range('B39').Value2 = 1360000.0
+    $sourceAudit.Range('B38').Value2 = 5.0
+    $errorText = [string]($excel.Run('TaxLawUpdater.SpecialRelativeSourceCheckForTest'))
+    if ($errorText -notlike '*人数分*') { throw 'Five asserted G72 but only four confirmed relatives were accepted' }
+    $sourceAudit.Range('B38').Value2 = 31.0
+    $errorText = [string]($excel.Run('TaxLawUpdater.SpecialRelativeSourceCheckForTest'))
+    if ($errorText -notlike '*上限*') { throw 'G72 count 31 was accepted' }
+    $sourceAudit.Range('B38').Value2 = 4.5
+    $errorText = [string]($excel.Run('TaxLawUpdater.SpecialRelativeSourceCheckForTest'))
+    if ($errorText -notlike '*整数*') { throw 'Fractional G72 count was accepted' }
+    $sourceAudit.Range('B38').Value2 = 4.0
+    $relativeSheet.Range('D8').Value2 = '未確認'
+    $errorText = [string]($excel.Run('TaxLawUpdater.SpecialRelativeSourceCheckForTest'))
+    if ($errorText -notlike '*未確認*') { throw 'Unconfirmed fifth relative bypassed the source audit' }
+    $relativeSheet.Range('D8').Value2 = '要件確認済'
+    # Person 30 must be included in both statutory totals and G72/G74,
+    # not silently omitted by a hard-coded three-person or five-person loop.
+    $relativeSheet.Range('B33').Value2 = 21.0
+    $relativeSheet.Range('C33').Value2 = 850000.0
+    $relativeSheet.Range('D33').Value2 = '要件確認済'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $relativeSheet.Range('E33').Value2 630000 'Thirtieth relative income-tax amount'
+    Assert-Value $relativeSheet.Range('F33').Value2 450000 'Thirtieth relative resident-tax amount'
+    Assert-Value $relativeSheet.Range('E35').Value2 2620000 'Thirtieth relative included in national total'
+    Assert-Value $relativeSheet.Range('F35').Value2 2100000 'Thirtieth relative included in municipal total'
+    $errorText = [string]($excel.Run('TaxLawUpdater.SpecialRelativeSourceCheckForTest'))
+    if ($errorText -notlike '*人数分*') { throw 'Thirtieth relative was omitted from G72 count review' }
+    $sourceAudit.Range('B38').Value2 = 5.0
+    $sourceAudit.Range('B39').Value2 = 1990000.0
+    Assert-Value ([string]($excel.Run('TaxLawUpdater.SpecialRelativeSourceCheckForTest'))) 'OK' 'Five special relatives including row33'
+    $relativeSheet.Range('B33,C33').ClearContents()
+    $relativeSheet.Range('D33').Value2 = '未確認'
+    $sourceAudit.Range('B38').Value2 = 4.0
+    $sourceAudit.Range('B39').Value2 = 1360000.0
+    Assert-Value ([string]($excel.Run('TaxLawUpdater.SpecialRelativeSourceCheckForTest'))) 'OK' 'Restored G72/G74 after row33 cleanup'
+    QA-Stage 'special-relative-source-g72-g74-person-by-person-pass'
     $sourceAudit.Range('B14').Value2 = 3660000.0
     $sourceAudit.Range('B20').Value2 = 'VERIFIED_AFTER_CORRECTION'
     $excel.Run('TaxLawUpdater.RecalculateCase')
