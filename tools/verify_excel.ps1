@@ -943,7 +943,8 @@ try {
         Assert-Value $homeSheet.Range('B13').Value2 1000000 ('Low salary income ' + $case.Year)
         Assert-Value $homeSheet.Range('B28').Value2 '正常' ('Low salary eligibility ' + $case.Year)
         Assert-Value $homeSheet.Range('D8').Value2 47500 ('Low salary levy ' + $case.Year)
-        Assert-Value $residentSheet.Range('B21').Value2 0.9 ('Negative basis 90pct ' + $case.Year)
+        Assert-Value $residentSheet.Range('B21').Value2 0 ('Negative basis marginal income-tax rate ' + $case.Year)
+        Assert-Value $residentSheet.Range('B22').Value2 0.9 ('Negative basis 90pct special ratio ' + $case.Year)
         Assert-Value $homeSheet.Range('B8').Value2 12000 ('Negative basis ceiling ' + $case.Year)
     }
     $settings.Range('B4').Value2 = 2026.0
