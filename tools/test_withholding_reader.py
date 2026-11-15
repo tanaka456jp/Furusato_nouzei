@@ -145,6 +145,19 @@ class WithholdingTest(unittest.TestCase):
             self.assertIn("special_relative_deduction_reference"+chr(9)+"630000",payload)
             self.assertNotIn("山田",payload)
 
+    def test_four_special_relatives_require_personal_review_not_old_three_person_limit(self):
+        values={"salary_gross":7000000,"income_tax_withheld":285800,
+                "social_insurance":1000000,
+                "special_relative_count":4,
+                "special_relative_deduction_reference":1360000}
+        report=finish(2026,values,"STRUCTURED_JSON")
+        self.assertEqual(report["status"],"REQUIRES_REVIEW")
+        self.assertIn("SPECIAL_RELATIVE_REQUIRES_INCOME_DETAILS",report["warnings"])
+        self.assertNotIn("SPECIAL_RELATIVE_COUNT_EXCEEDS_UI",report["warnings"])
+        values["special_relative_count"]=31
+        report=finish(2026,values,"STRUCTURED_JSON")
+        self.assertIn("SPECIAL_RELATIVE_COUNT_EXCEEDS_UI",report["warnings"])
+
     def test_special_relative_vba_bridge_contract(self):
         root=Path(__file__).resolve().parents[1]
         code=(root/"vba"/"TaxLawUpdater.bas").read_text(encoding="utf-8")
