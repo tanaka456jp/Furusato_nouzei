@@ -164,6 +164,7 @@ try {
     # same explicit eligibility controls.  National and resident tax
     # deductions must not be double-counted when people 4+ are added.
     QA-Stage 'multi-relative-independent-com-start'
+    $engineSheet = $book.Worksheets.Item('ふるさと納税限度額計算')
     $relativeSheet = $book.Worksheets.Item('特定親族明細')
     Assert-Value $relativeSheet.Visible -1 '30-person relative detail visible'
     $settings.Range('B4').Value2 = 2026.0
