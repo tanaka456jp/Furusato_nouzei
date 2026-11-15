@@ -175,7 +175,9 @@ try {
     $homeSheet.Range('B16').Value2 = 1000000.0
     $homeSheet.Range('B25').Value2 = 'あり'
     $homeSheet.Range('D22').Value2 = '該当なし'
-    $homeSheet.Range('D24').Value2 = '確定申告'
+    # Use the one-stop mode for this plain salary-only family fixture.
+    # Return-mode cases already carry a separate marginal-tax safety HOLD.
+    $homeSheet.Range('D24').Value2 = 'ワンストップ'
     foreach ($p in @(
         @{ Row=4; Income=500000; Age=20; Tax=630000; Levy=450000; Category='特定扶養親族' },
         @{ Row=5; Income=900000; Age=21; Tax=610000; Levy=450000; Category='特定親族特別控除' },
