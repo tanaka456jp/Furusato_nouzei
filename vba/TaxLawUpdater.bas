@@ -579,7 +579,7 @@ Private Sub ValidateSpecialRelativeSource(ByVal home As Worksheet, _
             currentIncome = CDbl(relatives.Cells(row, "C").Value2)
             statutory = SpecialRelativeTaxDeduction( _
                 currentIncome, CLng(home.Range("B11").Value2))
-            If Abs(statutory - CDbl(relatives.Cells(row, "E").Value2)) > 1# Then _
+            If statutory <> CDbl(relatives.Cells(row, "E").Value2) Then _
                 Err.Raise vbObjectError + 250, , "特定親族の個別控除額と所得税の法定表が一致しません。"
             actualCount = actualCount + 1
             actualAmount = actualAmount + statutory
@@ -587,7 +587,7 @@ Private Sub ValidateSpecialRelativeSource(ByVal home As Worksheet, _
     Next row
     If actualCount <> sourceCount Then _
         Err.Raise vbObjectError + 246, , "特定親族の合計所得を人数分入力し、原票と照合してください。"
-    If Abs(actualAmount - sourceAmount) > 1# Then _
+    If actualAmount <> sourceAmount Then _
         Err.Raise vbObjectError + 247, , "特定親族特別控除額（G74）と所得内訳の計算が一致しません。"
 End Sub
 
