@@ -433,7 +433,11 @@ Public Sub ImportWithholding()
         "どちらの場合も扶養・親族情報は再確認が必要です。", _
         vbQuestion + vbYesNoCancel + vbDefaultButton3, "納税者の切替確認")
     If taxpayerChoice = vbCancel Then GoTo CleanUp
-    newTaxpayer = (taxpayerChoice = vbYes)
+    newTaxpayer = ImportMustResetAdditionalIncome(year, taxpayerChoice = vbYes)
+    If newTaxpayer And taxpayerChoice = vbNo Then
+        MsgBox "同じ納税者でも所得年が異なるため、前年分の年金・事業・雑所得・分離所得を初期化します。", _
+               vbExclamation, "年分変更時の安全確認"
+    End If
     backup = UniqueBackupPath(ThisWorkbook)
     ThisWorkbook.SaveCopyAs backup
     If Not fso.FileExists(backup) Then Err.Raise vbObjectError + 214, , "更新前のバックアップを作成できません。"
@@ -748,6 +752,22 @@ Public Sub RecalculateCase()
 End Sub
 
 ' Remove case-specific confirmations and additional persons at import/new case.
+' Do not inherit independent income across tax years even for the same
+' individual. The withholding bridge provides the source income year.
+Private Function ImportMustResetAdditionalIncome(ByVal sourceYear As Long, _
+    ByVal isDifferentTaxpayer As Boolean) As Boolean
+    ImportMustResetAdditionalIncome = isDifferentTaxpayer Or _
+        CStr(ThisWorkbook.Worksheets("操作画面").Range("B11").Value2) <> CStr(sourceYear)
+End Function
+
+' Modal-free QA for the exact import decision. Only disposable CI workbook.
+Public Function ImportResetDecisionForTest(ByVal sourceYear As Long, _
+    ByVal isDifferentTaxpayer As Boolean) As Boolean
+    If StrComp(ThisWorkbook.Name, "FurusatoQA.xlsm", vbTextCompare) <> 0 Then _
+        Err.Raise vbObjectError + 255, , "検証専用の処理です。"
+    ImportResetDecisionForTest = ImportMustResetAdditionalIncome(sourceYear, isDifferentTaxpayer)
+End Function
+
 ' Reset only non-slip additional taxpayer inputs for NEW taxpayer imports.
 ' Importing a corrected slip for the same taxpayer preserves separately
 ' entered pension, business, miscellaneous, split income and special cases.
