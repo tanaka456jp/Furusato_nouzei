@@ -141,7 +141,9 @@ Private Sub Workbook_Open()
 End Sub
 
 Private Sub Workbook_SheetChange(ByVal Sh As Object, ByVal Target As Range)
-    If Sh Is Me.Worksheets("操作画面") Or Sh Is Me.Worksheets("例外・分離課税") Then
+    If Sh Is Me.Worksheets("操作画面") Or _
+       Sh Is Me.Worksheets("例外・分離課税") Or _
+       Sh Is Me.Worksheets("特定親族明細") Then
         TaxLawUpdater.MaskUnverifiedResults
         Application.Calculate
         TaxLawUpdater.RevealVerifiedResults
