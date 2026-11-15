@@ -419,6 +419,11 @@ Public Sub ImportWithholding()
     End If
     If Not IsNumeric(fields("YEAR")) Then Err.Raise vbObjectError + 208, , "所得年を認識できません。"
     year = CLng(fields("YEAR"))
+    ' CLng can silently round 2025.6 to 2026. A bridge year must be
+    ' exactly the decimal integer string approved by the local reader.
+    If Trim$(CStr(fields("YEAR"))) <> CStr(year) Then
+        Err.Raise vbObjectError + 276, , "所得年の形式が整数ではありません。"
+    End If
     If year <> 2025 And year <> 2026 Then Err.Raise vbObjectError + 209, , "未承認の年分です。"
     For Each key In Array("salary_gross", "income_tax_withheld", "social_insurance")
         If Not fields.Exists(CStr(key)) Then

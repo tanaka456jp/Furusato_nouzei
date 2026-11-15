@@ -153,6 +153,30 @@ class WithholdingTest(unittest.TestCase):
         self.assertEqual(finish(2027,fields,"PDF_TEXT")["status"],"REQUIRES_REVIEW")
         self.assertEqual(finish(2026,fields,"IMAGE_OCR")["status"],"REQUIRES_REVIEW")
 
+    def test_noninteger_income_year_cannot_be_rounded_by_excel(self):
+        # JSON numbers such as 2025.6 and numeric-looking strings must not
+        # become 2026 or 2025 when VBA calls CLng on a provisional bridge.
+        with TemporaryDirectory() as tmp:
+            path=Path(tmp)/"synthetic.json"
+            fields={"salary_gross":5000000,
+                    "social_insurance":1000000,"income_tax_withheld":0}
+            for invalid_year in (2025.6,2026.0,"2026",True):
+                path.write_text(json.dumps({"schema":"furusato-withholding/v1",
+                    "year":invalid_year,"fields":fields}),encoding="utf-8")
+                report=extract(path)
+                self.assertIsNone(report["year"])
+                self.assertEqual(report["status"],"REQUIRES_REVIEW")
+                self.assertIn("YEAR_NOT_APPROVED",report["warnings"])
+                output=Path(tmp)/"bridge.tsv"
+                write_bridge(report,output)
+                self.assertEqual(output.read_text(encoding="utf-8")
+                                 .splitlines()[1],"YEAR\t")
+            path.write_text(json.dumps({"schema":"furusato-withholding/v1",
+                "year":2026,"fields":fields}),encoding="utf-8")
+            correct=extract(path)
+            self.assertEqual(correct["year"],2026)
+            self.assertEqual(correct["status"],"READY_FOR_EXCEL_CROSSCHECK")
+
     def test_vba_skips_warning_metadata_for_numeric_import(self):
         code = (Path(__file__).resolve().parents[1] / "vba" / "TaxLawUpdater.bas").read_text(encoding="utf-8")
         # Both the validation and the application loop must skip the
@@ -165,6 +189,7 @@ class WithholdingTest(unittest.TestCase):
         self.assertIn('InStr(1, CStr(extra.Range("B32").Value2), "UNSUPPORTED_"', code)
         self.assertIn("vbObjectError + 275", code)
         self.assertIn("Public Sub ReviewWithholding()", code)
+        self.assertIn('If Trim$(CStr(fields("YEAR"))) <> CStr(year) Then',code)
 
     def test_provisional_pdf_bridge_contains_only_status_and_warning_codes(self):
         with TemporaryDirectory() as tmp:

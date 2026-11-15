@@ -205,6 +205,10 @@ def document_content(path,page_number=None):
 
 def finish(year,fields,mode,warnings=None):
     warnings=list(warnings or [])
+    # A JSON float, string, or boolean must never become an apparently
+    # approved income year through Excel's automatic integer conversion.
+    if type(year) is not int:
+        year=None
     if not isinstance(fields,dict):
         raise ValueError("Malformed structured fields")
     allowed=set(CODE_MAP.values())|set(TEXT_MAP.values())
