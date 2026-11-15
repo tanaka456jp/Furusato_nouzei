@@ -185,6 +185,41 @@ jobs:
             $result = Get-Content -LiteralPath $out -Raw -Encoding UTF8 | ConvertFrom-Json
             if ($result.status -ne 'READY_FOR_EXCEL_CROSSCHECK' -or $result.fields.salary_gross -ne 7000000) { throw 'Reader smoke wrong or incomplete' }
             if (-not (Test-Path -LiteralPath $bridge -PathType Leaf)) { throw 'Reader VBA bridge missing' }
+            # Validate the packaged Windows EXE itself, not just Python:
+            # two anonymous slips, page count only, explicit page 2.
+            $multiPdf = Join-Path $temp 'synthetic-two-slips.pdf'
+            @'
+import fitz,sys
+doc=fitz.open()
+for salary in (5000000,7000000):
+    page=doc.new_page()
+    page.insert_text((40,30),"G04 "+format(salary,","))
+    page.insert_text((40,55),"G08 0")
+    page.insert_text((40,80),"G26 1,000,000")
+    page.insert_text((40,120),"ANONYMOUS SYNTHETIC SAMPLE: PAGE SELECTION CHECK")
+doc.save(sys.argv[1])
+doc.close()
+'@ | python - $multiPdf
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot create synthetic multi-page PDF fixture' }
+            $pageCountOutput = Join-Path $temp 'count.txt'
+            & .\dist\FurusatoDocumentReader.exe --input $multiPdf --output $pageCountOutput --page-count
+            if ($LASTEXITCODE -ne 0) { throw 'Packaged reader page-count failed' }
+            if ([string](Get-Content -LiteralPath $pageCountOutput -Raw -Encoding Ascii).Trim() -ne '2') {
+              throw 'Packaged reader reported incorrect PDF page count'
+            }
+            $singleOut = Join-Path $temp 'selected-result.json'
+            $singleBridge = Join-Path $temp 'selected-bridge.tsv'
+            & .\dist\FurusatoDocumentReader.exe --input $multiPdf --output $singleOut --bridge $singleBridge --page 2
+            if ($LASTEXITCODE -ne 0) { throw 'Packaged reader explicit PDF page selection failed' }
+            $selected = Get-Content -LiteralPath $singleOut -Raw -Encoding UTF8 | ConvertFrom-Json
+            if ($selected.status -ne 'REQUIRES_REVIEW' -or $selected.format -ne 'PDF_PAGE_SELECTED' -or
+                $selected.fields.salary_gross -ne 7000000 -or
+                -not ($selected.warnings -contains 'MULTIPAGE_SELECTED_PAGE_REVIEW')) {
+              throw 'Packaged reader selected page does not enforce verification or returned incorrect values'
+            }
+            if (-not ((Get-Content -LiteralPath $singleBridge -Raw -Encoding Ascii) -match 'salary_gross\s+7000000')) {
+              throw 'Selected-page bridge did not use the second synthetic slip'
+            }
           } finally {
             Remove-Item -LiteralPath $temp -Recurse -Force
           }
