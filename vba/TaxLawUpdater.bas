@@ -453,6 +453,11 @@ Public Sub ImportWithholding()
     Next key
     caution = "源泉徴収票の読み取れた数値を転記し、現在の入力を置換しますか？" & vbCrLf & _
               "既存データはバックアップします。"
+    If pageCount > 1 Then
+        caution = caution & vbCrLf & "対象：PDFの" & _
+                  CStr(CLng(pageChoice)) & "／" & CStr(pageCount) & _
+                  "ページ目のみ（他のページは取り込みません）。"
+    End If
     If status = "REQUIRES_REVIEW" Then
         caution = caution & vbCrLf & vbCrLf & _
               "このPDFは一部項目が未確定です。読み取れた数値だけを仮転記します。" & vbCrLf & _
@@ -530,6 +535,10 @@ Public Sub ImportWithholding()
     extra.Range("B19").Value2 = "ローカル・項目コード照合"
     extra.Range("B20").Value2 = status
     If fields.Exists("WARNINGS") Then extra.Range("B32").Value2 = fields("WARNINGS")
+    If pageCount > 1 Then
+        extra.Range("B32").Value2 = CStr(extra.Range("B32").Value2) & _
+            ";SELECTED_PDF_PAGE_" & CStr(CLng(pageChoice)) & "_OF_" & CStr(pageCount)
+    End If
     Application.Calculate
     If status = "REQUIRES_REVIEW" Then
         MsgBox "読み取れた金額を仮転記しました（未確定）。" & vbCrLf & _
