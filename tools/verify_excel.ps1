@@ -1047,6 +1047,20 @@ try {
         throw 'Temporary PDF remained after success or rejected overwrite'
     }
 
+    # Save the case with a real eligible person in the 30th slot.  Check
+    # that age, income, eligibility, calculated deductions, and the overall
+    # donation result survive SaveCopyAs and reopen. The test is isolated.
+    QA-Stage 'relative-thirtieth-case-persistence-start'
+    $relativeSheet.Range('B33').Value2 = 21.0
+    $relativeSheet.Range('C33').Value2 = 900000.0
+    $relativeSheet.Range('D33').Value2 = '要件確認済'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $relativeSheet.Range('G33').Value2 '特定親族特別控除' 'Thirtieth saved-relative classification'
+    Assert-Value $relativeSheet.Range('E33').Value2 610000 'Thirtieth saved-relative national deduction'
+    Assert-Value $relativeSheet.Range('F33').Value2 450000 'Thirtieth saved-relative resident deduction'
+    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Case is eligible with thirtieth relative'
+    $expectedSavedDonation = [double]$homeSheet.Range('B8').Value2
+    if ($expectedSavedDonation -le 0) { throw 'Thirty-person case has no valid donation estimate' }
     # Save a separate case file, verify its content, and reject accidental overwrite.
     $casePath = Join-Path $dir 'case_preservation.xlsm'
     QA-Stage 'case-save-start'
@@ -1080,13 +1094,26 @@ try {
     }
     try {
         Assert-Value $savedCase.Worksheets.Item('操作画面').Range('B12').Value2 7000000 'Separate case preserves salary'
-        Assert-Value $savedCase.Worksheets.Item('操作画面').Range('B8').Value2 109000 'Separate case preserves result'
+        Assert-Value $savedCase.Worksheets.Item('操作画面').Range('B8').Value2 $expectedSavedDonation 'Saved case preserves thirtieth-relative donation estimate'
+        $savedRelative = $savedCase.Worksheets.Item('特定親族明細')
+        Assert-Value $savedRelative.Range('B33').Value2 21 'Saved case keeps thirtieth-relative age'
+        Assert-Value $savedRelative.Range('C33').Value2 900000 'Saved case keeps thirtieth-relative income'
+        Assert-Value $savedRelative.Range('D33').Value2 '要件確認済' 'Saved case keeps thirtieth-relative eligibility'
+        Assert-Value $savedRelative.Range('E33').Value2 610000 'Saved case recalculates thirtieth-relative national amount'
+        Assert-Value $savedRelative.Range('F33').Value2 450000 'Saved case recalculates thirtieth-relative municipal amount'
         Assert-MacroAction ([string]$savedCase.Worksheets.Item('操作画面').Buttons().Item('btnTaxLawUpdate').OnAction) 'case_preservation.xlsm!TaxLawUpdater.TaxLawUpdate' 'Copied case macro ownership'
         Assert-MacroAction ([string]$savedCase.Worksheets.Item('計算根拠').Buttons().Item('btnExportDetails').OnAction) 'case_preservation.xlsm!TaxLawUpdater.ExportDetails' 'Copied case PDF macro ownership'
     } finally {
         $savedCase.Close($false)
     }
 
+    # The saved copy retains the confirmed 30th relative, while the
+    # isolated main QA copy returns to the original salary-only baseline.
+    $relativeSheet.Range('B33,C33').ClearContents()
+    $relativeSheet.Range('D33').Value2 = '未確認'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B8').Value2 109000 'Main QA copy restored after relative case-save'
+    QA-Stage 'relative-thirtieth-case-persistence-pass'
     # Reopen the QA copy after a successful case save.
     if ([string]$homeSheet.Range('B26').Formula -notlike '*B28*') {
         throw 'Automatic eligibility formula was lost during save/reopen'
