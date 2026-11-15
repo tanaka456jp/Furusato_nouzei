@@ -39,6 +39,8 @@ jobs:
           python tools/report_formula_wiring.py
           python tools/test_workbook.py
           python tools/test_salary_donation_oracle.py
+          python tools/test_release_readiness.py
+          python tools/release_readiness.py --head "${GITHUB_SHA}" --output release_readiness_hold.json
           python tools/verify_separate_oracle.py
           node tools/test_excel_gas_v4183.cjs
           python tools/build_workbook.py Furusato_nouzei_audit.xlsx
@@ -72,6 +74,13 @@ jobs:
           path: Excel_open_probes/
           if-no-files-found: error
           retention-days: 7
+      - name: Attach release readiness HOLD matrix (metadata only)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Furusato_RELEASE_READINESS_HOLD
+          path: release_readiness_hold.json
+          if-no-files-found: error
+          retention-days: 14
       - name: Upload reproducible review ZIP
         uses: actions/upload-artifact@v4
         with:
