@@ -57,6 +57,11 @@ class WorkbookTest(unittest.TestCase):
             self.assertIn("<=950000,450000",resident)
             self.assertIn("<=1000000,410000",resident)
         fingerprint=self.book[ADVANCED]["B42"].value
+        self.assertTrue(fingerprint.startswith("=LEN("), "Snapshots must length-prefix every input")
+        self.assertLess(len(fingerprint), 8192, "Excel formula length must remain supported")
+        self.assertIn(')&":"&', fingerprint)
+        self.assertIn("LEN('特定親族明細'!D33)", fingerprint)
+        self.assertNotIn("TEXTJOIN(", fingerprint)
         for addr in ("B4","D4","B33","C33","D33"):
             self.assertIn(f"'特定親族明細'!{addr}",fingerprint)
         for r in ("D14","D15","D16"):
