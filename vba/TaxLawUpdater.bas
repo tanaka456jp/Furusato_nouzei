@@ -329,6 +329,7 @@ Public Sub ImportWithholding()
     Dim key As Variant, value As Double, year As Long, exitCode As Long
     Dim status As String, raw As String, backup As String, caution As String
     Dim home As Worksheet, extra As Worksheet, code As Long, problem As String
+    Dim taxpayerChoice As VbMsgBoxResult, newTaxpayer As Boolean
     On Error GoTo Failed
     ' Select the PDF-only filter initially. Compound patterns hid PDFs.
     picked = Application.GetOpenFilename( _
@@ -421,6 +422,18 @@ Public Sub ImportWithholding()
               "原票照合を完了するまで寄附限度額の確定表示は停止します。"
     End If
     If MsgBox(caution, vbQuestion + vbYesNo + vbDefaultButton2) <> vbYes Then Exit Sub
+    ' A source PDF has no trusted taxpayer identity in its ASCII-only bridge.
+    ' Do not silently carry a former taxpayer's pension, business, capital
+    ' gains or other additional income into a new taxpayer's calculation.
+    taxpayerChoice = MsgBox( _
+        "別の納税者の源泉徴収票を取り込みますか？" & vbCrLf & vbCrLf & _
+        "はい：別の納税者。年金・事業・雑所得・分離課税所得も初期化します。" & vbCrLf & _
+        "いいえ：同じ納税者の再取込。追加所得の入力は維持します。" & vbCrLf & _
+        "キャンセル：取込を中止します。" & vbCrLf & vbCrLf & _
+        "どちらの場合も扶養・親族情報は再確認が必要です。", _
+        vbQuestion + vbYesNoCancel + vbDefaultButton3, "納税者の切替確認")
+    If taxpayerChoice = vbCancel Then Exit Sub
+    newTaxpayer = (taxpayerChoice = vbYes)
     backup = UniqueBackupPath(ThisWorkbook)
     ThisWorkbook.SaveCopyAs backup
     If Not fso.FileExists(backup) Then Err.Raise vbObjectError + 214, , "更新前のバックアップを作成できません。"
@@ -428,6 +441,7 @@ Public Sub ImportWithholding()
     Set extra = ThisWorkbook.Worksheets("例外・分離課税")
     ResetSeparateInputs home
     ResetRelativeInputs
+    PrepareAdditionalIncomeForImport extra, newTaxpayer
     home.Range("B11:B12,B15:B16,B19:B25,B33:B36,D11:D23,D25").ClearContents
     ' Leave independent pension, business and other income entries untouched.
     extra.Range("B13:B20").ClearContents
@@ -734,6 +748,27 @@ Public Sub RecalculateCase()
 End Sub
 
 ' Remove case-specific confirmations and additional persons at import/new case.
+' Reset only non-slip additional taxpayer inputs for NEW taxpayer imports.
+' Importing a corrected slip for the same taxpayer preserves separately
+' entered pension, business, miscellaneous, split income and special cases.
+Private Sub PrepareAdditionalIncomeForImport(ByVal extra As Worksheet, _
+                                             ByVal newTaxpayer As Boolean)
+    If Not newTaxpayer Then Exit Sub
+    extra.Range("B5:B6,B8:B12,B21,B24:B26,B33,B36").ClearContents
+    extra.Range("B25").Value2 = "なし"
+    extra.Range("B33").Value2 = "なし"
+End Sub
+
+' Isolated Excel runner contract. Refuse all ordinary distributed case files.
+Public Function PrepareAdditionalIncomeForImportForTest( _
+    ByVal newTaxpayer As Boolean) As Boolean
+    If StrComp(ThisWorkbook.Name, "FurusatoQA.xlsm", vbTextCompare) <> 0 Then _
+        Err.Raise vbObjectError + 254, , "検証専用の処理です。"
+    PrepareAdditionalIncomeForImport _
+        ThisWorkbook.Worksheets("例外・分離課税"), newTaxpayer
+    PrepareAdditionalIncomeForImportForTest = True
+End Function
+
 Private Sub ResetRelativeInputs()
     Dim rel As Worksheet
     Set rel = ThisWorkbook.Worksheets("特定親族明細")
