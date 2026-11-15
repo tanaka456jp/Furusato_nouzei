@@ -46,6 +46,17 @@ def number(value):
     return v if 0 <= v <= 10**12 else None
 
 
+def reject_duplicate_json_members(pairs):
+    """Never accept silent last-write-wins for user-supplied JSON tax fields."""
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            # Constant error, to avoid logging identifiers supplied by users.
+            raise ValueError("Duplicate JSON member")
+        result[key] = value
+    return result
+
+
 def detect_year(text):
     found = {2018 + int(x.translate(DIGITS)) for x in YEAR.findall(text)}
     return next(iter(found)) if len(found) == 1 else None
@@ -238,16 +249,24 @@ def extract(path,page_number=None):
     if page_number is not None and ext!=".pdf":
         raise ValueError("Page selection is supported for PDF only")
     if ext==".json":
-        data=json.loads(path.read_text(encoding="utf-8-sig"))
+        data=json.loads(path.read_text(encoding="utf-8-sig"),
+                        object_pairs_hook=reject_duplicate_json_members)
         if not isinstance(data,dict) or data.get("schema")!="furusato-withholding/v1":
             raise ValueError("Unsupported JSON schema")
         return finish(data.get("year"),data.get("fields",{}),"STRUCTURED_JSON")
     if ext in {".tsv",".csv"}:
         with path.open(encoding="utf-8-sig",newline="") as f:
             reader=csv.DictReader(f,delimiter="\t" if ext==".tsv" else ",")
-            if not {"field","value"}.issubset(reader.fieldnames or []):
-                raise ValueError("Expected field,value columns")
+            if len(reader.fieldnames or []) != 2 or set(reader.fieldnames) != {"field","value"}:
+                raise ValueError("Expected exactly field,value columns")
             rows=list(reader)
+        if any(set(r) != {"field","value"} or r["field"] is None
+               or r["value"] is None for r in rows):
+            raise ValueError("Malformed structured row")
+        if len({r["field"] for r in rows}) != len(rows):
+            # Even repeated identical values must not bypass source review.
+            # Never silently select the last conflicting tax figure.
+            raise ValueError("Duplicate structured field")
         raw={r["field"]:r["value"] for r in rows}
         try: year=int(raw.get("year",""))
         except ValueError: year=None
