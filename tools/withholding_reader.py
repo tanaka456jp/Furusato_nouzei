@@ -100,15 +100,22 @@ def extract_codes(words):
     return out, flags
 
 
-def extract_labelled(text):
-    result={}
+def extract_labelled(text,with_flags=False):
+    """Preserve compatibility while refusing conflicting duplicate tax labels."""
+    result, flags = {}, []
     for row in text.splitlines():
         m=re.match(r"^\s*(.+?)\s*[:：\t]\s*([0-9０-９,，]+)\s*$",row)
         if not m: continue
         field=TEXT_MAP.get(m.group(1).strip())
         val=number(m.group(2))
-        if field is not None and val is not None: result[field]=val
-    return result
+        if field is None or val is None: continue
+        conflict="CONFLICT_"+field
+        if field in result and result[field]!=val:
+            result.pop(field,None)
+            flags.append(conflict)
+        elif conflict not in flags:
+            result[field]=val
+    return (result,flags) if with_flags else result
 
 
 def image_words(image, scale=1):
@@ -180,12 +187,19 @@ def document_content(path,page_number=None):
 
 def finish(year,fields,mode,warnings=None):
     warnings=list(warnings or [])
+    if not isinstance(fields,dict):
+        raise ValueError("Malformed structured fields")
     allowed=set(CODE_MAP.values())|set(TEXT_MAP.values())
-    fields={k:int(v) for k,v in fields.items()
-            if k in allowed and isinstance(v,int) and not isinstance(v,bool)
-            and 0<=v<=10**12}
+    # A recognized optional field with an invalid numeric value must not
+    # disappear while the remaining fields are marked crosscheck-ready.
+    # Unknown identifier-like keys are never transferred to Excel.
+    if any(k in allowed and (type(v) is not int or not 0<=v<=10**12)
+           for k,v in fields.items()):
+        warnings.append("INVALID_STRUCTURED_FIELD")
+    fields={k:v for k,v in fields.items()
+            if k in allowed and type(v) is int and 0<=v<=10**12}
     needed={"salary_gross","income_tax_withheld","social_insurance"}
-    enough=year in (2025,2026) and needed.issubset(fields)
+    enough=type(year) is int and year in (2025,2026) and needed.issubset(fields)
     if fields.get("salary_reference",0)>fields.get("salary_gross",0):
         enough=False;warnings.append("INVALID_SALARY_REFERENCE")
     possible=fields.get("mortgage_possible_credit",0)
@@ -230,9 +244,10 @@ def finish(year,fields,mode,warnings=None):
         enough=False;warnings.append("MULTIPAGE_SELECTED_PAGE_REVIEW")
     if "MULTIPAGE" in mode:
         enough=False;warnings.append("MULTIPAGE_REQUIRES_REVIEW")
-    if any(x.startswith(("AMBIGUOUS_","CONFLICT_")) for x in warnings):
+    if any(x.startswith(("AMBIGUOUS_","CONFLICT_","INVALID_STRUCTURED_")) for x in warnings):
         enough=False
-    if year not in (2025,2026): warnings.append("YEAR_NOT_APPROVED")
+    if type(year) is not int or year not in (2025,2026):
+        warnings.append("YEAR_NOT_APPROVED")
     if not enough: warnings.append("INCOMPLETE_OR_UNVERIFIED")
     return {"schema":"furusato-withholding-extract/v1",
             "status":"READY_FOR_EXCEL_CROSSCHECK" if enough else "REQUIRES_REVIEW",
@@ -272,10 +287,12 @@ def extract(path,page_number=None):
         except ValueError: year=None
         fields={k:number(v) for k,v in raw.items()
                 if k!="year" and k in CODE_MAP.values()}
-        return finish(year,{k:v for k,v in fields.items() if v is not None},"STRUCTURED_TEXT")
+        return finish(year,fields,"STRUCTURED_TEXT")
     text,words,mode=document_content(path,page_number=page_number)
     vals,flags=extract_codes(words) if words else ({},[])
-    if not vals: vals=extract_labelled(text)
+    if not vals:
+        vals,label_flags=extract_labelled(text,with_flags=True)
+        flags.extend(label_flags)
     # Occupancy year is an anchored field, not the document income year.
     # Never override a disagreeing structured value.
     occupancy=extract_occupancy_year(text)
