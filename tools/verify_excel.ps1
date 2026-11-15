@@ -211,6 +211,25 @@ try {
     Assert-Value $homeSheet.Range('B31').Value2 3660000 'Five-person overall income-tax deductions'
     Assert-Value $homeSheet.Range('B14').Value2 3660000 'Five-person applied deduction total'
     Assert-Value $homeSheet.Range('B28').Value2 '正常' 'All relatives individually reviewed'
+    # A G72/G74 source count describes the four SPECIAL relatives only,
+    # not the separate 500,000-yen regular special dependent.
+    Assert-Value $relativeSheet.Range('E36').Value2 4 'Four special-relatives rather than five relatives total'
+    Assert-Value $relativeSheet.Range('E37').Value2 1360000 'Four-special-relative G74 income-tax total'
+    $sourceAudit.Range('B38').Value2 = 4.0
+    $sourceAudit.Range('B39').Value2 = 1360000.0
+    $sourceAudit.Range('B14').Value2 = 3660000.0
+    $sourceAudit.Range('B20').Value2 = 'VERIFIED_AFTER_CORRECTION'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    $sourceAudit.Range('B41').Value2 = [string]$sourceAudit.Range('B42').Value2
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'G72/G74 person-specific source snapshot'
+    $relativeSheet.Range('C7').Value2 = 1050000.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value ([string]$homeSheet.Range('B8').Value2) '' 'Changing fourth person revokes verified source snapshot'
+    $relativeSheet.Range('C7').Value2 = 950001.0
+    $sourceAudit.Range('B14,B20,B38:B39,B41').ClearContents()
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Clearing verified source returns to independent calculations'
     # A sixth relative cannot silently become eligible without age/identity review.
     $relativeSheet.Range('C9').Value2 = 600000.0
     $relativeSheet.Range('B9').Value2 = 20.0
