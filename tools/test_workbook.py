@@ -85,6 +85,21 @@ class WorkbookTest(unittest.TestCase):
         self.assertIn('If actualAmount <> sourceAmount Then',vb)
         self.assertIn('Public Function SpecialRelativeSourceCheckForTest() As String',vb)
 
+    def test_import_taxpayer_switch_does_not_leak_additional_income(self):
+        vb=(ROOT/"vba/TaxLawUpdater.bas").read_text(encoding="utf-8-sig")
+        qa=(ROOT/"tools/verify_excel.ps1").read_text(encoding="utf-8-sig")
+        self.assertIn('taxpayerChoice = MsgBox(',vb)
+        self.assertIn('vbYesNoCancel + vbDefaultButton3',vb)
+        self.assertIn('newTaxpayer = (taxpayerChoice = vbYes)',vb)
+        self.assertIn('PrepareAdditionalIncomeForImport extra, newTaxpayer',vb)
+        self.assertIn('Private Sub PrepareAdditionalIncomeForImport(',vb)
+        self.assertIn('If Not newTaxpayer Then Exit Sub',vb)
+        self.assertIn('extra.Range("B5:B6,B8:B12,B21,B24:B26,B33,B36").ClearContents',vb)
+        self.assertIn('If StrComp(ThisWorkbook.Name, "FurusatoQA.xlsm", vbTextCompare) <> 0 Then',vb)
+        self.assertIn("import-taxpayer-switch-isolation-pass",qa)
+        self.assertIn("Same taxpayer preserves split income",qa)
+        self.assertIn("New taxpayer resets special cases",qa)
+
     def test_first_open_full_recalculation_without_permanent_force_flag(self):
         # A full initial calculation is still requested. Avoid permanent
         # forced-full calculation because this suppresses smart dependency
