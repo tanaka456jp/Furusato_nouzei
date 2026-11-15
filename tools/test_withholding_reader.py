@@ -6,6 +6,7 @@ import subprocess
 import sys
 import unittest
 from withholding_reader import CODE_MAP,detect_year,extract_codes,extract_labelled,extract_occupancy_year,extract,finish,write_bridge,pdf_page_count
+from audit_withholding_reconciliation import progressive_income_tax, reconcile
 
 
 class WithholdingTest(unittest.TestCase):
@@ -111,6 +112,54 @@ class WithholdingTest(unittest.TestCase):
             self.assertIn("under16_count\t4", payload)
             self.assertIn("STATUS\tREQUIRES_REVIEW", payload)
             self.assertNotIn("special_relative_subordinate_count\t", payload)
+
+    def test_independent_national_tax_marginal_boundaries(self):
+        # Year-end income tax: independent marginal slices, no workbook formulas.
+        for taxable, expected in (
+                (0,0), (1_949_000,97_450), (1_950_000,97_500),
+                (1_951_000,97_600), (3_300_000,232_500),
+                (6_950_000,962_500), (9_000_000,1_434_000),
+                (18_000_000,4_404_000), (40_000_000,13_204_000)):
+            self.assertEqual(progressive_income_tax(taxable),expected)
+        with self.assertRaises(ValueError):
+            progressive_income_tax(-1)
+
+    def test_year_end_source_tax_oracle_does_not_approve_donation_limit(self):
+        # Fully synthetic and anonymized, not a user's withholding slip.
+        nominal={"salary_reference":3_560_000,
+                 "deductions_reference":1_560_000,
+                 "income_tax_withheld":104_600}
+        for year in (2025,2026):
+            matched=reconcile(year,nominal)
+            self.assertEqual(matched["source_tax"],"MATCH")
+            self.assertEqual(matched["donation_limit"],"NOT_VERIFIED")
+        self.assertEqual(reconcile(2025,{**nominal,
+            "income_tax_withheld":100_000})["source_tax"],"MISMATCH")
+        self.assertEqual(reconcile(2025,{"income_tax_withheld":0})
+                         ["source_tax"],"NOT_COMPARABLE")
+        self.assertEqual(reconcile(2027,nominal)["reason"],"UNAPPROVED_YEAR")
+        self.assertEqual(reconcile("2026",nominal)["reason"],"UNAPPROVED_YEAR")
+
+    def test_independent_source_tax_mortgage_zero_and_missing_credit(self):
+        # Distinguish source housing credit 'possible' from 'actually used'.
+        zero={"salary_reference":3_560_000,
+              "deductions_reference":3_956_000,
+              "income_tax_withheld":0,
+              "mortgage_possible_credit":300_000}
+        self.assertEqual(reconcile(2026,zero)["source_tax"],"MATCH")
+        taxable={"salary_reference":3_560_000,
+                 "deductions_reference":1_560_000,
+                 "income_tax_withheld":0,
+                 "mortgage_possible_credit":300_000}
+        self.assertEqual(reconcile(2026,taxable)["reason"],
+                         "HOUSING_APPLIED_CREDIT_MISSING")
+        applied={**taxable,"mortgage_credit":102_500}
+        self.assertEqual(reconcile(2026,applied)["source_tax"],"MATCH")
+        self.assertEqual(reconcile(2026,{**applied,
+            "mortgage_credit":200_000})["reason"],"INVALID_HOUSING_CREDIT")
+        self.assertEqual(reconcile(2025,{**taxable,
+            "salary_reference":330_000_001})["reason"],
+                         "HIGH_INCOME_TAX_SPECIAL_CASE")
 
     def test_years(self):
         self.assertEqual(detect_year("令和 8 年分 給与所得の源泉徴収票"),2026)
