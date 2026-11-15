@@ -491,7 +491,7 @@ try {
         $homeSheet.Range('B4').Value2 = [double]$taxYear
         $homeSheet.Range('B11').Value2 = [double]$taxYear
         foreach ($sample in $childCases) {
-            $homeSheet.Range('B12').Value2 = $sample.Gross
+            $homeSheet.Range('B12').Value2 = [double]$sample.Gross
             $homeSheet.Range('B25').Value2 = 'なし'
             $excel.Run('TaxLawUpdater.RecalculateCase')
             $without = [double]$homeSheet.Range('B13').Value2
@@ -509,10 +509,10 @@ try {
     $homeSheet.Range('B4').Value2 = 2026.0
     $homeSheet.Range('B11').Value2 = 2026.0
     if ($null -ne $oldRefSalaryIncome -and [string]$oldRefSalaryIncome -ne '') {
-        $sourceAdjustmentSheet.Range('B15').Value2 = $oldRefSalaryIncome
+        $sourceAdjustmentSheet.Range('B15').Value2 = [double]$oldRefSalaryIncome
     }
     if ($null -ne $oldAdjustmentReference -and [string]$oldAdjustmentReference -ne '') {
-        $sourceAdjustmentSheet.Range('B13').Value2 = $oldAdjustmentReference
+        $sourceAdjustmentSheet.Range('B13').Value2 = [double]$oldAdjustmentReference
     }
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value $homeSheet.Range('B13').Value2 5200000 'Under23 salary rounding baseline restored'
