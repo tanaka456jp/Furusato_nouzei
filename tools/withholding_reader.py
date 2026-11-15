@@ -117,22 +117,41 @@ def image_words(image, scale=1):
     return " ".join(w[4] for w in words),words
 
 
-def document_content(path):
+def pdf_page_count(path):
+    """Return the number of PDF pages without extracting identifiers or values."""
+    path=Path(path)
+    if path.suffix.lower()!=".pdf" or path.stat().st_size>25*1024*1024:
+        raise ValueError("Expected a PDF no larger than 25 MiB")
+    try: import fitz
+    except ImportError as exc: raise RuntimeError("PyMuPDF is required") from exc
+    with fitz.open(str(path)) as doc:
+        if len(doc)<1 or len(doc)>100: raise ValueError("PDF must have 1 to 100 pages")
+        return len(doc)
+
+
+def document_content(path,page_number=None):
     suffix=path.suffix.lower()
     if suffix==".pdf":
         try: import fitz
         except ImportError as exc: raise RuntimeError("PyMuPDF is required") from exc
         doc=fitz.open(str(path))
         try:
-            if len(doc)!=1: return "",[],"MULTIPAGE_REVIEW"
-            page=doc[0]
+            if len(doc)<1 or len(doc)>100: raise ValueError("PDF must have 1 to 100 pages")
+            multiple=(len(doc)>1)
+            if page_number is None and multiple:
+                return "",[],"MULTIPAGE_REVIEW"
+            if page_number is not None and (
+                    type(page_number) is not int or page_number<1 or page_number>len(doc)):
+                raise ValueError("Selected PDF page out of range")
+            page=doc[0 if page_number is None else page_number-1]
             words=page.get_text("words",sort=True)
             text=page.get_text("text",sort=True)
             if len(text.strip())>=40:
-                return text,words,"PDF_TEXT"
+                return text,words,"PDF_PAGE_SELECTED" if multiple else "PDF_TEXT"
             from PIL import Image
             pic=page.get_pixmap(matrix=fitz.Matrix(2,2),alpha=False)
-            return (*image_words(Image.frombytes("RGB",(pic.width,pic.height),pic.samples),2),"SCAN_OCR")
+            mode="SCAN_OCR_PAGE_SELECTED" if multiple else "SCAN_OCR"
+            return (*image_words(Image.frombytes("RGB",(pic.width,pic.height),pic.samples),2),mode)
         finally: doc.close()
     if suffix in {".png",".jpg",".jpeg",".webp",".tif",".tiff",".bmp",".heic",".heif"}:
         from PIL import Image
@@ -194,8 +213,10 @@ def finish(year,fields,mode,warnings=None):
         occupancy_year = fields["mortgage_occupancy_year"]
         if not isinstance(year, int) or not 1980 <= occupancy_year <= year:
             enough=False;warnings.append("INVALID_MORTGAGE_OCCUPANCY_YEAR")
-    if mode in {"IMAGE_OCR","SCAN_OCR"}:
+    if mode in {"IMAGE_OCR","SCAN_OCR","SCAN_OCR_PAGE_SELECTED"}:
         enough=False;warnings.append("OCR_REQUIRES_VERIFICATION")
+    if mode in {"PDF_PAGE_SELECTED","SCAN_OCR_PAGE_SELECTED"}:
+        enough=False;warnings.append("MULTIPAGE_SELECTED_PAGE_REVIEW")
     if "MULTIPAGE" in mode:
         enough=False;warnings.append("MULTIPAGE_REQUIRES_REVIEW")
     if any(x.startswith(("AMBIGUOUS_","CONFLICT_")) for x in warnings):
@@ -209,11 +230,13 @@ def finish(year,fields,mode,warnings=None):
             "personal_identifiers":"NEVER_EXTRACTED"}
 
 
-def extract(path):
+def extract(path,page_number=None):
     path=Path(path)
     ext=path.suffix.lower()
     if ext not in SUPPORTED: raise ValueError("Unsupported format")
     if path.stat().st_size>25*1024*1024: raise ValueError("Input too large")
+    if page_number is not None and ext!=".pdf":
+        raise ValueError("Page selection is supported for PDF only")
     if ext==".json":
         data=json.loads(path.read_text(encoding="utf-8-sig"))
         if not isinstance(data,dict) or data.get("schema")!="furusato-withholding/v1":
@@ -231,7 +254,7 @@ def extract(path):
         fields={k:number(v) for k,v in raw.items()
                 if k!="year" and k in CODE_MAP.values()}
         return finish(year,{k:v for k,v in fields.items() if v is not None},"STRUCTURED_TEXT")
-    text,words,mode=document_content(path)
+    text,words,mode=document_content(path,page_number=page_number)
     vals,flags=extract_codes(words) if words else ({},[])
     if not vals: vals=extract_labelled(text)
     # Occupancy year is an anchored field, not the document income year.
@@ -263,9 +286,17 @@ if __name__=="__main__":
     ap.add_argument("--input",required=True,type=Path)
     ap.add_argument("--output",required=True,type=Path)
     ap.add_argument("--bridge",type=Path)
+    ap.add_argument("--page",type=int,help="1-based page index, one taxpayer only")
+    ap.add_argument("--page-count",action="store_true",help="write count only; never inspect tax values")
     args=ap.parse_args()
     try:
-        data=extract(args.input)
+        if args.page_count:
+            if args.page is not None or args.bridge is not None:
+                raise ValueError("Page-count mode does not accept --page or --bridge")
+            args.output.write_text(str(pdf_page_count(args.input))+"\n",encoding="ascii")
+            print("PAGE_COUNT_READY")
+            sys.exit(0)
+        data=extract(args.input,page_number=args.page)
         args.output.write_text(json.dumps(data,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
         if args.bridge: write_bridge(data,args.bridge)
         print("READER_"+data["status"])
