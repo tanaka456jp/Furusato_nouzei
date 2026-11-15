@@ -2,11 +2,60 @@
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
+import subprocess
+import sys
 import unittest
-from withholding_reader import CODE_MAP,detect_year,extract_codes,extract_labelled,extract_occupancy_year,extract,finish,write_bridge
+from withholding_reader import CODE_MAP,detect_year,extract_codes,extract_labelled,extract_occupancy_year,extract,finish,write_bridge,pdf_page_count
 
 
 class WithholdingTest(unittest.TestCase):
+    def test_multiple_pdf_pages_require_explicit_selection_and_review(self):
+        # Two different, synthetic taxpayers in one PDF. No private documents.
+        import fitz
+        with TemporaryDirectory() as tmp:
+            file=Path(tmp)/"two-slips.pdf"
+            doc=fitz.open()
+            for salary in (5000000,7000000):
+                page=doc.new_page()
+                page.insert_text((40,30),"G04 "+format(salary,","))
+                page.insert_text((40,55),"G08 0")
+                page.insert_text((40,80),"G26 1,000,000")
+                page.insert_text((40,120),"ANONYMOUS SYNTHETIC SAMPLE: EXPLICIT PAGE SELECTION")
+            doc.save(str(file))
+            doc.close()
+            self.assertEqual(pdf_page_count(file),2)
+            unselected=extract(file)
+            self.assertEqual(unselected["fields"],{})
+            self.assertEqual(unselected["status"],"REQUIRES_REVIEW")
+            first=extract(file,page_number=1)
+            second=extract(file,page_number=2)
+            self.assertEqual(first["fields"]["salary_gross"],5000000)
+            self.assertEqual(second["fields"]["salary_gross"],7000000)
+            self.assertEqual(first["format"],"PDF_PAGE_SELECTED")
+            self.assertEqual(second["format"],"PDF_PAGE_SELECTED")
+            for result in (first,second):
+                self.assertEqual(result["status"],"REQUIRES_REVIEW")
+                self.assertIn("MULTIPAGE_SELECTED_PAGE_REVIEW",result["warnings"])
+                self.assertNotIn("personal_name",result["fields"])
+            for invalid in (0,3,99,-1):
+                with self.assertRaises(ValueError):
+                    extract(file,page_number=invalid)
+            count_output=Path(tmp)/"page-count.txt"
+            cli=Path(__file__).resolve().parent/"withholding_reader.py"
+            subprocess.run([sys.executable,str(cli),"--input",str(file),
+                            "--output",str(count_output),"--page-count"],
+                           check=True,capture_output=True,text=True)
+            self.assertEqual(count_output.read_text(encoding="ascii").strip(),"2")
+            output=Path(tmp)/"selected-result.json"
+            bridge=Path(tmp)/"selected-bridge.tsv"
+            subprocess.run([sys.executable,str(cli),"--input",str(file),
+                            "--output",str(output),"--bridge",str(bridge),
+                            "--page","2"],
+                           check=True,capture_output=True,text=True)
+            self.assertEqual(json.loads(output.read_text(encoding="utf-8"))["fields"]["salary_gross"],7000000)
+            self.assertIn("salary_gross"+chr(9)+"7000000",bridge.read_text(encoding="ascii"))
+            self.assertNotIn("5000000",bridge.read_text(encoding="ascii"))
+
     def test_years(self):
         self.assertEqual(detect_year("令和 8 年分 給与所得の源泉徴収票"),2026)
         self.assertEqual(detect_year("令和 7 年分"),2025)
