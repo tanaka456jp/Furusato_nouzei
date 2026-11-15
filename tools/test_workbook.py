@@ -42,6 +42,9 @@ class WorkbookTest(unittest.TestCase):
         self.assertEqual(engine["J38"].value,"=F38-H38")
         self.assertIn("'ふるさと納税限度額計算'!F38",home["B31"].value)
         self.assertIn("特定親族明細'!G4:G33",home["B28"].value)
+        self.assertIn('B25="なし",OR(COUNTIF(',home["B28"].value)
+        self.assertIn('"特定扶養親族")>0,N(D23)>0',home["B28"].value)
+        self.assertNotIn('AND(COUNT(D14:D16,D23)>0',home["B28"].value)
         for row in (4, 5, 6, 7, 8, 33):
             category = rel[f"G{row}"].value
             self.assertIn("2025,580000,620000",category)
