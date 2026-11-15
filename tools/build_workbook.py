@@ -683,7 +683,12 @@ def build(source, output):
         # Source total is provenance only. A manual adjustment of current-year
         # social insurance must not be rejected against historic slip totals.
         'MAX(D11:D13,D19:D21)>30', 'COUNT(D17:D18)>1', 'B13>B12', 'B15>B12', 'B16>B14',
-                'AND(COUNT(D14:D16,D23)>0,B25="なし",OR(COUNT(D14:D16)>0,D23>0))',
+                # Special-relative deductions (>58/62万円 income) are NOT
+                # statutory dependents for the under-23 salary adjustment.
+                # Only individually confirmed regular special dependents
+                # or the separately declared under-16 count force B25=あり.
+                f'AND(B25="なし",OR(COUNTIF({ref(RELATIVES,"G4:G33")},'
+                '"特定扶養親族")>0,N(D23)>0))',
                 f'OR(AND(NOT(ISNUMBER({ref(ADVANCED,"B16")})),B17<>{ref(ENGINE,"F24")}),'
                 f'AND(NOT(ISNUMBER({ref(ADVANCED,"B17")})),B18<>{ref(ENGINE,"F25")}))',
                 'AND(D25="",B14<>B31)']
