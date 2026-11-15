@@ -188,18 +188,19 @@ jobs:
             # Validate the packaged Windows EXE itself, not just Python:
             # two anonymous slips, page count only, explicit page 2.
             $multiPdf = Join-Path $temp 'synthetic-two-slips.pdf'
-            @'
-import fitz,sys
-doc=fitz.open()
-for salary in (5000000,7000000):
-    page=doc.new_page()
-    page.insert_text((40,30),"G04 "+format(salary,","))
-    page.insert_text((40,55),"G08 0")
-    page.insert_text((40,80),"G26 1,000,000")
-    page.insert_text((40,120),"ANONYMOUS SYNTHETIC SAMPLE: PAGE SELECTION CHECK")
-doc.save(sys.argv[1])
-doc.close()
-'@ | python - $multiPdf
+            $generatePdf = @'
+          import fitz,sys
+          doc=fitz.open()
+          for salary in (5000000,7000000):
+              page=doc.new_page()
+              page.insert_text((40,30),"G04 "+format(salary,","))
+              page.insert_text((40,55),"G08 0")
+              page.insert_text((40,80),"G26 1,000,000")
+              page.insert_text((40,120),"ANONYMOUS SYNTHETIC SAMPLE: PAGE SELECTION CHECK")
+          doc.save(sys.argv[1])
+          doc.close()
+          '@
+            python -c $generatePdf $multiPdf
             if ($LASTEXITCODE -ne 0) { throw 'Cannot create synthetic multi-page PDF fixture' }
             $pageCountOutput = Join-Path $temp 'count.txt'
             & .\dist\FurusatoDocumentReader.exe --input $multiPdf --output $pageCountOutput --page-count
