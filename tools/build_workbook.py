@@ -21,6 +21,9 @@ RESIDENT = "住民税再計算"
 DETAIL = "計算根拠"
 ADVANCED = "例外・分離課税"
 SPLIT_ALLOC = "分離課税寄附控除"
+RELATIVES = "特定親族明細"
+RELATIVE_LAST_ROW = 33  # 30 separately attested relatives; first three use home D14:D16
+
 
 
 def ref(sheet, address):
@@ -56,6 +59,7 @@ def build(source, output):
         book = load_workbook(safe_source)
     del book[HOME]
     home = book.create_sheet(HOME, 0)
+    relatives = book.create_sheet(RELATIVES, 1)
     detail = book.create_sheet(DETAIL)
     extra = book.create_sheet(ADVANCED)
     split = book.create_sheet(SPLIT_ALLOC)
@@ -276,6 +280,9 @@ def build(source, output):
         [ref(HOME, cell) for cell in fingerprint_home]
         + [ref(ADVANCED, cell) for cell in fingerprint_extra]
         + [ref("設定・税率", "B4")]
+        + [ref(RELATIVES, f"{column}{row}")
+           for row in range(4, RELATIVE_LAST_ROW + 1)
+           for column in (("B", "D") if row <= 6 else ("B", "C", "D"))]
     )
     extra["A41"] = "読取確認時の入力スナップショット（自動保存）"
     extra["A42"] = "現在の入力スナップショット（自動更新）"
@@ -399,6 +406,144 @@ def build(source, output):
             FormulaRule(formula=['ISNUMBER($D$25)'],
                 fill=PatternFill("solid", fgColor="FFF0C2"),
                 font=Font(name="Yu Gothic", bold=True, color="9C4100")))
+    # Separate every special-age relative's income and legal eligibility.
+    # The first three retain the existing home input cells; remaining relatives
+    # are entered on this visible sheet.  No unconfirmed person gets an amount.
+    relatives.sheet_view.showGridLines = False
+    relatives.sheet_view.zoomScale = 90
+    for column, width in {"A": 8, "B": 19, "C": 24, "D": 21,
+                          "E": 18, "F": 18, "G": 25, "H": 43}.items():
+        relatives.column_dimensions[column].width = width
+    relatives.merge_cells("A1:H1")
+    relatives["A1"] = "特定扶養親族・特定親族特別控除｜個別計算（最大30人）"
+    relatives["A1"].font = Font(name="Yu Gothic", size=13, bold=True, color="FFFFFF")
+    relatives["A1"].fill = PatternFill("solid", fgColor="163A56")
+    relatives.row_dimensions[1].height = 27
+    relatives.merge_cells("A2:H2")
+    relatives["A2"] = ("年齢は所得年12月31日時点。確認済＝19～22歳・生計同一・"
+                      "他の納税者との重複適用なし・専従者等に該当しないことを証憑で確認。"
+                      "1～3人目の所得は操作画面D14:D16と連動します。")
+    relatives["A2"].alignment = Alignment(wrap_text=True, vertical="center")
+    relatives.row_dimensions[2].height = 45
+    for column, title in zip("ABCDEFGH", (
+        "No.", "年末年齢", "年間合計所得（円）", "適用要件",
+        "所得税控除（円）", "住民税控除（円）", "適用区分", "確認事項"
+    )):
+        cell = relatives[f"{column}3"]
+        cell.value = title
+        cell.fill = PatternFill("solid", fgColor="163A56")
+        cell.font = Font(name="Yu Gothic", bold=True, color="FFFFFF")
+        cell.alignment = Alignment(wrap_text=True)
+    relatives.row_dimensions[3].height = 30
+    relatives.freeze_panes = "C4"
+    age_rule = DataValidation(type="whole", operator="between",
+                              formula1=0, formula2=120)
+    income_rule = DataValidation(type="whole", operator="between",
+                                 formula1=0, formula2=100000000)
+    status_rule = DataValidation(
+        type="list", formula1='"未確認,要件確認済,対象外"')
+    for validation in (age_rule, income_rule, status_rule):
+        validation.showErrorMessage = True
+        validation.errorTitle = "特定親族の入力を確認してください"
+        validation.error = "年末年齢・各人の合計所得・適用要件を確認してください。"
+        relatives.add_data_validation(validation)
+    tax_year = ref(HOME, "D4")
+    special_income = lambda c: (
+        f'IF({c}<=850000,630000,IF({c}<=900000,610000,'
+        f'IF({c}<=950000,510000,IF({c}<=1000000,410000,'
+        f'IF({c}<=1050000,310000,IF({c}<=1100000,210000,'
+        f'IF({c}<=1150000,110000,IF({c}<=1200000,60000,'
+        f'IF({c}<=1230000,30000,0)))))))))'
+    )
+    special_resident = lambda c: (
+        f'IF({c}<=950000,450000,IF({c}<=1000000,410000,'
+        f'IF({c}<=1050000,310000,IF({c}<=1100000,210000,'
+        f'IF({c}<=1150000,110000,IF({c}<=1200000,60000,'
+        f'IF({c}<=1230000,30000,0)))))))'
+    )
+    for row in range(4, RELATIVE_LAST_ROW + 1):
+        person = row - 3
+        relatives[f"A{row}"] = person
+        relatives[f"D{row}"] = "未確認"
+        if person <= 3:
+            source = ref(HOME, f"D{row+10}")
+            relatives[f"C{row}"] = f'=IF({source}="","",{source})'
+            relatives[f"C{row}"].fill = PatternFill("solid", fgColor="EAF3EA")
+            relatives[f"C{row}"].protection = Protection(locked=True)
+        else:
+            relatives[f"C{row}"].fill = PatternFill("solid", fgColor="E2F2FF")
+            relatives[f"C{row}"].protection = Protection(locked=False)
+            income_rule.add(relatives[f"C{row}"])
+        for col in ("B", "D"):
+            cell = relatives[f"{col}{row}"]
+            cell.fill = PatternFill("solid", fgColor="E2F2FF")
+            cell.protection = Protection(locked=False)
+        age_rule.add(relatives[f"B{row}"])
+        status_rule.add(relatives[f"D{row}"])
+        category = (
+            f'=IF(AND(B{row}="",C{row}="",D{row}="未確認"),"未入力",'
+            f'IF(D{row}="対象外","対象外",'
+            f'IF(OR(B{row}="",C{row}="",D{row}<>"要件確認済",'
+            f'NOT(ISNUMBER(B{row})),NOT(ISNUMBER(C{row}))),"要確認",'
+            f'IF(OR(B{row}<19,B{row}>22,B{row}<>INT(B{row}),'
+            f'C{row}<0,C{row}<>INT(C{row})),"要確認",'
+            f'IF(C{row}>1230000,"対象外",'
+            f'IF(C{row}<=IF({tax_year}=2025,580000,620000),'
+            '"特定扶養親族","特定親族特別控除"))))))'
+        )
+        relatives[f"G{row}"] = category
+        relatives[f"E{row}"] = (
+            f'=IF(G{row}="特定扶養親族",630000,'
+            f'IF(G{row}="特定親族特別控除",{special_income(f"C{row}")},0))'
+        )
+        relatives[f"F{row}"] = (
+            f'=IF(G{row}="特定扶養親族",450000,'
+            f'IF(G{row}="特定親族特別控除",{special_resident(f"C{row}")},0))'
+        )
+        relatives[f"H{row}"] = (
+            f'=IF(G{row}="要確認","要確認：年齢・各人所得・生計同一等",'
+            f'IF(G{row}="対象外","適用対象外",""))'
+        )
+        for column in ("E","F"):
+            cell = relatives[f"{column}{row}"]
+            cell.number_format = "#,##0"
+            cell.fill = PatternFill("solid", fgColor="EAF3EA")
+            cell.protection = Protection(locked=True)
+        relatives.row_dimensions[row].height = 22
+    relatives["D35"] = "控除額合計"
+    relatives["E35"] = f"=SUM(E4:E{RELATIVE_LAST_ROW})"
+    relatives["F35"] = f"=SUM(F4:F{RELATIVE_LAST_ROW})"
+    relatives["D36"] = "特定親族特別控除人数"
+    relatives["E36"] = f'=COUNTIF(G4:G{RELATIVE_LAST_ROW},"特定親族特別控除")'
+    relatives["D37"] = "特定親族特別控除（所得税）"
+    relatives["E37"] = f'=SUMIF(G4:G{RELATIVE_LAST_ROW},"特定親族特別控除",E4:E{RELATIVE_LAST_ROW})'
+    relatives["D38"] = "未確認人数"
+    relatives["E38"] = f'=COUNTIF(G4:G{RELATIVE_LAST_ROW},"要確認")'
+    relatives["A40"] = "操作画面に戻る"
+    relatives["A40"].hyperlink = Hyperlink(ref="A40", location="'操作画面'!A1")
+    relatives["A40"].style = "Hyperlink"
+    relatives.print_area = f"A1:H{RELATIVE_LAST_ROW}"
+    relatives.sheet_properties.pageSetUpPr.fitToPage = True
+    relatives.page_setup.fitToWidth = 1
+    relatives.page_setup.fitToHeight = 2
+    relatives.page_setup.paperSize = relatives.PAPERSIZE_A4
+    relatives.page_setup.orientation = "landscape"
+    home.merge_cells("A3:D3")
+    home["A3"] = "特定扶養親族・特定親族特別控除（30人まで）の個別入力へ"
+    home["A3"].hyperlink = Hyperlink(ref="A3", location="'特定親族明細'!A1")
+    home["A3"].style = "Hyperlink"
+    home["A3"].alignment = Alignment(vertical="center")
+    # Replace the three legacy XLOOKUP amount calculations, whose tax
+    # and legal-eligibility state were not independently checked.
+    for person in range(3):
+        eng_row, rel_row = 32 + person, 4 + person
+        original[f"F{eng_row}"] = "=" + ref(RELATIVES, f"E{rel_row}")
+        original[f"H{eng_row}"] = "=" + ref(RELATIVES, f"F{rel_row}")
+    # The old engine totals F28:F37 and H28:H37 cover persons 1..3.
+    # Append only persons 4..30; no duplicate deductions.
+    original["F38"] = f"=SUM(F28:F37)+SUM({ref(RELATIVES,'E7:E33')})"
+    original["H38"] = f"=SUM(H28:H37)+SUM({ref(RELATIVES,'F7:F33')})"
+
     bar(home, 32, "住宅ローン控除（通常処理・源泉徴収票から転記）")
     field("B33", "住宅ローン控除の所得税適用額")
     field("B34", "住宅ローン控除可能額（G36）")
@@ -717,6 +862,8 @@ def build(source, output):
          "警告：申告分離課税の所得区分を選択してください"),
         (f'AND(N({ref(ADVANCED,"B24")})>0,{ref(ADVANCED,"B33")}<>"なし")',
          "警告：特例・繰越損失を伴う分離課税は個別照合が必要です"),
+        (f'COUNTIF({ref(RELATIVES,"G4:G33")},"要確認")>0',
+         "警告：特定扶養親族・特定親族特別控除の年齢・所得・適用要件を個別確認してください"),
         (f'AND(ISNUMBER({ref(ADVANCED,"B14")}),ISNUMBER(B31),'
          f'ABS({ref(ADVANCED,"B14")}-B31)>1,'
          f'OR({ref(ADVANCED,"B20")}<>"VERIFIED_AFTER_CORRECTION",'
@@ -809,7 +956,7 @@ def build(source, output):
     detail["B23"].font = Font(name="Yu Gothic", bold=True, color="9C4100")
     detail.print_area = "A1:D23"
     for sheet in book:
-        sheet.sheet_state = "visible" if sheet == home else "veryHidden"
+        sheet.sheet_state = "visible" if sheet in (home, relatives) else "veryHidden"
         sheet.sheet_view.tabSelected = sheet == home
     book.active = 0
     # Retain a complete first-open calculation while allowing Excel to use
