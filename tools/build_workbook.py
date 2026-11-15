@@ -287,10 +287,15 @@ def build(source, output):
     extra["A41"] = "読取確認時の入力スナップショット（自動保存）"
     extra["A42"] = "現在の入力スナップショット（自動更新）"
     extra["B41"] = None
-    # Plain Excel 2007-compatible concatenation. OOXML produced by openpyxl
-    # cannot reliably invoke newer TEXTJOIN without an _xlfn prefix on all
-    # Windows Excel builds; a #NAME? here would abort even normal taxpayers.
-    extra["B42"] = "=" + '&"|"&'.join(fingerprint_fields)
+    # A plain delimiter alone is ambiguous: "a|b" and "a","b" could
+    # serialize to the same text even though the reviewed inputs changed.
+    # Prefix EACH input with its length. LEN + & work in old desktop Excel
+    # without TEXTJOIN/_xlfn compatibility risks and stay under 8,192 chars.
+    snapshot_segments = [f'LEN({cell})&":"&{cell}' for cell in fingerprint_fields]
+    snapshot_formula = "=" + '&"|"&'.join(snapshot_segments)
+    if len(snapshot_formula) > 8192:
+        raise AssertionError("Source review fingerprint exceeded Excel's formula length limit")
+    extra["B42"] = snapshot_formula
     for addr in ("B41", "B42"):
         extra[addr].protection = Protection(locked=True)
         extra[addr].number_format = "@"
