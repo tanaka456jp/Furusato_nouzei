@@ -159,6 +159,100 @@ try {
     $homeSheet.Range('B16').ClearContents()
     $excel.Run('TaxLawUpdater.RecalculateCase')
     QA-Stage 'deduction-override-synthetic-pass'
+    # Independently reconciled, five differently-earning 19-22-year-olds.
+    # First three reuse the old user-entry cells and all five share the
+    # same explicit eligibility controls.  National and resident tax
+    # deductions must not be double-counted when people 4+ are added.
+    QA-Stage 'multi-relative-independent-com-start'
+    $relativeSheet = $book.Worksheets.Item('特定親族明細')
+    Assert-Value $relativeSheet.Visible -1 '30-person relative detail visible'
+    $settings.Range('B4').Value2 = 2026.0
+    $homeSheet.Range('B4').Value2 = 2026.0
+    $homeSheet.Range('B11').Value2 = 2026.0
+    $homeSheet.Range('B12').Value2 = 7000000.0
+    $homeSheet.Range('B15').Value2 = 285800.0
+    $homeSheet.Range('B16').Value2 = 1000000.0
+    $homeSheet.Range('B25').Value2 = 'あり'
+    $homeSheet.Range('D22').Value2 = '該当なし'
+    $homeSheet.Range('D24').Value2 = '確定申告'
+    foreach ($p in @(
+        @{ Row=4; Income=500000; Age=20; Tax=630000; Levy=450000; Category='特定扶養親族' },
+        @{ Row=5; Income=900000; Age=21; Tax=610000; Levy=450000; Category='特定親族特別控除' },
+        @{ Row=6; Income=1030000; Age=22; Tax=310000; Levy=310000; Category='特定親族特別控除' },
+        @{ Row=7; Income=950001; Age=19; Tax=410000; Levy=410000; Category='特定親族特別控除' },
+        @{ Row=8; Income=1230000; Age=20; Tax=30000; Levy=30000; Category='特定親族特別控除' }
+    )) {
+        $row = [int]$p.Row
+        $relativeSheet.Cells.Item($row,2).Value2 = [double]$p.Age
+        if ($row -le 6) {
+            $homeSheet.Range(('D' + ($row + 10))).Value2 = [double]$p.Income
+        } else {
+            $relativeSheet.Cells.Item($row,3).Value2 = [double]$p.Income
+        }
+        $relativeSheet.Cells.Item($row,4).Value2 = '要件確認済'
+    }
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    foreach ($p in @(
+        @{ Row=4; Tax=630000; Levy=450000; Category='特定扶養親族' },
+        @{ Row=5; Tax=610000; Levy=450000; Category='特定親族特別控除' },
+        @{ Row=6; Tax=310000; Levy=310000; Category='特定親族特別控除' },
+        @{ Row=7; Tax=410000; Levy=410000; Category='特定親族特別控除' },
+        @{ Row=8; Tax=30000; Levy=30000; Category='特定親族特別控除' }
+    )) {
+        $row=[int]$p.Row
+        Assert-Value $relativeSheet.Cells.Item($row,5).Value2 $p.Tax ('Income-tax relative ' + $row)
+        Assert-Value $relativeSheet.Cells.Item($row,6).Value2 $p.Levy ('Resident-tax relative ' + $row)
+        Assert-Value ([string]$relativeSheet.Cells.Item($row,7).Value2) $p.Category ('Income-year classification ' + $row)
+    }
+    Assert-Value $relativeSheet.Range('E35').Value2 1990000 'Five-person income-tax deduction total'
+    Assert-Value $relativeSheet.Range('F35').Value2 1650000 'Five-person resident-tax deduction total'
+    Assert-Value $engineSheet.Range('F38').Value2 1990000 'Engine includes each relative exactly once'
+    Assert-Value $engineSheet.Range('H38').Value2 1650000 'Engine resident deductions do not repeat'
+    Assert-Value $homeSheet.Range('B31').Value2 3660000 'Five-person overall income-tax deductions'
+    Assert-Value $homeSheet.Range('B14').Value2 3660000 'Five-person applied deduction total'
+    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'All relatives individually reviewed'
+    # A sixth relative cannot silently become eligible without age/identity review.
+    $relativeSheet.Range('C9').Value2 = 600000.0
+    $relativeSheet.Range('B9').Value2 = 20.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value ([string]$relativeSheet.Range('G9').Value2) '要確認' 'Unconfirmed sixth relative is held'
+    Assert-Value ([string]$homeSheet.Range('B8').Value2) '' 'Unconfirmed relative masks donation limit'
+    $relativeSheet.Range('D9').Value2 = '要件確認済'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $relativeSheet.Range('E9').Value2 630000 'Sixth person individually calculated'
+    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Sixth person review clears HOLD'
+    $relativeSheet.Range('B9').Value2 = 23.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value ([string]$relativeSheet.Range('G9').Value2) '要確認' 'Non-eligible age cannot be confirmed'
+    Assert-Value ([string]$homeSheet.Range('B8').Value2) '' 'Out-of-range age masks donation limit'
+    $relativeSheet.Range('D9').Value2 = '対象外'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $relativeSheet.Range('E9').Value2 0 'Explicitly excluded relative adds zero'
+    # A 600,000-yen income is special-relative in 2025 but special-dependent
+    # in 2026. Both tax amounts are the same at this boundary, not the label.
+    $relativeSheet.Range('B9').Value2 = 20.0
+    $relativeSheet.Range('D9').Value2 = '要件確認済'
+    $settings.Range('B4').Value2 = 2025.0
+    $homeSheet.Range('B4').Value2 = 2025.0
+    $homeSheet.Range('B11').Value2 = 2025.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value ([string]$relativeSheet.Range('G9').Value2) '特定親族特別控除' '2025 income limit'
+    Assert-Value $relativeSheet.Range('E9').Value2 630000 '2025 independent income-tax boundary'
+    Assert-Value $relativeSheet.Range('F9').Value2 450000 '2025 independent resident-tax boundary'
+    $settings.Range('B4').Value2 = 2026.0
+    $homeSheet.Range('B4').Value2 = 2026.0
+    $homeSheet.Range('B11').Value2 = 2026.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value ([string]$relativeSheet.Range('G9').Value2) '特定扶養親族' '2026 income limit'
+    $relativeSheet.Range('B4:B33,C7:C33').ClearContents()
+    $relativeSheet.Range('D4:D33').Value2 = '未確認'
+    $homeSheet.Range('D14:D16').ClearContents()
+    $homeSheet.Range('B12').ClearContents()
+    $homeSheet.Range('B15').ClearContents()
+    $homeSheet.Range('B16').ClearContents()
+    $homeSheet.Range('B25').Value2 = 'なし'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    QA-Stage 'multi-relative-independent-com-pass'
     # Statutory special-relative deduction edge cases, all synthetic.
     $familyBands = @(
         @{ Year=2025; Income=580000; Expected=0 },
