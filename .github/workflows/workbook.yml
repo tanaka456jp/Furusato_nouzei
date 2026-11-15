@@ -38,6 +38,7 @@ jobs:
           python tools/qa_contract.py workbook/baseline.xlsx
           python tools/report_formula_wiring.py
           python tools/test_workbook.py
+          python tools/test_salary_donation_oracle.py
           python tools/verify_separate_oracle.py
           node tools/test_excel_gas_v4183.cjs
           python tools/build_workbook.py Furusato_nouzei_audit.xlsx
@@ -123,6 +124,7 @@ jobs:
           python tools/test_file_picker_filter.py
           if ($LASTEXITCODE -ne 0) { throw 'PDF filter contract mismatch' }
           python tools/test_workbook.py
+          python tools/test_salary_donation_oracle.py
           python tools/verify_separate_oracle.py
           if ($LASTEXITCODE -ne 0) { throw 'Workbook static regression failed' }
           node tools/test_excel_gas_v4183.cjs

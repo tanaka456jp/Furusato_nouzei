@@ -113,3 +113,29 @@ GitHub・CI・外部サーバーへ送信しません。
 
 - 国税庁「年末調整のしかた」：https://www.nta.go.jp/taxes/shiraberu/taxanswer/gensen/2662.htm
 - 国税庁「所得税の税率」：https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/2260.htm
+
+
+## 給与所得だけの寄附上限・住民税所得割の独立合成検算（2026-11-15）
+
+別実装の `tools/audit_salary_donation_limit.py` は、**架空給与案件のみ**を対象に
+調整控除後の住民税所得割額（市町村と都道府県をそれぞれ100円未満切捨て）、
+人的控除差と基礎控除差を考慮した寄附特例控除率、所得割の20％上限、
+総所得金額等の30％上限を有理数演算で照合します。
+実際の源泉徴収票を読まず、所得年・給与所得金額・住民税所得控除合計・
+人的控除差・標準税率の市区分を**全て独立確認済みの匿名入力**とみなします。
+
+`python tools/test_salary_donation_oracle.py` で自治体の公表例（源泉後給与所得
+202万円・住民税所得割114,500円・上限約28,974円）と、
+従来のExcel合成ケース（給与収入700万円・所得割374,500円・
+千円単位の参考上限109,000円）をテストします。2025/2026年を検証対象とし、
+正式ブックへの数式変更は行いません。
+
+戻り値の `scope=SYNTHETIC_ONLY` と `donation_limit=NOT_VERIFIED`
+は常に保持します。配偶者・扶養、住民税非課税、住宅ローン控除、
+医療費控除、分離課税やその他税額控除等の未検証実案件へ転用してはなりません。
+住民税通知書や自治体の課税処理・端数差を含む実原票の限度額照合は別途必要です。
+
+参考：国税庁 No.1155
+https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1155.htm
+自治体の控除計算例：
+https://www.city.kurashiki.okayama.jp/kurashi/tax/1001559/1014528/1001560/1001566.html
