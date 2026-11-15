@@ -947,6 +947,58 @@ try {
         Assert-Value $residentSheet.Range('B22').Value2 0.9 ('Negative basis 90pct special ratio ' + $case.Year)
         Assert-Value $homeSheet.Range('B8').Value2 12000 ('Negative basis ceiling ' + $case.Year)
     }
+    # Nondependent special relatives and ineligible spouses cannot inflate
+    # the resident income-levy exemption threshold.
+    QA-Stage 'family-income-levy-exemption-excel-start'
+    foreach ($case in @(
+        @{ Year=2025; Gross=1650000 },
+        @{ Year=2026; Gross=1740000 }
+    )) {
+        foreach ($kind in @('relative_special', 'spouse_special', 'under16')) {
+            $settings.Range('B4').Value2 = [double]$case.Year
+            $homeSheet.Range('B4').Value2 = [double]$case.Year
+            $homeSheet.Range('B11').Value2 = [double]$case.Year
+            $homeSheet.Range('B12').Value2 = [double]$case.Gross
+            $homeSheet.Range('B15').Value2 = 0.0
+            $homeSheet.Range('B16').Value2 = 70000.0
+            $homeSheet.Range('B25').Value2 = 'なし'
+            $homeSheet.Range('D11:D23,D25').ClearContents()
+            $homeSheet.Range('D22').Value2 = '該当なし'
+            $homeSheet.Range('D24').Value2 = 'ワンストップ'
+            $homeSheet.Range('B33:B36').ClearContents()
+            $relativeSheet.Range('B4:B33,C7:C33').ClearContents()
+            $relativeSheet.Range('D4:D33').Value2 = '未確認'
+            if ($kind -eq 'relative_special') {
+                $homeSheet.Range('D14').Value2 = 900000.0
+                $relativeSheet.Range('B4').Value2 = 20.0
+                $relativeSheet.Range('D4').Value2 = '要件確認済'
+            }
+            elseif ($kind -eq 'spouse_special') {
+                $homeSheet.Range('D17').Value2 = 900000.0
+            }
+            else {
+                $homeSheet.Range('D23').Value2 = 1.0
+                $homeSheet.Range('B25').Value2 = 'あり'
+            }
+            $excel.Run('TaxLawUpdater.RecalculateCase')
+            $context = [string]$case.Year + '-' + $kind
+            Assert-Value $homeSheet.Range('B13').Value2 1000000 ('Family income basis ' + $context)
+            if ($kind -eq 'relative_special') {
+                Assert-Value $relativeSheet.Range('G4').Value2 '特定親族特別控除' ('Special relative category ' + $context)
+            }
+            if ($kind -eq 'under16') {
+                Assert-Value ([string]$homeSheet.Range('B8').Value2) '' ('Under-16 income-levy exemption holds limit ' + $context)
+            }
+            else {
+                Assert-Value $homeSheet.Range('B28').Value2 '正常' ('Nondependent income does not create false exemption ' + $context)
+            }
+        }
+    }
+    $relativeSheet.Range('B4:B33,C7:C33').ClearContents()
+    $relativeSheet.Range('D4:D33').Value2 = '未確認'
+    $homeSheet.Range('D11:D23,D25').ClearContents()
+    $homeSheet.Range('B25').Value2 = 'なし'
+    QA-Stage 'family-income-levy-exemption-excel-pass'
     $settings.Range('B4').Value2 = 2026.0
     $homeSheet.Range('B4').Value2 = 2026.0
     $homeSheet.Range('B11').Value2 = 2026.0

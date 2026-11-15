@@ -177,3 +177,12 @@ Pythonの独立した計算法とPC①のExcel COM計算で照合します。
 - https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1191.htm
 - https://www.city.kyoto.lg.jp/gyozai/page/0000028121.html
 - https://www.city.nonoichi.lg.jp/soshiki/5/1020.html
+
+
+## 特定親族・配偶者所得の非課税扶養人数との混同を修正（2026-11-15）
+
+Excelの住民税所得割非課税判定で、入力済みの特定親族・配偶者所得金額をすべて扶養人数に数える処理を改めました。適格な一般・老人・年少扶養人数に加え、明細30名中の**確認済み特定扶養親族**だけを算入し、特定親族特別控除対象者は算入しません。配偶者は所得年2025年58万円以下、2026年62万円以下の合計所得と確認できるときだけ同一生計配偶者として算入します。未入力／不適格の人数をゼロと誤らず、適用可能性は他のHOLD条件と同時に評価します。
+
+実Excel COM検証で2025/2026年、特定親族特別控除／配偶者特別控除／16歳未満扶養の3区分を追加。実顧客の原票・住所・氏名は用いません。正式配布は当該実機CI受入後も、その他の未確認条件が残る限りHOLDです。
+
+参考：https://www.city.kyoto.lg.jp/gyozai/page/0000028121.html ・ https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1195.htm

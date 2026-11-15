@@ -697,6 +697,19 @@ def build(source, output):
                 f'OR(AND(NOT(ISNUMBER({ref(ADVANCED,"B16")})),B17<>{ref(ENGINE,"F24")}),'
                 f'AND(NOT(ISNUMBER({ref(ADVANCED,"B17")})),B18<>{ref(ENGINE,"F25")}))',
                 'AND(D25="",B14<>B31)']
+    # The resident income-levy exemption uses statutory dependents,
+    # not every numeric entry in the special-relative/spouse income fields.
+    # Special-relative allowance recipients above the dependent threshold
+    # do not count; an ineligible spouse does not count either.
+    spouse_threshold = f'IF({ref("設定・税率","B4")}=2025,580000,620000)'
+    eligible_family_count = (
+        '(SUM(D11:D13,D23)+'
+        f'COUNTIF({ref(RELATIVES,"G4:G33")},"特定扶養親族")+'
+        + '+'.join(
+            f'IF(AND(ISNUMBER({cell}),{cell}<={spouse_threshold}),1,0)'
+            for cell in ("D17", "D18")
+        ) + ')'
+    )
     unsupported = (
         'OR('
         +f'AND(N({ref(ADVANCED,"B24")})>0,NOT(OR('
@@ -708,8 +721,8 @@ def build(source, output):
         +f'N({ref(ADVANCED,"B21")})>0,'
         +f'{ref(ADVANCED,"B20")}="REQUIRES_REVIEW",'
         +f'AND(D24="確定申告",B15=0,B34="",N({ref(ADVANCED,"B24")})=0),'
-        'B13<=IF(SUM(D11:D13,D23)+COUNT(D14:D18)=0,450000,'
-        '350000*(1+SUM(D11:D13,D23)+COUNT(D14:D18))+420000),'
+        f'B13<=IF({eligible_family_count}=0,450000,'
+        f'350000*(1+{eligible_family_count})+420000),'
         'AND(OR(SUM(D19:D21)>0,D22<>"該当なし"),B13<=1350000))'
     )
     # Add declared split-tax resident levy to the existing levy base. Do
