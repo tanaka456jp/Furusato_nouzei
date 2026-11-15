@@ -206,6 +206,72 @@ class WithholdingTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,"Duplicate JSON member"):
                     extract(path)
 
+    def test_invalid_optional_structured_values_cannot_be_ignored(self):
+        # Synthetic tax data only: invalid optional figures must fail closed,
+        # not be silently omitted while the three required fields are valid.
+        with TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            good={"salary_gross":7000000,"social_insurance":1000000,
+                  "income_tax_withheld":0}
+            for invalid_field,value in (
+                    ("life_deduction_reference","unknown"),
+                    ("earthquake_deduction_reference",-1),
+                    ("mortgage_credit",True),
+                    ("salary_reference",7000000.5)):
+                p=root/"input.json"
+                p.write_text(json.dumps({"schema":"furusato-withholding/v1",
+                    "year":2026,"fields":{**good,invalid_field:value}}),encoding="utf-8")
+                parsed=extract(p)
+                self.assertEqual(parsed["status"],"REQUIRES_REVIEW")
+                self.assertIn("INVALID_STRUCTURED_FIELD",parsed["warnings"])
+                self.assertNotIn(invalid_field,parsed["fields"])
+                self.assertEqual(parsed["fields"]["salary_gross"],7000000)
+
+            # JSON float year equals 2026 in Python comparisons, but is not
+            # a valid integer tax-year attestation.
+            p.write_text(json.dumps({"schema":"furusato-withholding/v1",
+                "year":2026.0,"fields":good}),encoding="utf-8")
+            parsed=extract(p)
+            self.assertEqual(parsed["status"],"REQUIRES_REVIEW")
+            self.assertIn("YEAR_NOT_APPROVED",parsed["warnings"])
+
+            csv_path=root/"input.csv"
+            csv_path.write_text(
+                "field,value\nyear,2026\nsalary_gross,7000000\n"
+                "social_insurance,1000000\nincome_tax_withheld,0\n"
+                "life_deduction_reference,INVALID\n",encoding="utf-8")
+            parsed=extract(csv_path)
+            self.assertEqual(parsed["status"],"REQUIRES_REVIEW")
+            self.assertIn("INVALID_STRUCTURED_FIELD",parsed["warnings"])
+            self.assertNotIn("life_deduction_reference",parsed["fields"])
+            bridge=root/"bridge.tsv"
+            write_bridge(parsed,bridge)
+            self.assertIn("STATUS\tREQUIRES_REVIEW",bridge.read_text(encoding="utf-8"))
+
+    def test_conflicting_labelled_amounts_require_review(self):
+        # A plain-text source without G-codes previously selected the last
+        # value for a repeated label, which could hide an earlier conflict.
+        with TemporaryDirectory() as tmp:
+            path=Path(tmp)/"synthetic.txt"
+            base=("令和 8 年分 給与所得の源泉徴収票\n"
+                  "社会保険料等の金額：1,000,000\n"
+                  "源泉徴収税額：0\n")
+            path.write_text(base+
+                            "支払金額：5,000,000\n"
+                            "支払金額：7,000,000\n",encoding="utf-8")
+            result=extract(path)
+            self.assertEqual(result["status"],"REQUIRES_REVIEW")
+            self.assertIn("CONFLICT_salary_gross",result["warnings"])
+            self.assertNotIn("salary_gross",result["fields"])
+            # Repeated identical data is not itself contradictory.
+            path.write_text(base+
+                            "支払金額：5,000,000\n"
+                            "支払金額：5,000,000\n",encoding="utf-8")
+            same=extract(path)
+            self.assertEqual(same["status"],"READY_FOR_EXCEL_CROSSCHECK")
+            self.assertEqual(same["fields"]["salary_gross"],5000000)
+            self.assertNotIn("CONFLICT_salary_gross",same["warnings"])
+
     def test_housing_occupancy_and_credit_differ(self):
         self.assertEqual(extract_occupancy_year("控除の額の内訳 1回目N01 令和 6 1 1 1回目G37"),
                          {"mortgage_occupancy_year":2024})
