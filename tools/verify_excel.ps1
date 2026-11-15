@@ -918,6 +918,51 @@ try {
     Assert-Value $homeSheet.Range('B8').Value2 109000 'Amount restored after automatic calculation'
     Assert-Value ([string]$homeSheet.Range('B8').Text) '109,000' 'Actual visible amount restored after automatic calculation'
     QA-Stage 'stale-result-manual-calculation-pass'
+    # The new thirty-person detail sheet MUST trigger the exact same
+    # Workbook_SheetChange stale-result mask as the original home inputs.
+    # Changing an age/income on the relative sheet while Excel is in
+    # manual calculation mode must never leave a previously approved
+    # donation limit or printable PDF visible.
+    QA-Stage 'relative-sheet-manual-stale-result-start'
+    $previousCalc = [int]$excel.Calculation
+    try {
+        $excel.EnableEvents = $true
+        $excel.Calculation = -4135 # xlCalculationManual
+        $relativeSheet.Range('B33').Value2 = 21.0
+        if ([string]$homeSheet.Range('B8').Text -ne '') {
+            throw 'Editing the relative age left a stale donation limit visible'
+        }
+        if ([string]$homeSheet.Range('A9').Text -notlike '*計算未完了*') {
+            throw 'Relative age edit did not issue a stale-result warning'
+        }
+        $relativeSheet.Range('C33').Value2 = 900000.0
+        $relativeSheet.Range('D33').Value2 = '要件確認済'
+        if ([string]$homeSheet.Range('B8').Text -ne '') {
+            throw 'Editing thirtieth-relative income/status exposed an old result'
+        }
+        if ([string]$homeSheet.Range('B26').Text -eq '計算可能') {
+            throw 'Eligibility was shown as valid under manual calculation after editing relatives'
+        }
+        $blockedRelativePdf = Join-Path $dir 'must-not-export-stale-relative.pdf'
+        if ([bool]($excel.Run('TaxLawUpdater.TryExportDetailsToFileForTest', $blockedRelativePdf))) {
+            throw 'Edited relative in manual mode allowed a stale PDF'
+        }
+        if (Test-Path -LiteralPath $blockedRelativePdf) {
+            throw 'Edited relative in manual mode wrote an unsafe PDF file'
+        }
+    } finally {
+        $excel.Calculation = $previousCalc
+        $excel.Run('TaxLawUpdater.RecalculateCase')
+        $excel.EnableEvents = $false
+    }
+    Assert-Value $relativeSheet.Range('E33').Value2 610000 'Thirtieth-relative tax deduction after auto recalc'
+    Assert-Value $relativeSheet.Range('F33').Value2 450000 'Thirtieth-relative municipal deduction after auto recalc'
+    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Thirtieth-relative confirmation restores eligibility'
+    $relativeSheet.Range('B33,C33').ClearContents()
+    $relativeSheet.Range('D33').Value2 = '未確認'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B8').Value2 109000 'Normal result restored after clearing test relative'
+    QA-Stage 'relative-sheet-manual-stale-result-pass'
 
     # Exercise the actual GitHub-approved update transaction, not only recalculation.
     # The test runs on an isolated copy; no customer workbook is touched.
