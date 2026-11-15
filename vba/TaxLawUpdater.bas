@@ -449,7 +449,8 @@ Public Sub ImportWithholding()
                      "mortgage_possible_credit", "mortgage_occupancy_year", _
                      "mortgage_claim_count", "basic_reference", "income_adjustment", _
                      "under16_count", "special_relative_count", _
-                     "special_relative_deduction_reference"
+                     "special_relative_deduction_reference", _
+                     "spouse_income_reference"
                     ' Allowed amounts only; all other columns are rejected.
                 Case Else
                     Err.Raise vbObjectError + 213, , "未承認の取込項目を検出しました。"
@@ -496,7 +497,7 @@ Public Sub ImportWithholding()
     home.Range("B11:B12,B15:B16,B19:B25,B33:B36,D11:D23,D25").ClearContents
     ' Leave independent pension, business and other income entries untouched.
     extra.Range("B13:B20").ClearContents
-    extra.Range("B38:B39").ClearContents
+    extra.Range("B38:B40").ClearContents
     extra.Range("B41").ClearContents ' Replacing source invalidates any prior attestation.
     extra.Range("B32").ClearContents
     ' B4 and home B26 are calculated indicators: never overwrite formulas.
@@ -532,6 +533,7 @@ Public Sub ImportWithholding()
                 Case "income_adjustment": extra.Range("B13").Value2 = value
                 Case "special_relative_count": extra.Range("B38").Value2 = value
                 Case "special_relative_deduction_reference": extra.Range("B39").Value2 = value
+                Case "spouse_income_reference": extra.Range("B40").Value2 = value
             End Select
         End If
     Next key
@@ -602,6 +604,47 @@ Public Function SpecialRelativeTaxDeduction(ByVal familyIncome As Double, ByVal 
     Else
         SpecialRelativeTaxDeduction = 30000#
     End If
+End Function
+
+' G43 is a source income reference, not a spouse age determination.
+Private Sub ValidateSpouseSource(ByVal home As Worksheet, ByVal extra As Worksheet)
+    Dim raw As Variant, ordinary As Variant, elderly As Variant
+    Dim hasOrdinary As Boolean, hasElderly As Boolean
+    raw = extra.Range("B40").Value2
+    If Len(Trim$(CStr(raw))) = 0 Then Exit Sub
+    If Not IsNumeric(raw) Then _
+        Err.Raise vbObjectError + 277, , "源泉票G43の配偶者所得額が不正です。"
+    If CDbl(raw) < 0# Or CDbl(raw) <> Fix(CDbl(raw)) Then _
+        Err.Raise vbObjectError + 277, , "源泉票G43の配偶者所得額が不正です。"
+    ordinary = home.Range("D17").Value2
+    elderly = home.Range("D18").Value2
+    hasOrdinary = Len(Trim$(CStr(ordinary))) > 0
+    hasElderly = Len(Trim$(CStr(elderly))) > 0
+    If hasOrdinary = hasElderly Then _
+        Err.Raise vbObjectError + 278, , "配偶者の年齢区分を確認してD17またはD18に1件だけ入力してください。"
+    If hasOrdinary Then
+        If Not IsNumeric(ordinary) Then _
+            Err.Raise vbObjectError + 279, , "一般配偶者の所得金額が不正です。"
+        If CDbl(ordinary) <> CDbl(raw) Then _
+            Err.Raise vbObjectError + 280, , "配偶者所得が源泉票G43と一致しません。"
+    Else
+        If Not IsNumeric(elderly) Then _
+            Err.Raise vbObjectError + 281, , "老人配偶者の所得金額が不正です。"
+        If CDbl(elderly) <> CDbl(raw) Then _
+            Err.Raise vbObjectError + 282, , "配偶者所得が源泉票G43と一致しません。"
+    End If
+End Sub
+
+' Review-only QA endpoint, never changes the signed source state.
+Public Function SpouseSourceCheckForTest() As String
+    On Error GoTo Rejected
+    Application.Calculate
+    ValidateSpouseSource ThisWorkbook.Worksheets("操作画面"), _
+        ThisWorkbook.Worksheets("例外・分離課税")
+    SpouseSourceCheckForTest = "OK"
+    Exit Function
+Rejected:
+    SpouseSourceCheckForTest = "ERROR: " & Err.Description
 End Function
 
 ' Validate the source count and source amount against *each* relative.
@@ -725,6 +768,7 @@ Public Sub ReviewWithholding()
             End If
         End If
     End If
+    ValidateSpouseSource home, extra
     ValidateSpecialRelativeSource home, extra, relatives
     Application.Calculate
     If Len(Trim$(CStr(home.Range("D25").Value2))) > 0 Then
@@ -889,6 +933,7 @@ Public Sub NewCase()
         ' B4 is calculated from B24, and must survive NewCase.
         .Range("B8").ClearContents
         .Range("B19:B20").ClearContents
+        .Range("B40").ClearContents
     End With
     Application.Calculate
     RevealVerifiedResults

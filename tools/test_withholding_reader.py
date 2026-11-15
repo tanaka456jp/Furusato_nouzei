@@ -113,6 +113,28 @@ class WithholdingTest(unittest.TestCase):
             self.assertIn("STATUS\tREQUIRES_REVIEW", payload)
             self.assertNotIn("special_relative_subordinate_count\t", payload)
 
+    def test_spouse_g43_requires_age_review(self):
+        # Synthetic G43/G46 geometry, not an actual taxpayer slip.
+        words = [(270,484,281,490,"G43"),(338,482,372,492,"250,000"),
+                 (374,500,385,506,"G46"),(438,499,472,509,"630,000")]
+        fields, warnings = extract_codes(words)
+        self.assertEqual(warnings, [])
+        self.assertEqual(fields["spouse_income_reference"],250000)
+        self.assertEqual(fields["basic_reference"],630000)
+        report = finish(2025,{**fields,"salary_gross":7000000,
+            "social_insurance":1000000,"income_tax_withheld":0},"PDF_TEXT")
+        self.assertEqual(report["status"],"REQUIRES_REVIEW")
+        self.assertIn("SPOUSE_AGE_AND_INCOME_REVIEW",report["warnings"])
+        with TemporaryDirectory() as tmp:
+            target=Path(tmp)/"bridge.tsv"
+            write_bridge(report,target)
+            data=target.read_text(encoding="utf-8")
+            self.assertIn("spouse_income_reference"+chr(9)+"250000",data)
+            self.assertIn("STATUS"+chr(9)+"REQUIRES_REVIEW",data)
+        absent=finish(2025,{"salary_gross":7000000,
+            "social_insurance":1000000,"income_tax_withheld":0},"PDF_TEXT")
+        self.assertEqual(absent["status"],"READY_FOR_EXCEL_CROSSCHECK")
+
     def test_independent_national_tax_marginal_boundaries(self):
         # Year-end income tax: independent marginal slices, no workbook formulas.
         for taxable, expected in (
@@ -234,6 +256,8 @@ class WithholdingTest(unittest.TestCase):
         self.assertEqual(code.count(safe_loop), 2)
         self.assertIn('extra.Range("B20").Value2 = status', code)
         self.assertIn('extra.Range("B32").Value2 = fields("WARNINGS")', code)
+        self.assertIn('Case "spouse_income_reference": extra.Range("B40").Value2 = value', code)
+        self.assertIn('ValidateSpouseSource home, extra', code)
         # The unsupported source cannot be accepted by user acknowledgement.
         self.assertIn('InStr(1, CStr(extra.Range("B32").Value2), "UNSUPPORTED_"', code)
         self.assertIn("vbObjectError + 275", code)

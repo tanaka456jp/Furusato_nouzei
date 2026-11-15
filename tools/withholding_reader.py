@@ -17,6 +17,7 @@ CODE_MAP = {
     "G29":"mortgage_credit","G30":"life_new","G31":"life_old",
     "G32":"medical_care","G33":"annuity_new","G34":"annuity_old",
     "G35":"mortgage_claim_count","G36":"mortgage_possible_credit",
+    "G43":"spouse_income_reference",
     "G72":"special_relative_count", "G20":"under16_count",
     "G74":"special_relative_deduction_reference",
     "G46":"basic_reference",
@@ -31,6 +32,7 @@ TEXT_MAP = {
     "介護医療保険料":"medical_care", "地震保険料の支払額":"earthquake_paid",
     "住宅借入金等特別控除の額":"mortgage_credit",
     "住宅借入金等特別控除可能額":"mortgage_possible_credit",
+    "配偶者の合計所得":"spouse_income_reference",
     "住宅借入金等特別控除適用数":"mortgage_claim_count",
     "住宅借入金等特別控除居住開始年":"mortgage_occupancy_year",
 }
@@ -254,6 +256,9 @@ def finish(year,fields,mode,warnings=None):
             warnings.append("SPECIAL_RELATIVE_COUNT_MISSING")
         if special_count>30:
             warnings.append("SPECIAL_RELATIVE_COUNT_EXCEEDS_UI")
+    # G43 does not establish a spouse's age or statutory eligibility.
+    if "spouse_income_reference" in fields:
+        enough=False;warnings.append("SPOUSE_AGE_AND_INCOME_REVIEW")
     if fields.get("mortgage_claim_count",0)>1:
         enough=False;warnings.append("MULTIPLE_MORTGAGE_CREDITS_REQUIRE_REVIEW")
     if "mortgage_occupancy_year" in fields:

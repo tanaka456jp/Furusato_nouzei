@@ -1057,6 +1057,28 @@ try {
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value $homeSheet.Range('B8').Value2 109000 'Low income test restore'
     QA-Stage 'negative-rate-excel-oracle-pass'
+    QA-Stage 'withholding-g43-spouse-review-start'
+    $sourceAudit.Range('B40').Value2 = 250000.0
+    $homeSheet.Range('D17:D18').ClearContents()
+    if ([string]($excel.Run('TaxLawUpdater.SpouseSourceCheckForTest')) -notlike 'ERROR:*') {
+        throw 'Missing spouse classification passed G43 review'
+    }
+    $homeSheet.Range('D17').Value2 = 250001.0
+    if ([string]($excel.Run('TaxLawUpdater.SpouseSourceCheckForTest')) -notlike 'ERROR:*') {
+        throw 'Wrong spouse income passed G43 review'
+    }
+    $homeSheet.Range('D17').Value2 = 250000.0
+    Assert-Value ([string]($excel.Run('TaxLawUpdater.SpouseSourceCheckForTest'))) 'OK' 'Ordinary spouse G43'
+    $homeSheet.Range('D18').Value2 = 250000.0
+    if ([string]($excel.Run('TaxLawUpdater.SpouseSourceCheckForTest')) -notlike 'ERROR:*') {
+        throw 'Two spouse classifications passed G43 review'
+    }
+    $homeSheet.Range('D17').ClearContents()
+    Assert-Value ([string]($excel.Run('TaxLawUpdater.SpouseSourceCheckForTest'))) 'OK' 'Elderly spouse G43'
+    $sourceAudit.Range('B40').ClearContents()
+    $homeSheet.Range('D17:D18').ClearContents()
+    Assert-Value ([string]($excel.Run('TaxLawUpdater.SpouseSourceCheckForTest'))) 'OK' 'No G43'
+    QA-Stage 'withholding-g43-spouse-review-pass'
     # Unused split-credit inputs must never silently affect an ordinary
     # estimate. All tests use the isolated synthetic Excel workbook.
     QA-Stage 'ordinary-tax-credit-fail-closed-start'
