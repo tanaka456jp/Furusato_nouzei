@@ -139,6 +139,73 @@ class WithholdingTest(unittest.TestCase):
                 "full_name":"never_export"}}),encoding="utf-8")
             self.assertNotIn("full_name",extract(p)["fields"])
 
+    def test_duplicate_structured_source_fields_fail_closed(self):
+        # Entirely synthetic, no client PDF or identifying information in CI.
+        with TemporaryDirectory() as tmp:
+            for extension, header in ((".csv", "field,value"), (".tsv", "field\tvalue")):
+                sep = "," if extension == ".csv" else "\t"
+                for repeated in (7000000, 5000000):
+                    source=Path(tmp)/("duplicate" + extension)
+                    source.write_text(
+                        header + "\n" +
+                        "year" + sep + "2026\n" +
+                        "salary_gross" + sep + "5000000\n" +
+                        "salary_gross" + sep + str(repeated) + "\n" +
+                        "social_insurance" + sep + "1000000\n" +
+                        "income_tax_withheld" + sep + "0\n",encoding="utf-8")
+                    with self.assertRaisesRegex(ValueError,"Duplicate structured field"):
+                        extract(source)
+            # A repeated year may otherwise switch to a different tax master.
+            p=Path(tmp)/"duplicate-year.csv"
+            p.write_text(
+                "field,value\nyear,2025\nyear,2026\nsalary_gross,5000000\n"
+                "social_insurance,1000000\nincome_tax_withheld,0\n",encoding="utf-8")
+            with self.assertRaisesRegex(ValueError,"Duplicate structured field"):
+                extract(p)
+
+            # Reject extra CSV columns and malformed row lengths instead of
+            # ignoring an unreviewed value or transferring a partial record.
+            p=Path(tmp)/"malformed.csv"
+            p.write_text("field,value,unknown\nyear,2026,ignored\n",encoding="utf-8")
+            with self.assertRaisesRegex(ValueError,"Expected exactly field,value"):
+                extract(p)
+            p.write_text("field,value\nyear,2026,extra\n",encoding="utf-8")
+            with self.assertRaisesRegex(ValueError,"Malformed structured row"):
+                extract(p)
+
+            # The shipped CLI must not emit a VBA bridge on rejected data.
+            source=Path(tmp)/"duplicate.csv"
+            source.write_text(
+                "field,value\nyear,2026\nsalary_gross,5000000\n"
+                "salary_gross,7000000\nsocial_insurance,1000000\n"
+                "income_tax_withheld,0\n",encoding="utf-8")
+            bridge=Path(tmp)/"provisional.tsv"
+            output=Path(tmp)/"provisional.json"
+            runner=subprocess.run(
+                [sys.executable,str(Path(__file__).resolve().parent/
+                 "withholding_reader.py"),"--input",str(source),
+                 "--output",str(output),"--bridge",str(bridge)],
+                capture_output=True,text=True)
+            self.assertNotEqual(runner.returncode,0)
+            self.assertIn("READ_ERROR_ValueError",runner.stderr)
+            self.assertFalse(bridge.exists())
+            self.assertFalse(output.exists())
+
+    def test_duplicate_json_object_members_fail_closed(self):
+        with TemporaryDirectory() as tmp:
+            path=Path(tmp)/"duplicate.json"
+            cases=(
+                '{"schema":"furusato-withholding/v1","year":2025,"year":2026,"fields":{}}',
+                '{"schema":"furusato-withholding/v1","year":2026,"fields":'
+                '{"salary_gross":5000000,"salary_gross":7000000}}',
+                '{"schema":"furusato-withholding/v1","year":2026,"fields":{},'
+                '"schema":"furusato-withholding/v1"}',
+            )
+            for source in cases:
+                path.write_text(source,encoding="utf-8")
+                with self.assertRaisesRegex(ValueError,"Duplicate JSON member"):
+                    extract(path)
+
     def test_housing_occupancy_and_credit_differ(self):
         self.assertEqual(extract_occupancy_year("控除の額の内訳 1回目N01 令和 6 1 1 1回目G37"),
                          {"mortgage_occupancy_year":2024})
