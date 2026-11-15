@@ -456,6 +456,10 @@ class WorkbookTest(unittest.TestCase):
         self.assertIn("ROUNDDOWN(B12/4000,0)*4000", home["B13"].value)
         self.assertIn("IF(D4=2025,650000,740000)", home["B13"].value)
         self.assertIn("IF(AND(D4=2026,B12<2200000)", home["B13"].value)
+        # The >8.5m salary income adjustment must ROUND UP to a whole yen.
+        # Without this, 8,500,001 gross produces a fractional salary income.
+        self.assertIn("ROUNDUP((MIN(B12,10000000)-8500000)/10,0)",home["B13"].value)
+        self.assertNotIn("(MIN(B12,10000000)-8500000)*0.1",home["B13"].value)
         self.assertIn("IF(B12<2191000,B12-740000", home["B13"].value)
         self.assertIn("IF(B12<2193000,1451000", home["B13"].value)
         self.assertIn("IF(B12<2196000,1453000,1456000)", home["B13"].value)

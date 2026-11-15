@@ -643,7 +643,7 @@ def build(source, output):
                  f'IF(ISNUMBER({ref(ADVANCED,"B13")}),'
                  f'{ref(ADVANCED,"B13")},'
                  'IF(AND(B12>8500000,B25="あり"),'
-                 '(MIN(B12,10000000)-8500000)*0.1,0)))))'),
+                 'ROUNDUP((MIN(B12,10000000)-8500000)/10,0),0)))))'),
         "B17": f'=IF(ISNUMBER({ref(ADVANCED,"B16")}),{ref(ADVANCED,"B16")},IF(B12="","",{ref(ENGINE, "F24")}))',
         "B18": f'=IF(ISNUMBER({ref(ADVANCED,"B17")}),{ref(ADVANCED,"B17")},IF(B12="","",{ref(ENGINE, "F25")}))',
         "B14": '=IF(D25<>"",IF(ISNUMBER(D25),D25,""),B31)',

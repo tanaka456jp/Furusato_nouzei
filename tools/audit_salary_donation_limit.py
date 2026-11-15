@@ -23,6 +23,23 @@ SPECIAL_RATES = ((1950000,84895),(3300000,79790),(6950000,69580),
                  (10**15,44055))
 
 
+def independent_under23_salary_adjustment(salary_gross, *, has_eligible_under23):
+    """NTA No.1411: exact integer 1-yen round-up for a verified child.
+
+    Only the confirmed under-23 family path, not the separate disability
+    eligibility routes. This is a synthetic-only crosscheck; it never
+    establishes the existence of a qualifying dependent.
+    """
+    if type(salary_gross) is not int or not 0 <= salary_gross <= 10**12:
+        raise ValueError("INVALID_SALARY_GROSS")
+    if type(has_eligible_under23) is not bool:
+        raise ValueError("UNVERIFIED_DEPENDENT_STATUS")
+    if not has_eligible_under23 or salary_gross <= 8_500_000:
+        return 0
+    amount = min(salary_gross, 10_000_000) - 8_500_000
+    return (amount + 9) // 10
+
+
 def independent_salary_ceiling(*, year, salary_income, resident_deductions,
                                personal_difference=50000, municipality="standard"):
     """Exact rational reference for a limited salary-only synthetic scenario.

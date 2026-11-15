@@ -6,6 +6,32 @@ from audit_salary_donation_limit import independent_salary_ceiling, verified_fam
 
 class SalaryDonationOracleTest(unittest.TestCase):
 
+    def test_verified_under23_salary_adjustment_rounds_up_to_yen(self):
+        from audit_salary_donation_limit import independent_under23_salary_adjustment
+        cases = {
+            8_500_000: 0,
+            8_500_001: 1,
+            8_500_009: 1,
+            8_500_010: 1,
+            8_500_011: 2,
+            9_000_001: 50_001,
+            9_999_999: 150_000,
+            10_000_001: 150_000,
+        }
+        for gross, expected in cases.items():
+            with self.subTest(gross=gross):
+                self.assertEqual(independent_under23_salary_adjustment(
+                    gross,has_eligible_under23=True),expected)
+                self.assertEqual(independent_under23_salary_adjustment(
+                    gross,has_eligible_under23=False),0)
+        for invalid in (8_500_001.0, "8500001", True, -1):
+            with self.assertRaises(ValueError):
+                independent_under23_salary_adjustment(
+                    invalid,has_eligible_under23=True)
+        with self.assertRaises(ValueError):
+            independent_under23_salary_adjustment(
+                8_500_001,has_eligible_under23=1)
+
     def test_negative_special_ratio_uses_90_pct_but_zero_uses_84895(self):
         for year in (2025,2026):
             negative=independent_salary_ceiling(

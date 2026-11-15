@@ -467,6 +467,56 @@ try {
         Assert-Value $homeSheet.Range('B8').Value2 109000 "$year donation estimate"
     }
     QA-Stage 'synthetic-years-pass'
+    # NTA No.1411 rounds the >8.5m child-related income adjustment
+    # UP to the next whole yen, not to the nearest integer, and caps it.
+    # Compare each observed Excel salary result against the control result
+    # with the same gross salary and no eligible-under-23 flag.
+    QA-Stage 'under23-salary-adjustment-yen-boundaries-start'
+    $childCases = @(
+        @{ Gross=8500000.0; Expected=0.0 },
+        @{ Gross=8500001.0; Expected=1.0 },
+        @{ Gross=8500009.0; Expected=1.0 },
+        @{ Gross=8500010.0; Expected=1.0 },
+        @{ Gross=8500011.0; Expected=2.0 },
+        @{ Gross=9000001.0; Expected=50001.0 },
+        @{ Gross=9999999.0; Expected=150000.0 },
+        @{ Gross=10000001.0; Expected=150000.0 }
+    )
+    $sourceAdjustmentSheet = $book.Worksheets.Item('例外・分離課税')
+    $oldRefSalaryIncome = $sourceAdjustmentSheet.Range('B15').Value2
+    $oldAdjustmentReference = $sourceAdjustmentSheet.Range('B13').Value2
+    $sourceAdjustmentSheet.Range('B15,B13').ClearContents()
+    foreach ($taxYear in @(2025, 2026)) {
+        $settings.Range('B4').Value2 = [double]$taxYear
+        $homeSheet.Range('B4').Value2 = [double]$taxYear
+        $homeSheet.Range('B11').Value2 = [double]$taxYear
+        foreach ($sample in $childCases) {
+            $homeSheet.Range('B12').Value2 = $sample.Gross
+            $homeSheet.Range('B25').Value2 = 'なし'
+            $excel.Run('TaxLawUpdater.RecalculateCase')
+            $without = [double]$homeSheet.Range('B13').Value2
+            $homeSheet.Range('B25').Value2 = 'あり'
+            $excel.Run('TaxLawUpdater.RecalculateCase')
+            $with = [double]$homeSheet.Range('B13').Value2
+            $observed = $without - $with
+            Assert-Value $observed $sample.Expected ('Rounded under23 adjustment ' + $taxYear + '/' + $sample.Gross)
+            Assert-Value $with ([math]::Floor($with)) ('Integer salary income ' + $taxYear + '/' + $sample.Gross)
+        }
+    }
+    $homeSheet.Range('B12').Value2 = 7000000.0
+    $homeSheet.Range('B25').Value2 = 'なし'
+    $settings.Range('B4').Value2 = 2026.0
+    $homeSheet.Range('B4').Value2 = 2026.0
+    $homeSheet.Range('B11').Value2 = 2026.0
+    if ($null -ne $oldRefSalaryIncome -and [string]$oldRefSalaryIncome -ne '') {
+        $sourceAdjustmentSheet.Range('B15').Value2 = $oldRefSalaryIncome
+    }
+    if ($null -ne $oldAdjustmentReference -and [string]$oldAdjustmentReference -ne '') {
+        $sourceAdjustmentSheet.Range('B13').Value2 = $oldAdjustmentReference
+    }
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B13').Value2 5200000 'Under23 salary rounding baseline restored'
+    QA-Stage 'under23-salary-adjustment-yen-boundaries-pass'
     # Regression: certified source subtotals are not invalid just because a
     # simplified entry screen omits special-dependent deduction components.
     # All values below are synthetic and must never contain taxpayer data.
