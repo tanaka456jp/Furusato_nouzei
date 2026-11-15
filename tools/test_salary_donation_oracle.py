@@ -22,6 +22,61 @@ class SalaryDonationOracleTest(unittest.TestCase):
         self.assertEqual(zero["thousand_yen_reference"],13_000)
         self.assertEqual(zero["donation_limit"],"NOT_VERIFIED")
 
+    def test_spouse_income_tiers_and_kyoto_income_levy_exemption(self):
+        from audit_salary_donation_limit import resident_income_levy_exemption_limit
+        for year in (2025, 2026):
+            # Salary-only total income at the 900/950/1000万円 boundaries.
+            for kind, amounts in (
+                ("ordinary", ((9_000_000, (380000, 330000, 50000)),
+                              (9_000_001, (260000, 220000, 40000)),
+                              (9_500_000, (260000, 220000, 40000)),
+                              (9_500_001, (130000, 110000, 20000)),
+                              (10_000_000, (130000, 110000, 20000)))),
+                ("elderly", ((9_000_000, (480000, 380000, 100000)),
+                             (9_000_001, (320000, 260000, 60000)),
+                             (9_500_000, (320000, 260000, 60000)),
+                             (9_500_001, (160000, 130000, 30000)),
+                             (10_000_000, (160000, 130000, 30000))))):
+                for income, (national, resident, diff) in amounts:
+                    with self.subTest(year=year, spouse=kind, income=income):
+                        r=verified_family_deductions(
+                            year=year,salary_income=income,
+                            social_insurance=0,spouse=kind)
+                        self.assertEqual(r["national_deductions"]-r["national_basic"],national)
+                        self.assertEqual(r["resident_deductions"]-430000,resident)
+                        self.assertEqual(r["personal_difference"]-50000,diff)
+            # Under-16 children add no ordinary deduction, but do count
+            # toward the national uniform resident income-levy exemption.
+            self.assertEqual([resident_income_levy_exemption_limit(n)
+                              for n in range(4)],
+                             [450000,1120000,1470000,1820000])
+            for eligible_count, income in ((0,450000),(1,1120000),
+                                           (2,1470000),(3,1820000)):
+                r=verified_family_deductions(
+                    year=year,salary_income=income,social_insurance=0,
+                    under16=eligible_count)
+                self.assertTrue(r["resident_income_levy_exempt"])
+                self.assertFalse(verified_family_deductions(
+                    year=year,salary_income=income+1,social_insurance=0,
+                    under16=eligible_count)["resident_income_levy_exempt"])
+            # This case otherwise has a positive resident taxable income
+            # (1.1m - 630k), but no resident income levy because of the child.
+            with self.assertRaisesRegex(ValueError, "INCOME_LEVY_EXEMPT"):
+                independent_family_mortgage_case(
+                    year=year,salary_income=1100000,
+                    social_insurance=200000,under16=1)
+            self.assertEqual(
+                verified_family_deductions(
+                    year=year,salary_income=1100000,
+                    social_insurance=200000,under16=0
+                )["resident_income_levy_exempt"],False)
+        with self.assertRaises(ValueError):
+            resident_income_levy_exemption_limit(True)
+        with self.assertRaises(ValueError):
+            verified_family_deductions(
+                year=2025,salary_income=10000001,
+                social_insurance=0,spouse="ordinary")
+
     def test_spouse_dependents_and_housing_two_years(self):
         # Independent published basic, spouse and dependent deductions.
         # Each row is synthetic, salary ¥7m / income ¥5.2m / social ¥1m.

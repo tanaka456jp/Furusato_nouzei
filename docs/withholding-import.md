@@ -165,3 +165,15 @@ Pythonの独立した計算法とPC①のExcel COM計算で照合します。
 - https://www.city.kyoto.lg.jp/gyozai/page/0000027932.html
 - https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1191.htm
 - https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1180.htm
+
+
+## 2025・2026年の所得割非課税・配偶者本人所得帯の独立検算（2026-11-15）
+
+匿名給与案件の `verified_family_deductions()` に、本人合計所得900万円／950万円／1,000万円の配偶者控除段階を反映しました。住民税所得割の全国共通非課税限度額は、扶養なし45万円、扶養あり `35万円×（本人＋同一生計配偶者＋扶養親族数）＋42万円` を独立に算定し、16歳未満の扶養人数も算入します。通常の扶養控除額に16歳未満を加えることはありません。
+
+非課税が確定する合成ケースで `independent_family_mortgage_case()` は `INCOME_LEVY_EXEMPT_NO_DONATION_CAP` を返す代わりに例外で中止し、見かけ上の正の課税所得から寄附上限を推定しません。境界±1円、一般／老人配偶者の所得帯と年少扶養0～3名を自動テストに追加。**この関数は依然として条件限定の匿名検算専用で、実原票5件・配偶者所得・障害者等の追加非課税条件を証明しません。**
+
+参考資料：
+- https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1191.htm
+- https://www.city.kyoto.lg.jp/gyozai/page/0000028121.html
+- https://www.city.nonoichi.lg.jp/soshiki/5/1020.html

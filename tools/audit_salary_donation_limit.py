@@ -97,6 +97,33 @@ FAMILY = {
 }
 
 
+# For independently established spouse eligibility, deductions still vary by
+# taxpayer's total income. The three columns are national, resident, and the
+# statutory difference used for adjustment credits.
+# NTA No.1191; city individual resident-tax human-difference tables.
+SPOUSE_BY_TAXPAYER_INCOME = {
+    "ordinary": ((9_000_000, (380_000, 330_000, 50_000)),
+                 (9_500_000, (260_000, 220_000, 40_000)),
+                 (10_000_000, (130_000, 110_000, 20_000))),
+    "elderly": ((9_000_000, (480_000, 380_000, 100_000)),
+                (9_500_000, (320_000, 260_000, 60_000)),
+                (10_000_000, (160_000, 130_000, 30_000))),
+}
+
+
+def resident_income_levy_exemption_limit(family_count):
+    """Nationally uniform income-levy exemption (not equal-levy threshold).
+
+    Family includes eligible same-livelihood spouse AND dependents under 16.
+    Salary-income only; the independently confirmed family composition is a
+    prerequisite. Does not evaluate a taxpayer's protected-status exemptions.
+    """
+    if type(family_count) is not int or not 0 <= family_count <= 30:
+        raise ValueError("INVALID_FAMILY_COUNT")
+    return (450_000 if family_count == 0
+            else 350_000 * (family_count + 1) + 420_000)
+
+
 def verified_family_deductions(*, year, salary_income, social_insurance,
                                spouse="none", general=0, special=0, elderly=0,
                                cohabiting_elderly=0, under16=0):
@@ -125,7 +152,9 @@ def verified_family_deductions(*, year, salary_income, social_insurance,
     basic=next(v for upper,v in BASIC[year] if salary_income<=upper)
     components=[]
     if spouse!="none":
-        components.append(FAMILY["spouse_"+spouse])
+        components.append(next(d for upper,d in
+                               SPOUSE_BY_TAXPAYER_INCOME[spouse]
+                               if salary_income<=upper))
     for key,count in (("dependent_general",general),("dependent_special",special),
                       ("dependent_elderly",elderly),
                       ("dependent_cohabiting_elderly",cohabiting_elderly)):
@@ -133,9 +162,15 @@ def verified_family_deductions(*, year, salary_income, social_insurance,
     national=social_insurance+basic+sum(item[0] for item in components)
     resident=social_insurance+430_000+sum(item[1] for item in components)
     difference=50_000+sum(item[2] for item in components)
+    family_count=(int(spouse!="none")+general+special+elderly+
+                  cohabiting_elderly+under16)
+    exemption_limit=resident_income_levy_exemption_limit(family_count)
     return {"national_deductions":national,"resident_deductions":resident,
             "personal_difference":difference,"national_basic":basic,
-            "under16_count":under16,"scope":"SYNTHETIC_ONLY"}
+            "under16_count":under16,
+            "resident_income_levy_exemption_limit":exemption_limit,
+            "resident_income_levy_exempt":salary_income<=exemption_limit,
+            "scope":"SYNTHETIC_ONLY"}
 
 
 def independent_family_mortgage_case(*, year, salary_income, social_insurance,
@@ -152,6 +187,10 @@ def independent_family_mortgage_case(*, year, salary_income, social_insurance,
         year=year,salary_income=salary_income,social_insurance=social_insurance,
         spouse=spouse,general=general,special=special,elderly=elderly,
         cohabiting_elderly=cohabiting_elderly,under16=under16)
+    # A positive taxable-income figure is not enough to establish an income
+    # levy: the family-based income exemption is tested BEFORE the formula.
+    if values["resident_income_levy_exempt"]:
+        raise ValueError("INCOME_LEVY_EXEMPT_NO_DONATION_CAP")
     limit=independent_salary_ceiling(
         year=year,salary_income=salary_income,
         resident_deductions=values["resident_deductions"],
