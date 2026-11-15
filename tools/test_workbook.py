@@ -22,6 +22,59 @@ class WorkbookTest(unittest.TestCase):
         cls.baseline = load_workbook(cls.source)
         cls.book = load_workbook(cls.target)
 
+    def test_thirty_relative_individual_tax_and_resident_wiring(self):
+        rel = self.book["特定親族明細"]
+        home = self.book[HOME]
+        engine = self.book[ENGINE]
+        self.assertEqual(rel.sheet_state, "visible")
+        self.assertEqual(rel["A33"].value, 30)
+        self.assertEqual(home["A3"].hyperlink.location, "'特定親族明細'!A1")
+        self.assertEqual(rel["D4"].value, "未確認")
+        self.assertEqual(rel["D33"].value, "未確認")
+        for person in range(3):
+            row = person + 4
+            self.assertIn(f"'操作画面'!D{row+10}",rel[f"C{row}"].value)
+            self.assertTrue(rel[f"C{row}"].protection.locked)
+            self.assertEqual(engine[f"F{row+28}"].value,f"='特定親族明細'!E{row}")
+            self.assertEqual(engine[f"H{row+28}"].value,f"='特定親族明細'!F{row}")
+        self.assertIn("'特定親族明細'!E7:E33",engine["F38"].value)
+        self.assertIn("'特定親族明細'!F7:F33",engine["H38"].value)
+        self.assertEqual(engine["J38"].value,"=F38-H38")
+        self.assertIn("'ふるさと納税限度額計算'!F38",home["B31"].value)
+        self.assertIn('COUNTIF(\\'特定親族明細\\'!G4:G33,"要確認")',home["B28"].value)
+        for row in (4, 5, 6, 7, 8, 33):
+            category = rel[f"G{row}"].value
+            self.assertIn("2025,580000,620000",category)
+            self.assertIn('要件確認済',category)
+            self.assertIn('B'+str(row)+'<19',category)
+            income = rel[f"E{row}"].value
+            resident = rel[f"F{row}"].value
+            self.assertIn("<=850000,630000",income)
+            self.assertIn("<=900000,610000",income)
+            self.assertIn("<=950000,450000",resident)
+            self.assertIn("<=1000000,410000",resident)
+        fingerprint=self.book[ADVANCED]["B42"].value
+        for addr in ("B4","D4","B33","C33","D33"):
+            self.assertIn(f"'特定親族明細'!{addr}",fingerprint)
+        for r in ("D14","D15","D16"):
+            self.assertIn(f"'操作画面'!{r}",fingerprint)
+        self.assertIn("SUM(E4:E33)",rel["E35"].value)
+        self.assertIn("SUM(F4:F33)",rel["F35"].value)
+        for address in ("B7","B16","B17","C7"):
+            self.assertTrue(any(address in str(rule.sqref)
+                                for rule in rel.data_validations.dataValidation))
+
+    def test_relative_import_and_review_are_case_specific(self):
+        vb=(ROOT/"vba/TaxLawUpdater.bas").read_text(encoding="utf-8-sig")
+        self.assertIn('Private Sub ResetRelativeInputs()',vb)
+        self.assertIn('rel.Range("B4:B33,C7:C33").ClearContents',vb)
+        self.assertIn('rel.Range("D4:D33").Value2 = "未確認"',vb)
+        self.assertEqual(vb.count("    ResetRelativeInputs"),2)
+        self.assertIn('For familyRow = 4 To 33',vb)
+        self.assertIn('relatives.Cells(familyRow, "G").Value2',vb)
+        self.assertIn('specialCount <> CLng(extra.Range("B38").Value2)',vb)
+        self.assertIn('specialTotal - CDbl(extra.Range("B39").Value2)',vb)
+
     def test_first_open_full_recalculation_without_permanent_force_flag(self):
         # A full initial calculation is still requested. Avoid permanent
         # forced-full calculation because this suppresses smart dependency
@@ -130,7 +183,7 @@ class WorkbookTest(unittest.TestCase):
 
     def test_single_visible_home(self):
         self.assertEqual(self.book.active.title, HOME)
-        self.assertEqual([s.title for s in self.book if s.sheet_state == "visible"], [HOME])
+        self.assertEqual([s.title for s in self.book if s.sheet_state == "visible"], [HOME, "特定親族明細"])
         self.assertEqual(self.book[DETAIL].sheet_state, "veryHidden")
         with ZipFile(self.target) as archive:
             self.assertIsNone(archive.testzip())
