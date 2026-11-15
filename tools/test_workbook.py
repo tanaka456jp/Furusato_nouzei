@@ -105,6 +105,13 @@ class WorkbookTest(unittest.TestCase):
                       "TaxLawUpdater.MaskUnverifiedResults",
                       "TaxLawUpdater.RevealVerifiedResults"):
             self.assertIn(token, setup)
+        # Editing any of the thirty relatives invalidates visible cached
+        # donation results, exactly like editing the main/advanced inputs.
+        self.assertIn('Sh Is Me.Worksheets("特定親族明細")', setup)
+        excel_qa = (ROOT / "tools" / "verify_excel.ps1").read_text(encoding="utf-8-sig")
+        self.assertIn("relative-sheet-manual-stale-result-pass", excel_qa)
+        self.assertIn("relative-thirtieth-case-persistence-pass", excel_qa)
+        self.assertIn("Saved case keeps thirtieth-relative income", excel_qa)
 
     def test_pdf_visual_acceptance_has_a_static_contract(self):
         workflow = (ROOT / ".github/workflows/workbook.yml").read_text(encoding="utf-8")
