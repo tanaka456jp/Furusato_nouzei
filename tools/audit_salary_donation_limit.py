@@ -62,8 +62,12 @@ def independent_salary_ceiling(*, year, salary_income, resident_deductions,
     if levy <= 0:
         raise ValueError("NO_REMAINING_INCOME_LEVY")
     rate_basis = taxable - personal_difference - max(0,national_basic - 480000)
-    ratio = next(Fraction(rate,100000) for upper,rate in SPECIAL_RATES
-                 if rate_basis <= upper)
+    # The resident-tax special ratio is 90%, not 84.895%, when
+    # the local taxable basis minus personal/basic differences is NEGATIVE.
+    # The zero boundary itself uses the first 84.895% band.
+    ratio = (Fraction(9,10) if rate_basis < 0
+             else next(Fraction(rate,100000) for upper,rate in SPECIAL_RATES
+                       if rate_basis <= upper))
     cap = Fraction(levy,5)
     special_boundary = 2000 + cap / ratio
     resident_donation_income_cap = Fraction(salary_income*3,10)
@@ -78,3 +82,98 @@ def independent_salary_ceiling(*, year, salary_income, resident_deductions,
             "special_20pct_cap":cap,
             "theoretical_ceiling":upper,
             "thousand_yen_reference":thousand}
+
+
+# Reviewed minimum national/resident deduction anchors for separately
+# confirmed eligible family members. These do NOT establish a relative's
+# actual age, income, cohabitation or eligibility from a withholding slip.
+FAMILY = {
+    "spouse_ordinary": (380000,330000,50000),
+    "spouse_elderly": (480000,380000,100000),
+    "dependent_general": (380000,330000,50000),
+    "dependent_special": (630000,450000,180000),
+    "dependent_elderly": (480000,380000,100000),
+    "dependent_cohabiting_elderly": (580000,450000,130000),
+}
+
+
+def verified_family_deductions(*, year, salary_income, social_insurance,
+                               spouse="none", general=0, special=0, elderly=0,
+                               cohabiting_elderly=0, under16=0):
+    """Tax deductions only for a hypothetical independently eligible family.
+
+    Personal difference includes the statutory ¥50,000 base used for
+    adjustment credit; an under-16 child adds no ordinary tax deduction.
+    """
+    if type(year) is not int or year not in BASIC:
+        raise ValueError("UNAPPROVED_YEAR")
+    for val in (salary_income,social_insurance):
+        if type(val) is not int or not 0<=val<=10**12:
+            raise ValueError("INVALID_AMOUNTS")
+    for val in (general,special,elderly,cohabiting_elderly,under16):
+        if type(val) is not int or not 0<=val<=30:
+            raise ValueError("INVALID_FAMILY_COUNT")
+    if general+special+elderly+cohabiting_elderly+under16>30:
+        raise ValueError("FAMILY_COUNT_EXCEEDS_REVIEW")
+    if spouse not in ("none","ordinary","elderly"):
+        raise ValueError("UNKNOWN_SPOUSE_CATEGORY")
+    # This oracle has no non-salary income; salary income is total income.
+    if spouse!="none" and salary_income>10_000_000:
+        raise ValueError("SPOUSE_INCOME_LIMIT")
+    if salary_income>25_000_000:
+        raise ValueError("HIGH_INCOME_SPECIAL_CASE")
+    basic=next(v for upper,v in BASIC[year] if salary_income<=upper)
+    components=[]
+    if spouse!="none":
+        components.append(FAMILY["spouse_"+spouse])
+    for key,count in (("dependent_general",general),("dependent_special",special),
+                      ("dependent_elderly",elderly),
+                      ("dependent_cohabiting_elderly",cohabiting_elderly)):
+        components.extend([FAMILY[key]]*count)
+    national=social_insurance+basic+sum(item[0] for item in components)
+    resident=social_insurance+430_000+sum(item[1] for item in components)
+    difference=50_000+sum(item[2] for item in components)
+    return {"national_deductions":national,"resident_deductions":resident,
+            "personal_difference":difference,"national_basic":basic,
+            "under16_count":under16,"scope":"SYNTHETIC_ONLY"}
+
+
+def independent_family_mortgage_case(*, year, salary_income, social_insurance,
+                                     mortgage_possible=0, occupancy_year=None,
+                                     spouse="none", general=0, special=0,
+                                     elderly=0, cohabiting_elderly=0, under16=0,
+                                     municipality="standard"):
+    """Independent source-free combined test: salary, family, and 5% housing.
+
+    2022 exceptional 7% acquisition class, multiple mortgage claims, other
+    credits, and real taxpayer 1-yen donation outcomes remain out of scope.
+    """
+    values=verified_family_deductions(
+        year=year,salary_income=salary_income,social_insurance=social_insurance,
+        spouse=spouse,general=general,special=special,elderly=elderly,
+        cohabiting_elderly=cohabiting_elderly,under16=under16)
+    limit=independent_salary_ceiling(
+        year=year,salary_income=salary_income,
+        resident_deductions=values["resident_deductions"],
+        personal_difference=values["personal_difference"],
+        municipality=municipality)
+    if type(mortgage_possible) is not int or not 0<=mortgage_possible<=10**12:
+        raise ValueError("INVALID_MORTGAGE_AMOUNT")
+    if mortgage_possible>0 and (
+        type(occupancy_year) is not int or not 2023<=occupancy_year<=year):
+        raise ValueError("UNVERIFIED_MORTGAGE_CLASS")
+    from audit_withholding_reconciliation import progressive_income_tax
+    national_taxable=max(0,salary_income-values["national_deductions"])//1000*1000
+    national_before_credit=progressive_income_tax(national_taxable)
+    applied=min(mortgage_possible,national_before_credit)
+    delta=(max(0,values["national_basic"]-480000)
+           if mortgage_possible>0 and occupancy_year<=2025 else 0)
+    cap_basis=(national_taxable+delta)//1000*1000
+    housing_transfer=min(mortgage_possible-applied,97500,cap_basis*5//100)
+    return {**values,**limit,
+            "national_taxable_income":national_taxable,
+            "national_income_tax_before_credit":national_before_credit,
+            "housing_applied_national":applied,
+            "housing_resident_transfer":housing_transfer,
+            "housing_5pct_cap_basis":cap_basis,
+            "donation_limit":"NOT_VERIFIED"}

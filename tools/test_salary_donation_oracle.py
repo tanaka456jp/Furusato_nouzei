@@ -1,10 +1,82 @@
 """Only synthetic salary data; no identifying information in CI."""
 import unittest
 from fractions import Fraction
-from audit_salary_donation_limit import independent_salary_ceiling
+from audit_salary_donation_limit import independent_salary_ceiling, verified_family_deductions, independent_family_mortgage_case
 
 
 class SalaryDonationOracleTest(unittest.TestCase):
+
+    def test_negative_special_ratio_uses_90_pct_but_zero_uses_84895(self):
+        for year in (2025,2026):
+            negative=independent_salary_ceiling(
+                year=year,salary_income=1_000_000,
+                resident_deductions=500_000,personal_difference=50_000)
+            self.assertEqual(negative["special_ratio"],Fraction(9,10))
+            self.assertEqual(negative["resident_income_levy"],47_500)
+            self.assertEqual(negative["thousand_yen_reference"],12_000)
+        # 2025 basis = 520k - 50k - (950k-480k) = exactly zero.
+        zero=independent_salary_ceiling(
+            year=2025,salary_income=1_000_000,
+            resident_deductions=480_000,personal_difference=50_000)
+        self.assertEqual(zero["special_ratio"],Fraction(84895,100000))
+        self.assertEqual(zero["thousand_yen_reference"],13_000)
+        self.assertEqual(zero["donation_limit"],"NOT_VERIFIED")
+
+    def test_spouse_dependents_and_housing_two_years(self):
+        # Independent published basic, spouse and dependent deductions.
+        # Each row is synthetic, salary ¥7m / income ¥5.2m / social ¥1m.
+        rows=(
+            (2025,"none",0,0,0,1_430_000,50_000,374_500,109_000,286_500,13_500),
+            (2025,"ordinary",0,0,0,1_760_000,100_000,341_500,87_000,221_500,78_500),
+            (2025,"ordinary",1,0,2,2_090_000,150_000,308_500,79_000,183_500,97_500),
+            (2025,"ordinary",0,1,0,2_210_000,280_000,296_500,76_000,158_500,97_500),
+            (2026,"none",0,0,0,1_430_000,50_000,374_500,109_000,278_500,21_500),
+            (2026,"ordinary",0,0,0,1_760_000,100_000,341_500,87_000,217_500,82_500),
+            (2026,"ordinary",1,0,2,2_090_000,150_000,308_500,79_000,179_500,97_500),
+            (2026,"ordinary",0,1,0,2_210_000,280_000,296_500,76_000,154_500,97_500),
+        )
+        for (year,spouse,general,special,under16,rd,pd,levy,rounded,national,housing) in rows:
+            with self.subTest(year=year,spouse=spouse,general=general,
+                              special=special,under16=under16):
+                case=independent_family_mortgage_case(
+                    year=year,salary_income=5_200_000,
+                    social_insurance=1_000_000,spouse=spouse,
+                    general=general,special=special,under16=under16,
+                    mortgage_possible=300_000,occupancy_year=2024)
+                self.assertEqual(case["resident_deductions"],rd)
+                self.assertEqual(case["personal_difference"],pd)
+                self.assertEqual(case["resident_income_levy"],levy)
+                self.assertEqual(case["thousand_yen_reference"],rounded)
+                self.assertEqual(case["national_income_tax_before_credit"],national)
+                self.assertEqual(case["housing_applied_national"],national)
+                self.assertEqual(case["housing_resident_transfer"],housing)
+                self.assertEqual(case["donation_limit"],"NOT_VERIFIED")
+                self.assertEqual(case["scope"],"SYNTHETIC_ONLY")
+
+    def test_verified_family_composition_fail_closed(self):
+        baseline=verified_family_deductions(
+            year=2026,salary_income=5_200_000,social_insurance=1_000_000,
+            spouse="ordinary",general=1)
+        with_children=verified_family_deductions(
+            year=2026,salary_income=5_200_000,social_insurance=1_000_000,
+            spouse="ordinary",general=1,under16=2)
+        self.assertEqual(baseline["resident_deductions"],
+                         with_children["resident_deductions"])
+        self.assertEqual(with_children["under16_count"],2)
+        for kwargs in ({"spouse":"unverified"},{"general":-1},
+                       {"special":31},{"under16":31},
+                       {"salary_income":12_000_000,"spouse":"ordinary"}):
+            values=dict(year=2025,salary_income=5_200_000,
+                        social_insurance=1_000_000)
+            values.update(kwargs)
+            with self.assertRaises(ValueError):
+                verified_family_deductions(**values)
+        with self.assertRaisesRegex(ValueError,"UNVERIFIED_MORTGAGE_CLASS"):
+            independent_family_mortgage_case(
+                year=2026,salary_income=5_200_000,
+                social_insurance=1_000_000,mortgage_possible=300_000,
+                occupancy_year=2022)
+
     def test_municipal_published_example(self):
         # 2025 income ¥2,020,000, municipal levy ¥114,500; ceiling ≈ ¥28,974.
         r=independent_salary_ceiling(year=2025,salary_income=2_020_000,

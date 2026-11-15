@@ -844,6 +844,83 @@ try {
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Housing statutory corrections restored'
     QA-Stage 'mortgage-2025-2026-basic-delta-pass'
+    # Independent synthetic cross-check: ordinary salary, spouse, family
+    # deductions and housing transfer MUST match the separate Python oracle.
+    # These cases never use a personal withholding slip or an actual taxpayer.
+    QA-Stage 'family-mortgage-donation-matrix-start'
+    foreach ($case in @(
+        @{ Year=2025; Spouse=$false; General=0; Special=$false; Under16=0; Deductions=1630000; Levy=374500; Limit=109000; IncomeTax=286500; Housing=13500 },
+        @{ Year=2025; Spouse=$true; General=0; Special=$false; Under16=0; Deductions=2010000; Levy=341500; Limit=87000; IncomeTax=221500; Housing=78500 },
+        @{ Year=2025; Spouse=$true; General=1; Special=$false; Under16=2; Deductions=2390000; Levy=308500; Limit=79000; IncomeTax=183500; Housing=97500 },
+        @{ Year=2025; Spouse=$true; General=0; Special=$true; Under16=0; Deductions=2640000; Levy=296500; Limit=76000; IncomeTax=158500; Housing=97500 },
+        @{ Year=2026; Spouse=$false; General=0; Special=$false; Under16=0; Deductions=1670000; Levy=374500; Limit=109000; IncomeTax=278500; Housing=21500 },
+        @{ Year=2026; Spouse=$true; General=0; Special=$false; Under16=0; Deductions=2050000; Levy=341500; Limit=87000; IncomeTax=217500; Housing=82500 },
+        @{ Year=2026; Spouse=$true; General=1; Special=$false; Under16=2; Deductions=2430000; Levy=308500; Limit=79000; IncomeTax=179500; Housing=97500 },
+        @{ Year=2026; Spouse=$true; General=0; Special=$true; Under16=0; Deductions=2680000; Levy=296500; Limit=76000; IncomeTax=154500; Housing=97500 }
+    )) {
+        $settings.Range('B4').Value2 = [double]$case.Year
+        $homeSheet.Range('B4').Value2 = [double]$case.Year
+        $homeSheet.Range('B11').Value2 = [double]$case.Year
+        $homeSheet.Range('B12').Value2 = 7000000.0
+        $homeSheet.Range('B15').Value2 = 0.0
+        $homeSheet.Range('B16').Value2 = 1000000.0
+        $homeSheet.Range('D11:D23,D25').ClearContents()
+        $homeSheet.Range('D22').Value2 = '該当なし'
+        $homeSheet.Range('D24').Value2 = 'ワンストップ'
+        $homeSheet.Range('B25').Value2 = 'なし'
+        $homeSheet.Range('B33').Value2 = [double]$case.IncomeTax
+        $homeSheet.Range('B34').Value2 = 300000.0
+        $homeSheet.Range('B35').Value2 = 2024.0
+        $homeSheet.Range('B36').Value2 = 1.0
+        $relativeSheet.Range('B4:B33,C7:C33').ClearContents()
+        $relativeSheet.Range('D4:D33').Value2 = '未確認'
+        $sourceAudit.Range('B14,B20,B38:B39,B41').ClearContents()
+        if ([bool]$case.Spouse) {
+            $homeSheet.Range('D17').Value2 = 0.0
+        }
+        if ([int]$case.General -gt 0) {
+            $homeSheet.Range('D11').Value2 = [double]$case.General
+        }
+        if ([int]$case.Special -eq 1) {
+            $homeSheet.Range('D14').Value2 = 0.0
+            $relativeSheet.Range('B4').Value2 = 20.0
+            $relativeSheet.Range('D4').Value2 = '要件確認済'
+            $homeSheet.Range('B25').Value2 = 'あり'
+        }
+        if ([int]$case.Under16 -gt 0) {
+            $homeSheet.Range('D23').Value2 = [double]$case.Under16
+            $homeSheet.Range('B25').Value2 = 'あり'
+        }
+        $excel.Run('TaxLawUpdater.RecalculateCase')
+        $key = [string]$case.Year + '-sp' + [string]([int]$case.Spouse) +
+               '-gen' + [string]$case.General + '-special' + [string]([int]$case.Special)
+        Assert-Value $homeSheet.Range('B13').Value2 5200000 ('Family salary ' + $key)
+        Assert-Value $homeSheet.Range('B14').Value2 $case.Deductions ('Family deductions ' + $key)
+        Assert-Value $homeSheet.Range('B28').Value2 '正常' ('Family eligibility ' + $key)
+        Assert-Value $homeSheet.Range('D8').Value2 $case.Levy ('Resident levy ' + $key)
+        Assert-Value $homeSheet.Range('B38').Value2 $case.Housing ('Housing resident transfer ' + $key)
+        Assert-Value $homeSheet.Range('B8').Value2 $case.Limit ('Donation estimate ' + $key)
+    }
+    # Restore the ordinary no-family synthetic workbook state for subsequent
+    # safety checks, without persisting any modified values to the ZIP.
+    $relativeSheet.Range('B4:B33,C7:C33').ClearContents()
+    $relativeSheet.Range('D4:D33').Value2 = '未確認'
+    $homeSheet.Range('D11:D23,D25').ClearContents()
+    $homeSheet.Range('D22').Value2 = '該当なし'
+    $homeSheet.Range('D24').Value2 = 'ワンストップ'
+    $homeSheet.Range('B25').Value2 = 'なし'
+    $homeSheet.Range('B33:B36').ClearContents()
+    $sourceAudit.Range('B14,B20,B38:B39,B41').ClearContents()
+    $settings.Range('B4').Value2 = 2026.0
+    $homeSheet.Range('B4').Value2 = 2026.0
+    $homeSheet.Range('B11').Value2 = 2026.0
+    $homeSheet.Range('B12').Value2 = 7000000.0
+    $homeSheet.Range('B15').Value2 = 285800.0
+    $homeSheet.Range('B16').Value2 = 1000000.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Family mortgage matrix restore'
+    Assert-Value $homeSheet.Range('B8').Value2 109000 'Family matrix standard reference restored'
+    QA-Stage 'family-mortgage-donation-matrix-pass'
     # Unused split-credit inputs must never silently affect an ordinary
     # estimate. All tests use the isolated synthetic Excel workbook.
     QA-Stage 'ordinary-tax-credit-fail-closed-start'

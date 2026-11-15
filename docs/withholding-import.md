@@ -139,3 +139,29 @@ GitHub・CI・外部サーバーへ送信しません。
 https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1155.htm
 自治体の控除計算例：
 https://www.city.kurashiki.okayama.jp/kurashi/tax/1001559/1014528/1001560/1001566.html
+
+
+## 2025・2026年の配偶者・扶養・住宅ローン複合検証（2026-11-15）
+
+給与収入700万円・社会保険料100万円の**架空給与案件8通り**を、
+本人のみ／一般配偶者／一般扶養／20歳の特定扶養／16歳未満の扶養と、
+2024年入居の住宅ローン所得税控除可能額30万円を組み合わせて検証します。
+住民税所得割額、控除額合計、寄附限度額の千円単位参考値、
+住宅ローン控除の所得税使用分と住民税移行額を、
+Pythonの独立した計算法とPC①のExcel COM計算で照合します。
+
+また「住民税課税所得－人的控除差－所得税基礎控除増分」が
+**0円未満なら特例控除率90％、0円以上なら84.895％からの税率帯**
+とする境界を独立テストに追加しました。
+
+これらは適用要件を満たす架空家族・通常5％区分を前提とし、
+実在顧客の年齢・所得・住宅取得契約等が適法であることは証明しません。
+2022年の特殊取得7％、住民税非課税、他所得・税額控除や確定申告による
+所得税額差分、実際の自治体端数配分を含む案件には転用できません。
+
+根拠:
+- https://www.city.kyoto.lg.jp/gyozai/page/0000054663.html
+- https://www.city.kyoto.lg.jp/gyozai/page/0000028147.html
+- https://www.city.kyoto.lg.jp/gyozai/page/0000027932.html
+- https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1191.htm
+- https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1180.htm
