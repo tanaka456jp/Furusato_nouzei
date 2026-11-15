@@ -1101,6 +1101,71 @@ try {
     $relativeSheet.Range('D4:D33').Value2 = '未確認'
     $homeSheet.Range('D11:D23,D25').ClearContents()
     QA-Stage 'spouse-income-exemption-boundary-pass'
+    # Income-levy exemption uses total income, including ordinary pension,
+    # business and miscellaneous amounts. A salary-only check erroneously
+    # suppresses genuine taxable cases.
+    QA-Stage 'total-income-exemption-real-excel-start'
+    $incomeTestExtra = $book.Worksheets.Item('例外・分離課税')
+    $incomeTestExtra.Range('B12,B13,B15,B20,B24,B36').ClearContents()
+    foreach ($sample in @(
+        @{ Year=2025; Gross=1650000.0; WidowGross=1850000.0 },
+        @{ Year=2026; Gross=1740000.0; WidowGross=1940000.0 }
+    )) {
+        $settings.Range('B4').Value2 = [double]$sample.Year
+        $homeSheet.Range('B4').Value2 = [double]$sample.Year
+        $homeSheet.Range('B11').Value2 = [double]$sample.Year
+        $homeSheet.Range('B15').Value2 = 0.0
+        $homeSheet.Range('B16').Value2 = 70000.0
+        $homeSheet.Range('D11:D23,D25').ClearContents()
+        $homeSheet.Range('D22').Value2 = '該当なし'
+        $homeSheet.Range('D24').Value2 = 'ワンストップ'
+        $homeSheet.Range('B25').Value2 = 'あり'
+        $homeSheet.Range('D23').Value2 = 1.0
+        $homeSheet.Range('B12').Value2 = [double]$sample.Gross
+        $incomeTestExtra.Range('B12').ClearContents()
+        $excel.Run('TaxLawUpdater.RecalculateCase')
+        Assert-Value $homeSheet.Range('B13').Value2 1000000 ('Child salary-only basis '+$sample.Year)
+        if ([string]$homeSheet.Range('B28').Value2 -eq '正常' -or
+            [string]$homeSheet.Range('B8').Value2 -ne '') {
+            throw ('Child salary-only income levy threshold ignored '+$sample.Year)
+        }
+        $incomeTestExtra.Range('B12').Value2 = 300000.0
+        $excel.Run('TaxLawUpdater.RecalculateCase')
+        Assert-Value $incomeTestExtra.Range('B30').Value2 1300000 ('Child total income '+$sample.Year)
+        Assert-Value $homeSheet.Range('B28').Value2 '正常' ('Child with extra business income must not be exempt '+$sample.Year)
+        if ([double]$homeSheet.Range('D8').Value2 -le 0) {
+            throw ('Positive resident levy not calculated '+$sample.Year)
+        }
+        # Special-status exemption also uses total income, not B13.
+        $incomeTestExtra.Range('B12').ClearContents()
+        $homeSheet.Range('D23').ClearContents()
+        $homeSheet.Range('B25').Value2 = 'なし'
+        $homeSheet.Range('D22').Value2 = '寡婦'
+        $homeSheet.Range('B12').Value2 = [double]$sample.WidowGross
+        $excel.Run('TaxLawUpdater.RecalculateCase')
+        Assert-Value $homeSheet.Range('B13').Value2 1200000 ('Widow salary basis '+$sample.Year)
+        if ([string]$homeSheet.Range('B28').Value2 -eq '正常') {
+            throw ('Protected status source-only income was not held '+$sample.Year)
+        }
+        $incomeTestExtra.Range('B12').Value2 = 300000.0
+        $excel.Run('TaxLawUpdater.RecalculateCase')
+        Assert-Value $incomeTestExtra.Range('B30').Value2 1500000 ('Widow total income '+$sample.Year)
+        Assert-Value $homeSheet.Range('B28').Value2 '正常' ('Protected status combined income above exemption '+$sample.Year)
+    }
+    $incomeTestExtra.Range('B12').ClearContents()
+    $settings.Range('B4').Value2 = 2026.0
+    $homeSheet.Range('B4').Value2 = 2026.0
+    $homeSheet.Range('B11').Value2 = 2026.0
+    $homeSheet.Range('B12').Value2 = 7000000.0
+    $homeSheet.Range('B15').Value2 = 285800.0
+    $homeSheet.Range('B16').Value2 = 1000000.0
+    $homeSheet.Range('D11:D23,D25').ClearContents()
+    $homeSheet.Range('D22').Value2 = '該当なし'
+    $homeSheet.Range('B25').Value2 = 'なし'
+    $homeSheet.Range('D24').Value2 = '確定申告'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B8').Value2 109000 'Total income exemption baseline restored'
+    QA-Stage 'total-income-exemption-real-excel-pass'
     $settings.Range('B4').Value2 = 2026.0
     $homeSheet.Range('B4').Value2 = 2026.0
     $homeSheet.Range('B11').Value2 = 2026.0

@@ -44,6 +44,15 @@ class WorkbookTest(unittest.TestCase):
         self.assertIn("特定親族明細'!G4:G33",home["B28"].value)
         self.assertIn('B25="なし",OR(COUNTIF(',home["B28"].value)
         self.assertIn('"特定扶養親族")>0,N(D23)>0',home["B28"].value)
+        # Neither family income-levy nor protected-status exemption can be
+        # evaluated on salary income alone when other income is present.
+        verdict = home["B28"].value
+        total = "'例外・分離課税'!B30"
+        self.assertEqual(verdict.count(total), 2)
+        self.assertIn("'例外・分離課税'!B24",verdict)
+        self.assertIn("'例外・分離課税'!B36",verdict)
+        self.assertNotIn("B13<=IF(",verdict)
+        self.assertNotIn("B13<=1350000",verdict)
         self.assertNotIn('AND(COUNT(D14:D16,D23)>0',home["B28"].value)
         for row in (4, 5, 6, 7, 8, 33):
             category = rel[f"G{row}"].value

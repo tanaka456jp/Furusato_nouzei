@@ -711,6 +711,17 @@ def build(source, output):
             for cell in ("D17", "D18")
         ) + ')'
     )
+    # Kyoto City's statutory individual resident income-levy exemption is
+    # based on TOTAL ordinary-and-split income (総所得金額等), not merely
+    # salary income from B13. B30 already includes net pension, business,
+    # miscellaneous and salary/pension adjustment; declared split income
+    # must additionally be included. Prefer the source gross split amount
+    # B36 when available, to avoid understating an exemption threshold
+    # basis if tax deductions were applied to B24.
+    income_levy_basis = (
+        f'(N({ref(ADVANCED,"B30")})+'
+        f'MAX(0,N({ref(ADVANCED,"B24")}),N({ref(ADVANCED,"B36")})))'
+    )
     unsupported = (
         'OR('
         +f'AND(N({ref(ADVANCED,"B24")})>0,NOT(OR('
@@ -723,9 +734,10 @@ def build(source, output):
         +f'{ref(ADVANCED,"B20")}="REQUIRES_REVIEW",'
         +f'AND({ref(ADVANCED,"B40")}<>"",{ref(ADVANCED,"B20")}<>"VERIFIED_AFTER_CORRECTION"),'
         +f'AND(D24="確定申告",B15=0,B34="",N({ref(ADVANCED,"B24")})=0),'
-        f'B13<=IF({eligible_family_count}=0,450000,'
+        f'{income_levy_basis}<=IF({eligible_family_count}=0,450000,'
         f'350000*(1+{eligible_family_count})+420000),'
-        'AND(OR(SUM(D19:D21)>0,D22<>"該当なし"),B13<=1350000))'
+        f'AND(OR(SUM(D19:D21)>0,D22<>"該当なし"),'
+        f'{income_levy_basis}<=1350000))'
     )
     # Add declared split-tax resident levy to the existing levy base. Do
     # not mix split taxable income into the ordinary taxable bracket.
