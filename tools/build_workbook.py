@@ -528,8 +528,9 @@ def build(source, output):
     relatives.page_setup.fitToHeight = 2
     relatives.page_setup.paperSize = relatives.PAPERSIZE_A4
     relatives.page_setup.orientation = "landscape"
-    home.merge_cells("A3:D3")
-    home["A3"] = "特定扶養親族・特定親族特別控除（30人まで）の個別入力へ"
+    # B3 and C3 are occupied by source-import/review form controls; never
+    # merge A3:D3, or Excel buttons would be overlaid/obscured.
+    home["A3"] = "特定扶養・特定親族 明細（30人）"
     home["A3"].hyperlink = Hyperlink(ref="A3", location="'特定親族明細'!A1")
     home["A3"].style = "Hyperlink"
     home["A3"].alignment = Alignment(vertical="center")
