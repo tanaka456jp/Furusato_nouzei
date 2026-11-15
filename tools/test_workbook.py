@@ -116,7 +116,7 @@ class WorkbookTest(unittest.TestCase):
         self.assertIn('If VarType(pageChoice) = vbBoolean Then GoTo CleanUp',code)
         self.assertIn('" --page " & CStr(CLng(pageChoice))',code)
         self.assertIn('pageArg',code)
-        self.assertIn('If page_number is None and multiple:',reader)
+        self.assertIn('if page_number is None and multiple:',reader)
         self.assertIn('PDF_PAGE_SELECTED',reader)
         self.assertIn('MULTIPAGE_SELECTED_PAGE_REVIEW',reader)
         self.assertIn('if args.page_count:',reader)
