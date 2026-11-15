@@ -127,7 +127,11 @@ try {
     # Model the state stored by ReviewWithholding after an EXPLICIT
     # confirmation. A later input edit MUST revoke that exact attestation,
     # even if the review status itself remains VERIFIED_AFTER_CORRECTION.
-    $sourceAudit.Range('B41').Value2 = [string]$sourceAudit.Range('B42').Value2
+    $fingerprint = [string]$sourceAudit.Range('B42').Value2
+    if ($fingerprint -notmatch '^[0-9]+:' -or $fingerprint.Split('|').Count -lt 165) {
+        throw 'Source review snapshot missing length-prefixed fields'
+    }
+    $sourceAudit.Range('B41').Value2 = $fingerprint
     $sourceAudit.Range('B20').Value2 = 'VERIFIED_AFTER_CORRECTION'
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Exact confirmed input snapshot is accepted'
@@ -223,6 +227,24 @@ try {
     # Exercise the *real VBA* source reconciler rather than copying the
     # verified label/stamp without checking that G72/G74 are coherent.
     Assert-Value ([string]($excel.Run('TaxLawUpdater.SpecialRelativeSourceCheckForTest'))) 'OK' 'Four-person G72/G74 reconciliation'
+    # An EXPLICIT G72=0 means there are no special-relative deductions.
+    # It must not be treated like a blank source field; otherwise source
+    # verification could silently accept newly entered special relatives.
+    $sourceAudit.Range('B38').Value2 = 0.0
+    $sourceAudit.Range('B39').Value2 = 0.0
+    $errorText = [string]($excel.Run('TaxLawUpdater.SpecialRelativeSourceCheckForTest'))
+    if ($errorText -notlike '*人数分*') { throw 'Explicit G72=0 failed to detect four special relatives' }
+    $sourceAudit.Range('B38').ClearContents()
+    $errorText = [string]($excel.Run('TaxLawUpdater.SpecialRelativeSourceCheckForTest'))
+    if ($errorText -notlike '*人数分*') { throw 'Explicit G74=0 without G72 ignored four special relatives' }
+    $sourceAudit.Range('B38').Value2 = 0.0
+    $relativeSheet.Range('D5:D8').Value2 = '対象外'
+    Assert-Value ([string]($excel.Run('TaxLawUpdater.SpecialRelativeSourceCheckForTest'))) 'OK' 'G72=0 accepts regular special dependent only'
+    $relativeSheet.Range('D5:D8').Value2 = '要件確認済'
+    $sourceAudit.Range('B38').Value2 = 4.0
+    $sourceAudit.Range('B39').Value2 = 1360000.0
+    Assert-Value ([string]($excel.Run('TaxLawUpdater.SpecialRelativeSourceCheckForTest'))) 'OK' 'Source restored after zero-count checks'
+    QA-Stage 'special-relative-source-explicit-zero-pass'
     $sourceAudit.Range('B39').Value2 = 1360001.0
     $errorText = [string]($excel.Run('TaxLawUpdater.SpecialRelativeSourceCheckForTest'))
     if ($errorText -notlike '*G74*') {
