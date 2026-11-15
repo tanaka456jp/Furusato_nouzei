@@ -862,6 +862,8 @@ def build(source, output):
          "警告：申告分離課税の所得区分を選択してください"),
         (f'AND(N({ref(ADVANCED,"B24")})>0,{ref(ADVANCED,"B33")}<>"なし")',
          "警告：特例・繰越損失を伴う分離課税は個別照合が必要です"),
+        (f'N({ref(ADVANCED,"B38")})>30',
+         "警告：特定親族が30人を超えています。個別確認可能人数を超えるため試算を停止します"),
         (f'COUNTIF({ref(RELATIVES,"G4:G33")},"要確認")>0',
          "警告：特定扶養親族・特定親族特別控除の年齢・所得・適用要件を個別確認してください"),
         (f'AND(ISNUMBER({ref(ADVANCED,"B14")}),ISNUMBER(B31),'
