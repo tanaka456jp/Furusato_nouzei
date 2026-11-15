@@ -62,6 +62,56 @@ class WithholdingTest(unittest.TestCase):
             self.assertIn("salary_gross"+chr(9)+"7000000",bridge.read_text(encoding="ascii"))
             self.assertNotIn("5000000",bridge.read_text(encoding="ascii"))
 
+    def test_pdf_text_g20_child_count_and_g73_secondary_count_do_not_mix(self):
+        """Exercise the actual PDF word-extraction path, not only word tuples."""
+        try:
+            import fitz
+        except ImportError:
+            self.skipTest("PyMuPDF smoke runs in document-reader EXE jobs")
+        with TemporaryDirectory() as tmp:
+            pdf = Path(tmp) / "anonymous-g20-g73.pdf"
+            doc = fitz.open()
+            for secondary in (False, True):
+                page = doc.new_page()
+                # Synthetic layout only; no names or real monetary data.
+                for x, y, label in (
+                    (40, 30, "G04 5,000,000"),
+                    (40, 55, "G08 0"),
+                    (40, 80, "G26 1,000,000"),
+                    (40, 120, "G72"),
+                    (105, 120, "G73"),
+                    (185, 120, "G20"),
+                    (225, 120, "4"),
+                    (40, 200, "SYNTHETIC NO PRIVATE DATA SOURCE FIELD TEST"),
+                ):
+                    page.insert_text((x, y), label, fontsize=10)
+                if secondary:
+                    page.insert_text((145, 120), "1", fontsize=10)
+            doc.save(str(pdf))
+            doc.close()
+            self.assertEqual(pdf_page_count(pdf), 2)
+            # Page 1: blank G73 does not capture the adjacent G20 count.
+            blank = extract(pdf, page_number=1)
+            self.assertEqual(blank["fields"]["under16_count"], 4)
+            self.assertNotIn("UNSUPPORTED_SPECIAL_RELATIVE_SUBORDINATE_COUNT",
+                             blank["warnings"])
+            self.assertEqual(blank["status"], "REQUIRES_REVIEW")
+            self.assertIn("MULTIPAGE_SELECTED_PAGE_REVIEW", blank["warnings"])
+            # Page 2: G73=1 is a separate, unsupported count, not children.
+            secondary = extract(pdf, page_number=2)
+            self.assertEqual(secondary["fields"]["under16_count"], 4)
+            self.assertNotIn("special_relative_subordinate_count",
+                             secondary["fields"])
+            self.assertIn("UNSUPPORTED_SPECIAL_RELATIVE_SUBORDINATE_COUNT",
+                          secondary["warnings"])
+            self.assertEqual(secondary["status"], "REQUIRES_REVIEW")
+            bridge = Path(tmp) / "second-page.tsv"
+            write_bridge(secondary, bridge)
+            payload = bridge.read_text(encoding="ascii")
+            self.assertIn("under16_count\t4", payload)
+            self.assertIn("STATUS\tREQUIRES_REVIEW", payload)
+            self.assertNotIn("special_relative_subordinate_count\t", payload)
+
     def test_years(self):
         self.assertEqual(detect_year("令和 8 年分 給与所得の源泉徴収票"),2026)
         self.assertEqual(detect_year("令和 7 年分"),2025)
