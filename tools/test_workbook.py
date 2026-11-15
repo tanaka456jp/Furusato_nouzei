@@ -73,10 +73,12 @@ class WorkbookTest(unittest.TestCase):
         self.assertIn('rel.Range("B4:B33,C7:C33").ClearContents',vb)
         self.assertIn('rel.Range("D4:D33").Value2 = "未確認"',vb)
         self.assertEqual(vb.count("    ResetRelativeInputs"),2)
-        self.assertIn('For familyRow = 4 To 33',vb)
-        self.assertIn('relatives.Cells(familyRow, "G").Value2',vb)
-        self.assertIn('specialCount <> CLng(extra.Range("B38").Value2)',vb)
-        self.assertIn('specialTotal - CDbl(extra.Range("B39").Value2)',vb)
+        self.assertIn('ValidateSpecialRelativeSource home, extra, relatives',vb)
+        self.assertIn('For row = 4 To 33',vb)
+        self.assertIn('If category = "要確認" Then',vb)
+        self.assertIn('If actualCount <> sourceCount Then',vb)
+        self.assertIn('If actualAmount <> sourceAmount Then',vb)
+        self.assertIn('Public Function SpecialRelativeSourceCheckForTest() As String',vb)
 
     def test_first_open_full_recalculation_without_permanent_force_flag(self):
         # A full initial calculation is still requested. Avoid permanent
