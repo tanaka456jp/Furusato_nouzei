@@ -11,7 +11,13 @@ from withholding_reader import CODE_MAP,detect_year,extract_codes,extract_labell
 class WithholdingTest(unittest.TestCase):
     def test_multiple_pdf_pages_require_explicit_selection_and_review(self):
         # Two different, synthetic taxpayers in one PDF. No private documents.
-        import fitz
+        try:
+            import fitz
+        except ImportError:
+            # The minimal Windows compatibility job intentionally omits
+            # PyMuPDF. Dedicated static and packaged EXE jobs execute
+            # this real parser test with the pinned PDF dependency.
+            self.skipTest("PyMuPDF PDF-page test runs in parser/EXE jobs")
         with TemporaryDirectory() as tmp:
             file=Path(tmp)/"two-slips.pdf"
             doc=fitz.open()
