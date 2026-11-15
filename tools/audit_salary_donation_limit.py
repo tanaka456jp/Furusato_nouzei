@@ -39,6 +39,11 @@ def independent_salary_ceiling(*, year, salary_income, resident_deductions,
             raise ValueError("INVALID_AMOUNTS")
     if municipality not in ("standard", "designated"):
         raise ValueError("UNSUPPORTED_MUNICIPALITY")
+    # Even without knowing family composition, income of at most ¥450,000
+    # is below the nationwide resident income-levy exemption for everyone.
+    # Never create a positive-looking cap from a positive taxable base.
+    if salary_income <= 450_000:
+        raise ValueError("INCOME_LEVY_EXEMPT_NO_DONATION_CAP")
     if salary_income > 25000000:
         raise ValueError("HIGH_INCOME_SPECIAL_CASE")
     if resident_deductions > salary_income:

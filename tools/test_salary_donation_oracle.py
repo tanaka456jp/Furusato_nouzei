@@ -173,6 +173,19 @@ class SalaryDonationOracleTest(unittest.TestCase):
             independent_salary_ceiling(year=2026,salary_income=5_200_000,
                        resident_deductions=1_430_000,municipality="unknown")
 
+    def test_single_taxpayer_universal_exemption_fails_closed(self):
+        for year in (2025, 2026):
+            with self.assertRaisesRegex(ValueError, "INCOME_LEVY_EXEMPT"):
+                independent_salary_ceiling(
+                    year=year, salary_income=450000,
+                    resident_deductions=100000)
+            # The next yen is not automatically exempt: individual tax
+            # deductions and locally verified family status still matter.
+            example=independent_salary_ceiling(
+                year=year, salary_income=450001,
+                resident_deductions=100000)
+            self.assertEqual(example["donation_limit"],"NOT_VERIFIED")
+
     def test_income_cap_and_non_taxable_are_not_approved(self):
         r=independent_salary_ceiling(year=2025,salary_income=1_500_000,
                                     resident_deductions=1_000_000)
