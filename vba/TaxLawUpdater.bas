@@ -683,6 +683,12 @@ Public Sub ReviewWithholding()
     Set home = ThisWorkbook.Worksheets("操作画面")
     Set extra = ThisWorkbook.Worksheets("例外・分離課税")
     Set relatives = ThisWorkbook.Worksheets("特定親族明細")
+    ' Some warnings denote an unsupported statutory scenario, not merely
+    ' a transcription needing manual confirmation. Never allow the review
+    ' button to convert such cases into an approved monetary estimate.
+    If InStr(1, CStr(extra.Range("B32").Value2), "UNSUPPORTED_", vbTextCompare) > 0 Then
+        Err.Raise vbObjectError + 275, , "未対応の特定親族等の項目があります。対象条件は計算対象外です。"
+    End If
     Application.Calculate
     sourceTotalDifferent = False
     If IsNumeric(extra.Range("B14").Value2) And IsNumeric(home.Range("B31").Value2) Then

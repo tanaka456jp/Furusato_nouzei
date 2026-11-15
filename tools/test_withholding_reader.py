@@ -111,6 +111,9 @@ class WithholdingTest(unittest.TestCase):
         self.assertEqual(code.count(safe_loop), 2)
         self.assertIn('extra.Range("B20").Value2 = status', code)
         self.assertIn('extra.Range("B32").Value2 = fields("WARNINGS")', code)
+        # The unsupported source cannot be accepted by user acknowledgement.
+        self.assertIn('InStr(1, CStr(extra.Range("B32").Value2), "UNSUPPORTED_"', code)
+        self.assertIn("vbObjectError + 275", code)
         self.assertIn("Public Sub ReviewWithholding()", code)
 
     def test_provisional_pdf_bridge_contains_only_status_and_warning_codes(self):
