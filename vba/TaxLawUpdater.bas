@@ -427,6 +427,7 @@ Public Sub ImportWithholding()
     Set home = ThisWorkbook.Worksheets("操作画面")
     Set extra = ThisWorkbook.Worksheets("例外・分離課税")
     ResetSeparateInputs home
+    ResetRelativeInputs
     home.Range("B11:B12,B15:B16,B19:B25,B33:B36,D11:D23,D25").ClearContents
     ' Leave independent pension, business and other income entries untouched.
     extra.Range("B13:B20").ClearContents
@@ -535,14 +536,15 @@ Public Function SpecialRelativeTaxDeduction(ByVal familyIncome As Double, ByVal 
 End Function
 
 Public Sub ReviewWithholding()
-    Dim home As Worksheet, extra As Worksheet, msg As String
+    Dim home As Worksheet, extra As Worksheet, relatives As Worksheet, msg As String
     Dim value As Double, refCell As Variant, calcCell As Variant
-    Dim familyCell As Variant, specialTotal As Double, specialCount As Long
+    Dim familyRow As Long, specialTotal As Double, specialCount As Long
     Dim familyIncome As Double, specialDeduction As Double
     Dim sourceTotalDifferent As Boolean
     On Error GoTo Failed
     Set home = ThisWorkbook.Worksheets("操作画面")
     Set extra = ThisWorkbook.Worksheets("例外・分離課税")
+    Set relatives = ThisWorkbook.Worksheets("特定親族明細")
     Application.Calculate
     sourceTotalDifferent = False
     If IsNumeric(extra.Range("B14").Value2) And IsNumeric(home.Range("B31").Value2) Then
@@ -582,17 +584,21 @@ Public Sub ReviewWithholding()
         If Not IsNumeric(extra.Range("B39").Value2) Then
             Err.Raise vbObjectError + 245, , "特定親族特別控除額（G74）を確認してください。"
         End If
-        For Each familyCell In Array("D14", "D15", "D16")
-            If IsNumeric(home.Range(CStr(familyCell)).Value2) Then
-                familyIncome = CDbl(home.Range(CStr(familyCell)).Value2)
+        ' G72 counts ONLY special-relative deductions, not the 63-man
+        ' yen regular special dependent exemptions. Review each row's
+        ' actual income independently and reconcile the G74 source total.
+        For familyRow = 4 To 33
+            If CStr(relatives.Cells(familyRow, "G").Value2) = "特定親族特別控除" Then
+                familyIncome = CDbl(relatives.Cells(familyRow, "C").Value2)
                 specialDeduction = SpecialRelativeTaxDeduction( _
                     familyIncome, CLng(home.Range("B11").Value2))
-                If specialDeduction > 0 Then
-                    specialCount = specialCount + 1
-                    specialTotal = specialTotal + specialDeduction
+                If Abs(specialDeduction - CDbl(relatives.Cells(familyRow, "E").Value2)) > 1 Then
+                    Err.Raise vbObjectError + 250, , "特定親族の個別控除額と所得税の法定表が一致しません。"
                 End If
+                specialCount = specialCount + 1
+                specialTotal = specialTotal + specialDeduction
             End If
-        Next familyCell
+        Next familyRow
         If specialCount <> CLng(extra.Range("B38").Value2) Then
             Err.Raise vbObjectError + 246, , "特定親族の合計所得を人数分入力し、原票と照合してください。"
         End If
@@ -682,6 +688,14 @@ Public Sub RecalculateCase()
     RevealVerifiedResults
 End Sub
 
+' Remove case-specific confirmations and additional persons at import/new case.
+Private Sub ResetRelativeInputs()
+    Dim rel As Worksheet
+    Set rel = ThisWorkbook.Worksheets("特定親族明細")
+    rel.Range("B4:B33,C7:C33").ClearContents
+    rel.Range("D4:D33").Value2 = "未確認"
+End Sub
+
 Private Sub ResetSeparateInputs(ByVal home As Worksheet)
     ' Only templates with this detail section own these ranges.
     If CStr(home.Range("A42").Value2) <> "詳細設定 | 申告分離課税（検証版）" Then Exit Sub
@@ -702,6 +716,7 @@ Public Sub NewCase()
               vbQuestion + vbYesNo + vbDefaultButton2, "新規入力") <> vbYes Then Exit Sub
     MaskUnverifiedResults
     ResetSeparateInputs ThisWorkbook.Worksheets("操作画面")
+    ResetRelativeInputs
     With ThisWorkbook.Worksheets("操作画面")
         .Range("B11:B12,B15:B16,B19:B25,B33:B36,D11:D23,D25").ClearContents
         .Range("B11").Value2 = .Range("B4").Value2
