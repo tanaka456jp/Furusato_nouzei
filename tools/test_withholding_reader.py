@@ -171,6 +171,9 @@ class WithholdingTest(unittest.TestCase):
         self.assertIn('If actualAmount <> sourceAmount Then',code)
         self.assertIn('If statutory <> CDbl(relatives.Cells(row, "E").Value2) Then',code)
         self.assertIn('For row = 4 To 33',code)
+        self.assertIn('If Not hasSourceCount And Not hasSourceAmount Then Exit Sub',code)
+        self.assertIn('If sourceCount > 0 And Not hasSourceAmount Then',code)
+        self.assertNotIn('If sourceCount = 0 Then Exit Sub',code)
 
 
 if __name__=="__main__":
