@@ -1214,6 +1214,37 @@ try {
         }
         QA-Stage 'synthetic-pdf-audit-input-export-pass'
     }
+    # The importer must not carry one taxpayer's extra income into a
+    # different taxpayer case. Same-taxpayer re-import is explicitly allowed
+    # to keep these inputs. Exercise the SAME guarded VBA helper used by
+    # ImportWithholding, on this disposable FurusatoQA.xlsm only.
+    QA-Stage 'import-taxpayer-switch-isolation-start'
+    $importExtra = $book.Worksheets.Item('例外・分離課税')
+    $importExtra.Range('B5').Value2 = 2500000.0
+    $importExtra.Range('B6').Value2 = '65歳以上'
+    $importExtra.Range('B8').Value2 = 900000.0
+    $importExtra.Range('B9').Value2 = 200000.0
+    $importExtra.Range('B12').Value2 = 500000.0
+    $importExtra.Range('B21').Value2 = 12000.0
+    $importExtra.Range('B24').Value2 = 300000.0
+    $importExtra.Range('B25').Value2 = '上場株式'
+    $importExtra.Range('B26').Value2 = 450000.0
+    $importExtra.Range('B33').Value2 = 'あり'
+    $importExtra.Range('B36').Value2 = 500000.0
+    Assert-Value ([bool]($excel.Run('TaxLawUpdater.PrepareAdditionalIncomeForImportForTest', $false))) $true 'Same taxpayer import helper completed'
+    Assert-Value $importExtra.Range('B5').Value2 2500000 'Same taxpayer preserves pension input'
+    Assert-Value $importExtra.Range('B8').Value2 900000 'Same taxpayer preserves miscellaneous income'
+    Assert-Value $importExtra.Range('B24').Value2 300000 'Same taxpayer preserves split income'
+    Assert-Value $importExtra.Range('B25').Value2 '上場株式' 'Same taxpayer preserves split category'
+    Assert-Value $importExtra.Range('B33').Value2 'あり' 'Same taxpayer preserves special cases'
+    Assert-Value ([bool]($excel.Run('TaxLawUpdater.PrepareAdditionalIncomeForImportForTest', $true))) $true 'New taxpayer import helper completed'
+    foreach ($key in @('B5','B6','B8','B9','B12','B21','B24','B26','B36')) {
+        Assert-Value ([string]$importExtra.Range($key).Value2) '' ('New taxpayer clears independent input ' + $key)
+    }
+    Assert-Value $importExtra.Range('B25').Value2 'なし' 'New taxpayer resets split category'
+    Assert-Value $importExtra.Range('B33').Value2 'なし' 'New taxpayer resets special cases'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    QA-Stage 'import-taxpayer-switch-isolation-pass'
     QA-Stage 'all-acceptance-checks-pass'
     $passed = $true
     Write-Output 'PASS: Windows Excel 52 fixtures; 2025/2026 amounts; approved/rejected updates; persisted fault rollback; backup; VBA PDF/hidden UI/no-overwrite; isolated no-overwrite case-save; save/reopen; button wiring.'
