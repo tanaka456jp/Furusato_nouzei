@@ -720,7 +720,8 @@ def build(source, output):
     # basis if tax deductions were applied to B24.
     income_levy_basis = (
         f'(N({ref(ADVANCED,"B30")})+'
-        f'MAX(0,N({ref(ADVANCED,"B24")}),N({ref(ADVANCED,"B36")})))'
+        f'IF(N({ref(ADVANCED,"B24")})>0,'
+        f'MAX(N({ref(ADVANCED,"B24")}),N({ref(ADVANCED,"B36")})),0))'
     )
     unsupported = (
         'OR('

@@ -1129,6 +1129,16 @@ try {
             [string]$homeSheet.Range('B8').Value2 -ne '') {
             throw ('Child salary-only income levy threshold ignored '+$sample.Year)
         }
+        # Stale split control B36 is only a source for a genuine B24>0
+        # split case. Without split taxable income it cannot re-enable a
+        # resident levy that should have been exempt.
+        $incomeTestExtra.Range('B36').Value2 = 2000000.0
+        $excel.Run('TaxLawUpdater.RecalculateCase')
+        if ([string]$homeSheet.Range('B28').Value2 -eq '正常' -or
+            [string]$homeSheet.Range('B8').Value2 -ne '') {
+            throw ('Stale split amount overrode exemption '+$sample.Year)
+        }
+        $incomeTestExtra.Range('B36').ClearContents()
         $incomeTestExtra.Range('B12').Value2 = 300000.0
         $excel.Run('TaxLawUpdater.RecalculateCase')
         Assert-Value $incomeTestExtra.Range('B30').Value2 1300000 ('Child total income '+$sample.Year)
