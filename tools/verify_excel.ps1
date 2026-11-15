@@ -921,6 +921,40 @@ try {
     Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Family mortgage matrix restore'
     Assert-Value $homeSheet.Range('B8').Value2 109000 'Family matrix standard reference restored'
     QA-Stage 'family-mortgage-donation-matrix-pass'
+    # Independently check the negative-rate-basis 90% statutory boundary
+    # in REAL Excel rather than trusting the standalone arithmetic oracle.
+    QA-Stage 'negative-rate-excel-oracle-start'
+    foreach ($case in @(
+        @{ Year=2025; Gross=1650000 },
+        @{ Year=2026; Gross=1740000 }
+    )) {
+        $settings.Range('B4').Value2 = [double]$case.Year
+        $homeSheet.Range('B4').Value2 = [double]$case.Year
+        $homeSheet.Range('B11').Value2 = [double]$case.Year
+        $homeSheet.Range('B12').Value2 = [double]$case.Gross
+        $homeSheet.Range('B15').Value2 = 0.0
+        $homeSheet.Range('B16').Value2 = 70000.0
+        $homeSheet.Range('B25').Value2 = 'なし'
+        $homeSheet.Range('D11:D23,D25').ClearContents()
+        $homeSheet.Range('D22').Value2 = '該当なし'
+        $homeSheet.Range('D24').Value2 = 'ワンストップ'
+        $homeSheet.Range('B33:B36').ClearContents()
+        $excel.Run('TaxLawUpdater.RecalculateCase')
+        Assert-Value $homeSheet.Range('B13').Value2 1000000 ('Low salary income ' + $case.Year)
+        Assert-Value $homeSheet.Range('B28').Value2 '正常' ('Low salary eligibility ' + $case.Year)
+        Assert-Value $homeSheet.Range('D8').Value2 47500 ('Low salary levy ' + $case.Year)
+        Assert-Value $residentSheet.Range('B21').Value2 0.9 ('Negative basis 90pct ' + $case.Year)
+        Assert-Value $homeSheet.Range('B8').Value2 12000 ('Negative basis ceiling ' + $case.Year)
+    }
+    $settings.Range('B4').Value2 = 2026.0
+    $homeSheet.Range('B4').Value2 = 2026.0
+    $homeSheet.Range('B11').Value2 = 2026.0
+    $homeSheet.Range('B12').Value2 = 7000000.0
+    $homeSheet.Range('B15').Value2 = 285800.0
+    $homeSheet.Range('B16').Value2 = 1000000.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B8').Value2 109000 'Low income test restore'
+    QA-Stage 'negative-rate-excel-oracle-pass'
     # Unused split-credit inputs must never silently affect an ordinary
     # estimate. All tests use the isolated synthetic Excel workbook.
     QA-Stage 'ordinary-tax-credit-fail-closed-start'
