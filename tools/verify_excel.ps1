@@ -999,6 +999,55 @@ try {
     $homeSheet.Range('D11:D23,D25').ClearContents()
     $homeSheet.Range('B25').Value2 = 'なし'
     QA-Stage 'family-income-levy-exemption-excel-pass'
+    # The 2025/2026 spouse income criterion (580,000 / 620,000 yen)
+    # determines whether a spouse counts as a same-livelihood spouse
+    # for the income-levy exemption. A special-spouse deduction alone
+    # does NOT establish such family membership. Check the one-yen edge.
+    QA-Stage 'spouse-income-exemption-boundary-start'
+    foreach ($case in @(
+        @{ Year=2025; Gross=1650000; Threshold=580000 },
+        @{ Year=2026; Gross=1740000; Threshold=620000 }
+    )) {
+        foreach ($amount in @([int]$case.Threshold-1, [int]$case.Threshold,
+                               [int]$case.Threshold+1)) {
+            $settings.Range('B4').Value2 = [double]$case.Year
+            $homeSheet.Range('B4').Value2 = [double]$case.Year
+            $homeSheet.Range('B11').Value2 = [double]$case.Year
+            $homeSheet.Range('B12').Value2 = [double]$case.Gross
+            $homeSheet.Range('B15').Value2 = 0.0
+            $homeSheet.Range('B16').Value2 = 70000.0
+            $homeSheet.Range('B25').Value2 = 'なし'
+            $homeSheet.Range('D11:D23,D25').ClearContents()
+            $homeSheet.Range('D22').Value2 = '該当なし'
+            $homeSheet.Range('D24').Value2 = 'ワンストップ'
+            $homeSheet.Range('B33:B36').ClearContents()
+            $homeSheet.Range('D17').Value2 = [double]$amount
+            $relativeSheet.Range('B4:B33,C7:C33').ClearContents()
+            $relativeSheet.Range('D4:D33').Value2 = '未確認'
+            $excel.Run('TaxLawUpdater.RecalculateCase')
+            $label = 'Spouse income exemption ' + $case.Year + '/' + $amount
+            Assert-Value $homeSheet.Range('B13').Value2 1000000 ($label + ' salary basis')
+            if ($amount -le [int]$case.Threshold) {
+                # The family-count exemption applies even where the
+                # resident taxable-income arithmetic is positive.
+                if ([string]$homeSheet.Range('B28').Value2 -eq '正常' -or
+                    [string]$homeSheet.Range('B8').Value2 -ne '' -or
+                    [string]$homeSheet.Range('D8').Value2 -ne '') {
+                    throw ($label + ' wrongly accepted a non-taxable income levy')
+                }
+            } else {
+                Assert-Value $homeSheet.Range('B28').Value2 '正常' ($label + ' eligibility')
+                if ([double]$homeSheet.Range('D8').Value2 -le 0 -or
+                    [double]$homeSheet.Range('B8').Value2 -le 0) {
+                    throw ($label + ' incorrectly counted a special spouse as a dependent')
+                }
+            }
+        }
+    }
+    $relativeSheet.Range('B4:B33,C7:C33').ClearContents()
+    $relativeSheet.Range('D4:D33').Value2 = '未確認'
+    $homeSheet.Range('D11:D23,D25').ClearContents()
+    QA-Stage 'spouse-income-exemption-boundary-pass'
     $settings.Range('B4').Value2 = 2026.0
     $homeSheet.Range('B4').Value2 = 2026.0
     $homeSheet.Range('B11').Value2 = 2026.0
