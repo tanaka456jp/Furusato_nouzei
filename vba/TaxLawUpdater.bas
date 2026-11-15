@@ -535,11 +535,79 @@ Public Function SpecialRelativeTaxDeduction(ByVal familyIncome As Double, ByVal 
     End If
 End Function
 
+' Validate the source count and source amount against *each* relative.
+' Both the visible review UI and non-dialog Windows regression call this
+' one implementation; tests must not simulate verification by forging B41.
+Private Sub ValidateSpecialRelativeSource(ByVal home As Worksheet, _
+                                          ByVal extra As Worksheet, _
+                                          ByVal relatives As Worksheet)
+    Dim row As Long, sourceCount As Long, actualCount As Long
+    Dim sourceAmount As Double, actualAmount As Double
+    Dim sourceCountRaw As Variant, sourceAmountRaw As Variant
+    Dim currentIncome As Double, statutory As Double
+    Dim category As String
+
+    sourceCountRaw = extra.Range("B38").Value2
+    sourceAmountRaw = extra.Range("B39").Value2
+    If Len(Trim$(CStr(sourceCountRaw))) > 0 Then
+        If Not IsNumeric(sourceCountRaw) Then _
+            Err.Raise vbObjectError + 244, , "特定親族の人数（G72）が数値ではありません。"
+        If CDbl(sourceCountRaw) < 0# Or CDbl(sourceCountRaw) > 30# Or _
+           CDbl(sourceCountRaw) <> Fix(CDbl(sourceCountRaw)) Then _
+            Err.Raise vbObjectError + 251, , "特定親族の人数（G72）が入力上限または整数条件に合致しません。"
+        sourceCount = CLng(sourceCountRaw)
+    End If
+    If Len(Trim$(CStr(sourceAmountRaw))) > 0 Then
+        If Not IsNumeric(sourceAmountRaw) Then _
+            Err.Raise vbObjectError + 245, , "特定親族特別控除額（G74）が数値ではありません。"
+        If CDbl(sourceAmountRaw) < 0# Or _
+           CDbl(sourceAmountRaw) <> Fix(CDbl(sourceAmountRaw)) Then _
+            Err.Raise vbObjectError + 252, , "特定親族特別控除額（G74）は非負の整数で入力してください。"
+        sourceAmount = CDbl(sourceAmountRaw)
+    End If
+    If sourceAmount > 0# And sourceCount = 0 Then _
+        Err.Raise vbObjectError + 244, , "特定親族の人数（G72）が原票から読み取れていません。"
+    If sourceCount = 0 Then Exit Sub
+    If Len(Trim$(CStr(sourceAmountRaw))) = 0 Then _
+        Err.Raise vbObjectError + 245, , "特定親族特別控除額（G74）を確認してください。"
+
+    For row = 4 To 33
+        category = CStr(relatives.Cells(row, "G").Value2)
+        If category = "要確認" Then _
+            Err.Raise vbObjectError + 253, , "特定親族の年齢・各人所得・要件に未確認があります。"
+        If category = "特定親族特別控除" Then
+            currentIncome = CDbl(relatives.Cells(row, "C").Value2)
+            statutory = SpecialRelativeTaxDeduction( _
+                currentIncome, CLng(home.Range("B11").Value2))
+            If Abs(statutory - CDbl(relatives.Cells(row, "E").Value2)) > 1# Then _
+                Err.Raise vbObjectError + 250, , "特定親族の個別控除額と所得税の法定表が一致しません。"
+            actualCount = actualCount + 1
+            actualAmount = actualAmount + statutory
+        End If
+    Next row
+    If actualCount <> sourceCount Then _
+        Err.Raise vbObjectError + 246, , "特定親族の合計所得を人数分入力し、原票と照合してください。"
+    If Abs(actualAmount - sourceAmount) > 1# Then _
+        Err.Raise vbObjectError + 247, , "特定親族特別控除額（G74）と所得内訳の計算が一致しません。"
+End Sub
+
+' Modal-free source reconciliation for disposable COM QA only.
+' Read-only; cannot accept/release an import or modify the verification stamp.
+Public Function SpecialRelativeSourceCheckForTest() As String
+    On Error GoTo Invalid
+    Application.Calculate
+    ValidateSpecialRelativeSource ThisWorkbook.Worksheets("操作画面"), _
+        ThisWorkbook.Worksheets("例外・分離課税"), _
+        ThisWorkbook.Worksheets("特定親族明細")
+    SpecialRelativeSourceCheckForTest = "OK"
+    Exit Function
+Invalid:
+    SpecialRelativeSourceCheckForTest = "ERROR: " & Err.Description
+End Function
+
 Public Sub ReviewWithholding()
     Dim home As Worksheet, extra As Worksheet, relatives As Worksheet, msg As String
     Dim value As Double, refCell As Variant, calcCell As Variant
-    Dim familyRow As Long, specialTotal As Double, specialCount As Long
-    Dim familyIncome As Double, specialDeduction As Double
     Dim sourceTotalDifferent As Boolean
     On Error GoTo Failed
     Set home = ThisWorkbook.Worksheets("操作画面")
@@ -574,38 +642,7 @@ Public Sub ReviewWithholding()
             End If
         End If
     End If
-    ' Keep G72/G74 provisional until the actual relatives' incomes
-    ' reconcile both the count and the official deduction table.
-    If Val(CStr(extra.Range("B39").Value2)) > 0 And _
-       Val(CStr(extra.Range("B38").Value2)) = 0 Then
-        Err.Raise vbObjectError + 244, , "特定親族の人数が原票から読み取れていません。"
-    End If
-    If Val(CStr(extra.Range("B38").Value2)) > 0 Then
-        If Not IsNumeric(extra.Range("B39").Value2) Then
-            Err.Raise vbObjectError + 245, , "特定親族特別控除額（G74）を確認してください。"
-        End If
-        ' G72 counts ONLY special-relative deductions, not the 63-man
-        ' yen regular special dependent exemptions. Review each row's
-        ' actual income independently and reconcile the G74 source total.
-        For familyRow = 4 To 33
-            If CStr(relatives.Cells(familyRow, "G").Value2) = "特定親族特別控除" Then
-                familyIncome = CDbl(relatives.Cells(familyRow, "C").Value2)
-                specialDeduction = SpecialRelativeTaxDeduction( _
-                    familyIncome, CLng(home.Range("B11").Value2))
-                If Abs(specialDeduction - CDbl(relatives.Cells(familyRow, "E").Value2)) > 1 Then
-                    Err.Raise vbObjectError + 250, , "特定親族の個別控除額と所得税の法定表が一致しません。"
-                End If
-                specialCount = specialCount + 1
-                specialTotal = specialTotal + specialDeduction
-            End If
-        Next familyRow
-        If specialCount <> CLng(extra.Range("B38").Value2) Then
-            Err.Raise vbObjectError + 246, , "特定親族の合計所得を人数分入力し、原票と照合してください。"
-        End If
-        If Abs(specialTotal - CDbl(extra.Range("B39").Value2)) > 1 Then
-            Err.Raise vbObjectError + 247, , "特定親族特別控除額（G74）と所得内訳の計算が一致しません。"
-        End If
-    End If
+    ValidateSpecialRelativeSource home, extra, relatives
     Application.Calculate
     If Len(Trim$(CStr(home.Range("D25").Value2))) > 0 Then
         If MsgBox("所得控除合計は手入力上書き中です。" & vbCrLf & _
