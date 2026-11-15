@@ -272,6 +272,33 @@ try {
     $homeSheet.Range('B25').Value2 = 'なし'
     $excel.Run('TaxLawUpdater.RecalculateCase')
     QA-Stage 'multi-relative-independent-com-pass'
+    # A household with ONLY special-relative deductions has no regular
+    # under-23 dependent; "なし" must not be rejected merely because an
+    # individual special relative was entered in the first legacy slot.
+    QA-Stage 'special-relative-only-under23-switch-start'
+    $homeSheet.Range('B12').Value2 = 7000000.0
+    $homeSheet.Range('B15').Value2 = 285800.0
+    $homeSheet.Range('B16').Value2 = 1000000.0
+    $homeSheet.Range('D14').Value2 = 900000.0
+    $relativeSheet.Range('B4').Value2 = 20.0
+    $relativeSheet.Range('D4').Value2 = '要件確認済'
+    $homeSheet.Range('B25').Value2 = 'なし'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $relativeSheet.Range('G4').Value2 '特定親族特別控除' 'Special-relative only person'
+    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Special-relative-only household requires no regular dependent'
+    $homeSheet.Range('D14').Value2 = 500000.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    if ([string]$homeSheet.Range('B28').Value2 -eq '正常') {
+        throw 'Regular 19-22 dependent without under-23 declaration was accepted'
+    }
+    $homeSheet.Range('D14').ClearContents()
+    $relativeSheet.Range('B4').ClearContents()
+    $relativeSheet.Range('D4').Value2 = '未確認'
+    $homeSheet.Range('B12').ClearContents()
+    $homeSheet.Range('B15').ClearContents()
+    $homeSheet.Range('B16').ClearContents()
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    QA-Stage 'special-relative-only-under23-switch-pass'
     # Statutory special-relative deduction edge cases, all synthetic.
     $familyBands = @(
         @{ Year=2025; Income=580000; Expected=0 },
