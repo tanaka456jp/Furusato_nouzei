@@ -434,7 +434,8 @@ class WorkbookTest(unittest.TestCase):
         self.assertTrue(extra["B41"].protection.locked)
         self.assertTrue(extra["B42"].protection.locked)
         fingerprint = extra["B42"].value
-        self.assertTrue(fingerprint.startswith("='操作画面'!B4"))
+        self.assertTrue(fingerprint.startswith("=LEN('操作画面'!B4)"))
+        self.assertLess(len(fingerprint), 8192)
         self.assertIn('&"|"&',fingerprint)
         self.assertNotIn("TEXTJOIN",fingerprint)
         for coordinate in ("B4","B12","B16","D14","D17","D25",
