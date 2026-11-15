@@ -107,6 +107,20 @@ class WorkbookTest(unittest.TestCase):
         self.assertIn("Same taxpayer preserves split income",qa)
         self.assertIn("New taxpayer resets special cases",qa)
 
+    def test_multi_page_pdf_requires_explicit_single_page_selection(self):
+        code=(ROOT/"vba/TaxLawUpdater.bas").read_text(encoding="utf-8-sig")
+        reader=(ROOT/"tools/withholding_reader.py").read_text(encoding="utf-8-sig")
+        self.assertIn('If LCase$(fso.GetExtensionName(CStr(picked))) = "pdf" Then',code)
+        self.assertIn('" --page-count"',code)
+        self.assertIn('pageChoice = Application.InputBox(',code)
+        self.assertIn('If VarType(pageChoice) = vbBoolean Then GoTo CleanUp',code)
+        self.assertIn('" --page " & CStr(CLng(pageChoice))',code)
+        self.assertIn('pageArg',code)
+        self.assertIn('If page_number is None and multiple:',reader)
+        self.assertIn('PDF_PAGE_SELECTED',reader)
+        self.assertIn('MULTIPAGE_SELECTED_PAGE_REVIEW',reader)
+        self.assertIn('if args.page_count:',reader)
+
     def test_first_open_full_recalculation_without_permanent_force_flag(self):
         # A full initial calculation is still requested. Avoid permanent
         # forced-full calculation because this suppresses smart dependency
