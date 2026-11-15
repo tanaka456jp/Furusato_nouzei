@@ -563,7 +563,7 @@ class WithholdingTest(unittest.TestCase):
         self.assertIn('Case "special_relative_count": extra.Range("B38").Value2 = value',code)
         self.assertIn('Case "special_relative_deduction_reference": extra.Range("B39").Value2 = value',code)
         self.assertIn("Public Function SpecialRelativeTaxDeduction(",code)
-        self.assertIn('extra.Range("B38:B39").ClearContents',code)
+        self.assertIn('extra.Range("B38:B40").ClearContents',code)
         self.assertIn('ValidateSpecialRelativeSource home, extra, relatives',code)
         self.assertIn('Public Function SpecialRelativeSourceCheckForTest() As String',code)
         self.assertIn('If actualCount <> sourceCount Then',code)
