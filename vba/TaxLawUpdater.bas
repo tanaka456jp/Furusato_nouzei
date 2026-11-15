@@ -421,7 +421,7 @@ Public Sub ImportWithholding()
               "このPDFは一部項目が未確定です。読み取れた数値だけを仮転記します。" & vbCrLf & _
               "原票照合を完了するまで寄附限度額の確定表示は停止します。"
     End If
-    If MsgBox(caution, vbQuestion + vbYesNo + vbDefaultButton2) <> vbYes Then Exit Sub
+    If MsgBox(caution, vbQuestion + vbYesNo + vbDefaultButton2) <> vbYes Then GoTo CleanUp
     ' A source PDF has no trusted taxpayer identity in its ASCII-only bridge.
     ' Do not silently carry a former taxpayer's pension, business, capital
     ' gains or other additional income into a new taxpayer's calculation.
@@ -432,7 +432,7 @@ Public Sub ImportWithholding()
         "キャンセル：取込を中止します。" & vbCrLf & vbCrLf & _
         "どちらの場合も扶養・親族情報は再確認が必要です。", _
         vbQuestion + vbYesNoCancel + vbDefaultButton3, "納税者の切替確認")
-    If taxpayerChoice = vbCancel Then Exit Sub
+    If taxpayerChoice = vbCancel Then GoTo CleanUp
     newTaxpayer = (taxpayerChoice = vbYes)
     backup = UniqueBackupPath(ThisWorkbook)
     ThisWorkbook.SaveCopyAs backup
