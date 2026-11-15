@@ -1008,8 +1008,11 @@ try {
         @{ Year=2025; Gross=1650000; Threshold=580000 },
         @{ Year=2026; Gross=1740000; Threshold=620000 }
     )) {
-        foreach ($amount in @([int]$case.Threshold-1, [int]$case.Threshold,
-                               [int]$case.Threshold+1)) {
+        foreach ($amount in @(
+            ([int]$case.Threshold - 1),
+            ([int]$case.Threshold),
+            ([int]$case.Threshold + 1)
+        )) {
             $settings.Range('B4').Value2 = [double]$case.Year
             $homeSheet.Range('B4').Value2 = [double]$case.Year
             $homeSheet.Range('B11').Value2 = [double]$case.Year
