@@ -200,7 +200,9 @@ jobs:
           doc.save(sys.argv[1])
           doc.close()
           '@
-            python -c $generatePdf $multiPdf
+            $fixtureScript = Join-Path $temp 'create_synthetic_pdf.py'
+            $generatePdf | Set-Content -LiteralPath $fixtureScript -Encoding Ascii
+            python $fixtureScript $multiPdf
             if ($LASTEXITCODE -ne 0) { throw 'Cannot create synthetic multi-page PDF fixture' }
             $pageCountOutput = Join-Path $temp 'count.txt'
             & .\dist\FurusatoDocumentReader.exe --input $multiPdf --output $pageCountOutput --page-count
