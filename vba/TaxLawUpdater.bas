@@ -330,6 +330,7 @@ Public Sub ImportWithholding()
     Dim status As String, raw As String, backup As String, caution As String
     Dim home As Worksheet, extra As Worksheet, code As Long, problem As String
     Dim taxpayerChoice As VbMsgBoxResult, newTaxpayer As Boolean
+    Dim pageChoice As Variant, pageCount As Long, pageArg As String
     On Error GoTo Failed
     ' Select the PDF-only filter initially. Compound patterns hid PDFs.
     picked = Application.GetOpenFilename( _
@@ -351,9 +352,45 @@ Public Sub ImportWithholding()
     Set shell = CreateObject("WScript.Shell")
     tempJson = fso.BuildPath(fso.GetSpecialFolder(2), fso.GetTempName & ".json")
     tempTsv = fso.BuildPath(fso.GetSpecialFolder(2), fso.GetTempName & ".tsv")
-    command = command & " --input " & Chr$(34) & CStr(picked) & Chr$(34) & _
+    ' Multiple taxpayers' withholding slips can be bundled in one PDF.
+    ' Count-only mode does not scan or export personal data. The operator
+    ' MUST select one numbered page; never sum or guess across pages.
+    If LCase$(fso.GetExtensionName(CStr(picked))) = "pdf" Then
+        command = Chr$(34) & reader & Chr$(34) & _
+                  " --input " & Chr$(34) & CStr(picked) & Chr$(34) & _
+                  " --output " & Chr$(34) & tempJson & Chr$(34) & " --page-count"
+        exitCode = shell.Run(command, 0, True)
+        If exitCode <> 0 Or Not fso.FileExists(tempJson) Then _
+            Err.Raise vbObjectError + 256, , "PDFのページ数を確認できません。"
+        Set inFile = fso.OpenTextFile(tempJson, 1, False, 0)
+        raw = Trim$(inFile.ReadAll)
+        inFile.Close
+        Set inFile = Nothing
+        If Not IsNumeric(raw) Then _
+            Err.Raise vbObjectError + 257, , "PDFページ数の検証情報が不正です。"
+        If CDbl(raw) < 1 Or CDbl(raw) > 100 Or CDbl(raw) <> Fix(CDbl(raw)) Then _
+            Err.Raise vbObjectError + 258, , "PDFは1～100ページで指定してください。"
+        pageCount = CLng(raw)
+        If pageCount > 1 Then
+            pageChoice = Application.InputBox( _
+                "PDFに " & CStr(pageCount) & " ページあります。" & vbCrLf & _
+                "取り込む納税者のページ番号を入力してください（1～" & _
+                CStr(pageCount) & "）。" & vbCrLf & _
+                "ほかのページの金額は合算せず、選択した1ページだけ仮転記します。", _
+                "源泉徴収票のページ選択", Type:=1)
+            If VarType(pageChoice) = vbBoolean Then GoTo CleanUp
+            If Not IsNumeric(pageChoice) Then _
+                Err.Raise vbObjectError + 259, , "PDFページ番号を確認してください。"
+            If CDbl(pageChoice) < 1 Or CDbl(pageChoice) > pageCount Or _
+               CDbl(pageChoice) <> Fix(CDbl(pageChoice)) Then _
+                Err.Raise vbObjectError + 260, , "PDFページ番号が範囲外です。"
+            pageArg = " --page " & CStr(CLng(pageChoice))
+        End If
+    End If
+    command = Chr$(34) & reader & Chr$(34) & _
+              " --input " & Chr$(34) & CStr(picked) & Chr$(34) & _
               " --output " & Chr$(34) & tempJson & Chr$(34) & _
-              " --bridge " & Chr$(34) & tempTsv & Chr$(34)
+              " --bridge " & Chr$(34) & tempTsv & Chr$(34) & pageArg
     exitCode = shell.Run(command, 0, True)
     If exitCode <> 0 Or Not fso.FileExists(tempTsv) Then
         Err.Raise vbObjectError + 203, , "源泉徴収票の読取に失敗しました。形式・OCR環境を確認してください。"
