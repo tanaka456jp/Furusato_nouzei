@@ -67,9 +67,16 @@ def _insurance_category(new_paid, old_paid, *, resident,
              eligible_2026_under23=eligible_2026_under23)
     o = _old(old_paid, resident=resident)
     if new_paid and old_paid:
+        # NTA No.1140: old-contract premiums above 60,000 yen cannot
+        # be added to new-contract premiums as the combined option.
+        # Single-contract choices remain available independently.
+        # This matters in 2026 when the new-life combined cap is 60,000
+        # instead of 40,000: unconditional n+o would overstate relief.
+        if old_paid > 60_000:
+            return max(n, o)
         combined_cap = (28_000 if resident else
                         60_000 if eligible_2026_under23 else 40_000)
-        return max(o, min(n + o, combined_cap))
+        return max(n, o, min(n + o, combined_cap))
     return n if new_paid else o
 
 
