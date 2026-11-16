@@ -110,6 +110,40 @@ def build(source, output):
         f'{special_general},{original_general_life[1:]})'
     )
 
+    # RESIDENT_DEDUCTIONS_DIRECT_FROM_COMPONENTS:
+    # Do not infer local taxable income from the income-tax taxable base
+    # (legacy J12) plus national/resident deduction differences (J43).
+    # Compute the resident deduction independently, line by line, using
+    # resident-specific H-column values. This requires NO additional entry:
+    # the same home premiums/family fields populate both columns.
+    # Cases with manual national deduction overrides, other income or
+    # nonstandard withholding differences keep the legacy fallback and
+    # remain outside this direct-calculation release acceptance.
+    previous_resident_taxable = original["J44"].value
+    if (not isinstance(previous_resident_taxable, str)
+            or not previous_resident_taxable.startswith("=")):
+        raise ValueError("BASELINE_RESIDENT_TAXABLE_FORMULA_MISSING")
+    direct_resident_deductions = (
+        f'SUM({ref(HOME, "B16")},H15,H24,H25,H38,H40,'
+        f'{ref("追加人的控除", "D12")})'
+    )
+    direct_salary_scope = (
+        f'AND(OR({ref("設定・税率", "B4")}=2025,'
+        f'{ref("設定・税率", "B4")}=2026),'
+        f'{ref(HOME, "D25")}="",'
+        f'N({ref(ADVANCED, "B28")})=0,'
+        f'N({ref(ADVANCED, "B24")})=0,'
+        f'N({ref(ADVANCED, "B27")})=0,'
+        f'N({ref(HOME, "B33")})=0,'
+        f'N({ref(HOME, "B34")})=0,'
+        f'N({ref(INPUT, "B13")})=0)'
+    )
+    original["J44"] = (
+        f'=IF({direct_salary_scope},'
+        f'ROUNDDOWN(MAX(0,D15-{direct_resident_deductions}),-3),'
+        f'{previous_resident_taxable[1:]})'
+    )
+
     # Separate city/prefecture 100-yen truncation matters for local levy.
     # Until the municipality is verified, never silently select the lower
     # of the ordinary-city (6/4) and designated-city (8/2) results: that
@@ -1054,7 +1088,10 @@ def build(source, output):
     note(detail, 3, f'="所得年 "&{ref(HOME,"D4")}&" ｜ 住民税課税年度 "&{ref(HOME,"D5")}&" ｜ 税制版 "&{ref(HOME,"B29")}')
     items = (
         ("総合課税所得（給与・年金等）", ref(ENGINE, "D15"), "給与所得＋追加の総合課税所得"),
-        ("所得控除（住民税）", f'{ref(HOME,"B14")}-{ref(ENGINE,"J43")}', "所得税の所得控除合計 − 控除差額"),
+        ("所得控除（住民税）",
+         f'IF({direct_salary_scope},{direct_resident_deductions},'
+         f'{ref(HOME,"B14")}-{ref(ENGINE,"J43")})',
+         "住民税の控除を個別合算。対象外ケースのみ旧式で参考表示"),
         ("住民税課税所得", ref(RESIDENT, "B6"), "総合所得−住民税所得控除。千円未満切捨て"),
         ("住民税算出所得割", ref(RESIDENT, "B15"), "総合課税所得割＋申告分離課税所得割"),
         ("調整控除", ref(RESIDENT, "B14"), "課税所得と人的控除差から算定"),
