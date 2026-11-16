@@ -200,7 +200,9 @@ class PriorYearProjectionTest(unittest.TestCase):
         })
         # 2026 occupancy uses only the national taxable base for 5% cap.
         c["workbook"]["resident_mortgage_transfer"] = 36_700
-        self.assertEqual(compare_projection(c)["status"], "MATCH_REFERENCE")
+        self.assertEqual(compare_projection(c)["status"], "NOT_COMPARABLE")
+        self.assertEqual(compare_projection(c)["reason"],
+                         "FIRST_YEAR_HOUSING_REQUIRES_RETURN")
         zero = copy.deepcopy(c)
         zero["target"].update({
             "mortgage_possible_credit": 0,
