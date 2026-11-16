@@ -78,7 +78,7 @@ node gas/scripts/check-live-ocr-readiness.cjs --verify-remote
 .\tools\verify_signed_release_local.ps1 -Package "C:\FurusatoPrivateReview\2026-11\Furusato_Release_Candidate.zip" -ExpectedPackageSha256 "<64桁SHA256>" -ExpectedSignerThumbprint "<正規署名者のthumbprint>" -EvidencePath "C:\FurusatoPrivateReview\2026-11\signature_verification.json"
 ```
 
-この検査は同梱EXEのAuthenticodeを調べるもので、Excelの**VBAプロジェクトのデジタル署名までは検証しません**。マクロを署名配布する場合は、実際のOfficeでVBAプロジェクト署名の証明書・有効性・発行者を別途確認し、署名後のVBAソース変更がないことを証明してください。検査用ZIPに余分なファイルが含まれる場合も拒否します。コード署名・ハッシュ一致が成立しても税務・画面・印刷・実GASの最終承認を省略しない。
+この検査は同梱EXEのAuthenticodeを確認すると同時に、XLSM内部の **VBAプロジェクトと署名コンテナーの存在を確認**します。署名コンテナーが存在しない配布候補は拒否します。ただし、署名コンテナーの存在は署名の真正性・有効性・VBAコードへの結び付きを証明しないため、Excelの**VBAプロジェクト署名の暗号学的検証までは完了しません**。マクロを署名配布する場合は、実際のOfficeでVBAプロジェクト署名の証明書・有効性・発行者を別途確認し、署名後のVBAソース変更がないことを証明してください。検査用ZIPに余分なファイルが含まれる場合も拒否します。コード署名・ハッシュ一致が成立しても税務・画面・印刷・実GASの最終承認を省略しない。
 
 ## 10項目の社内オフライン受入マニフェスト
 
@@ -93,3 +93,5 @@ python tools/collect_local_release_evidence.py check --manifest "C:\FurusatoPriv
 `record` は各証拠項目に対して必要回数だけ実行する。許可されないレビュアー区分、証拠ファイル欠落、同一項目への重複記録、GitHub内ファイル、現在のHEADと不一致の証拠を拒否する。**全10項目が記録されても `release_decision=HOLD` とし、権限ある人間による最終承認と実物の再照合を必要とする。** マニフェストはリポジトリや公開CIに追加しない。
 
 正式リリースのブランチ統合・タグ発行・公開・本番GAS更新は、この10項目を実物で承認した後の独立したリリース工程に限定する。
+
+署名確認の一次資料：[Microsoft Support・VBAマクロプロジェクトにデジタル署名する](https://support.microsoft.com/ja-jp/office/vba/digitally-sign-your-vba-macro-project)、[Microsoft Learn・ブック署名とマクロコード署名の違い](https://learn.microsoft.com/ja-jp/troubleshoot/microsoft-365-apps/excel/digital-signatures-code-signing)。
