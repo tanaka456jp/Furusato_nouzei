@@ -77,6 +77,15 @@ def compare_case(case):
     if (not isinstance(family, dict) or set(family) != set(FAMILY_KEYS)
             or case["municipality"] not in ("standard", "designated")):
         return hold("UNVERIFIED_FAMILY_OR_MUNICIPALITY")
+    if ("insurance" in case and
+            case["insurance"] is not None and
+            isinstance(case["insurance"], dict) and
+            case["insurance"].get("verified_2026_under23_dependent") is True and
+            not any(type(family[k]) is int and family[k] > 0
+                    for k in ("under16", "general", "special"))):
+        # Spouse/elderly relatives alone cannot prove an eligible under-23
+        # dependent. Age within the general class still needs separate proof.
+        return hold("UNDER23_DEPENDENT_NOT_IN_VERIFIED_FAMILY")
     if source["salary_gross"] > 20_000_000:
         return hold("NOT_YEAR_END_ADJUSTMENT_ELIGIBLE")
     if source["salary_gross"] <= 0 or source["salary_reference"] > source["salary_gross"]:
