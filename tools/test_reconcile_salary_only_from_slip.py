@@ -89,5 +89,49 @@ class SalaryOnlySlipReconciliationTest(unittest.TestCase):
             evaluate([],min_cases=1)
 
 
+    def test_verified_insurance_is_included_in_both_tax_systems(self):
+        case = example(2025)
+        # All amounts are synthetic. The 'insurance' premiums must be verified
+        # independently; source deduction boxes are used ONLY for checking.
+        case["insurance"] = {
+            "new_life": 50_000, "old_life": 0, "care": 0,
+            "new_pension": 50_000, "old_pension": 0,
+            "earthquake": 10_902, "old_long": 0,
+            "life_reference": 65_000, "earthquake_reference": 10_902,
+            "distinct_earthquake_contracts_confirmed": True,
+            "no_2026_under23_life_exception_confirmed": True,
+        }
+        case["source"]["deductions_reference"] = 1_705_902
+        case["source"]["income_tax_withheld"] = 276_900
+        case["workbook"]["resident_income_levy"] = 368_500
+        case["workbook"]["donation_limit"] = 107_000
+        self.assertEqual(compare_case(case)["status"], "MATCH_REFERENCE")
+        for field, value in (("life_reference",64_999),
+                             ("earthquake_reference",10_900),
+                             ("new_life",True),
+                             ("distinct_earthquake_contracts_confirmed",False)):
+            bad = example(2025)
+            bad.update({"insurance":dict(case["insurance"])})
+            bad["source"] = dict(case["source"])
+            bad["workbook"] = dict(case["workbook"])
+            bad["insurance"][field] = value
+            self.assertEqual(compare_case(bad)["status"], "NOT_COMPARABLE")
+
+    def test_2026_insurance_exception_requires_confirmed_absence(self):
+        case = example(2026)
+        case["insurance"] = {
+            "new_life": 0, "old_life": 0, "care": 0,
+            "new_pension": 0, "old_pension": 0,
+            "earthquake": 0, "old_long": 0,
+            "life_reference": 0, "earthquake_reference": 0,
+            "distinct_earthquake_contracts_confirmed": True,
+            "no_2026_under23_life_exception_confirmed": False,
+        }
+        self.assertEqual(compare_case(case)["status"], "NOT_COMPARABLE")
+        case["insurance"]["no_2026_under23_life_exception_confirmed"] = True
+        self.assertEqual(compare_case(case)["status"], "MATCH_REFERENCE")
+
+
+
 if __name__=="__main__":
     unittest.main(verbosity=2)
