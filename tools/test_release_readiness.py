@@ -34,11 +34,12 @@ class ReleaseReadinessTest(unittest.TestCase):
         self.assertNotIn("real_tax_and_resident_notice_reconciliation",REQUIRED)
         self.assertIn("salary_only_independent_withholding_reconciliation",REQUIRED)
         self.assertIn("prior_year_projection_independent_resident_deductions",REQUIRED)
+        self.assertIn("mortgage_filing_independent_tax_difference", REQUIRED)
         self.assertEqual(
             REVIEWER_ROLES["prior_year_projection_independent_resident_deductions"],
             ("tax_professional", "external_reviewer"),
         )
-        self.assertEqual(SCHEMA, "furusato-release-readiness/v2")
+        self.assertEqual(SCHEMA, "furusato-release-readiness/v3")
         old_manifest={"schema":"furusato-release-readiness/v1",
                       "head_sha":HEAD,
                       "checks":{"real_tax_and_resident_notice_reconciliation":{
@@ -64,6 +65,44 @@ class ReleaseReadinessTest(unittest.TestCase):
             "MISSING_PRIOR_YEAR_PROJECTION_INDEPENDENT_RESIDENT_DEDUCTIONS",
             report["blockers"],
         )
+
+    def test_mortgage_filing_tax_review_is_mandatory_and_role_limited(self):
+        self.assertEqual(
+            REVIEWER_ROLES["mortgage_filing_independent_tax_difference"],
+            ("tax_professional", "external_reviewer"),
+        )
+        old_checks = {
+            key: {"status": "REVIEWED", "sha256": "f" * 64,
+                  "reviewer_role": REVIEWER_ROLES[key][0], "head_sha": HEAD}
+            for key in REQUIRED if key != "mortgage_filing_independent_tax_difference"
+        }
+        incomplete = evaluate(HEAD, {
+            "schema": SCHEMA, "head_sha": HEAD, "checks": old_checks,
+        })
+        self.assertEqual(incomplete["release_decision"], "HOLD")
+        self.assertIn(
+            "MISSING_MORTGAGE_FILING_INDEPENDENT_TAX_DIFFERENCE",
+            incomplete["blockers"],
+        )
+        recorded = dict(old_checks)
+        recorded["mortgage_filing_independent_tax_difference"] = {
+            "status": "REVIEWED", "sha256": "f" * 64,
+            "reviewer_role": "qa_operator", "head_sha": HEAD,
+        }
+        unauthorized = evaluate(HEAD, {
+            "schema": SCHEMA, "head_sha": HEAD, "checks": recorded,
+        })
+        self.assertEqual(
+            unauthorized["checks"]["mortgage_filing_independent_tax_difference"],
+            "INVALID",
+        )
+        self.assertEqual(unauthorized["release_decision"], "HOLD")
+        old_format = evaluate(HEAD, {
+            "schema": "furusato-release-readiness/v2",
+            "head_sha": HEAD, "checks": recorded,
+        })
+        self.assertIn("SCHEMA_MISSING_OR_UNSUPPORTED", old_format["blockers"])
+        self.assertEqual(old_format["release_decision"], "HOLD")
 
     def test_no_evidence_always_hold(self):
         report = evaluate(HEAD)
