@@ -27,3 +27,10 @@
 従来の `System.Windows.Forms.Screen.Bounds` にはWindows DPI仮想化による座標倍率が含まれることがあり、画面が1920×1080に見えても、実際の出力解像度と断定できません。隔離された合成Excel画面を撮影する `tools/probe_display_layout.ps1` に、Windows `EnumDisplaySettingsW`（現在のディスプレイ出力モード）と `GetDpiForWindow`（ExcelウインドウのDPI）の独立測定を追加しました。
 
 証拠JSONの `display_observation.current_mode_pixels` はWindowsから報告された**現在の出力ピクセル数**であり、パネル固有のネイティブ解像度や紙面の可読性を保証するものではありません。 `scenario_observed_not_certified` は対象3シナリオのいずれかの観測に成功したときだけ付与。スクリーンショットの目視確認および1920×1080 100/125%、1366×768 150%の各設定での実機検証が完了するまで、`physical_resolution_verified=false` と `release_approved=false` を維持します。CIで勝手にWindowsの解像度・拡大率を変更せず、個人のデスクトップ全体や実顧客データも撮影しません。
+
+
+### Windows配布ZIPの完全性・EXE署名を分離した自動監査
+
+`tools/verify_distribution_integrity.py` を追加。実際にWindowsで作成した **Python不要の検証ZIP** に対し、ZIP内の全6ファイルの構成・重複・パストラバーサル/シンボリックリンク・CRC・SHA256・展開サイズを検査し、ファイル名とSHA256だけの匿名メタデータを保存します。入力元ファイルは実行しません。 `--expected-sha256` を指定すると、事前に配布者が控えたZIPのSHA256との完全一致も要求できます。GitHub-hosted Windowsでは個人情報を含まない合成パッケージを用いて正常系と改ざん・欠落・重複ケースを自動検査します。
+
+Windowsジョブで `Get-AuthenticodeSignature` を使用して同梱の `FurusatoDocumentReader.exe` が信頼できる証明書で署名されているかを**別途**確認し、その結果を `distribution_signature_hold.json` に記録します。署名者の識別情報・秘密鍵・実顧客資料はGitHubへ送信しません。ZIPのハッシュ一致も署名の代用ではありません。配布ZIP本体の署名または外部署名・証明書の安全な管理・最終人手承認が完了するまで、CIが全ジョブSUCCESSでも `release_decision=HOLD` のままです。

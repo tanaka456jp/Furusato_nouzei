@@ -40,6 +40,7 @@ jobs:
           python tools/test_workbook.py
           python tools/test_salary_donation_oracle.py
           python tools/test_release_readiness.py
+          python tools/test_distribution_integrity.py
           python tools/release_readiness.py --head "${{ github.event.pull_request.head.sha || github.sha }}" --output release_readiness_hold.json
           python tools/verify_separate_oracle.py
           node tools/test_excel_gas_v4183.cjs
@@ -244,6 +245,36 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Python-free package assembly failed' }
           python tools/test_windows_package.py Furusato_nouzei_Windows_REVIEW.zip
           if ($LASTEXITCODE -ne 0) { throw 'Windows distribution contract failed' }
+          python tools/verify_distribution_integrity.py Furusato_nouzei_Windows_REVIEW.zip --output distribution_integrity_hold.json
+          if ($LASTEXITCODE -ne 0) { throw 'Unsafe or inconsistent Windows ZIP: HOLD' }
+          # Detect signer trust separately from archive byte integrity.
+          # Unsigned PyInstaller EXE is expected in review builds. A valid
+          # EXE signature alone does not authorize distributing the ZIP.
+          $sig = Get-AuthenticodeSignature -LiteralPath .\dist\FurusatoDocumentReader.exe
+          $signatureStatus = if ($null -ne $sig -and $sig.Status -eq 'Valid') {
+            'EXE_TRUSTED_SIGNER_REVIEW_ONLY'
+          } else { 'EXE_UNSIGNED_OR_UNTRUSTED_HOLD' }
+          $review = [ordered]@{
+            schema = 'furusato-windows-signature-inspection/v1'
+            release_decision = 'HOLD'
+            exe_authenticode_inspection = $signatureStatus
+            exe_sha256 = (Get-FileHash -LiteralPath .\dist\FurusatoDocumentReader.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+            signed_archive_or_detached_signature = 'NOT_VERIFIED'
+            limitation = 'A signed EXE alone does not sign this ZIP or approve public distribution'
+          }
+          [IO.File]::WriteAllText(
+            (Join-Path (Get-Location).Path 'distribution_signature_hold.json'),
+            ($review | ConvertTo-Json -Depth 4),[Text.UTF8Encoding]::new($false))
+      - name: Upload distribution integrity and unsigned/release HOLD evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Furusato_DISTRIBUTION_INTEGRITY_HOLD_${{ github.run_id }}
+          path: |
+            distribution_integrity_hold.json
+            distribution_signature_hold.json
+          if-no-files-found: warn
+          retention-days: 14
       - name: Upload Python-free Windows review ZIP
         uses: actions/upload-artifact@v4
         with:
