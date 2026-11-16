@@ -4,11 +4,12 @@ import json
 import re
 from pathlib import Path
 
-SCHEMA = "furusato-release-readiness/v2"
+SCHEMA = "furusato-release-readiness/v3"
 REQUIRED = (
     "ci_exact_commit",
     "salary_only_independent_withholding_reconciliation",
     "prior_year_projection_independent_resident_deductions",
+    "mortgage_filing_independent_tax_difference",
     "screen_1920x1080_100pct",
     "screen_1920x1080_125pct",
     "screen_1366x768_150pct",
@@ -24,6 +25,7 @@ REVIEWER_ROLES = {
     "ci_exact_commit": ("qa_operator", "release_operator"),
     "salary_only_independent_withholding_reconciliation": ("tax_professional", "external_reviewer"),
     "prior_year_projection_independent_resident_deductions": ("tax_professional", "external_reviewer"),
+    "mortgage_filing_independent_tax_difference": ("tax_professional", "external_reviewer"),
     "screen_1920x1080_100pct": ("qa_operator", "external_reviewer"),
     "screen_1920x1080_125pct": ("qa_operator", "external_reviewer"),
     "screen_1366x768_150pct": ("qa_operator", "external_reviewer"),
@@ -83,7 +85,7 @@ def evaluate(head_sha, manifest=None):
                          else "EVIDENCE_INCOMPLETE"),
         "checks": states,
         "blockers": sorted(set(blockers)),
-        "note": "A year-end-adjusted salary-only withholding slip can support an independently calculated donation ceiling without a resident-tax notice. Evidence of source-year tax, 2025-to-2026 independent resident deductions, verified conditions, current Excel comparison, physical display/printing, live GAS and code signing remains necessary.",
+        "note": "A year-end-adjusted salary-only withholding slip can support an independently calculated donation ceiling without a resident-tax notice. Evidence of source-year tax, 2025-to-2026 independent resident deductions, independently reviewed tax-return and housing-credit reallocation, verified conditions, current Excel comparison, physical display/printing, live GAS and code signing remains necessary.",
     }
 
 
