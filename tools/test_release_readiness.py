@@ -33,6 +33,11 @@ class ReleaseReadinessTest(unittest.TestCase):
     def test_resident_notice_is_never_a_required_gate(self):
         self.assertNotIn("real_tax_and_resident_notice_reconciliation",REQUIRED)
         self.assertIn("salary_only_independent_withholding_reconciliation",REQUIRED)
+        self.assertIn("prior_year_projection_independent_resident_deductions",REQUIRED)
+        self.assertEqual(
+            REVIEWER_ROLES["prior_year_projection_independent_resident_deductions"],
+            ("tax_professional", "external_reviewer"),
+        )
         self.assertEqual(SCHEMA, "furusato-release-readiness/v2")
         old_manifest={"schema":"furusato-release-readiness/v1",
                       "head_sha":HEAD,
@@ -43,6 +48,22 @@ class ReleaseReadinessTest(unittest.TestCase):
         self.assertEqual(old["release_decision"],"HOLD")
         self.assertIn("SCHEMA_MISSING_OR_UNSUPPORTED",old["blockers"])
         self.assertIn("UNKNOWN_CHECK_KEYS",old["blockers"])
+
+    def test_older_evidence_manifest_does_not_bypass_projection_gate(self):
+        old_checks = {
+            key: {"status": "REVIEWED", "sha256": "f" * 64,
+                  "reviewer_role": REVIEWER_ROLES[key][0], "head_sha": HEAD}
+            for key in REQUIRED
+            if key != "prior_year_projection_independent_resident_deductions"
+        }
+        report = evaluate(HEAD, {
+            "schema": SCHEMA, "head_sha": HEAD, "checks": old_checks,
+        })
+        self.assertEqual(report["release_decision"], "HOLD")
+        self.assertIn(
+            "MISSING_PRIOR_YEAR_PROJECTION_INDEPENDENT_RESIDENT_DEDUCTIONS",
+            report["blockers"],
+        )
 
     def test_no_evidence_always_hold(self):
         report = evaluate(HEAD)
