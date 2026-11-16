@@ -149,7 +149,16 @@ class ReleaseReadinessTest(unittest.TestCase):
             encoding="utf-8-sig")
         for token in (
             "SyntheticDataReviewed", "AllowOnePagePrint",
+            "ExpectedDisplayedLimitYen",
             "EXPLICIT_SYNTHETIC_DATA_AND_PHYSICAL_PRINT_CONSENT_REQUIRED",
+            "PHYSICAL_PRINT_REQUIRES_LOCAL_INTERACTIVE_OPERATOR",
+            "CalculateFullRebuild()", "EXCEL_CALCULATION_NOT_COMPLETE",
+            "PRINT_SCENARIO_CALCULATION_NOT_VERIFIED",
+            "DISPLAYED_DONATION_LIMIT_MISMATCH",
+            "PRINT_DETAILS_LIMIT_MISMATCH",
+            "PHYSICAL_PRINT_NOT_RECONFIRMED_AFTER_PREVIEW",
+            "PRINT_SCENARIO_CHANGED_AFTER_PREVIEW",
+            "Read-Host", "expected_limit_yen_verified = $true",
             "REVIEWED_SYNTHETIC_WORKBOOK_HASH_MISMATCH",
             "Get-CimInstance -ClassName Win32_Printer",
             "PHYSICAL_PRINTER_NOT_VERIFIED",
@@ -168,6 +177,8 @@ class ReleaseReadinessTest(unittest.TestCase):
         docs = (root / "docs/release-acceptance-one-pass.md").read_text(encoding="utf-8-sig")
         self.assertIn("verify_physical_printer_local.ps1", docs)
         self.assertIn("AllowOnePagePrint", docs)
+        self.assertIn("ExpectedDisplayedLimitYen", docs)
+        self.assertIn("PRINT-ONE-PAGE", docs)
 
     def test_no_evidence_always_hold(self):
         report = evaluate(HEAD)
