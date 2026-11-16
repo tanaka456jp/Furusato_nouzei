@@ -1236,6 +1236,11 @@ try {
     $homeSheet.Range('B35').Value2 = 2026.0
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value $homeSheet.Range('B38').Value2 35000 'Housing 2026 occupancy ordinary 5% base'
+    if ([string]$homeSheet.Range('D24').Value2 -eq 'ワンストップ') {
+        if ([string]$homeSheet.Range('B28').Value2 -notlike 'SAFE-TAX-033*') {
+            throw 'First-year mortgage incorrectly accepted one-stop filing'
+        }
+    }
     $homeSheet.Range('B35').Value2 = 2022.0
     $mortgageHint = [string]$homeSheet.Range('D35').Validation.InputMessage
     if ($mortgageHint -notlike '*消費税10%*' -or
