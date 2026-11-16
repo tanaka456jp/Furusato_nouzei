@@ -82,6 +82,21 @@ try {
         }
     }
     QA-Stage 'split-settings-link-unobstructed'
+    # D33 must be operable, not hidden under the row-7 command buttons.
+    # This was found through actual synthetic PC① screenshots.
+    $projectionInput = $homeSheet.Range('D33')
+    Assert-Value ([string]$homeSheet.Range('C33').Value2) '翌年試算の前提確認' 'Visible projection review label'
+    Assert-Value ([string]$projectionInput.Value2) '未確認' 'Projection review defaults to unconfirmed'
+    Assert-Value ([string]$homeSheet.Range('D34').Value2) '同一年分' 'Year relation displayed beside projection review'
+    foreach($ctl in @($homeSheet.Buttons())) {
+        if ([double]$ctl.Left -lt ([double]$projectionInput.Left + [double]$projectionInput.Width) -and
+            ([double]$ctl.Left + [double]$ctl.Width) -gt [double]$projectionInput.Left -and
+            [double]$ctl.Top -lt ([double]$projectionInput.Top + [double]$projectionInput.Height) -and
+            ([double]$ctl.Top + [double]$ctl.Height) -gt [double]$projectionInput.Top) {
+            throw 'Projection review D33 is obscured by a form control'
+        }
+    }
+    QA-Stage 'projection-review-visible-unobstructed'
     QA-Stage 'initial-recalculate-start'
     $excel.Run('TaxLawUpdater.RecalculateCase')
     QA-Stage 'initial-recalculate-done'

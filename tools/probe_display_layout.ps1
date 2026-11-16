@@ -155,8 +155,9 @@ public static class FurusatoWindowCapture {
         throw 'IMPLAUSIBLE_EXCEL_WINDOW_DIMENSIONS'
     }
     # On this runner a 180px crop left the ribbon and formula bar visible.
-    # Limit evidence to the worksheet region. Capture two scroll positions:
-    # upper controls and lower input fields. No desktop-wide screenshots.
+    # Limit evidence to worksheet-only regions. Capture three scroll
+    # positions: upper controls, source inputs, and projection controls.
+    # No desktop-wide screenshots.
     $top = [Math]::Min(350,[int]($pxh - 300))
     $left = 20
     $cropWidth = $pxw - 40
@@ -167,7 +168,8 @@ public static class FurusatoWindowCapture {
     $pictures = @()
     foreach ($capture in @(
         @{ row = 1; name = 'review_excel_window_sheet_only.png' },
-        @{ row = 12; name = 'review_excel_window_lower_section.png' }
+        @{ row = 12; name = 'review_excel_window_lower_section.png' },
+        @{ row = 28; name = 'review_excel_window_mortgage_and_projection.png' }
     )) {
         $excel.ActiveWindow.ScrollRow = [int]$capture.row
         Start-Sleep -Milliseconds 450

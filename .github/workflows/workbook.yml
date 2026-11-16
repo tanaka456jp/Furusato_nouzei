@@ -385,8 +385,8 @@ jobs:
             throw 'Display evidence names a missing image'
           }
           if ($result.status -eq 'CAPTURED_REQUIRES_VISUAL_REVIEW' -and
-              @($result.screenshots).Count -ne 2) {
-            throw 'Both worksheet regions must be captured before visual review'
+              @($result.screenshots).Count -ne 3) {
+            throw 'All three worksheet regions must be captured before visual review'
           }
           foreach ($imageName in @($result.screenshots)) {
             if ($imageName -and -not (Test-Path -LiteralPath (Join-Path $folder $imageName))) {
