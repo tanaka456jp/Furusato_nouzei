@@ -88,6 +88,26 @@ jobs:
           $file = (Resolve-Path ./tools/verify_physical_printer_local.ps1).Path
           [System.Management.Automation.Language.Parser]::ParseFile($file, [ref]$tokens, [ref]$errors) | Out-Null
           if ($errors.Count -gt 0) { throw ($errors | Out-String) }
+      - name: Verify local physical printer operation is blocked under CI
+        shell: pwsh
+        run: |
+          $env:CI = 'true'
+          $expected = 'PHYSICAL_PRINT_REQUIRES_LOCAL_INTERACTIVE_OPERATOR'
+          try {
+            & ./tools/verify_physical_printer_local.ps1 `
+              -Workbook '__FURUSATO_NONEXISTENT_SYNTHETIC__.xlsm' `
+              -ExpectedWorkbookSha256 ('a' * 64) `
+              -ExpectedDisplayedLimitYen 109000 `
+              -PrinterName '__NO_REAL_PRINTER__' `
+              -EvidencePath '__DO_NOT_CREATE_PRINTER_EVIDENCE__.json' `
+              -SyntheticDataReviewed -AllowOnePagePrint
+            throw 'UNSAFE_CI_PRINT_VERIFIER_SUCCEEDED'
+          } catch {
+            if ($_.Exception.Message -cne $expected) { throw }
+          }
+          if (Test-Path '__DO_NOT_CREATE_PRINTER_EVIDENCE__.json') {
+            throw 'PRINTER_CI_BLOCK_CREATED_AN_EVIDENCE_FILE'
+          }
       - name: Attach one-click diagnostic launcher
         run: |
           cp tools/START_EXCEL_PROBE.cmd tools/run_excel_open_probe.ps1 tools/probe_excel_open.ps1 Excel_open_probes/
