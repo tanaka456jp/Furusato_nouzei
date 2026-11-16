@@ -110,6 +110,39 @@ def build(source, output):
         f'{special_general},{original_general_life[1:]})'
     )
 
+    # The local individual-resident-tax city and prefecture levies are
+    # rounded separately to 100 yen. The baseline subtracts credits from a
+    # combined 10% levy and can overstate the ordinary salary levy by 100
+    # yen when insurance premiums move taxable income off a 5,000-yen
+    # boundary. For the narrowly verified salary+insurance/no-other-credit
+    # path, compare the standard 6/4 and designated-city 8/2 splits and
+    # use the lower result until a municipality selector is formally
+    # accepted. Leave every other baseline branch unchanged (HOLD pending
+    # full statutory allocation of credits and municipal classification).
+    original_levy = resident["B16"].value
+    if not isinstance(original_levy, str) or not original_levy.startswith("="):
+        raise ValueError("BASELINE_RESIDENT_LEVY_FORMULA_MISSING")
+    net_levy = 'MAX(0,B15-B14)'
+    designated = (f'ROUNDDOWN({net_levy}*0.8,-2)+'
+                  f'ROUNDDOWN({net_levy}*0.2,-2)')
+    standard = (f'ROUNDDOWN({net_levy}*0.6,-2)+'
+                f'ROUNDDOWN({net_levy}*0.4,-2)')
+    insurance_paid = f'SUM({ref(HOME, "B19:B24")})'
+    safe_standard_salary_only = (
+        f'AND(B15<>"",{insurance_paid}>0,'
+        f'{ref("設定・税率", "B4")}>=2025,'
+        f'{ref("設定・税率", "B4")}<=2026,'
+        f'N({ref(ADVANCED, "B24")})=0,'
+        f'N({ref(ADVANCED, "B27")})=0,'
+        f'N({ref(HOME, "B34")})=0,'
+        f'NOT(ISNUMBER({ref(INPUT, "B15")})),'
+        f'NOT(ISNUMBER({ref(INPUT, "B16")})),'
+        f'SUM({ref(ENGINE, "J51:J53")})=0)'
+    )
+    resident["B16"] = (
+        f'=IF({safe_standard_salary_only},MIN({designated},{standard}),'
+        f'{original_levy[1:]})'
+    )
 
     for view, widths in ((home, (33, 16, 32, 18)), (detail, (33, 16, 32, 18))):
         view.sheet_view.showGridLines = False
