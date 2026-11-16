@@ -175,6 +175,41 @@ class SalaryDonationOracleTest(unittest.TestCase):
                 social_insurance=1_000_000,mortgage_possible=300_000,
                 occupancy_year=2022)
 
+    def test_one_stop_housing_resident_capacity_boundaries(self):
+        from audit_salary_donation_limit import independent_one_stop_after_housing
+        cases = (
+            (120_000, 200_000, 40_000, 160_000, 120_000),
+            (120_000, 110_000, 30_000, 80_000, 82_000),
+            (120_000, 110_000, 109_999, 1, 2_000),
+            (120_000, 110_000, 110_000, 0, 0),
+            (120_000, 110_000, 120_000, 0, 0),
+        )
+        for nominal, levy, housing, available, adjusted in cases:
+            with self.subTest(levy=levy, housing=housing):
+                result = independent_one_stop_after_housing(
+                    nominal_thousand_yen=nominal,
+                    resident_income_levy=levy,
+                    resident_mortgage_credit=housing)
+                self.assertEqual(result["resident_income_levy_after_housing"],
+                                 available)
+                self.assertEqual(
+                    result["one_stop_effective_thousand_yen_reference"],
+                    adjusted)
+                self.assertLessEqual(adjusted, nominal)
+                if adjusted > 0:
+                    self.assertLessEqual(adjusted - 2_000, available)
+        for wrong in (True, -1, 123.45):
+            with self.assertRaises(ValueError):
+                independent_one_stop_after_housing(
+                    nominal_thousand_yen=120_000,
+                    resident_income_levy=110_000,
+                    resident_mortgage_credit=wrong)
+        with self.assertRaisesRegex(ValueError, "NOMINAL_CAP"):
+            independent_one_stop_after_housing(
+                nominal_thousand_yen=120_001,
+                resident_income_levy=110_000,
+                resident_mortgage_credit=30_000)
+
     def test_municipal_published_example(self):
         # 2025 income ¥2,020,000, municipal levy ¥114,500; ceiling ≈ ¥28,974.
         r=independent_salary_ceiling(year=2025,salary_income=2_020_000,
