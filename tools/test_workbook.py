@@ -22,6 +22,22 @@ class WorkbookTest(unittest.TestCase):
         cls.baseline = load_workbook(cls.source)
         cls.book = load_workbook(cls.target)
 
+    def test_conservative_separate_city_prefecture_100yen_rounding(self):
+        levy = self.book[RESIDENT]["B16"].value
+        baseline = self.baseline[RESIDENT]["B16"].value
+        self.assertIsInstance(baseline, str)
+        self.assertTrue(baseline.startswith("="))
+        self.assertIn("ROUNDDOWN(MAX(0,B15-B14)*0.8,-2)", levy)
+        self.assertIn("ROUNDDOWN(MAX(0,B15-B14)*0.2,-2)", levy)
+        self.assertIn("ROUNDDOWN(MAX(0,B15-B14)*0.6,-2)", levy)
+        self.assertIn("ROUNDDOWN(MAX(0,B15-B14)*0.4,-2)", levy)
+        self.assertIn("'操作画面'!B19:B24", levy)
+        self.assertIn("'例外・分離課税'!B24", levy)
+        self.assertIn("'例外・分離課税'!B27", levy)
+        self.assertIn("'ふるさと納税限度額計算'!J51:J53", levy)
+        self.assertTrue(levy.endswith("," + baseline[1:] + ")"))
+        self.assertLess(len(levy), 8192)
+
     def test_2026_verified_under23_life_formula_and_existing_year_preservation(self):
         general = self.book[ENGINE]["F19"].value
         original = self.baseline[ENGINE]["F19"].value
