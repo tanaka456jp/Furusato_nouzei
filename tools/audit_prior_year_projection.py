@@ -108,6 +108,10 @@ def compare_projection(case):
             if (target["mortgage_claim_count"] != 1 or
                     not 2023 <= target["mortgage_occupancy_year"] <= 2026):
                 return hold("UNVERIFIED_TARGET_HOUSING_CLASS")
+            if target["mortgage_occupancy_year"] == case["target_year"]:
+                # First-year housing credit requires an income-tax return;
+                # a verified one-stop filing path cannot apply in that year.
+                return hold("FIRST_YEAR_HOUSING_REQUIRES_RETURN")
         elif (target["mortgage_claim_count"] != 0 or
               target["mortgage_occupancy_year"] != 0):
             return hold("CONTRADICTORY_NO_HOUSING_DECLARATION")
