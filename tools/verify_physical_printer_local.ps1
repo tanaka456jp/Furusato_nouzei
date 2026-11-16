@@ -11,6 +11,7 @@ param(
     [Parameter(Mandatory=$true)][string]$Workbook,
     [Parameter(Mandatory=$true)][string]$ExpectedWorkbookSha256,
     [Parameter(Mandatory=$true)][long]$ExpectedDisplayedLimitYen,
+    [Parameter(Mandatory=$true)][int]$ExpectedTaxYear,
     [Parameter(Mandatory=$true)][string]$PrinterName,
     [Parameter(Mandatory=$true)][string]$EvidencePath,
     [switch]$SyntheticDataReviewed,
@@ -22,6 +23,9 @@ $ErrorActionPreference = 'Stop'
 if ($env:CI -or $env:GITHUB_ACTIONS -or
     -not [Environment]::UserInteractive) {
     throw 'PHYSICAL_PRINT_REQUIRES_LOCAL_INTERACTIVE_OPERATOR'
+}
+if ($ExpectedTaxYear -notin @(2025,2026)) {
+    throw 'UNAPPROVED_PRINT_TAX_YEAR'
 }
 if ($ExpectedDisplayedLimitYen -lt 2000 -or
     $ExpectedDisplayedLimitYen -gt 100000000) {
@@ -102,6 +106,10 @@ try {
     if ($null -eq $home -or [string]$home.Range('B28').Value2 -cne '正常') {
         throw 'PRINT_SCENARIO_CALCULATION_NOT_VERIFIED'
     }
+    if ([int]$home.Range('B4').Value2 -ne $ExpectedTaxYear -or
+        [int]$home.Range('D4').Value2 -ne $ExpectedTaxYear) {
+        throw 'PRINT_TAX_YEAR_MISMATCH'
+    }
     $calculatedLimit = $home.Range('B8').Value2
     if ($null -eq $calculatedLimit -or
         [double]$calculatedLimit -ne [double]$ExpectedDisplayedLimitYen) {
@@ -117,6 +125,9 @@ try {
     }
     $sheet.PageSetup.PaperSize = 9 # xlPaperA4
     $sheet.PageSetup.Orientation = 1 # xlPortrait
+    $sheet.PageSetup.Zoom = $false
+    $sheet.PageSetup.FitToPagesWide = 1
+    $sheet.PageSetup.FitToPagesTall = 1
     # Excel's ActivePrinter may include a localized port suffix (NeXX:).
     # Refuse to fall back to any other default printer.
     Assert-ExplicitActivePrinter -Actual ([string]$excel.ActivePrinter) -Expected $PrinterName
@@ -133,6 +144,8 @@ try {
         throw 'PHYSICAL_PRINT_NOT_RECONFIRMED_AFTER_PREVIEW'
     }
     if ([string]$home.Range('B28').Value2 -cne '正常' -or
+        [int]$home.Range('B4').Value2 -ne $ExpectedTaxYear -or
+        [int]$home.Range('D4').Value2 -ne $ExpectedTaxYear -or
         [double]$home.Range('B8').Value2 -ne [double]$ExpectedDisplayedLimitYen -or
         [double]$sheet.Range('B14').Value2 -ne [double]$ExpectedDisplayedLimitYen) {
         throw 'PRINT_SCENARIO_CHANGED_AFTER_PREVIEW'
@@ -165,6 +178,8 @@ $result = [ordered]@{
     schema = 'furusato-physical-paper-review/v1'
     workbook_sha256 = $expected
     expected_limit_yen_verified = $true
+    expected_tax_year_verified = $true
+    forced_a4_single_page_layout = $true
     excel_tax_status_normal = $true
     post_preview_operator_reconfirmed = $true
     synthetic_data_reviewed = $true
