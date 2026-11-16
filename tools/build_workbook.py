@@ -77,6 +77,40 @@ def build(source, output):
     extra.print_area = "A1:D25"
     original, withholding, resident = (book[name] for name in (ENGINE, INPUT, RESIDENT))
 
+    # R8/2026 (income-tax only): independently attested under-23 dependent
+    # raises the new general-life deduction ceiling to 60,000 yen.
+    # Keep all approved baseline formulas unchanged for 2025 and for 2026
+    # cases without the verified under-23 election. The resident-tax
+    # insurance deduction formula remains separate and UNCHANGED.
+    original_general_life = original["F19"].value
+    if not isinstance(original_general_life, str) or not original_general_life.startswith("="):
+        raise ValueError("BASELINE_GENERAL_LIFE_FORMULA_MISSING")
+    new_paid = f"MAX(0,N({ref(HOME, 'B19')}))"
+    old_paid = f"MAX(0,N({ref(HOME, 'B20')}))"
+    new_special = (
+        f"IF({new_paid}<=30000,{new_paid},"
+        f"IF({new_paid}<=60000,ROUNDUP({new_paid}/2+15000,0),"
+        f"IF({new_paid}<=120000,ROUNDUP({new_paid}/4+30000,0),60000)))"
+    )
+    old_general = (
+        f"IF({old_paid}<=25000,{old_paid},"
+        f"IF({old_paid}<=50000,ROUNDUP({old_paid}/2+12500,0),"
+        f"IF({old_paid}<=100000,ROUNDUP({old_paid}/4+25000,0),50000)))"
+    )
+    # Old premiums above 60,000 yen are NOT eligible for the
+    # new+old combined option (NTA No.1140); choose old-only/new-only.
+    special_general = (
+        f"IF({old_paid}>60000,MAX({old_general},{new_special}),"
+        f"MAX({old_general},{new_special},"
+        f"MIN(60000,{old_general}+{new_special})))"
+    )
+    original["F19"] = (
+        f'=IF(AND({ref("設定・税率", "B4")}=2026,'
+        f'{ref(HOME, "B25")}="あり",{new_paid}>0),'
+        f'{special_general},{original_general_life[1:]})'
+    )
+
+
     for view, widths in ((home, (33, 16, 32, 18)), (detail, (33, 16, 32, 18))):
         view.sheet_view.showGridLines = False
         view.sheet_view.zoomScale = 85
