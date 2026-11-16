@@ -509,7 +509,7 @@ Public Sub ImportWithholding()
     ResetSeparateInputs home
     ResetRelativeInputs
     PrepareAdditionalIncomeForImport extra, newTaxpayer
-    home.Range("B7,B11:B12,B15:B16,B19:B25,B33:B36,D11:D23,D25").ClearContents
+    home.Range("D33,B11:B12,B15:B16,B19:B25,B33:B36,D11:D23,D25").ClearContents
     ' Leave independent pension, business and other income entries untouched.
     extra.Range("B13:B20").ClearContents
     extra.Range("B38:B40").ClearContents
@@ -518,7 +518,7 @@ Public Sub ImportWithholding()
     extra.Range("B32").ClearContents
     ' B4 and home B26 are calculated indicators: never overwrite formulas.
     home.Range("B25").Value2 = "なし"
-    home.Range("B7").Value2 = "未確認"
+    home.Range("D33").Value2 = "未確認"
     home.Range("D22").Value2 = "該当なし"
     home.Range("D24").Value2 = "ワンストップ"
     ' B4 selects the tax law; B11 identifies the imported source slip.
@@ -765,17 +765,17 @@ Public Sub ReviewWithholding()
     isProjection = (Val(CStr(home.Range("B11").Value2)) = 2025 And _
                     Val(CStr(home.Range("D4").Value2)) = 2026)
     If isProjection Then
-        If CStr(home.Range("B7").Value2) <> "確認済" And _
-           CStr(home.Range("B7").Value2) <> "住宅控除なし" Then
+        If CStr(home.Range("D33").Value2) <> "確認済" And _
+           CStr(home.Range("D33").Value2) <> "住宅控除なし" Then
             Err.Raise vbObjectError + 284, , _
-                "翌年試算の給与・社会保険料・扶養・当年住宅ローン控除を確認し、操作画面B7で条件を確定してください。"
+                "翌年試算の給与・社会保険料・扶養・当年住宅ローン控除を確認し、操作画面D33で条件を確定してください。"
         End If
         ' "No mortgage credit" is an assertion about the target year
         ' even when the prior-year slip has NO mortgage credit at all.
         ' Reject every nonblank current-year amount, including a pasted
         ' string or an explicit zero; the mutually exclusive inputs must
         ' instead be cleared before this review can be accepted.
-        If CStr(home.Range("B7").Value2) = "住宅控除なし" And _
+        If CStr(home.Range("D33").Value2) = "住宅控除なし" And _
             (Len(Trim$(CStr(home.Range("B33").Value2))) > 0 Or _
              Len(Trim$(CStr(home.Range("B34").Value2))) > 0) Then
             Err.Raise vbObjectError + 286, , _
@@ -783,7 +783,7 @@ Public Sub ReviewWithholding()
         End If
         If CDbl(Val(CStr(extra.Range("B43").Value2))) > 0# Or _
            CDbl(Val(CStr(extra.Range("B44").Value2))) > 0# Then
-            If CStr(home.Range("B7").Value2) = "確認済" And _
+            If CStr(home.Range("D33").Value2) = "確認済" And _
                Val(CStr(home.Range("B34").Value2)) <= 0 Then
                 Err.Raise vbObjectError + 285, , _
                     "原票に前年の住宅ローン控除があります。当年の適用額・可能額・入居年を入力するか、住宅控除なしを確認してください。"
@@ -822,7 +822,7 @@ Public Sub ReviewWithholding()
     End If
     ' These fields certify the original document year. The target year's
     ' spouse/relative eligibility and deductions can legitimately differ.
-    ' B7 and the exact stamped inputs are required before a projection.
+    ' D33 and the exact stamped inputs are required before a projection.
     If Not isProjection Then
         ValidateSpouseSource home, extra
         ValidateSpecialRelativeSource home, extra, relatives
@@ -985,8 +985,9 @@ Public Sub NewCase()
     ResetSeparateInputs ThisWorkbook.Worksheets("操作画面")
     ResetRelativeInputs
     With ThisWorkbook.Worksheets("操作画面")
-        .Range("B11:B12,B15:B16,B19:B25,B33:B36,D11:D23,D25").ClearContents
+        .Range("B11:B12,B15:B16,B19:B25,B33:B36,D11:D23,D25,D33").ClearContents
         .Range("B11").Value2 = .Range("B4").Value2
+        .Range("D33").Value2 = "未確認"
         .Range("B25").Value2 = "なし"
         .Range("D22").Value2 = "該当なし"
         .Range("D24").Value2 = "ワンストップ"
@@ -999,7 +1000,7 @@ Public Sub NewCase()
         ' B4 is calculated from B24, and must survive NewCase.
         .Range("B8").ClearContents
         .Range("B19:B20").ClearContents
-        .Range("B40").ClearContents
+        .Range("B40,B43:B44").ClearContents
     End With
     Application.Calculate
     RevealVerifiedResults

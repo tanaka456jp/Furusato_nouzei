@@ -261,10 +261,10 @@ def build(source, output):
         # Input ONLY. No B13/B14/B17/B18/B31: calculated values may depend
         # on this review gate, so referencing them can cause a circular
         # calculation and block even otherwise-valid source-free cases.
-        ["B4", "B7", "B11", "B12", "B15", "B16"]
+        ["B4", "B11", "B12", "B15", "B16"]
         + [f"B{i}" for i in range(19, 26)]
         + [f"D{i}" for i in range(11, 26)]
-        + ["B33", "B34", "B35", "B36", "D35", "D24"]
+        + ["B33", "B34", "B35", "B36", "D33", "D35", "D24"]
         # Separate-tax controls may alter the applicability of a reviewed
         # source; do not reuse source verification across case-mode changes.
         + [f"B{i}" for i in range(44, 52)]
@@ -325,17 +325,8 @@ def build(source, output):
     home["B30"] = "内蔵マスタ"
     home.row_dimensions[29].hidden = True
     home.row_dimensions[30].hidden = True
-    # The source slip year (B11) may be 2025 while the selected tax
-    # master (D4) is 2026. Acknowledgement is required before any result.
-    field("B7", "翌年試算の前提確認", "未確認",
-          ("未確認", "確認済", "住宅控除なし"))
-    home["C7"] = "原票・試算年の関係"
-    home["D7"] = ('=IF(IFERROR(1*B11,0)=D4,"同一年分",'
-                   'IF(AND(IFERROR(1*B11,0)=2025,D4=2026),'
-                   '"前年票→2026試算","年分不一致"))')
-    home["D7"].protection = Protection(locked=True)
-    home["D7"].alignment = Alignment(horizontal="center")
-    home["D7"].fill = PatternFill("solid", fgColor="EAF3EA")
+    # Row 7 is reserved for form buttons; never put inputs beneath them.
+    # Source/target year review inputs live by mortgage controls in row 33.
     for row in (5, 7, 8):
         home.row_dimensions[row].height = 25
     detail.row_dimensions[17].height = 26
@@ -409,7 +400,7 @@ def build(source, output):
     home["D26"].alignment = Alignment(wrap_text=True)
     home["D26"].protection = Protection(locked=True)
     home.row_dimensions[26].height = 38
-    note(home, 27, '=IF(D25<>"","⚠ 所得控除合計は手入力上書き中です。D25を消すと自動計算に戻ります。",IF(AND(IFERROR(1*B11,0)=2025,D4=2026),"前年原票の所得控除合計は照合用です。令和8年の基礎・扶養等の控除を再計算します。行7の条件確認と読取内容の確認が必要です。","所得控除合計は社会保険料・扶養・配偶者等の変更により自動再計算します。D25で手入力上書きが可能です。"))')
+    note(home, 27, '=IF(D25<>"","⚠ 所得控除合計は手入力上書き中です。D25を消すと自動計算に戻ります。",IF(AND(IFERROR(1*B11,0)=2025,D4=2026),"前年原票の所得控除合計は照合用です。令和8年の基礎・扶養等の控除を再計算します。D33の前提確認と読取内容の確認が必要です。","所得控除合計は社会保険料・扶養・配偶者等の変更により自動再計算します。D25で手入力上書きが可能です。"))')
     home.row_dimensions[27].height = 56
     home["A31"] = "所得控除合計（自動算定）"
     home["B31"] = ('=IF(OR(B13="",B16=""),"",'
@@ -572,6 +563,15 @@ def build(source, output):
     bar(home, 32, "住宅ローン控除（通常処理・源泉徴収票から転記）")
     field("B33", "住宅ローン控除の所得税適用額")
     field("B34", "住宅ローン控除可能額（G36）")
+    field("D33", "翌年試算の前提確認", "未確認",
+          ("未確認", "確認済", "住宅控除なし"))
+    home["C34"] = "原票・試算年の関係"
+    home["D34"] = ('=IF(IFERROR(1*B11,0)=D4,"同一年分",'
+                   'IF(AND(IFERROR(1*B11,0)=2025,D4=2026),'
+                   '"前年票→2026試算","年分不一致"))')
+    home["D34"].protection = Protection(locked=True)
+    home["D34"].alignment = Alignment(horizontal="center")
+    home["D34"].fill = PatternFill("solid", fgColor="EAF3EA")
     field("B35", "居住開始年（西暦）", maximum=2035)
     field("D35", "2022年入居の特例区分", "未確認",
           ("未確認", "通常5%確認", "経過措置7%確認"))
@@ -909,15 +909,15 @@ def build(source, output):
          "SAFE-TAX-016 要確認。旧・控除後の分離課税入力です。詳細設定で控除前の所得と税目別控除を入力し、再計算してください。"),
         (f'OR(IFERROR(1*B4,0)<>D4,NOT(OR({same_source_year},{projection})))',
          "警告：原票の年分と試算年を確認してください。前年原票からの試算は2025→2026のみ対応します"),
-        (f'AND({projection},OR(AND(B7<>"確認済",B7<>"住宅控除なし"),'
+        (f'AND({projection},OR(AND(D33<>"確認済",D33<>"住宅控除なし"),'
          f'{ref(ADVANCED,"B20")}<>"VERIFIED_AFTER_CORRECTION",'
          f'{ref(ADVANCED,"B41")}="",'
          f'{ref(ADVANCED,"B41")}<>{ref(ADVANCED,"B42")}))',
          "SAFE-TAX-030 前年票による翌年試算です。当年の給与・保険料・扶養等を確認し、読取内容の確認を行ってください"),
-        (f'AND({projection},B7="住宅控除なし",OR(B33<>"",B34<>""))',
+        (f'AND({projection},D33="住宅控除なし",OR(B33<>"",B34<>""))',
          "SAFE-TAX-032 住宅控除なしの確認と当年の住宅ローン控除欄が矛盾しています。控除欄を空欄にするか、確認区分を変更してください"),
         (f'AND({projection},{projected_source_mortgage},'
-         'B7="確認済",N(B34)<=0)',
+         'D33="確認済",N(B34)<=0)',
          "SAFE-TAX-031 前年の住宅ローン控除を流用できません。当年の適用額・可能額・入居年を確認してください"),
         ('OR(COUNT(B12:B18)<>7,AND(B25<>"あり",B25<>"なし"),'
          'AND(D24<>"ワンストップ",D24<>"確定申告"),'
