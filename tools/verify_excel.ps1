@@ -1172,6 +1172,10 @@ try {
     # Mortgage tax credit is routine input. Check the resident-tax credit and
     # every missing/unsupported branch against *real* Excel formula evaluation.
     QA-Stage 'mortgage-normal-start'
+    # This legacy zero-national-credit fixture checks routine one-stop
+    # housing transfer, not an income-tax return whose applied national
+    # housing amount would need to reconcile to pre-donation income tax.
+    $homeSheet.Range('D24').Value2 = 'ワンストップ'
     $homeSheet.Range('B33').Value2 = 0.0
     $homeSheet.Range('B34').Value2 = 50000.0
     $homeSheet.Range('B35').Value2 = 2024.0
