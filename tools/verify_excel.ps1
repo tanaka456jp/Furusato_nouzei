@@ -1445,7 +1445,7 @@ try {
     # All amounts below are synthetic; the workbook and calculations stay
     # isolated from personal documents and any released installation.
     QA-Stage 'mortgage-filing-tax-difference-start'
-    $mortgageFiling = $workbook.Worksheets('住宅確申寄附検算')
+    $mortgageFiling = $book.Worksheets.Item('住宅確申寄附検算')
     $settings.Range('B4').Value2 = 2026.0
     $homeSheet.Range('B4').Value2 = 2026.0
     $homeSheet.Range('B11').Value2 = 2026.0
