@@ -39,6 +39,24 @@ public static class FurusatoWindowCapture {
     public static extern bool PrintWindow(IntPtr hWnd, IntPtr hdc, uint flags);
     [DllImport("user32.dll")]
     public static extern uint GetDpiForWindow(IntPtr hWnd);
+    // Screen.Bounds can be DPI-virtualized. Ask Windows for the CURRENT
+    // display device mode; this is not the physical panel native mode.
+    [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]
+    public struct DEVMODE {
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst=32)] public string dmDeviceName;
+        public ushort dmSpecVersion, dmDriverVersion, dmSize, dmDriverExtra;
+        public uint dmFields;
+        public int dmPositionX, dmPositionY;
+        public uint dmDisplayOrientation, dmDisplayFixedOutput;
+        public short dmColor, dmDuplex, dmYResolution, dmTTOption, dmCollate;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst=32)] public string dmFormName;
+        public ushort dmLogPixels;
+        public uint dmBitsPerPel, dmPelsWidth, dmPelsHeight, dmDisplayFlags,
+            dmDisplayFrequency, dmICMMethod, dmICMIntent, dmMediaType,
+            dmDitherType, dmReserved1, dmReserved2, dmPanningWidth, dmPanningHeight;
+    }
+    [DllImport("user32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+    public static extern bool EnumDisplaySettings(string deviceName, int modeNum, ref DEVMODE devMode);
 }
 '@
     $screen = [Windows.Forms.Screen]::PrimaryScreen
@@ -47,7 +65,30 @@ public static class FurusatoWindowCapture {
     # as observed, never as a certification of physical panel dimensions.
     $width = [int]$screen.Bounds.Width
     $height = [int]$screen.Bounds.Height
-    $display = [ordered]@{ reported_width = $width; reported_height = $height; dpi_virtualization_possible = $true }
+    $display = [ordered]@{
+        reported_width = $width
+        reported_height = $height
+        dpi_virtualization_possible = $true
+        display_mode_source = 'EnumDisplaySettingsW'
+        current_mode_pixels = $null
+        display_mode_observed = $false
+        physical_resolution_verified = $false
+    }
+    # Get the active display mode via EnumDisplaySettingsW instead of
+    # inferring device pixels from Screen.Bounds * DPI. Never promote this
+    # observation to human visual acceptance on its own.
+    $deviceMode = New-Object FurusatoWindowCapture+DEVMODE
+    $deviceMode.dmSize = [ushort][Runtime.InteropServices.Marshal]::SizeOf(
+        [type][FurusatoWindowCapture+DEVMODE])
+    $modeOk = [FurusatoWindowCapture]::EnumDisplaySettings(
+        [string]$screen.DeviceName, -1, [ref]$deviceMode)
+    if ($modeOk -and $deviceMode.dmPelsWidth -ge 640 -and
+        $deviceMode.dmPelsWidth -le 8192 -and $deviceMode.dmPelsHeight -ge 480 -and
+        $deviceMode.dmPelsHeight -le 4320) {
+        $display.current_mode_pixels = @([int]$deviceMode.dmPelsWidth,
+                                          [int]$deviceMode.dmPelsHeight)
+        $display.display_mode_observed = $true
+    }
     $excel = New-Object -ComObject Excel.Application
     $excel.DisplayAlerts = $false
     $excel.AskToUpdateLinks = $false
@@ -98,13 +139,18 @@ public static class FurusatoWindowCapture {
             $inferred = '1366x768@150'
         }
     }
-    $measured = if ($width -eq 1920 -and $height -eq 1080 -and
-                       $display.observed_scale_percent -in @(100,125)) {
-        "$($width)x$($height)@$($display.observed_scale_percent)"
-    } elseif ($width -eq 1366 -and $height -eq 768 -and
-              $display.observed_scale_percent -eq 150) {
-        '1366x768@150'
-    } else { $null }
+    # Only the current DEVMODE width/height can identify the observed
+    # Windows output mode. This STILL is not visual sign-off or a guarantee
+    # of the monitor panel's native resolution.
+    $measured = $null
+    if ($display.display_mode_observed -and
+        $display.observed_scale_percent -in @(100,125,150)) {
+        $pixels = @($display.current_mode_pixels)
+        $scenario = "$($pixels[0])x$($pixels[1])@$($display.observed_scale_percent)"
+        if ($scenario -in @('1920x1080@100','1920x1080@125','1366x768@150')) {
+            $measured = $scenario
+        }
+    }
     if ($pxw -lt 500 -or $pxh -lt 400 -or $pxw -gt 6000 -or $pxh -gt 4000) {
         throw 'IMPLAUSIBLE_EXCEL_WINDOW_DIMENSIONS'
     }
@@ -193,6 +239,7 @@ public static class FurusatoWindowCapture {
         generated_workbook_sha256 = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant()
         display_observation = $display
         scenario_observed_not_certified = $measured
+        observation_requires_manual_visual_review = $true
         scenario_inferred_from_virtualized_bounds_not_certified = $inferred
         screenshot = $pictureName
         screenshots = @($pictures)

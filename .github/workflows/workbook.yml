@@ -358,11 +358,19 @@ jobs:
               throw 'Display evidence names a missing worksheet region'
             }
           }
-          if ($result.display_observation.physical_resolution_verified -eq $true) {
-            throw 'Inferred DPI-virtualized bounds must not certify physical display resolution'
+          if ($result.display_observation.physical_resolution_verified -eq $true -or
+              $result.observation_requires_manual_visual_review -ne $true) {
+            throw 'Display-mode observation must never certify human visual acceptance'
+          }
+          if ($result.display_observation.display_mode_observed -eq $true) {
+            if ($result.display_observation.display_mode_source -ne 'EnumDisplaySettingsW' -or
+                @($result.display_observation.current_mode_pixels).Count -ne 2) {
+              throw 'Observed Windows output display mode is incomplete'
+            }
           }
           ('Desktop display observation: '+$result.status+
-             '; scenario not certified; other requested DPI/resolutions remain HOLD.') >> $env:GITHUB_STEP_SUMMARY
+             '; current Windows display mode '+$result.scenario_observed_not_certified+
+             '; manual visual sign-off and remaining scenarios still HOLD.') >> $env:GITHUB_STEP_SUMMARY
       - name: Upload isolated Excel display evidence
         if: always()
         uses: actions/upload-artifact@v4

@@ -13,6 +13,20 @@ class ReleaseReadinessTest(unittest.TestCase):
         self.assertIn("github.event.pull_request.head.sha || github.sha", workflow)
         self.assertNotIn('--head "${GITHUB_SHA}"', workflow)
 
+    def test_display_mode_observed_separately_from_dpi_virtualized_bounds(self):
+        from pathlib import Path
+        src = (Path(__file__).resolve().parents[1] /
+               "tools/probe_display_layout.ps1").read_text(encoding="utf-8-sig")
+        self.assertIn('EnumDisplaySettingsW', src)
+        self.assertIn('public static extern bool EnumDisplaySettings(', src)
+        self.assertIn('$display.current_mode_pixels', src)
+        self.assertIn('physical_resolution_verified = $false', src)
+        self.assertIn('$display.display_mode_observed', src)
+        self.assertIn('observation_requires_manual_visual_review = $true', src)
+        self.assertIn('scenario_observed_not_certified = $measured', src)
+        self.assertIn("if ($display.display_mode_observed -and", src)
+        self.assertNotIn('scenario_approved = $measured', src)
+
     def test_no_evidence_always_hold(self):
         report = evaluate(HEAD)
         self.assertEqual(report["release_decision"], "HOLD")

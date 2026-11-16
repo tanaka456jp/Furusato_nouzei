@@ -20,3 +20,10 @@
 外部保管したレビュー済証拠を整理する場合だけ、`--manifest <ローカルJSON>`を用います。形式は `schema: furusato-release-readiness/v1`、`head_sha`、上記8キーを持つ `checks` で、各キーは `{"status":"REVIEWED","sha256":"64桁小文字hex","reviewer_role":"tax_professional","head_sha":"同じHEADの40桁SHA"}` です。役割欄は用途に応じた `qa_operator`、`release_operator`、`external_reviewer` も可能。**本人の氏名・住所・税額・証拠そのものは書かないこと。**
 
 この形式だけでは証拠の真正性は立証されないため、全ての欄を記入しても結果は `MANUAL_FINAL_AUDIT_REQUIRED`／`HOLD` に留まります。別途、真正な現物、法令、署名者、同年度税額とリリース承認を確認してください。既存の正式v4.18.2、main、本番GAS、Web PR #6には影響させません。
+
+
+### PC①実ディスプレイ出力モードの証拠を改善（2026-11-16）
+
+従来の `System.Windows.Forms.Screen.Bounds` にはWindows DPI仮想化による座標倍率が含まれることがあり、画面が1920×1080に見えても、実際の出力解像度と断定できません。隔離された合成Excel画面を撮影する `tools/probe_display_layout.ps1` に、Windows `EnumDisplaySettingsW`（現在のディスプレイ出力モード）と `GetDpiForWindow`（ExcelウインドウのDPI）の独立測定を追加しました。
+
+証拠JSONの `display_observation.current_mode_pixels` はWindowsから報告された**現在の出力ピクセル数**であり、パネル固有のネイティブ解像度や紙面の可読性を保証するものではありません。 `scenario_observed_not_certified` は対象3シナリオのいずれかの観測に成功したときだけ付与。スクリーンショットの目視確認および1920×1080 100/125%、1366×768 150%の各設定での実機検証が完了するまで、`physical_resolution_verified=false` と `release_approved=false` を維持します。CIで勝手にWindowsの解像度・拡大率を変更せず、個人のデスクトップ全体や実顧客データも撮影しません。
