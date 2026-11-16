@@ -1,15 +1,15 @@
-# 次期正式版：実証証跡・配布判定（2026-11-16）
+# 次期正式版：実証証跡・配布判定（2026-11-17、Draft PR #5）
 
-現行のExcel Draft PR #5のCI 4/4 SUCCESSと、実際の課税・表示・配布の完全な受入証拠は区別します。**本マニフェストに記入しても自動リリースは行われません。**
+現行のExcel Draft PR #5のCI 5/5 SUCCESS（Run #43893250068、コミット 3ffa784896e7）と、実際の課税・表示・配布の完全な受入証拠は区別します。後続のコミットに過去のSUCCESSを流用しません。**本マニフェストに記入しても自動リリースは行われません。**
 
 `python tools/release_readiness.py --head <HEADの40文字SHA> --output release_readiness_hold.json` で、実データや氏名を送信せずに未完了条件を列挙できます。住民税決定通知書を受入条件に含めません。CIは証拠未提出として常に `release_decision=HOLD` のレポートを出力し、Artifactに添付します。個人情報や顧客原票はGitHub/CIにアップロードしないでください。
 
-## 正式受入までに必要な8条件
+## 正式受入までに必要な10条件
 
 | 証拠の種類 | 内容 |
 |---|---|
 | `ci_exact_commit` | 出荷する正確なSHAで静的/Windows/Reader/PC① Excelの全ジョブPASS、ブックSHA256整合 |
-| `salary_only_independent_withholding_reconciliation` | 年末調整済み・給与所得のみの源泉徴収票から住民税所得割・寄附限度額を法令どおり独立算出し、同年分のExcel結果と照合。住民税決定通知書は要求しない。本人・控除・申告方法など原票外の条件は明示確認 |
+| `salary_only_independent_withholding_reconciliation` | 年末調整済み・給与所得のみの源泉徴収票から住民税所得割・寄附限度額を法令どおり独立算出し、同年分のExcel結果と照合。住民税決定通知書は要求しない。本人・控除・申告方法など原票外の条件は明示確認 |\n| `prior_year_projection_independent_resident_deductions` | 令和7年源泉票から令和8年を試算する際、当年の給与・社会保険・扶養・所得控除・住民税所得割を前年と独立に再構築し、前年の住宅ローン控除額を無確認で流用しない |\n| `mortgage_filing_independent_tax_difference` | 住宅ローン控除と確定申告を併用する場合、寄附前後の所得税・復興特別所得税・住民税の差額、住宅ローン控除の国税適用額・住民税移行額を独立照合。税務専門家または外部レビュアーの確認が必要 |
 | `screen_1920x1080_100pct` | 1920×1080・100%の実Windows画面 |
 | `screen_1920x1080_125pct` | 1920×1080・125%の実Windows画面 |
 | `screen_1366x768_150pct` | 1366×768・150%の実Windows画面 |
@@ -17,7 +17,7 @@
 | `live_google_gas_independent_acceptance` | 実Google GAS環境での独立受入（合成41ケースのJavaScript比較とは別） |
 | `signed_distribution_and_sha256` | 次期版の署名済み配布物とSHA256、公開物の改ざん防止検証 |
 
-外部保管したレビュー済証拠を整理する場合だけ、`--manifest <ローカルJSON>`を用います。形式は `schema: furusato-release-readiness/v2`、`head_sha`、上記8キーを持つ `checks` で、各キーは `{"status":"REVIEWED","sha256":"64桁小文字hex","reviewer_role":"tax_professional","head_sha":"同じHEADの40桁SHA"}` です。役割欄は用途に応じた `qa_operator`、`release_operator`、`external_reviewer` も可能。**本人の氏名・住所・税額・証拠そのものは書かないこと。**
+外部保管したレビュー済証拠を整理する場合だけ、`--manifest <ローカルJSON>`を用います。形式は `schema: furusato-release-readiness/v3`、`head_sha`、上記10キーを持つ `checks` で、各キーは `{"status":"REVIEWED","sha256":"64桁小文字hex","reviewer_role":"tax_professional","head_sha":"同じHEADの40桁SHA"}` です。役割欄は用途に応じた `qa_operator`、`release_operator`、`external_reviewer` も可能。**本人の氏名・住所・税額・証拠そのものは書かないこと。**
 
 この形式だけでは証拠の真正性は立証されないため、全ての欄を記入しても結果は `MANUAL_FINAL_AUDIT_REQUIRED`／`HOLD` に留まります。別途、真正な現物、法令、署名者、同年度税額とリリース承認を確認してください。既存の正式v4.18.2、main、本番GAS、Web PR #6には影響させません。
 
@@ -68,3 +68,13 @@ Run #43825689764 の実画面証拠ZIPをダウンロードして確認した結
 作業はローカル環境で行い、**実顧客源泉徴収票・実税額・氏名・住所を公開GitHub/CIへアップロードしません**。CIには個人を特定しない合成回帰のみ、公開可能なリリース判定には必要証拠の匿名ハッシュ・確認者区分のみを残します。
 
 法令の参照元：国税庁 No.1155 https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1155.htm 、No.1410 https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1410.htm 、No.1199 https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1199.htm 。自治体所得割・調整控除については居住地の最新条例を照合します。
+
+
+### 一括解消時の最終受入手順（2026-11-17）
+
+- **コード上で完了した事項：** 対象コミットにおける合成テスト、PC① Excel COM、VBAUpdaterの隔離書戻し、Excel/GASエンジン合成41ケース、検証用ReadyToUse ZIPの完全性。これは実税務・紙面・本番GAS・署名を承認した意味ではありません。
+- **実務で別途必要な事項：** 各原票の源泉税額の独立一致確認だけでなく、源泉票に書かれない住民税独自控除・扶養/同居/所得・住宅ローンの2026年可能額・寄附申告方法の確認。同一年分のExcel表示値と独立計算の照合。令和7年原票を令和8年分の確定資料とみなすことはできません。
+- **現物検証でのみ通過する事項：** 独立した実Windows表示3条件（1920×1080 100%、同125%、1366×768 150%）の目視、実プリンターによるプレビュー・印刷、実GASデプロイでの独立照合、正式配布物に対する検証可能なコード署名とSHA-256。CIのPNG・仮想PDF・合成41ケース・ハッシュ一致はそれぞれの代用にはなりません。
+- **承認権限：** 税額に関する2項目と住宅ローン確定申告1項目は税務専門家または外部レビュー担当者、署名配布はリリース担当者または外部レビュー担当者が確認。自己申告のJSONだけでは本人や証拠の真正性を証明できないため、人手による最終承認を必須とします。
+
+公式資料：[国税庁 No.1155](https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1155.htm)、[住宅ローン控除の初年度申告](https://www.nta.go.jp/publication/pamph/koho/kurashi/html/05_1.htm)、[令和8年度住民税の住宅ローン控除の基礎控除差](https://www.city.tomigusuku.lg.jp/kurashi_tetsuzuki/zeikin/3/9204.html)。
