@@ -679,6 +679,10 @@ try {
         $homeSheet.Range('B21').Value2 = [double]$scenario.PensionPaid
         $homeSheet.Range('B24').Value2 = [double]$scenario.EarthPaid
         $homeSheet.Range('B25').Value2 = $(if ($scenario.EligibleUnder23) { 'あり' } else { 'なし' })
+        # This fixture is specifically for the one-stop calculation path.
+        # With the return-filing path Excel deliberately HOLDs cases
+        # requiring a separate national-tax donation-difference review.
+        $homeSheet.Range('D24').Value2 = 'ワンストップ'
         if ($scenario.Under16 -gt 0) {
             $homeSheet.Range('D23').Value2 = [double]$scenario.Under16
         }
@@ -755,6 +759,8 @@ try {
     $homeSheet.Range('B19:B24').ClearContents()
     $homeSheet.Range('D23').ClearContents()
     $homeSheet.Range('B25').Value2='なし'
+    $homeSheet.Range('D24').Value2='確定申告'
+    $homeSheet.Range('B15').Value2=285800.0
     $excel.Run('TaxLawUpdater.RecalculateCase')
     QA-Stage 'synthetic-years-pass'
     # NTA No.1411 rounds the >8.5m child-related income adjustment
