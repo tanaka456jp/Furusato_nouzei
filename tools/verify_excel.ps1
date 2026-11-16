@@ -645,6 +645,108 @@ try {
         }
         QA-Stage ('salary-only-withholding-independent-compare-'+$year+'-pass')
     }
+    # This is the first real-Excel COM versus independent Python comparison
+    # WITH actual life and earthquake premiums. Only synthetic input is used.
+    QA-Stage 'insurance-cross-tax-independent-compare-start'
+    foreach ($scenario in @(
+        @{
+            Year=2025; Under16=0; LifePaid=50000; PensionPaid=50000
+            EarthPaid=10902; LifeReference=65000; EarthReference=10902
+            DeductionTotal=1705902; NationalWithheld=276900
+            ResidentLevy=368500; DonationReference=107000
+            EligibleUnder23=$false
+        },
+        @{
+            Year=2026; Under16=1; LifePaid=120000; PensionPaid=0
+            EarthPaid=0; LifeReference=60000; EarthReference=0
+            DeductionTotal=1730000; NationalWithheld=272000
+            ResidentLevy=371600; DonationReference=108000
+            EligibleUnder23=$true
+        }
+    )) {
+        $settings.Range('B4').Value2 = [double]$scenario.Year
+        $homeSheet.Range('B4').Value2 = [double]$scenario.Year
+        $homeSheet.Range('B11').Value2 = [double]$scenario.Year
+        $homeSheet.Range('B12').Value2 = 7000000.0
+        $homeSheet.Range('B15').Value2 = 285800.0
+        $homeSheet.Range('B16').Value2 = 1000000.0
+        $homeSheet.Range('B19:B24').ClearContents()
+        $homeSheet.Range('D23').ClearContents()
+        $homeSheet.Range('B19').Value2 = [double]$scenario.LifePaid
+        $homeSheet.Range('B21').Value2 = [double]$scenario.PensionPaid
+        $homeSheet.Range('B24').Value2 = [double]$scenario.EarthPaid
+        $homeSheet.Range('B25').Value2 = $(if ($scenario.EligibleUnder23) { 'あり' } else { 'なし' })
+        if ($scenario.Under16 -gt 0) {
+            $homeSheet.Range('D23').Value2 = [double]$scenario.Under16
+        }
+        $excel.Run('TaxLawUpdater.RecalculateCase')
+        Assert-Value $homeSheet.Range('B17').Value2 $scenario.LifeReference ('Real Excel life deduction '+$scenario.Year)
+        Assert-Value $homeSheet.Range('B18').Value2 $scenario.EarthReference ('Real Excel earthquake deduction '+$scenario.Year)
+        Assert-Value $homeSheet.Range('B14').Value2 $scenario.DeductionTotal ('Real Excel national deduction total '+$scenario.Year)
+        Assert-Value $homeSheet.Range('D8').Value2 $scenario.ResidentLevy ('Real Excel resident levy '+$scenario.Year)
+        Assert-Value $homeSheet.Range('B8').Value2 $scenario.DonationReference ('Real Excel donation reference '+$scenario.Year)
+        Assert-Value $homeSheet.Range('B28').Value2 '正常' ('Real Excel insurance case status '+$scenario.Year)
+        $conf = @{}
+        foreach ($flag in @('year_end_adjusted','one_salary_source',
+            'no_other_income','no_unmodelled_deductions','no_tax_credits',
+            'no_salary_income_adjustment','nta_fifth_table_rechecked',
+            'family_eligibility_confirmed','resident_municipality_confirmed',
+            'donation_filing_method_confirmed','no_post_adjustment_changes')) {
+            $conf[$flag]=$true
+        }
+        $insurance = @{
+            new_life=[int]$scenario.LifePaid; old_life=0; care=0
+            new_pension=[int]$scenario.PensionPaid; old_pension=0
+            earthquake=[int]$scenario.EarthPaid; old_long=0
+            life_reference=[int]$scenario.LifeReference
+            earthquake_reference=[int]$scenario.EarthReference
+            distinct_earthquake_contracts_confirmed=$true
+            no_2026_under23_life_exception_confirmed=(-not $scenario.EligibleUnder23)
+        }
+        if ($scenario.Year -eq 2026) {
+            $insurance.verified_2026_under23_dependent=$true
+        }
+        $comparison = @{
+            year=[int]$scenario.Year
+            confirmations=$conf
+            family=@{
+                spouse='none'; general=0; special=0; elderly=0
+                cohabiting_elderly=0; under16=[int]$scenario.Under16
+            }
+            source=@{
+                salary_gross=7000000; salary_reference=5200000
+                deductions_reference=[int]$scenario.DeductionTotal
+                income_tax_withheld=[int]$scenario.NationalWithheld
+                social_insurance=1000000
+            }
+            insurance=$insurance
+            workbook=@{
+                year=[int]$scenario.Year
+                donation_limit=[int][double]$homeSheet.Range('B8').Value2
+                resident_income_levy=[int][double]$homeSheet.Range('D8').Value2
+            }
+            municipality='designated'
+        }
+        $privateFixture = Join-Path $env:RUNNER_TEMP (
+            'furusato_synthetic_insurance_'+$scenario.Year+'_'+[guid]::NewGuid().ToString('N')+'.json')
+        try {
+            [IO.File]::WriteAllText($privateFixture,
+                (ConvertTo-Json -InputObject @($comparison) -Depth 10),
+                [Text.UTF8Encoding]::new($false))
+            & python .\tools\reconcile_salary_only_from_slip.py --input $privateFixture --min-cases 1
+            if ($LASTEXITCODE -ne 0) {
+                throw ('Actual Excel differs from independent insurance oracle for '+$scenario.Year)
+            }
+        } finally {
+            Remove-Item -LiteralPath $privateFixture -Force -ErrorAction SilentlyContinue
+        }
+        QA-Stage ('insurance-cross-tax-independent-compare-'+$scenario.Year+'-pass')
+    }
+    # Restoring the original salary-only case prevents test contamination.
+    $homeSheet.Range('B19:B24').ClearContents()
+    $homeSheet.Range('D23').ClearContents()
+    $homeSheet.Range('B25').Value2='なし'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
     QA-Stage 'synthetic-years-pass'
     # NTA No.1411 rounds the >8.5m child-related income adjustment
     # UP to the next whole yen, not to the nearest integer, and caps it.
