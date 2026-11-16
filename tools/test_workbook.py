@@ -29,7 +29,7 @@ class WorkbookTest(unittest.TestCase):
         self.assertTrue(original.startswith("="))
         self.assertTrue(general.startswith("=IF(AND("))
         self.assertIn("'設定・税率'!B4=2026", general)
-        self.assertIn("'操作画面'!B25=\\"あり\\"", general)
+        self.assertIn("B25=" + chr(34) + "あり" + chr(34), general)
         self.assertIn("'操作画面'!B19", general)
         self.assertIn("'操作画面'!B20", general)
         self.assertIn("ROUNDUP(", general)
