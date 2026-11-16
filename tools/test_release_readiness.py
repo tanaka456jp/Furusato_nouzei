@@ -18,6 +18,8 @@ class ReleaseReadinessTest(unittest.TestCase):
         src = (Path(__file__).resolve().parents[1] /
                "tools/probe_display_layout.ps1").read_text(encoding="utf-8-sig")
         self.assertIn('EnumDisplaySettingsW', src)
+        self.assertIn('$deviceMode.dmSize = [UInt16]',src)
+        self.assertNotIn('$deviceMode.dmSize = [ushort]',src)
         self.assertIn('public static extern bool EnumDisplaySettings(', src)
         self.assertIn('$display.current_mode_pixels', src)
         self.assertIn('physical_resolution_verified = $false', src)

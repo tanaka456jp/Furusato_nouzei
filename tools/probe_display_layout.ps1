@@ -78,7 +78,7 @@ public static class FurusatoWindowCapture {
     # inferring device pixels from Screen.Bounds * DPI. Never promote this
     # observation to human visual acceptance on its own.
     $deviceMode = New-Object FurusatoWindowCapture+DEVMODE
-    $deviceMode.dmSize = [ushort][Runtime.InteropServices.Marshal]::SizeOf(
+    $deviceMode.dmSize = [UInt16][Runtime.InteropServices.Marshal]::SizeOf(
         [type][FurusatoWindowCapture+DEVMODE])
     $modeOk = [FurusatoWindowCapture]::EnumDisplaySettings(
         [string]$screen.DeviceName, -1, [ref]$deviceMode)

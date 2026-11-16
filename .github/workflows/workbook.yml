@@ -378,6 +378,9 @@ jobs:
               $result.status -notin @('UNVERIFIED','CAPTURED_REQUIRES_VISUAL_REVIEW')) {
             throw 'Display observation misrepresented as release acceptance'
           }
+          if ($result.status -ne 'CAPTURED_REQUIRES_VISUAL_REVIEW') {
+            throw ('PC Excel worksheet capture missing: ' + [string]$result.failure_category + '; release/display HOLD')
+          }
           if ($result.screenshot -and -not (Test-Path -LiteralPath (Join-Path $folder $result.screenshot))) {
             throw 'Display evidence names a missing image'
           }

@@ -41,3 +41,10 @@ Windowsジョブで `Get-AuthenticodeSignature` を使用して同梱の `Furusa
 正式v4.18.2には `ReadyToUse.zip` があるため、次期版も同じ提供方式を維持します。 `ready_to_use_review` ジョブが、**同一GitHub Actions Run** の「PC① Excel/VBAUpdater/GAS受入済みXLSM」「Windows読取EXE」だけを取得し、XLSMのSHA256がExcel実機受入レポートと一致する場合に限り `Furusato_nouzei_ReadyToUse_REVIEW_HOLD.zip` を作成します。ZIP内には元バイトのXLSM、読取EXE、ユーザーガイド、`NOT_FOR_PUBLIC_RELEASE.txt` を含めます。検証用ZIPのSHA256・各EXE/XLSMのSHA256を匿名JSONに記録。再構築によるバイナリ内容改変をせず、古い別Run成果物を混ぜません。
 
 **このZIPは検証専用です。** コード署名・実税務・画面3条件・紙面印刷・live GAS・最終承認の代わりにはならず、正式Releaseや既存v4.18.2への上書きは行いません。テストには架空のバイト列だけを使い、実顧客書類はCIへ送信しません。
+
+
+### 2026-11-16 実CIのDPI撮影障害検出と修正
+
+Run #43825689764 の実画面証拠ZIPをダウンロードして確認した結果、`display_review.json` が `UNVERIFIED`・スクリーンショット0枚・`failure_category=Unable_to_find_type__ushort__` でした。Windows PowerShell 5.1で認識できない `[ushort]` キャストを、明示的に解決できる `[UInt16]` に修正。再発を防ぐため静的テストで型名を検査し、PC① Excel受入では**合成Excelのシート部分のスクリーンショット2枚を実際に撮影できない限りジョブをFAIL**とするよう変更しました。
+
+撮影成功は画面条件の正式合格ではなく、`release_approved=false` と `physical_resolution_verified=false` を維持します。3つの所定解像度/DPIごとの目視検証は別途必要です。撮影自体に失敗してもCIが緑になる従来の状態は受入不可としました。
