@@ -98,6 +98,7 @@ jobs:
               -Workbook '__FURUSATO_NONEXISTENT_SYNTHETIC__.xlsm' `
               -ExpectedWorkbookSha256 ('a' * 64) `
               -ExpectedDisplayedLimitYen 109000 `
+              -ExpectedTaxYear 2026 `
               -PrinterName '__NO_REAL_PRINTER__' `
               -EvidencePath '__DO_NOT_CREATE_PRINTER_EVIDENCE__.json' `
               -SyntheticDataReviewed -AllowOnePagePrint
