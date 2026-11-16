@@ -134,6 +134,8 @@ class ReleaseReadinessTest(unittest.TestCase):
                          "REVIEW_ONLY_ZIP_CANNOT_BE_RELEASED",
                          "INDEPENDENT_PACKAGE_SHA256_MISMATCH",
                          "manual_publisher_approval = 'REQUIRED'",
+                         "macro_workbook_signature = 'NOT_CHECKED_MANUAL_OFFICE_REVIEW_REQUIRED'",
+                         "UNEXPECTED_RELEASE_PACKAGE_CONTENTS",
                          "release_decision = 'HOLD'"):
             self.assertIn(evidence, script)
         self.assertNotIn("New-SelfSignedCertificate", script)
