@@ -1116,8 +1116,6 @@ def build(source, output):
          "SAFE-TAX-033 要確認。住宅ローン控除の入居初年度は確定申告が必要です。ワンストップ特例では計算できません。"),
         (f'AND(D24="ワンストップ",N({rate})>0.33)',
          "SAFE-TAX-034 要確認。高所得者の申告特例控除割合は個別の税額照合が必要です。"),
-        (f'AND({filing_housing},{housing_unverified})',
-         "SAFE-TAX-035 要確認。確定申告と住宅ローン控除の併用は、国税の適用額、他所得、その他の税額控除を個別に照合してください。"),
         ('AND(ISNUMBER(B33),B33>0,OR(NOT(ISNUMBER(B34)),B34<B33))',
          "SAFE-TAX-027 要確認。住宅ローン控除の所得税適用額があるため、控除可能額（G36）を確認してください。"),
         ('AND(N(B34)>0,' + housing_2022_unknown + ')',
@@ -1138,6 +1136,8 @@ def build(source, output):
         (f'AND({projection},{projected_source_mortgage},'
          'D33="確認済",N(B34)<=0)',
          "SAFE-TAX-031 前年の住宅ローン控除を流用できません。当年の適用額・可能額・入居年を確認してください"),
+        (f'AND({filing_housing},{housing_unverified})',
+         "SAFE-TAX-035 要確認。確定申告と住宅ローン控除の併用は、国税の適用額、他所得、その他の税額控除を個別に照合してください。"),
         ('OR(COUNT(B12:B18)<>7,AND(B25<>"あり",B25<>"なし"),'
          'AND(D24<>"ワンストップ",D24<>"確定申告"),'
          'AND(D22<>"該当なし",D22<>"寡婦",D22<>"ひとり親（母）",D22<>"ひとり親（父）",D22<>"勤労学生"))',
