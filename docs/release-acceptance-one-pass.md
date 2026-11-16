@@ -47,10 +47,10 @@ python tools/verify_release_display_matrix.py --workbook-sha256 "<同一XLSMの�
 PC①などExcelがインストールされている作業端末で、**匿名の合成XLSMであることを担当者が確認した後**、印刷先プリンターを実名で指定します。以下のスクリプトはGitHub Actionsから実行しません。
 
 ```powershell
-.\tools\verify_physical_printer_local.ps1 -Workbook "C:\FurusatoPrivateReview\2026-11\Synthetic.xlsm" -ExpectedWorkbookSha256 "<合成XLSMのSHA256>" -PrinterName "<物理プリンター名>" -EvidencePath "C:\FurusatoPrivateReview\2026-11\physical_paper_command.json" -SyntheticDataReviewed -AllowOnePagePrint
+.\tools\verify_physical_printer_local.ps1 -Workbook "C:\FurusatoPrivateReview\2026-11\Synthetic.xlsm" -ExpectedWorkbookSha256 "<合成XLSMのSHA256>" -ExpectedDisplayedLimitYen 109000 -PrinterName "<物理プリンター名>" -EvidencePath "C:\FurusatoPrivateReview\2026-11\physical_paper_command.json" -SyntheticDataReviewed -AllowOnePagePrint
 ```
 
-初回起動したExcelが指定プリンターを実際に選択していない場合は、**別の既定プリンターへ自動振替せず停止**します。その場合はWindowsでプリンター設定を確認し、Excelで指定プリンターを既定にしてから再実行します。検証用ブックは読み取り専用で開き、マクロを無効化します。画面に印刷プレビューを表示するため、担当者がページ・余白・税額等を確認し、**印刷せずにプレビューを閉じる**と、指定プリンターへ1ページだけ出力指示します。
+初回起動したExcelが指定プリンターを実際に選択していない場合は、**別の既定プリンターへ自動振替せず停止**します。その場合はWindowsでプリンター設定を確認し、Excelで指定プリンターを既定にしてから再実行します。検証用ブックは読み取り専用で開き、マクロを無効化します。**Excelの再計算が完了し、操作画面の状態が「正常」、限度額表示と計算根拠の限度額が `-ExpectedDisplayedLimitYen` に一致することを必須**とします。上の109,000円は例示用の架空ケースです。別の合成ケースを使うときは、そのケースの独立計算に基づく期待額を指定してください。画面に印刷プレビューを表示するため、担当者がページ・余白・税額等を確認し、**プレビュー内の印刷ボタンを使用せずに閉じた後**、コンソールに `PRINT-ONE-PAGE` と正確に入力した場合に限り、指定プリンターへ1ページ・1部だけ出力指示します。それ以外の入力なら印刷しません。CIや対話操作のない環境からの印刷は拒否します。
 
 実際に紙を受け取って文字切れ・改ページ・印刷品質・税額整合を確認した報告書と紙面のスキャンを**非公開フォルダ**に保存し、独立レビュー証拠として扱います。スクリプトが出力するJSONは印刷命令の成否のみで、`paper_physically_observed=false`、`paper_readability_reviewed=false`、`release_decision=HOLD` を維持します。プリンタースプーラーが命令を受けたことは紙面の実物確認に相当しません。
 
