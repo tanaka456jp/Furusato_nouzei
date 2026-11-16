@@ -152,6 +152,6 @@ python tools/reconcile_salary_only_from_slip.py --input private_cases.json --sum
 - `target`: `mortgage_possible_credit`（当年の確認・予測可能額）、`mortgage_occupancy_year`、`mortgage_claim_count`、`filing_method: "one_stop"`、`eligibility_reviewed: true`。
 - `workbook`: `resident_mortgage_transfer`（当年に住民税へ移行する計算額）、`donation_limit`（移行額を控除した後の安全側・千円単位参照値）。
 
-過年度に住宅ローン控除があり当年の住宅ローン条件を未確認の場合、独立照合は`TARGET_MORTGAGE_REVIEW_MISSING`で停止します。2022年入居の7%経過措置、複数適用、確定申告、他の未確認税額控除等は本独立照合の対象外です。「他の所得や控除なし」の確認は、**ここで別途入力・検算している住宅ローン控除以外**の未検証要素がないことを指します。
+過年度に住宅ローン控除があり当年の住宅ローン条件を未確認の場合、独立照合は`TARGET_MORTGAGE_REVIEW_MISSING`で停止します。2022年入居の7%経過措置、複数適用、確定申告、他の未確認税額控除等は本独立照合の対象外です。**2026年入居の初年度住宅ローン控除は確定申告が必要**なため、ワンストップの翌年試算では`FIRST_YEAR_HOUSING_REQUIRES_RETURN`として停止します（[国税庁・マイホームを持ったとき](https://www.nta.go.jp/publication/pamph/koho/kurashi/html/05_1.htm)）。所得税の限界税率40%・45%とワンストップ申告特例の上限率が一致しない高所得ケースも個別検証対象です。「他の所得や控除なし」の確認は、**ここで別途入力・検算している住宅ローン控除以外**の未検証要素がないことを指します。
 
 根拠：[練馬区・住宅ローン控除とふるさと納税の控除順序](https://www.call-center.jp/faq_nerima/faq.asp?faqno=NER07856)、[調布市・ワンストップ特例の住民税控除計算](https://www.city.chofu.lg.jp/030010/p014041.html)、[国税庁 No.1155](https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1155.htm)。
