@@ -110,15 +110,15 @@ def build(source, output):
         f'{special_general},{original_general_life[1:]})'
     )
 
-    # The local individual-resident-tax city and prefecture levies are
-    # rounded separately to 100 yen. The baseline subtracts credits from a
-    # combined 10% levy and can overstate the ordinary salary levy by 100
-    # yen when insurance premiums move taxable income off a 5,000-yen
-    # boundary. For the narrowly verified salary+insurance/no-other-credit
-    # path, compare the standard 6/4 and designated-city 8/2 splits and
-    # use the lower result until a municipality selector is formally
-    # accepted. Leave every other baseline branch unchanged (HOLD pending
-    # full statutory allocation of credits and municipal classification).
+    # Separate city/prefecture 100-yen truncation matters for local levy.
+    # Until the municipality is verified, never silently select the lower
+    # of the ordinary-city (6/4) and designated-city (8/2) results: that
+    # would misstate a designated-city taxpayer's levy for some inputs.
+    # In this narrowly supported salary/insurance path emit a numeric result
+    # only when BOTH allocations agree; otherwise return blank so that the
+    # resident-tax/donation readiness checks fail closed. Other paths retain
+    # the frozen baseline; final release remains HOLD until the jurisdiction
+    # and allocation of individual tax credits are verified.
     original_levy = resident["B16"].value
     if not isinstance(original_levy, str) or not original_levy.startswith("="):
         raise ValueError("BASELINE_RESIDENT_LEVY_FORMULA_MISSING")
@@ -139,8 +139,9 @@ def build(source, output):
         f'NOT(ISNUMBER({ref(INPUT, "B16")})),'
         f'SUM({ref(ENGINE, "J51:J53")})=0)'
     )
+    jurisdiction_invariant = f'IF({designated}={standard},{designated},"")'
     resident["B16"] = (
-        f'=IF({safe_standard_salary_only},MIN({designated},{standard}),'
+        f'=IF({safe_standard_salary_only},{jurisdiction_invariant},'
         f'{original_levy[1:]})'
     )
 

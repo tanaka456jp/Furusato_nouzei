@@ -35,6 +35,11 @@ class WorkbookTest(unittest.TestCase):
         self.assertIn("'例外・分離課税'!B24", levy)
         self.assertIn("'例外・分離課税'!B27", levy)
         self.assertIn("'ふるさと納税限度額計算'!J51:J53", levy)
+        # Do not silently take the lower result when city classification
+        # is unverified. Jurisdiction disagreement must stay non-numeric.
+        self.assertNotIn("MIN(ROUNDDOWN(MAX(0,B15-B14)", levy)
+        self.assertIn(',-2)=ROUNDDOWN(MAX(0,B15-B14)*0.6,-2)', levy)
+        self.assertIn(',""),', levy)
         self.assertTrue(levy.endswith("," + baseline[1:] + ")"))
         self.assertLess(len(levy), 8192)
 
