@@ -149,7 +149,11 @@ class ReleaseReadinessTest(unittest.TestCase):
             encoding="utf-8-sig")
         for token in (
             "SyntheticDataReviewed", "AllowOnePagePrint",
-            "ExpectedDisplayedLimitYen",
+            "ExpectedDisplayedLimitYen", "ExpectedTaxYear",
+            "UNAPPROVED_PRINT_TAX_YEAR", "PRINT_TAX_YEAR_MISMATCH",
+            "FitToPagesWide = 1", "FitToPagesTall = 1",
+            "expected_tax_year_verified = $true",
+            "forced_a4_single_page_layout = $true",
             "EXPLICIT_SYNTHETIC_DATA_AND_PHYSICAL_PRINT_CONSENT_REQUIRED",
             "PHYSICAL_PRINT_REQUIRES_LOCAL_INTERACTIVE_OPERATOR",
             "CalculateFullRebuild()", "EXCEL_CALCULATION_NOT_COMPLETE",
@@ -178,6 +182,7 @@ class ReleaseReadinessTest(unittest.TestCase):
         self.assertIn("verify_physical_printer_local.ps1", docs)
         self.assertIn("AllowOnePagePrint", docs)
         self.assertIn("ExpectedDisplayedLimitYen", docs)
+        self.assertIn("ExpectedTaxYear", docs)
         self.assertIn("PRINT-ONE-PAGE", docs)
 
     def test_no_evidence_always_hold(self):
