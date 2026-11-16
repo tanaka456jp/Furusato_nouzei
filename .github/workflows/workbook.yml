@@ -39,6 +39,7 @@ jobs:
           python tools/report_formula_wiring.py
           python tools/test_workbook.py
           python tools/test_salary_donation_oracle.py
+          python tools/test_insurance_deductions.py
           python tools/test_reconcile_salary_only_from_slip.py
           python tools/test_release_readiness.py
           python tools/test_distribution_integrity.py
@@ -137,6 +138,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'PDF filter contract mismatch' }
           python tools/test_workbook.py
           python tools/test_salary_donation_oracle.py
+          python tools/test_insurance_deductions.py
           python tools/test_reconcile_salary_only_from_slip.py
           python tools/verify_separate_oracle.py
           if ($LASTEXITCODE -ne 0) { throw 'Workbook static regression failed' }
