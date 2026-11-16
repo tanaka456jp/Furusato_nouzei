@@ -56,7 +56,7 @@ python tools/verify_release_display_matrix.py --workbook-sha256 "<同一XLSMの�
 .\tools\verify_signed_release_local.ps1 -Package "C:\FurusatoPrivateReview\2026-11\Furusato_Release_Candidate.zip" -ExpectedPackageSha256 "<64桁SHA256>" -ExpectedSignerThumbprint "<正規署名者のthumbprint>" -EvidencePath "C:\FurusatoPrivateReview\2026-11\signature_verification.json"
 ```
 
-コード署名・ハッシュ一致が成立しても税務・画面・印刷・実GASの最終承認を省略しない。
+この検査は同梱EXEのAuthenticodeを調べるもので、Excelの**VBAプロジェクトのデジタル署名までは検証しません**。マクロを署名配布する場合は、実際のOfficeでVBAプロジェクト署名の証明書・有効性・発行者を別途確認し、署名後のVBAソース変更がないことを証明してください。検査用ZIPに余分なファイルが含まれる場合も拒否します。コード署名・ハッシュ一致が成立しても税務・画面・印刷・実GASの最終承認を省略しない。
 
 ## 10項目の社内オフライン受入マニフェスト
 
