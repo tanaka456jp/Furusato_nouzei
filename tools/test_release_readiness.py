@@ -104,6 +104,23 @@ class ReleaseReadinessTest(unittest.TestCase):
         self.assertIn("SCHEMA_MISSING_OR_UNSUPPORTED", old_format["blockers"])
         self.assertEqual(old_format["release_decision"], "HOLD")
 
+    def test_release_gate_documentation_matches_required_v3_schema(self):
+        from pathlib import Path
+        root = Path(__file__).resolve().parents[1]
+        documentation = (root / "docs/release-readiness.md").read_text(encoding="utf-8-sig")
+        self.assertIn("正式受入までに必要な10条件", documentation)
+        self.assertIn("schema: furusato-release-readiness/v3", documentation)
+        self.assertEqual(len(REQUIRED), 10)
+        for key in REQUIRED:
+            with self.subTest(check=key):
+                self.assertIn("| `" + key + "` |", documentation)
+        self.assertNotIn("正式受入までに必要な8条件", documentation)
+        self.assertNotIn("上記8キー", documentation)
+        self.assertNotIn("furusato-release-readiness/v2`", documentation)
+        windows = (root / "docs/windows-acceptance.md").read_text(encoding="utf-8-sig")
+        self.assertIn("住民税決定通知書は不要", windows)
+        self.assertIn("住宅ローン控除", windows)
+
     def test_no_evidence_always_hold(self):
         report = evaluate(HEAD)
         self.assertEqual(report["release_decision"], "HOLD")
