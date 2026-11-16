@@ -22,6 +22,38 @@ class WorkbookTest(unittest.TestCase):
         cls.baseline = load_workbook(cls.source)
         cls.book = load_workbook(cls.target)
 
+    def test_direct_resident_deductions_do_not_depend_on_national_taxable(self):
+        model = self.book[ENGINE]
+        baseline = self.baseline[ENGINE]["J44"].value
+        taxable = model["J44"].value
+        self.assertIsInstance(baseline, str)
+        self.assertTrue(baseline.startswith("="))
+        self.assertTrue(taxable.startswith("=IF(AND("))
+        self.assertIn("ROUNDDOWN(MAX(0,D15-SUM(", taxable)
+        for source in (
+            "'操作画面'!B16",
+            "H15,H24,H25,H38,H40",
+            "'追加人的控除'!D12",
+            "'例外・分離課税'!B28",
+            "'例外・分離課税'!B24",
+            "'操作画面'!D25",
+            "'源泉徴収票入力'!B13",
+        ):
+            self.assertIn(source, taxable)
+        # The former national-taxable-income bridge remains only as the
+        # out-of-scope fallback; the accepted ordinary-salary branch uses
+        # gross income and independently computed resident deductions.
+        self.assertTrue(taxable.endswith("," + baseline[1:] + ")"))
+        self.assertIn("J43+J12", baseline)
+        self.assertLess(len(taxable), 8192)
+        self.assertEqual(
+            self.book[RESIDENT]["B6"].value,
+            self.baseline[RESIDENT]["B6"].value,
+        )
+        details = self.book[DETAIL]["B6"].value
+        self.assertIn("SUM(", details)
+        self.assertIn("'追加人的控除'!D12", details)
+
     def test_conservative_separate_city_prefecture_100yen_rounding(self):
         levy = self.book[RESIDENT]["B16"].value
         baseline = self.baseline[RESIDENT]["B16"].value
