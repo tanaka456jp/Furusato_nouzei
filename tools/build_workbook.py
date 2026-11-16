@@ -261,7 +261,7 @@ def build(source, output):
         # Input ONLY. No B13/B14/B17/B18/B31: calculated values may depend
         # on this review gate, so referencing them can cause a circular
         # calculation and block even otherwise-valid source-free cases.
-        ["B4", "B11", "B12", "B15", "B16"]
+        ["B4", "B7", "B11", "B12", "B15", "B16"]
         + [f"B{i}" for i in range(19, 26)]
         + [f"D{i}" for i in range(11, 26)]
         + ["B33", "B34", "B35", "B36", "D35", "D24"]
@@ -275,7 +275,7 @@ def build(source, output):
         # B7/B22/B27-B30/B34 are formula results, never snapshot drivers.
         [f"B{i}" for i in (5,6,8,9,10,11,12,13,14,15,16,17,18)]
         + ["B19", "B21", "B24", "B25", "B26",
-           "B32", "B33", "B36", "B38", "B39", "B40"]
+           "B32", "B33", "B36", "B38", "B39", "B40", "B43", "B44"]
     )
     fingerprint_fields = (
         [ref(HOME, cell) for cell in fingerprint_home]
@@ -287,6 +287,13 @@ def build(source, output):
     )
     extra["A41"] = "読取確認時の入力スナップショット（自動保存）"
     extra["A42"] = "現在の入力スナップショット（自動更新）"
+    extra["A43"] = "前年原票：住宅ローン控除の所得税適用額（照合のみ）"
+    extra["A44"] = "前年原票：住宅ローン控除可能額（照合のみ）"
+    extra["B43"] = None
+    extra["B44"] = None
+    for cell in ("B43", "B44"):
+        extra[cell].protection = Protection(locked=True)
+        extra[cell].number_format = '#,##0'
     extra["B41"] = None
     # A plain delimiter alone is ambiguous: "a|b" and "a","b" could
     # serialize to the same text even though the reviewed inputs changed.
@@ -304,7 +311,7 @@ def build(source, output):
     extra.row_dimensions[42].hidden = True
     extra.print_area = "A1:D40"
     home.row_dimensions[3].height = 28
-    field("B4", "選択する所得年", "2026", ("2025", "2026"))
+    field("B4", "計算対象の所得年", "2026", ("2025", "2026"))
     home["C4"], home["D4"] = "適用中の所得年", "=" + ref("設定・税率", "B4")
     home["C5"], home["D5"] = "住民税課税年度", "=" + ref(RESIDENT, "B5")
     note(home, 6, '="税制版 "&B29&" ｜ "&B30')
@@ -318,6 +325,17 @@ def build(source, output):
     home["B30"] = "内蔵マスタ"
     home.row_dimensions[29].hidden = True
     home.row_dimensions[30].hidden = True
+    # The source slip year (B11) may be 2025 while the selected tax
+    # master (D4) is 2026. Acknowledgement is required before any result.
+    field("B7", "翌年試算の前提確認", "未確認",
+          ("未確認", "確認済", "住宅控除なし"))
+    home["C7"] = "原票・試算年の関係"
+    home["D7"] = ('=IF(IFERROR(1*B11,0)=D4,"同一年分",'
+                   'IF(AND(IFERROR(1*B11,0)=2025,D4=2026),'
+                   '"前年票→2026試算","年分不一致"))')
+    home["D7"].protection = Protection(locked=True)
+    home["D7"].alignment = Alignment(horizontal="center")
+    home["D7"].fill = PatternFill("solid", fgColor="EAF3EA")
     for row in (5, 7, 8):
         home.row_dimensions[row].height = 25
     detail.row_dimensions[17].height = 26
@@ -391,7 +409,7 @@ def build(source, output):
     home["D26"].alignment = Alignment(wrap_text=True)
     home["D26"].protection = Protection(locked=True)
     home.row_dimensions[26].height = 38
-    note(home, 27, '=IF(D25="","所得控除合計は社会保険料・扶養・配偶者等の変更により自動再計算します。D25で手入力上書きが可能です。","⚠ 所得控除合計は手入力上書き中：社会保険料・扶養・配偶者・本人所得の変更に自動追随しません。D25を消すと自動計算に戻ります。")')
+    note(home, 27, '=IF(D25<>"","⚠ 所得控除合計は手入力上書き中です。D25を消すと自動計算に戻ります。",IF(AND(IFERROR(1*B11,0)=2025,D4=2026),"前年原票の所得控除合計は照合用です。令和8年の基礎・扶養等の控除を再計算します。行7の条件確認と読取内容の確認が必要です。","所得控除合計は社会保険料・扶養・配偶者等の変更により自動再計算します。D25で手入力上書きが可能です。"))'
     home.row_dimensions[27].height = 56
     home["A31"] = "所得控除合計（自動算定）"
     home["B31"] = ('=IF(OR(B13="",B16=""),"",'
@@ -627,7 +645,8 @@ def build(source, output):
     # Salary and premiums are user inputs; corresponding deductions are
     # calculated from approved year masters, not retyped.
     derived = {
-        "B13": (f'=IF(ISNUMBER({ref(ADVANCED,"B15")}),{ref(ADVANCED,"B15")},IF(B12="","",MAX(0,'
+        "B13": (f'=IF(AND(IFERROR(1*B11,0)=D4,ISNUMBER({ref(ADVANCED,"B15")})),'
+                 f'{ref(ADVANCED,"B15")},IF(B12="","",MAX(0,'
                  'IF(B12<6600000,'
                  'IF(B12<=IF(D4=2025,1900000,2200000),'
                  # Income Tax Act / Special Measures Act 2026 NTA No.1410 note (2).
@@ -644,8 +663,8 @@ def build(source, output):
                  f'{ref(ADVANCED,"B13")},'
                  'IF(AND(B12>8500000,B25="あり"),'
                  'ROUNDUP((MIN(B12,10000000)-8500000)/10,0),0)))))'),
-        "B17": f'=IF(ISNUMBER({ref(ADVANCED,"B16")}),{ref(ADVANCED,"B16")},IF(B12="","",{ref(ENGINE, "F24")}))',
-        "B18": f'=IF(ISNUMBER({ref(ADVANCED,"B17")}),{ref(ADVANCED,"B17")},IF(B12="","",{ref(ENGINE, "F25")}))',
+        "B17": f'=IF(AND(IFERROR(1*B11,0)=D4,ISNUMBER({ref(ADVANCED,"B16")})),{ref(ADVANCED,"B16")},IF(B12="","",{ref(ENGINE, "F24")}))',
+        "B18": f'=IF(AND(IFERROR(1*B11,0)=D4,ISNUMBER({ref(ADVANCED,"B17")})),{ref(ADVANCED,"B17")},IF(B12="","",{ref(ENGINE, "F25")}))',
         "B14": '=IF(D25<>"",IF(ISNUMBER(D25),D25,""),B31)',
     }
     for addr, formula in derived.items():
@@ -869,6 +888,9 @@ def build(source, output):
     # Compare raw cells (not N()), so pasted text and negative entries also
     # fail closed rather than silently being interpreted as zero.
     unhandled_ordinary_credits = 'OR(' + ','.join(f'D{row}<>0' for row in range(72, 78)) + ')'
+    projection = 'AND(IFERROR(1*B11,0)=2025,D4=2026)'
+    same_source_year = 'IFERROR(1*B11,0)=D4'
+    projected_source_mortgage = f'OR(N({ref(ADVANCED,"B43")})>0,N({ref(ADVANCED,"B44")})>0)'
     status = [
         ('B44<>"給与・通常"', "詳細設定の55行目以降で状態と試算額を確認してください。"),
         (unhandled_ordinary_credits,
@@ -881,7 +903,17 @@ def build(source, output):
          "SAFE-TAX-029 要確認。2022年以外の住宅ローン控除に2022年入居の特例区分が残っています。"),
         (f'OR({ref(ADVANCED,"B24")}<>"",{ref(ADVANCED,"B36")}<>"")',
          "SAFE-TAX-016 要確認。旧・控除後の分離課税入力です。詳細設定で控除前の所得と税目別控除を入力し、再計算してください。"),
-        ('OR(IFERROR(1*B4,0)<>D4,IFERROR(1*B11,0)<>D4)', "警告：源泉徴収票と適用中の所得年を一致させてください"),
+        (f'OR(IFERROR(1*B4,0)<>D4,NOT(OR({same_source_year},{projection})))',
+         "警告：原票の年分と試算年を確認してください。前年原票からの試算は2025→2026のみ対応します"),
+        (f'AND({projection},OR(AND(B7<>"確認済",B7<>"住宅控除なし"),'
+         f'{ref(ADVANCED,"B20")}<>"VERIFIED_AFTER_CORRECTION",'
+         f'{ref(ADVANCED,"B41")}="",'
+         f'{ref(ADVANCED,"B41")}<>{ref(ADVANCED,"B42")}))',
+         "SAFE-TAX-030 前年票による翌年試算です。当年の給与・保険料・扶養等を確認し、読取内容の確認を行ってください"),
+        (f'AND({projection},{projected_source_mortgage},'
+         'OR(AND(B7="確認済",N(B34)<=0),'
+         'AND(B7="住宅控除なし",OR(N(B33)>0,N(B34)>0))))',
+         "SAFE-TAX-031 前年の住宅ローン控除を流用できません。当年の適用額・可能額・入居年を確認してください"),
         ('OR(COUNT(B12:B18)<>7,AND(B25<>"あり",B25<>"なし"),'
          'AND(D24<>"ワンストップ",D24<>"確定申告"),'
          'AND(D22<>"該当なし",D22<>"寡婦",D22<>"ひとり親（母）",D22<>"ひとり親（父）",D22<>"勤労学生"))',
@@ -905,7 +937,7 @@ def build(source, output):
          "警告：特定親族が30人を超えています。個別確認可能人数を超えるため試算を停止します"),
         (f'COUNTIF({ref(RELATIVES,"G4:G33")},"要確認")>0',
          "警告：特定扶養親族・特定親族特別控除の年齢・所得・適用要件を個別確認してください"),
-        (f'AND(ISNUMBER({ref(ADVANCED,"B14")}),ISNUMBER(B31),'
+        (f'AND({same_source_year},ISNUMBER({ref(ADVANCED,"B14")}),ISNUMBER(B31),'
          f'ABS({ref(ADVANCED,"B14")}-B31)>1,'
          f'OR({ref(ADVANCED,"B20")}<>"VERIFIED_AFTER_CORRECTION",'
          f'{ref(ADVANCED,"B41")}="",'

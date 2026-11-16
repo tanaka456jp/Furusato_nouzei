@@ -329,7 +329,7 @@ Public Sub ImportWithholding()
     Dim key As Variant, value As Double, year As Long, exitCode As Long
     Dim status As String, raw As String, backup As String, caution As String
     Dim home As Worksheet, extra As Worksheet, code As Long, problem As String
-    Dim taxpayerChoice As VbMsgBoxResult, newTaxpayer As Boolean
+    Dim taxpayerChoice As VbMsgBoxResult, newTaxpayer As Boolean, isProjection As Boolean
     Dim pageChoice As Variant, pageCount As Long, pageArg As String
     On Error GoTo Failed
     ' Select the PDF-only filter initially. Compound patterns hid PDFs.
@@ -425,6 +425,12 @@ Public Sub ImportWithholding()
         Err.Raise vbObjectError + 276, , "所得年の形式が整数ではありません。"
     End If
     If year <> 2025 And year <> 2026 Then Err.Raise vbObjectError + 209, , "未承認の年分です。"
+    ' Preserve the selected calculation year. In a 2025-source/2026-target
+    ' projection the prior document year must never overwrite target 2026.
+    Set home = ThisWorkbook.Worksheets("操作画面")
+    If Not IsNumeric(home.Range("B4").Value2) Then _
+        Err.Raise vbObjectError + 283, , "計算対象年が不正です。"
+    isProjection = (year = 2025 And CLng(home.Range("B4").Value2) = 2026)
     For Each key In Array("salary_gross", "income_tax_withheld", "social_insurance")
         If Not fields.Exists(CStr(key)) Then
             Err.Raise vbObjectError + 210, , "必須の支払金額・源泉税・社会保険料が読み取れていません。"
@@ -459,6 +465,12 @@ Public Sub ImportWithholding()
     Next key
     caution = "源泉徴収票の読み取れた数値を転記し、現在の入力を置換しますか？" & vbCrLf & _
               "既存データはバックアップします。"
+    If isProjection Then
+        caution = caution & vbCrLf & vbCrLf & _
+            "令和7年の原票を令和8年の試算に利用します。" & vbCrLf & _
+            "令和7年の給与所得・所得控除合計・源泉税額は参考値です。" & vbCrLf & _
+            "令和8年の給与・基礎控除・扶養等を再計算し、試算条件の手動確認が必要です。"
+    End If
     If pageCount > 1 Then
         caution = caution & vbCrLf & "対象：PDFの" & _
                   CStr(CLng(pageChoice)) & "／" & CStr(pageCount) & _
@@ -494,17 +506,19 @@ Public Sub ImportWithholding()
     ResetSeparateInputs home
     ResetRelativeInputs
     PrepareAdditionalIncomeForImport extra, newTaxpayer
-    home.Range("B11:B12,B15:B16,B19:B25,B33:B36,D11:D23,D25").ClearContents
+    home.Range("B7,B11:B12,B15:B16,B19:B25,B33:B36,D11:D23,D25").ClearContents
     ' Leave independent pension, business and other income entries untouched.
     extra.Range("B13:B20").ClearContents
-    extra.Range("B38:B40").ClearContents
+    extra.Range("B38:B40,B43:B44").ClearContents
     extra.Range("B41").ClearContents ' Replacing source invalidates any prior attestation.
     extra.Range("B32").ClearContents
     ' B4 and home B26 are calculated indicators: never overwrite formulas.
     home.Range("B25").Value2 = "なし"
+    home.Range("B7").Value2 = "未確認"
     home.Range("D22").Value2 = "該当なし"
     home.Range("D24").Value2 = "ワンストップ"
-    home.Range("B4").Value2 = year
+    ' B4 selects the tax law; B11 identifies the imported source slip.
+    ' Changing B4 here would destroy 2025->2026 projection intent.
     home.Range("B11").Value2 = year
     For Each key In fields.Keys
         If key <> "STATUS" And key <> "YEAR" And key <> "WARNINGS" Then
@@ -523,10 +537,16 @@ Public Sub ImportWithholding()
                 Case "deductions_reference": extra.Range("B14").Value2 = value
                 Case "life_deduction_reference": extra.Range("B16").Value2 = value
                 Case "earthquake_deduction_reference": extra.Range("B17").Value2 = value
-                Case "mortgage_credit": home.Range("B33").Value2 = value
-                Case "mortgage_possible_credit": home.Range("B34").Value2 = value
-                Case "mortgage_occupancy_year": home.Range("B35").Value2 = value
-                Case "mortgage_claim_count": home.Range("B36").Value2 = value
+                Case "mortgage_credit":
+                    extra.Range("B43").Value2 = value
+                    If Not isProjection Then home.Range("B33").Value2 = value
+                Case "mortgage_possible_credit":
+                    extra.Range("B44").Value2 = value
+                    If Not isProjection Then home.Range("B34").Value2 = value
+                Case "mortgage_occupancy_year":
+                    If Not isProjection Then home.Range("B35").Value2 = value
+                Case "mortgage_claim_count":
+                    If Not isProjection Then home.Range("B36").Value2 = value
                 Case "under16_count":
                     home.Range("D23").Value2 = value
                     If value > 0 Then home.Range("B25").Value2 = "あり"
@@ -726,7 +746,7 @@ End Function
 Public Sub ReviewWithholding()
     Dim home As Worksheet, extra As Worksheet, relatives As Worksheet, msg As String
     Dim value As Double, refCell As Variant, calcCell As Variant
-    Dim sourceTotalDifferent As Boolean
+    Dim sourceTotalDifferent As Boolean, isProjection As Boolean
     On Error GoTo Failed
     Set home = ThisWorkbook.Worksheets("操作画面")
     Set extra = ThisWorkbook.Worksheets("例外・分離課税")
@@ -738,13 +758,36 @@ Public Sub ReviewWithholding()
         Err.Raise vbObjectError + 275, , "未対応の特定親族等の項目があります。対象条件は計算対象外です。"
     End If
     Application.Calculate
+    isProjection = (Val(CStr(home.Range("B11").Value2)) = 2025 And _
+                    Val(CStr(home.Range("D4").Value2)) = 2026)
+    If isProjection Then
+        If CStr(home.Range("B7").Value2) <> "確認済" And _
+           CStr(home.Range("B7").Value2) <> "住宅控除なし" Then
+            Err.Raise vbObjectError + 284, , _
+                "翌年試算の給与・社会保険料・扶養・当年住宅ローン控除を確認し、操作画面B7で条件を確定してください。"
+        End If
+        If CDbl(Val(CStr(extra.Range("B43").Value2))) > 0# Or _
+           CDbl(Val(CStr(extra.Range("B44").Value2))) > 0# Then
+            If CStr(home.Range("B7").Value2) = "確認済" And _
+               Val(CStr(home.Range("B34").Value2)) <= 0 Then
+                Err.Raise vbObjectError + 285, , _
+                    "原票に前年の住宅ローン控除があります。当年の適用額・可能額・入居年を入力するか、住宅控除なしを確認してください。"
+            End If
+            If CStr(home.Range("B7").Value2) = "住宅控除なし" And _
+                (Val(CStr(home.Range("B33").Value2)) > 0 Or _
+                 Val(CStr(home.Range("B34").Value2)) > 0) Then
+                Err.Raise vbObjectError + 286, , _
+                    "当年に住宅ローン控除を入力しているため、住宅控除なし確認と一致しません。"
+            End If
+        End If
+    End If
     sourceTotalDifferent = False
     If IsNumeric(extra.Range("B14").Value2) And IsNumeric(home.Range("B31").Value2) Then
         sourceTotalDifferent = Abs(CDbl(extra.Range("B14").Value2) - _
                                    CDbl(home.Range("B31").Value2)) > 1
     End If
     If CStr(extra.Range("B20").Value2) <> "REQUIRES_REVIEW" And _
-       Not sourceTotalDifferent And _
+       Not sourceTotalDifferent And Not isProjection And _
        Len(Trim$(CStr(home.Range("D25").Value2))) = 0 And _
        Len(Trim$(CStr(extra.Range("B38").Value2))) = 0 And _
        Len(Trim$(CStr(extra.Range("B39").Value2))) = 0 And _
@@ -785,6 +828,7 @@ Public Sub ReviewWithholding()
             Case "B17": Set calcCell = home.Range("B18")
         End Select
         If IsNumeric(extra.Range(CStr(refCell)).Value2) And _
+           (Not isProjection Or CStr(refCell) = "B14") And _
            Not (CStr(refCell) = "B14" And _
            Len(Trim$(CStr(home.Range("D25").Value2))) > 0) Then
             If Not IsNumeric(calcCell.Value2) Then
@@ -802,12 +846,12 @@ Public Sub ReviewWithholding()
         End If
         Set calcCell = Nothing
     Next refCell
-    If sourceTotalDifferent And _
+    If (sourceTotalDifferent Or isProjection) And _
        Len(Trim$(CStr(home.Range("D25").Value2))) = 0 Then
-        If MsgBox("源泉徴収票の所得控除合計と自動再計算額が異なります。" & vbCrLf & _
-           "原票額は照合用に残し、修正後の社会保険料・扶養・配偶者等に" & _
+        If MsgBox("源泉徴収票の所得控除合計は原票年の参考額です。" & vbCrLf & _
+           "適用年の税制・給与・保険料・扶養・配偶者等に" & _
            "基づく自動算定額を使用します。" & vbCrLf & _
-           "控除の漏れがないことを原票・証憑で確認しましたか？", _
+           "控除の漏れや対象年の変更がないことを原票・証憑で確認しましたか？", _
            vbExclamation + vbYesNo + vbDefaultButton2) <> vbYes Then Exit Sub
     End If
     If MsgBox("源泉徴収票の未確認項目を確認しましたか？" & vbCrLf & _

@@ -93,6 +93,69 @@ try {
     # Synthetic live Excel COM regression: the source total is audit-only;
     # the user-typed override persists across unrelated source edits; clearing
     # the override restores computed deductions. No customer data is used.
+    QA-Stage 'prior-year-withholding-projection-start'
+    $projectionRef = $book.Worksheets.Item('例外・分離課税')
+    $settings.Range('B4').Value2 = 2026.0
+    $homeSheet.Range('B4').Value2 = 2026.0
+    $homeSheet.Range('B11').Value2 = 2025.0
+    $homeSheet.Range('B7').Value2 = '未確認'
+    $homeSheet.Range('B12').Value2 = 7000000.0
+    $homeSheet.Range('B15').Value2 = 285800.0
+    $homeSheet.Range('B16').Value2 = 1000000.0
+    $homeSheet.Range('B19:B24,D11:D23,D25,B33:B36').ClearContents()
+    $homeSheet.Range('B25').Value2 = 'なし'
+    $homeSheet.Range('D22').Value2 = '該当なし'
+    $homeSheet.Range('D24').Value2 = '確定申告'
+    $projectionRef.Range('B13:B18,B20,B41,B43:B44').ClearContents()
+    $projectionRef.Range('B14').Value2 = 1630000.0
+    $projectionRef.Range('B15').Value2 = 5200000.0
+    $projectionRef.Range('B16').Value2 = 90000.0
+    $projectionRef.Range('B17').Value2 = 30000.0
+    $projectionRef.Range('B20').Value2 = 'READY_FOR_EXCEL_CROSSCHECK'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('D7').Value2 '前年票→2026試算' 'Projection mode displayed'
+    Assert-Value $homeSheet.Range('B13').Value2 5200000 '2026 salary re-evaluated'
+    Assert-Value $homeSheet.Range('B31').Value2 1670000 '2026 deduction total +40000'
+    Assert-Value $homeSheet.Range('D31').Value2 1630000 '2025 source deduction remains audit-only'
+    Assert-Value $homeSheet.Range('B14').Value2 1670000 '2026 applied tax deduction total'
+    Assert-Value $homeSheet.Range('B17').Value2 0 'Old-year life deduction not reused'
+    Assert-Value $homeSheet.Range('B18').Value2 0 'Old-year earthquake deduction not reused'
+    if ([string]$homeSheet.Range('B28').Value2 -notlike 'SAFE-TAX-030*' -or
+        [string]$homeSheet.Range('B8').Value2 -ne '') {
+        throw 'Unconfirmed prior-year withholding escaped safe HOLD'
+    }
+    $homeSheet.Range('B7').Value2 = '確認済'
+    $projectionRef.Range('B20').Value2 = 'VERIFIED_AFTER_CORRECTION'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    $projectionRef.Range('B41').Value2 = [string]$projectionRef.Range('B42').Value2
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Reviewed 2025 source 2026 projection'
+    Assert-Value $homeSheet.Range('B8').Value2 109000 'Projected 2026 donation limit matches 2026 target'
+    $projectionRef.Range('B43').Value2 = 100000.0
+    $projectionRef.Range('B44').Value2 = 150000.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    $projectionRef.Range('B41').Value2 = [string]$projectionRef.Range('B42').Value2
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    if ([string]$homeSheet.Range('B28').Value2 -notlike 'SAFE-TAX-031*' -or
+        [string]$homeSheet.Range('B8').Value2 -ne '') {
+        throw '2025 housing credit was reused in 2026 projection without confirmation'
+    }
+    $homeSheet.Range('B7').Value2 = '住宅控除なし'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    $projectionRef.Range('B41').Value2 = [string]$projectionRef.Range('B42').Value2
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Reviewed no housing credit in target year'
+    $projectionRef.Range('B43:B44').ClearContents()
+    $projectionRef.Range('B15').Value2 = 1300000.0
+    $homeSheet.Range('B12').Value2 = 1950000.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B13').Value2 1210000 '2025 salary reference cannot override 2026 salary table'
+    $projectionRef.Range('B13:B18,B20,B41,B43:B44').ClearContents()
+    $homeSheet.Range('B7').Value2 = '未確認'
+    $homeSheet.Range('B11').Value2 = 2026.0
+    $homeSheet.Range('B12,B15:B16').ClearContents()
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    QA-Stage 'prior-year-withholding-projection-pass'
     QA-Stage 'deduction-override-synthetic-start'
     $homeSheet.Range('B12').Value2 = 7000000.0
     $homeSheet.Range('B15').Value2 = 285800.0
