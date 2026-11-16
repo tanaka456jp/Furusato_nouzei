@@ -668,7 +668,10 @@ try {
         $homeSheet.Range('B4').Value2 = [double]$scenario.Year
         $homeSheet.Range('B11').Value2 = [double]$scenario.Year
         $homeSheet.Range('B12').Value2 = 7000000.0
-        $homeSheet.Range('B15').Value2 = 285800.0
+        # Withholding on the actual synthetic insurance case differs from
+        # the base salary-only sample. Do not carry a stale G08 value into
+        # the source-consistency gate.
+        $homeSheet.Range('B15').Value2 = [double]$scenario.NationalWithheld
         $homeSheet.Range('B16').Value2 = 1000000.0
         $homeSheet.Range('B19:B24').ClearContents()
         $homeSheet.Range('D23').ClearContents()
@@ -683,6 +686,12 @@ try {
         Assert-Value $homeSheet.Range('B17').Value2 $scenario.LifeReference ('Real Excel life deduction '+$scenario.Year)
         Assert-Value $homeSheet.Range('B18').Value2 $scenario.EarthReference ('Real Excel earthquake deduction '+$scenario.Year)
         Assert-Value $homeSheet.Range('B14').Value2 $scenario.DeductionTotal ('Real Excel national deduction total '+$scenario.Year)
+        if ([string]$homeSheet.Range('B28').Value2 -ne '正常') {
+            # Synthetic-only diagnostic. This is not taxpayer data.
+            throw ('Synthetic insurance case HOLD '+$scenario.Year+
+                ' reason='+[string]$homeSheet.Range('B28').Value2+
+                ' eligibility='+[string]$homeSheet.Range('B26').Value2)
+        }
         Assert-Value $homeSheet.Range('D8').Value2 $scenario.ResidentLevy ('Real Excel resident levy '+$scenario.Year)
         Assert-Value $homeSheet.Range('B8').Value2 $scenario.DonationReference ('Real Excel donation reference '+$scenario.Year)
         Assert-Value $homeSheet.Range('B28').Value2 '正常' ('Real Excel insurance case status '+$scenario.Year)
