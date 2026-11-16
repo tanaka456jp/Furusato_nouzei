@@ -44,7 +44,7 @@ class WorkbookTest(unittest.TestCase):
         # out-of-scope fallback; the accepted ordinary-salary branch uses
         # gross income and independently computed resident deductions.
         self.assertTrue(taxable.endswith("," + baseline[1:] + ")"))
-        self.assertIn("J43+J12", baseline)
+        self.assertIn("J12+J43", baseline)
         self.assertLess(len(taxable), 8192)
         self.assertEqual(
             self.book[RESIDENT]["B6"].value,
