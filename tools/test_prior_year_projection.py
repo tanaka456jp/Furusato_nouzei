@@ -124,6 +124,95 @@ class PriorYearProjectionTest(unittest.TestCase):
         self.assertEqual(verdict["reason"],
                          "UNDER23_DEPENDENT_NOT_IN_TARGET_FAMILY")
 
+    def test_2025_source_mortgage_and_verified_2026_one_stop_projection(self):
+        # Whole fixture is synthetic. A historic housing credit reconciles
+        # source-year withholding; it is not reused as the 2026 estimate.
+        base = make_case(False)
+        base["workbook"]["resident_taxable_income"] = 3_711_000
+        base["source"].update({
+            "income_tax_withheld": 0,
+            "mortgage_credit": 271_300,
+            "mortgage_possible_credit": 300_000,
+            "mortgage_occupancy_year": 2024,
+            "mortgage_claim_count": 1,
+        })
+        # 2026 taxable income = floor((5.2m-1.745902m)/1k)*1k
+        # = 3.454m; income tax 263.3k, housing transfer 36.7k.
+        base["target"].update({
+            "mortgage_possible_credit": 300_000,
+            "mortgage_occupancy_year": 2024,
+            "mortgage_claim_count": 1,
+            "filing_method": "one_stop",
+            "eligibility_reviewed": True,
+        })
+        base["workbook"]["resident_mortgage_transfer"] = 36_700
+        self.assertEqual(compare_projection(base), {
+            "status": "MATCH_REFERENCE",
+            "reason": "SOURCE_YEAR_HOUSING_AND_TARGET_ONE_STOP_VERIFIED",
+        })
+        self.assertEqual(evaluate([base], min_cases=1)["status"], "PASS")
+        changed = copy.deepcopy(base)
+        changed["workbook"]["resident_mortgage_transfer"] += 1
+        self.assertEqual(compare_projection(changed)["status"], "MISMATCH")
+        changed = copy.deepcopy(base)
+        changed["workbook"]["donation_limit"] += 1000
+        self.assertEqual(compare_projection(changed)["reason"],
+                         "INDEPENDENT_DONATION_LIMIT")
+
+        # Same source, unknown next-year credit: no independent target proof.
+        changed = copy.deepcopy(base)
+        for key in ("mortgage_possible_credit", "mortgage_occupancy_year",
+                    "mortgage_claim_count", "filing_method",
+                    "eligibility_reviewed"):
+            del changed["target"][key]
+        del changed["workbook"]["resident_mortgage_transfer"]
+        self.assertEqual(compare_projection(changed)["reason"],
+                         "TARGET_MORTGAGE_REVIEW_MISSING")
+
+        for scenario in ("unreviewed", "filing", "old_class",
+                         "multiple", "source_excess", "missing_applied"):
+            changed = copy.deepcopy(base)
+            if scenario == "unreviewed":
+                changed["target"]["eligibility_reviewed"] = False
+            elif scenario == "filing":
+                changed["target"]["filing_method"] = "tax_return"
+            elif scenario == "old_class":
+                changed["target"]["mortgage_occupancy_year"] = 2022
+            elif scenario == "multiple":
+                changed["target"]["mortgage_claim_count"] = 2
+            elif scenario == "source_excess":
+                changed["source"]["mortgage_credit"] = 300_001
+            elif scenario == "missing_applied":
+                del changed["source"]["mortgage_credit"]
+            with self.subTest(scenario=scenario):
+                self.assertEqual(compare_projection(changed)["status"],
+                                 "NOT_COMPARABLE")
+
+    def test_new_mortgage_2026_with_historic_nonhousing_slip(self):
+        c = make_case(False)
+        c["workbook"]["resident_taxable_income"] = 3_711_000
+        c["target"].update({
+            "mortgage_possible_credit": 300_000,
+            "mortgage_occupancy_year": 2026,
+            "mortgage_claim_count": 1,
+            "filing_method": "one_stop",
+            "eligibility_reviewed": True,
+        })
+        # 2026 occupancy uses only the national taxable base for 5% cap.
+        c["workbook"]["resident_mortgage_transfer"] = 36_700
+        self.assertEqual(compare_projection(c)["status"], "MATCH_REFERENCE")
+        zero = copy.deepcopy(c)
+        zero["target"].update({
+            "mortgage_possible_credit": 0,
+            "mortgage_occupancy_year": 0,
+            "mortgage_claim_count": 0,
+        })
+        zero["workbook"]["resident_mortgage_transfer"] = 0
+        self.assertEqual(compare_projection(zero)["status"], "MATCH_REFERENCE")
+        zero["target"]["mortgage_claim_count"] = 1
+        self.assertEqual(compare_projection(zero)["reason"],
+                         "CONTRADICTORY_NO_HOUSING_DECLARATION")
+
     def test_source_year_is_not_current_year_evidence(self):
         c = make_case(False)
         c["workbook"]["resident_taxable_income"] = 3_711_000
