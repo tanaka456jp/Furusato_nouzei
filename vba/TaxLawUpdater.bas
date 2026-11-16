@@ -509,7 +509,8 @@ Public Sub ImportWithholding()
     home.Range("B7,B11:B12,B15:B16,B19:B25,B33:B36,D11:D23,D25").ClearContents
     ' Leave independent pension, business and other income entries untouched.
     extra.Range("B13:B20").ClearContents
-    extra.Range("B38:B40,B43:B44").ClearContents
+    extra.Range("B38:B40").ClearContents
+    extra.Range("B43:B44").ClearContents
     extra.Range("B41").ClearContents ' Replacing source invalidates any prior attestation.
     extra.Range("B32").ClearContents
     ' B4 and home B26 are calculated indicators: never overwrite formulas.
