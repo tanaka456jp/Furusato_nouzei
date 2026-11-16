@@ -88,7 +88,9 @@ try {
     Assert-Value ([string]$homeSheet.Range('C33').Value2) '翌年試算の前提確認' 'Visible projection review label'
     Assert-Value ([string]$projectionInput.Value2) '未確認' 'Projection review defaults to unconfirmed'
     Assert-Value ([string]$homeSheet.Range('D34').Value2) '同一年分' 'Year relation displayed beside projection review'
-    foreach($ctl in @($homeSheet.Buttons())) {
+    $projectionControls = $homeSheet.Buttons()
+    for($projectionIndex=1; $projectionIndex -le $projectionControls.Count; $projectionIndex++) {
+        $ctl = $projectionControls.Item($projectionIndex)
         if ([double]$ctl.Left -lt ([double]$projectionInput.Left + [double]$projectionInput.Width) -and
             ([double]$ctl.Left + [double]$ctl.Width) -gt [double]$projectionInput.Left -and
             [double]$ctl.Top -lt ([double]$projectionInput.Top + [double]$projectionInput.Height) -and
