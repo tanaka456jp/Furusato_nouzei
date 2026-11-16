@@ -477,11 +477,42 @@ class WorkbookTest(unittest.TestCase):
         self.assertIn("ROUNDDOWN((", result)
         self.assertIn("+2000)/1000,0)*1000", result)
         self.assertIn("MIN(", result)
-        self.assertIn('D24<>"ワンストップ",N(B34)>0,ISNUMBER(B38)', verdict)
+        self.assertIn("N('例外・分離課税'!B24)>0,N(B34)>0,ISNUMBER(B38)", verdict)
         # The nominal 20% cap is not replaced with a post-housing levy:
         # capacity is tested only at final display, after the statutory cap.
         self.assertNotIn("'操作画面'!B38", self.book[RESIDENT]["B19"].value)
         self.assertLess(len(result), 8192)
+
+    def test_tax_return_housing_has_own_real_tax_difference_search(self):
+        model = self.book["住宅確申寄附検算"]
+        self.assertEqual(model.sheet_state, "veryHidden")
+        result = self.book[RESIDENT]["B26"].value
+        verdict = self.book[HOME]["B28"].value
+        self.assertIn("'住宅確申寄附検算'!B46", result)
+        self.assertIn('D24="確定申告"', result)
+        self.assertIn("SAFE-TAX-035", verdict)
+        self.assertIn("N(B33)<>MIN(N(B34),N('住宅確申寄附検算'!B3))",
+                      verdict)
+        self.assertIn('D24="確定申告",N(B34)>0', verdict)
+        self.assertIn("MIN(MAX(0,B5-MIN(B3,B5)),B9", model["B6"].value)
+        self.assertIn("'住民税再計算'!B19", model["B10"].value)
+        self.assertIn("'住民税再計算'!B22", model["B11"].value)
+        self.assertIn("B2-F50", model["G50"].value)
+        self.assertIn("H50-I50", model["K50"].value)
+        self.assertIn("G50+$B$12", model["J50"].value)
+        self.assertIn("$B$7-J50-L50-M50", model["N50"].value)
+        self.assertIn("$B$4+$B$8-K50-N50", model["O50"].value)
+        self.assertIn("O50+1>=E50-2000", model["P50"].value)
+        self.assertIn("E50-O50", model["Q50"].value)
+        self.assertEqual(model["E50"].value, "=109000")
+        self.assertEqual(model["B46"].data_type, "f")
+        self.assertTrue(all(model[f"P{x}"].data_type == "f"
+                            for x in range(19, 43)))
+        # No 2026 source-year personal amounts may be copied to this model.
+        self.assertFalse(any("source" in str(model[f"A{x}"].value).lower()
+                             for x in range(2, 17)))
+        self.assertLess(len(result), 8192)
+        self.assertLess(len(verdict), 8192)
 
     def test_separate_credit_grid_cannot_leak_into_ordinary_estimate(self):
         formula = self.book[HOME]["B28"].value
