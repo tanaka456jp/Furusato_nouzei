@@ -1,5 +1,4 @@
 """No resident-tax notice: synthetic salary-only independent cap comparison."""
-import copy
 import unittest
 
 from reconcile_salary_only_from_slip import compare_case, evaluate, REQUIRED_CONFIRMATIONS
@@ -60,6 +59,14 @@ class SalaryOnlySlipReconciliationTest(unittest.TestCase):
             case=example()
             case[mutation[0]][mutation[1]]=mutation[2]
             self.assertEqual(compare_case(case)["status"],"NOT_COMPARABLE")
+
+    def test_lower_salary_cannot_use_a_shortcut_instead_of_nta_fifth_table(self):
+        case=example(2025)
+        case["source"]["salary_gross"]=5_000_000
+        # A corroborated year-end G05 and NTA fifth table check are
+        # required. Exact raw salary components need separate case data.
+        case["confirmations"]["nta_fifth_table_rechecked"]=False
+        self.assertEqual(compare_case(case)["status"],"NOT_COMPARABLE")
 
     def test_wrong_workbook_or_resident_tax_is_mismatch(self):
         for name,value in (("donation_limit",110000),

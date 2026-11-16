@@ -26,6 +26,7 @@ REQUIRED_CONFIRMATIONS = (
     "no_unmodelled_deductions",
     "no_tax_credits",
     "no_salary_income_adjustment",
+    "nta_fifth_table_rechecked",
     "family_eligibility_confirmed",
     "resident_municipality_confirmed",
     "donation_filing_method_confirmed",
@@ -91,7 +92,7 @@ def compare_case(case):
     else:
         # The operator MUST separately verify the source G05 using the
         # actual year-specific Fifth Table, not a shortcut formula.
-        if conf.get("no_salary_income_adjustment") is not True:
+        if conf.get("nta_fifth_table_rechecked") is not True:
             return hold("SOURCE_SALARY_TABLE_REVIEW_REQUIRED")
     try:
         deductions = verified_family_deductions(
