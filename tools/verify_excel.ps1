@@ -1403,6 +1403,16 @@ try {
         Assert-Value $homeSheet.Range('B28').Value2 '正常' ('Family eligibility ' + $key)
         Assert-Value $homeSheet.Range('D8').Value2 $case.Levy ('Resident levy ' + $key)
         Assert-Value $homeSheet.Range('B38').Value2 $case.Housing ('Housing resident transfer ' + $key)
+        # The displayed one-stop reference must honor BOTH the nominal
+        # pre-housing 20% cap and resident tax remaining after housing credit.
+        # These eight documented family cases have enough capacity; a later
+        # boundary regression will catch saturation with a smaller balance.
+        $availableLevy = [Math]::Max(0.0, [double]$case.Levy - [double]$case.Housing)
+        $capacityBound = if ($availableLevy -le 0) { 0.0 } else {
+            [Math]::Min([double]$case.Limit,
+                [Math]::Floor(($availableLevy + 2000.0) / 1000.0) * 1000.0)
+        }
+        Assert-Value $homeSheet.Range('B8').Value2 $capacityBound ('One-stop housing capacity ' + $key)
         Assert-Value $homeSheet.Range('B8').Value2 $case.Limit ('Donation estimate ' + $key)
     }
     # Restore the ordinary no-family synthetic workbook state for subsequent
