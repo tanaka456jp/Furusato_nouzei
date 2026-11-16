@@ -117,6 +117,33 @@ class SalaryOnlySlipReconciliationTest(unittest.TestCase):
             bad["insurance"][field] = value
             self.assertEqual(compare_case(bad)["status"], "NOT_COMPARABLE")
 
+    def test_2026_confirmed_under23_insurance_tax_and_donation_reference(self):
+        case = example(2026)
+        case["family"]["under16"] = 1
+        case["insurance"] = {
+            "new_life": 120_000, "old_life": 0, "care": 0,
+            "new_pension": 0, "old_pension": 0,
+            "earthquake": 0, "old_long": 0,
+            "life_reference": 60_000, "earthquake_reference": 0,
+            "distinct_earthquake_contracts_confirmed": True,
+            "no_2026_under23_life_exception_confirmed": False,
+            "verified_2026_under23_dependent": True,
+        }
+        case["source"]["deductions_reference"] = 1_730_000
+        case["source"]["income_tax_withheld"] = 272_000
+        case["workbook"]["resident_income_levy"] = 371_600
+        case["workbook"]["donation_limit"] = 108_000
+        self.assertEqual(compare_case(case)["status"], "MATCH_REFERENCE")
+        case["family"]["under16"] = 0
+        self.assertEqual(compare_case(case)["reason"],
+                         "UNDER23_DEPENDENT_NOT_IN_VERIFIED_FAMILY")
+        case["family"]["under16"] = 1
+        case["insurance"]["verified_2026_under23_dependent"] = False
+        self.assertEqual(compare_case(case)["status"], "NOT_COMPARABLE")
+        case["insurance"]["verified_2026_under23_dependent"] = True
+        case["insurance"]["life_reference"] = 40_000
+        self.assertEqual(compare_case(case)["status"], "NOT_COMPARABLE")
+
     def test_2026_insurance_exception_requires_confirmed_absence(self):
         case = example(2026)
         case["insurance"] = {
