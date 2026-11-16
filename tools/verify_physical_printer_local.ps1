@@ -10,12 +10,23 @@ the output records a HOLD requiring independent human inspection.
 param(
     [Parameter(Mandatory=$true)][string]$Workbook,
     [Parameter(Mandatory=$true)][string]$ExpectedWorkbookSha256,
+    [Parameter(Mandatory=$true)][long]$ExpectedDisplayedLimitYen,
     [Parameter(Mandatory=$true)][string]$PrinterName,
     [Parameter(Mandatory=$true)][string]$EvidencePath,
     [switch]$SyntheticDataReviewed,
     [switch]$AllowOnePagePrint
 )
 $ErrorActionPreference = 'Stop'
+# This operator-only action MUST never run in GitHub Actions or another
+# unattended/noninteractive session, even if flags are supplied by mistake.
+if ($env:CI -or $env:GITHUB_ACTIONS -or
+    -not [Environment]::UserInteractive) {
+    throw 'PHYSICAL_PRINT_REQUIRES_LOCAL_INTERACTIVE_OPERATOR'
+}
+if ($ExpectedDisplayedLimitYen -lt 2000 -or
+    $ExpectedDisplayedLimitYen -gt 100000000) {
+    throw 'INVALID_SYNTHETIC_EXPECTED_DONATION_LIMIT'
+}
 if (-not $SyntheticDataReviewed -or -not $AllowOnePagePrint) {
     throw 'EXPLICIT_SYNTHETIC_DATA_AND_PHYSICAL_PRINT_CONSENT_REQUIRED'
 }
@@ -76,10 +87,34 @@ try {
         $excel.Workbooks.Count -ne 1) {
         throw 'UNEXPECTED_EXCEL_OR_WORKBOOK_MODE'
     }
+    # Recalculate the reviewed synthetic scenario in the owned Excel
+    # process so stale cached values cannot be printed as accepted results.
+    $excel.CalculateFullRebuild()
+    $poll = 0
+    while ([int]$excel.CalculationState -ne 0 -and $poll -lt 120) {
+        Start-Sleep -Milliseconds 250
+        $poll++
+    }
+    if ([int]$excel.CalculationState -ne 0) {
+        throw 'EXCEL_CALCULATION_NOT_COMPLETE'
+    }
+    $home = $book.Worksheets.Item('操作画面')
+    if ($null -eq $home -or [string]$home.Range('B28').Value2 -cne '正常') {
+        throw 'PRINT_SCENARIO_CALCULATION_NOT_VERIFIED'
+    }
+    $calculatedLimit = $home.Range('B8').Value2
+    if ($null -eq $calculatedLimit -or
+        [double]$calculatedLimit -ne [double]$ExpectedDisplayedLimitYen) {
+        throw 'DISPLAYED_DONATION_LIMIT_MISMATCH'
+    }
     $sheet = $book.Worksheets.Item('計算根拠')
     if ($null -eq $sheet) { throw 'PRINT_DETAILS_SHEET_MISSING' }
     if ($sheet.Visible -ne -1) { $sheet.Visible = -1 } # read-only copy only
     $sheet.Activate()
+    if ($null -eq $sheet.Range('B14').Value2 -or
+        [double]$sheet.Range('B14').Value2 -ne [double]$ExpectedDisplayedLimitYen) {
+        throw 'PRINT_DETAILS_LIMIT_MISMATCH'
+    }
     $sheet.PageSetup.PaperSize = 9 # xlPaperA4
     $sheet.PageSetup.Orientation = 1 # xlPortrait
     # Excel's ActivePrinter may include a localized port suffix (NeXX:).
@@ -90,6 +125,18 @@ try {
     $previewWasInvoked = $true
     [void]$sheet.PrintPreview()
     Assert-ExplicitActivePrinter -Actual ([string]$excel.ActivePrinter) -Expected $PrinterName
+    # Preview may contain its own Print button. Do not print automatically
+    # when the window closes; ask the human to explicitly reconfirm that
+    # they used Close, NOT Print, in Excel's preview window.
+    $confirmation = Read-Host 'Did you CLOSE preview without printing? Type PRINT-ONE-PAGE to submit one physical page'
+    if ($confirmation -cne 'PRINT-ONE-PAGE') {
+        throw 'PHYSICAL_PRINT_NOT_RECONFIRMED_AFTER_PREVIEW'
+    }
+    if ([string]$home.Range('B28').Value2 -cne '正常' -or
+        [double]$home.Range('B8').Value2 -ne [double]$ExpectedDisplayedLimitYen -or
+        [double]$sheet.Range('B14').Value2 -ne [double]$ExpectedDisplayedLimitYen) {
+        throw 'PRINT_SCENARIO_CHANGED_AFTER_PREVIEW'
+    }
     # One print command, one page, one copy, specified active printer only.
     [void]$sheet.PrintOut(1,1,1,$false)
     $printWasSubmitted = $true
@@ -117,6 +164,9 @@ if (-not $previewWasInvoked -or -not $printWasSubmitted) {
 $result = [ordered]@{
     schema = 'furusato-physical-paper-review/v1'
     workbook_sha256 = $expected
+    expected_limit_yen_verified = $true
+    excel_tax_status_normal = $true
+    post_preview_operator_reconfirmed = $true
     synthetic_data_reviewed = $true
     installed_printer_explicitly_selected = $true
     excel_print_preview_invoked = $true
