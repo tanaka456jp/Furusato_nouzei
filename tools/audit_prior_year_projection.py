@@ -73,6 +73,15 @@ def compare_projection(case):
             set(case["family"]) != FAMILY_FIELDS or
             case["municipality"] not in ("standard", "designated")):
         return hold("UNVERIFIED_FAMILY_OR_MUNICIPALITY")
+    insurance = case["insurance"]
+    if (isinstance(insurance, dict) and
+            insurance.get("verified_2026_under23_dependent") is True and
+            not any(type(case["family"][kind]) is int and
+                    case["family"][kind] > 0
+                    for kind in ("under16", "general", "special"))):
+        # A flag alone is not proof that a qualifying child is in the
+        # independently reviewed current-year family population.
+        return hold("UNDER23_DEPENDENT_NOT_IN_TARGET_FAMILY")
     if (source["salary_gross"] < 6_600_000 or
             target["salary_gross"] < 6_600_000 or
             source["salary_gross"] > 20_000_000 or
