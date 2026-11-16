@@ -1060,7 +1060,7 @@ def build(source, output):
         (unsupported, "警告：入力内容から個別照合が必要と判定しました"),
         (f'AND(N({ref(ADVANCED,"B24")})>0,N(B34)>0)',
          "警告：分離課税と住宅ローン控除の併用は税額控除の再配分検証が必要です"),
-        (f'AND(N(B34)>0,ISNUMBER(B38),B38>0,{remaining_levy}<{donation_resident})',
+        (f'AND(D24<>"ワンストップ",N(B34)>0,ISNUMBER(B38),B38>0,{remaining_levy}<{donation_resident})',
          "警告：住宅ローン控除後の住民税枠が不足するため、寄附限度額を個別に照合してください"),
         (f'OR(COUNTIF({ref("整合性チェック","B4:B12")},"OK")<>9,{ref("自動回帰テスト","B49")}<>"PASS")',
          "エラー：税制マスタまたは内蔵検証に異常があります"),
@@ -1080,9 +1080,24 @@ def build(source, output):
     checks = book["自動回帰テスト"]
     checks["B49"] = '=IF(COUNTIF(H4:H45,"PASS")+COUNTIF(D58:D63,"PASS")+COUNTIF(H66:H69,"PASS")=52,"PASS","FAIL")'
     prior = resident["B26"].value[1:]
+    # Housing is credited before resident donation relief, but the special
+    # donation cap keeps the *pre-housing* adjustment-credit levy as its base.
+    # Verified one-stop cases can safely be bounded by the remaining levy,
+    # instead of hiding a computable 1,000-yen reference.  Tax-return cases
+    # retain the separate warning, since donation deductions can change the
+    # national-to-resident housing-credit allocation.
+    available_after_housing = (
+        f'MAX(0,N({ref(RESIDENT,"B16")})-N({ref(HOME,"B38")}))'
+    )
+    one_stop_housing_limit = (
+        f'IF({available_after_housing}<=0,0,'
+        f'MIN({prior},ROUNDDOWN(({available_after_housing}+2000)/1000,0)*1000))'
+    )
     resident["B26"] = (f'=IFERROR(IF({ref(HOME,"B28")}="正常",'
                        f'IF(N({ref(ADVANCED,"B24")})>0,{ref(SPLIT_ALLOC,"B46")},'
-                       f'{prior}),""),"")')
+                       f'IF(AND({ref(HOME,"D24")}="ワンストップ",'
+                       f'N({ref(HOME,"B34")})>0),{one_stop_housing_limit},{prior})),'
+                       f'""),"")')
     bar(detail, 1, "ふるさと納税｜計算根拠")
     note(detail, 2, "=" + ref(HOME, "B28"))
     note(detail, 3, f'="所得年 "&{ref(HOME,"D4")}&" ｜ 住民税課税年度 "&{ref(HOME,"D5")}&" ｜ 税制版 "&{ref(HOME,"B29")}')
