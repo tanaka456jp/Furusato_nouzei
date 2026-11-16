@@ -106,7 +106,7 @@ def calculate_insurance(*, year, record):
                                       resident=resident)
         life = min(general + care + pension, 70_000 if resident else 120_000)
         earthquake = min(
-            (min(record["earthquake"]//2, 25_000) if resident
+            (min(_ceil_fraction(Fraction(record["earthquake"], 2)), 25_000) if resident
              else min(record["earthquake"], 50_000))
             + _old_long(record["old_long"], resident=resident),
             25_000 if resident else 50_000)
