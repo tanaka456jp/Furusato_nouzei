@@ -61,6 +61,62 @@ class IndependentInsuranceDeductionTest(unittest.TestCase):
         self.assertEqual(calculate_insurance(year=2026,record=insurance(
             new_life=90_000, life_reference=40_000))["national_life"],40_000)
 
+    def test_verified_2026_under23_table_boundaries_and_resident_unchanged(self):
+        # Synthetic-only premiums; each exact transition is taken from NTA No.1140.
+        cases = (
+            (20_000, 20_000), (30_000, 30_000),
+            (30_001, 30_001), (60_000, 45_000),
+            (60_001, 45_001), (120_000, 60_000),
+            (120_001, 60_000),
+        )
+        for paid, expected in cases:
+            with self.subTest(paid=paid):
+                r = calculate_insurance(year=2026, record=insurance(
+                    new_life=paid, life_reference=expected,
+                    no_2026_under23_life_exception_confirmed=False,
+                    verified_2026_under23_dependent=True))
+                self.assertEqual(r["national_life"], expected)
+                self.assertLessEqual(r["resident_life"], 28_000)
+                if paid == 120_000:
+                    self.assertEqual(r["resident_life"], 28_000)
+        no_exception = calculate_insurance(year=2026, record=insurance(
+            new_life=120_000, life_reference=40_000))
+        self.assertEqual(no_exception["national_life"], 40_000)
+        self.assertEqual(no_exception["resident_life"], 28_000)
+
+    def test_verified_2026_under23_mixed_old_new_and_total_cap(self):
+        r = calculate_insurance(year=2026, record=insurance(
+            new_life=120_000, old_life=100_000,
+            care=100_000, new_pension=100_000,
+            life_reference=120_000,
+            no_2026_under23_life_exception_confirmed=False,
+            verified_2026_under23_dependent=True))
+        self.assertEqual(r["national_life"], 120_000)
+        self.assertEqual(r["resident_life"], 70_000)
+        old_only = calculate_insurance(year=2026, record=insurance(
+            new_life=30_000, old_life=100_000,
+            life_reference=60_000,
+            no_2026_under23_life_exception_confirmed=False,
+            verified_2026_under23_dependent=True))
+        self.assertEqual(old_only["national_life"], 60_000)
+        self.assertEqual(old_only["resident_life"], 35_000)
+
+    def test_under23_eligibility_unknown_or_contradictory_is_hold(self):
+        for changes in (
+            {"no_2026_under23_life_exception_confirmed": False},
+            {"verified_2026_under23_dependent": True},
+            {"verified_2026_under23_dependent": 1,
+             "no_2026_under23_life_exception_confirmed": False},
+            {"verified_2026_under23_dependent": False,
+             "no_2026_under23_life_exception_confirmed": False},
+        ):
+            with self.subTest(changes=changes):
+                with self.assertRaises(ValueError):
+                    calculate_insurance(year=2026, record=insurance(**changes))
+        with self.assertRaisesRegex(ValueError, "SOURCE_YEAR"):
+            calculate_insurance(year=2025, record=insurance(
+                verified_2026_under23_dependent=False))
+
     def test_reference_and_missing_premium_fail_closed(self):
         for altered in (
             {"new_life": 70_000, "life_reference": 0},
