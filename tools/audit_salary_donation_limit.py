@@ -195,6 +195,30 @@ def verified_family_deductions(*, year, salary_income, social_insurance,
             "scope":"SYNTHETIC_ONLY"}
 
 
+def independent_one_stop_after_housing(*, nominal_thousand_yen,
+                                       resident_income_levy, resident_mortgage_credit):
+    """Synthetic-only 1,000-yen ceiling after verified housing-credit priority.
+
+    The 20% *special* cap still uses the levy before housing credit.  With
+    one-stop treatment, the total donation credit is the donation minus
+    2,000 yen until that special cap is reached, but it cannot exceed the
+    resident income levy left after mortgage credit.  Filing cases differ
+    because donations can shift the national mortgage-credit allocation.
+    """
+    for value in (nominal_thousand_yen, resident_income_levy,
+                  resident_mortgage_credit):
+        if type(value) is not int or not 0 <= value <= 10**12:
+            raise ValueError("UNVERIFIED_RESIDENT_MORTGAGE_AMOUNT")
+    if nominal_thousand_yen % 1000:
+        raise ValueError("NOMINAL_CAP_NOT_IN_THOUSAND_YEN")
+    available = max(0, resident_income_levy - resident_mortgage_credit)
+    effective = (min(nominal_thousand_yen,
+                     ((available + 2000) // 1000) * 1000)
+                 if available > 0 else 0)
+    return {"resident_income_levy_after_housing": available,
+            "one_stop_effective_thousand_yen_reference": effective}
+
+
 def independent_family_mortgage_case(*, year, salary_income, social_insurance,
                                      mortgage_possible=0, occupancy_year=None,
                                      spouse="none", general=0, special=0,
@@ -231,7 +255,11 @@ def independent_family_mortgage_case(*, year, salary_income, social_insurance,
            if mortgage_possible>0 and occupancy_year<=2025 else 0)
     cap_basis=(national_taxable+delta)//1000*1000
     housing_transfer=min(mortgage_possible-applied,97500,cap_basis*5//100)
-    return {**values,**limit,
+    one_stop = independent_one_stop_after_housing(
+        nominal_thousand_yen=limit["thousand_yen_reference"],
+        resident_income_levy=limit["resident_income_levy"],
+        resident_mortgage_credit=housing_transfer)
+    return {**values,**limit,**one_stop,
             "national_taxable_income":national_taxable,
             "national_income_tax_before_credit":national_before_credit,
             "housing_applied_national":applied,
