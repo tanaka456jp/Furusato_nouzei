@@ -41,6 +41,7 @@ jobs:
           python tools/test_salary_donation_oracle.py
           python tools/test_release_readiness.py
           python tools/test_distribution_integrity.py
+          python tools/test_package_ready_to_use_review.py
           python tools/release_readiness.py --head "${{ github.event.pull_request.head.sha || github.sha }}" --output release_readiness_hold.json
           python tools/verify_separate_oracle.py
           node tools/test_excel_gas_v4183.cjs
@@ -566,3 +567,55 @@ jobs:
           if (Test-Path -LiteralPath $work) {
             Remove-Item -LiteralPath $work -Recurse -Force
           }
+
+  # Create a user-testable ReadyToUse review bundle from EXACTLY the two
+  # separately accepted artifacts of THIS Actions run. This is NOT a release.
+  ready_to_use_review:
+    needs: [excel, document_reader]
+    runs-on: windows-2022
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@v4
+        with:
+          name: Furusato_nouzei_Excel_XLSM_REVIEW_${{ github.run_id }}
+          path: _review_excel
+      - uses: actions/download-artifact@v4
+        with:
+          name: Furusato_DocumentReader_Windows_EXE_${{ github.run_id }}
+          path: _review_reader
+      - name: Bind accepted XLSM and reader from this exact run into review ZIP
+        shell: powershell
+        run: |
+          $books = @(Get-ChildItem -LiteralPath _review_excel -Filter Furusato_nouzei.xlsm -Recurse -File)
+          $acceptances = @(Get-ChildItem -LiteralPath _review_excel -Filter excel_acceptance.json -Recurse -File)
+          $readers = @(Get-ChildItem -LiteralPath _review_reader -Filter FurusatoDocumentReader.exe -Recurse -File)
+          if ($books.Count -ne 1 -or $acceptances.Count -ne 1 -or $readers.Count -ne 1) {
+            throw 'Missing or ambiguous exact-run accepted artifacts'
+          }
+          python tools/test_package_ready_to_use_review.py
+          if ($LASTEXITCODE -ne 0) { throw 'ReadyToUse bundle negative tests failed' }
+          python tools/package_ready_to_use_review.py --book $books[0].FullName --reader $readers[0].FullName --acceptance $acceptances[0].FullName --guide docs/user-guide.md --target Furusato_nouzei_ReadyToUse_REVIEW_HOLD.zip --evidence ready_to_use_review_hold.json --head-sha "${{ github.event.pull_request.head.sha || github.sha }}"
+          if ($LASTEXITCODE -ne 0) { throw 'ReadyToUse review ZIP failed exact acceptance/SHA check' }
+          $report = Get-Content -LiteralPath ready_to_use_review_hold.json -Raw -Encoding UTF8 | ConvertFrom-Json
+          $actual = (Get-FileHash -LiteralPath Furusato_nouzei_ReadyToUse_REVIEW_HOLD.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($report.release_decision -ne 'HOLD' -or
+              $report.package_class -ne 'SYNTHETIC_CI_REVIEW_ONLY' -or
+              $report.ready_to_use_review_sha256 -cne $actual) {
+            throw 'Review bundle must have exact hash and stay HOLD'
+          }
+          'ReadyToUse REVIEW ZIP assembled from exactly accepted same-run XLSM and reader; release=HOLD.' >> $env:GITHUB_STEP_SUMMARY
+      - name: Upload review-only ReadyToUse ZIP and anonymous SHA evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: Furusato_ReadyToUse_REVIEW_HOLD_${{ github.run_id }}
+          path: |
+            Furusato_nouzei_ReadyToUse_REVIEW_HOLD.zip
+            ready_to_use_review_hold.json
+          if-no-files-found: error
+          retention-days: 14

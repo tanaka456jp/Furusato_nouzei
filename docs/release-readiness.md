@@ -34,3 +34,10 @@
 `tools/verify_distribution_integrity.py` を追加。実際にWindowsで作成した **Python不要の検証ZIP** に対し、ZIP内の全6ファイルの構成・重複・パストラバーサル/シンボリックリンク・CRC・SHA256・展開サイズを検査し、ファイル名とSHA256だけの匿名メタデータを保存します。入力元ファイルは実行しません。 `--expected-sha256` を指定すると、事前に配布者が控えたZIPのSHA256との完全一致も要求できます。GitHub-hosted Windowsでは個人情報を含まない合成パッケージを用いて正常系と改ざん・欠落・重複ケースを自動検査します。
 
 Windowsジョブで `Get-AuthenticodeSignature` を使用して同梱の `FurusatoDocumentReader.exe` が信頼できる証明書で署名されているかを**別途**確認し、その結果を `distribution_signature_hold.json` に記録します。署名者の識別情報・秘密鍵・実顧客資料はGitHubへ送信しません。ZIPのハッシュ一致も署名の代用ではありません。配布ZIP本体の署名または外部署名・証明書の安全な管理・最終人手承認が完了するまで、CIが全ジョブSUCCESSでも `release_decision=HOLD` のままです。
+
+
+### セットアップ不要の「ReadyToUse」検証ZIPを合成成果物だけで組み立てる
+
+正式v4.18.2には `ReadyToUse.zip` があるため、次期版も同じ提供方式を維持します。 `ready_to_use_review` ジョブが、**同一GitHub Actions Run** の「PC① Excel/VBAUpdater/GAS受入済みXLSM」「Windows読取EXE」だけを取得し、XLSMのSHA256がExcel実機受入レポートと一致する場合に限り `Furusato_nouzei_ReadyToUse_REVIEW_HOLD.zip` を作成します。ZIP内には元バイトのXLSM、読取EXE、ユーザーガイド、`NOT_FOR_PUBLIC_RELEASE.txt` を含めます。検証用ZIPのSHA256・各EXE/XLSMのSHA256を匿名JSONに記録。再構築によるバイナリ内容改変をせず、古い別Run成果物を混ぜません。
+
+**このZIPは検証専用です。** コード署名・実税務・画面3条件・紙面印刷・live GAS・最終承認の代わりにはならず、正式Releaseや既存v4.18.2への上書きは行いません。テストには架空のバイト列だけを使い、実顧客書類はCIへ送信しません。
