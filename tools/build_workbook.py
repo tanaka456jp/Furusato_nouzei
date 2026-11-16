@@ -21,6 +21,7 @@ RESIDENT = "住民税再計算"
 DETAIL = "計算根拠"
 ADVANCED = "例外・分離課税"
 SPLIT_ALLOC = "分離課税寄附控除"
+MORTGAGE_RETURN = "住宅確申寄附検算"
 RELATIVES = "特定親族明細"
 RELATIVE_LAST_ROW = 33  # 30 separately attested relatives; first three use home D14:D16
 
@@ -63,6 +64,7 @@ def build(source, output):
     detail = book.create_sheet(DETAIL)
     extra = book.create_sheet(ADVANCED)
     split = book.create_sheet(SPLIT_ALLOC)
+    mortgage_filing = book.create_sheet(MORTGAGE_RETURN)
     extra.sheet_view.showGridLines = False
     extra.column_dimensions["A"].width = 42
     extra.column_dimensions["B"].width = 25
@@ -134,8 +136,6 @@ def build(source, output):
         f'N({ref(ADVANCED, "B28")})=0,'
         f'N({ref(ADVANCED, "B24")})=0,'
         f'N({ref(ADVANCED, "B27")})=0,'
-        f'N({ref(HOME, "B33")})=0,'
-        f'N({ref(HOME, "B34")})=0,'
         f'N({ref(INPUT, "B13")})=0)'
     )
     original["J44"] = (
@@ -168,7 +168,6 @@ def build(source, output):
         f'{ref("設定・税率", "B4")}<=2026,'
         f'N({ref(ADVANCED, "B24")})=0,'
         f'N({ref(ADVANCED, "B27")})=0,'
-        f'N({ref(HOME, "B34")})=0,'
         f'NOT(ISNUMBER({ref(INPUT, "B15")})),'
         f'NOT(ISNUMBER({ref(INPUT, "B16")})),'
         f'SUM({ref(ENGINE, "J51:J53")})=0)'
@@ -971,6 +970,109 @@ def build(source, output):
     set_candidate(50, "=200000")
     split["A51"] = "実税額軽減額の計算は、総合課税から先に所得控除し、超過分を分離課税に適用します。"
     split.freeze_panes = "E19"
+    # Independent taxable-income difference model for salary-only taxpayers
+    # filing a return with an independently verified housing credit. This is
+    # distinct from the one-stop model: the donation reduces national taxable
+    # income BEFORE the national housing credit is used. Housing transferred
+    # to resident tax must then be recalculated on the post-donation basis.
+    # No VBA event writes to this hidden, formula-only calculation surface.
+    mortgage_filing.sheet_view.showGridLines = False
+    mortgage_filing["A1"] = "確定申告・住宅ローン控除併用：寄附額別の実税負担差分（検証版）"
+    mortgage_fields = {
+        "B2": ("所得税課税所得（寄附前）",
+               f'=ROUNDDOWN(MAX(0,N({ref(ENGINE,"D15")})-N({ref(HOME,"B14")})),-3)'),
+        "B3": ("所得税額（寄附前・住宅控除前）",
+               f'={income_tax_progressive("B2")}'),
+        "B4": ("住宅控除後の所得税・復興税込（寄附前）",
+               '=ROUNDDOWN(MAX(0,B3-MIN(B3,B5))*1.021,0)'),
+        "B5": ("当年の住宅ローン控除可能額",
+               f'=MAX(0,N({ref(HOME,"B34")}))'),
+        "B6": ("住民税へ移す住宅ローン控除（寄附前）",
+               '=MIN(MAX(0,B5-MIN(B3,B5)),B9,'
+               'ROUNDDOWN(MAX(0,B2+B12)/1000,0)*B13)'),
+        "B7": ("調整控除後の住民税所得割",
+               f'=MAX(0,N({ref(RESIDENT,"B16")}))'),
+        "B8": ("住宅控除後の住民税（寄附前）",
+               '=MAX(0,B7-B6)'),
+        "B9": ("住宅ローン控除の住民税移行額上限",
+               f'=IF(AND({ref(HOME,"B35")}=2022,'
+               f'{ref(HOME,"D35")}="経過措置7%確認"),136500,97500)'),
+        "B10": ("特例分の20%法定上限（住宅控除前）",
+                f'=MAX(0,N({ref(RESIDENT,"B19")}))'),
+        "B11": ("寄附金住民税特例控除割合",
+                f'=MAX(0,N({ref(RESIDENT,"B22")}))'),
+        "B12": ("国税基礎控除差の住宅移行額加算",
+                f'=IF({ref(HOME,"B35")}<=2025,'
+                f'MAX(0,N({ref(ENGINE,"F15")})-480000),0)'),
+        "B13": ("住民税住宅移行上限の千円当たり額",
+                f'=IF(AND({ref(HOME,"B35")}=2022,'
+                f'{ref(HOME,"D35")}="経過措置7%確認"),70,50)'),
+        "B14": ("寄附額探索上限（千円単位）",
+                '=MAX(2,ROUNDDOWN(B16/1000,0))'),
+        "B15": ("所得税の寄附額40%上限",
+                f'=ROUNDDOWN(MAX(0,N({ref(ENGINE,"D15")}))*0.4,0)'),
+        "B16": ("住民税の寄附額30%上限",
+                f'=ROUNDDOWN(MAX(0,N({ref(ENGINE,"D15")}))*0.3,0)'),
+    }
+    for coordinate, (label, formula_value) in mortgage_fields.items():
+        mortgage_filing[f"A{mortgage_filing[coordinate].row}"] = label
+        mortgage_filing[coordinate] = formula_value
+    labels = (
+        "下限(k円)", "上限(k円)", "試行(k円)", "試行寄附額",
+        "寄附金所得控除額", "寄附後の所得税課税所得",
+        "寄附後の住宅控除前所得税", "寄附後の国税住宅控除使用額",
+        "住民税住宅控除移行額", "寄附後の所得税・復興税込",
+        "住民税寄附基本分", "住民税寄附特例分",
+        "寄附後の住民税残額", "寄附による税負担軽減合計",
+        "実質負担2千円以内", "実質自己負担額",
+    )
+    for col, caption in enumerate(labels, 2):
+        mortgage_filing.cell(18, col, caption)
+
+    def mortgage_candidate(row, amount_formula):
+        m = mortgage_filing
+        m[f"E{row}"] = amount_formula
+        m[f"F{row}"] = f'=MAX(0,MIN(E{row},$B$15)-2000)'
+        m[f"G{row}"] = f'=ROUNDDOWN(MAX(0,$B$2-F{row}),-3)'
+        m[f"H{row}"] = f'={income_tax_progressive(f"G{row}")}'
+        m[f"I{row}"] = f'=MIN($B$5,H{row})'
+        m[f"J{row}"] = (
+            f'=MIN(MAX(0,$B$5-I{row}),$B$9,'
+            f'ROUNDDOWN(MAX(0,G{row}+$B$12)/1000,0)*$B$13)')
+        m[f"K{row}"] = f'=ROUNDDOWN(MAX(0,H{row}-I{row})*1.021,0)'
+        m[f"L{row}"] = (
+            f'=ROUNDDOWN(MAX(0,MIN(E{row},$B$16)-2000)*0.1,0)')
+        m[f"M{row}"] = (
+            f'=MIN($B$10,ROUNDDOWN('
+            f'MAX(0,MIN(E{row},$B$16)-2000)*$B$11,0))')
+        m[f"N{row}"] = f'=MAX(0,$B$7-J{row}-L{row}-M{row})'
+        m[f"O{row}"] = f'=$B$4+$B$8-K{row}-N{row}'
+        m[f"P{row}"] = (
+            f'=IF(OR(E{row}<=2000,O{row}+1>=E{row}-2000),1,0)')
+        m[f"Q{row}"] = f'=MAX(0,E{row}-O{row})'
+
+    # Conservative 1,000-yen bisection: 24 iterations cover the validated
+    # salary-only resident 30% donation cap. The independent Python oracle
+    # instead scans safe-prefix amounts and checks monotonicity regressions.
+    for n in range(19, 43):
+        if n == 19:
+            mortgage_filing[f"B{n}"] = "=2"
+            mortgage_filing[f"C{n}"] = "=$B$14"
+        else:
+            mortgage_filing[f"B{n}"] = (
+                f'=IF(P{n-1}=1,D{n-1},B{n-1})')
+            mortgage_filing[f"C{n}"] = (
+                f'=IF(P{n-1}=1,C{n-1},MAX(B{n-1},D{n-1}-1))')
+        mortgage_filing[f"D{n}"] = f'=ROUNDUP((B{n}+C{n})/2,0)'
+        mortgage_candidate(n, f'=D{n}*1000')
+    mortgage_filing["A43"] = "最終合格寄附額（千円単位）"
+    mortgage_filing["B43"] = '=IF(P42=1,D42,B42)'
+    mortgage_filing["A46"] = "確定申告・住宅控除後の寄附上限参照値"
+    mortgage_filing["B46"] = (
+        '=IF(OR(B7<=0,B10<=0,B16<2000),0,MAX(0,B43*1000))')
+    mortgage_filing["A50"] = "単一寄附額の検証用"
+    mortgage_candidate(50, "=109000")
+    mortgage_filing.freeze_panes = "E19"
     # No redundant one-stop attestation input.
     bracket_limits = "{0,1951000,3301000,6951000,9001000,18001000,40001000}"
     bracket_rates = "{0.05,0.1,0.2,0.23,0.33,0.4,0.45}"
@@ -997,6 +1099,15 @@ def build(source, output):
     unhandled_ordinary_credits = 'OR(' + ','.join(f'D{row}<>0' for row in range(72, 78)) + ')'
     projection = 'AND(IFERROR(1*B11,0)=2025,D4=2026)'
     projected_source_mortgage = f'OR(N({ref(ADVANCED,"B43")})>0,N({ref(ADVANCED,"B44")})>0)'
+    filing_housing = 'AND(D24="確定申告",N(B34)>0)'
+    housing_unverified = (
+        f'OR(D25<>"",N({ref(ADVANCED,"B28")})>0,'
+        f'N({ref(ADVANCED,"B24")})>0,'
+        f'N({ref(ADVANCED,"B27")})>0,'
+        f'N({ref(INPUT,"B13")})>0,'
+        f'N(B33)<>MIN(N(B34),N({ref(MORTGAGE_RETURN,"B3")})),'
+        f'N({ref(MORTGAGE_RETURN,"B2")})<=0)'
+    )
     status = [
         ('B44<>"給与・通常"', "詳細設定の55行目以降で状態と試算額を確認してください。"),
         (unhandled_ordinary_credits,
@@ -1005,6 +1116,8 @@ def build(source, output):
          "SAFE-TAX-033 要確認。住宅ローン控除の入居初年度は確定申告が必要です。ワンストップ特例では計算できません。"),
         (f'AND(D24="ワンストップ",N({rate})>0.33)',
          "SAFE-TAX-034 要確認。高所得者の申告特例控除割合は個別の税額照合が必要です。"),
+        (f'AND({filing_housing},{housing_unverified})',
+         "SAFE-TAX-035 要確認。確定申告と住宅ローン控除の併用は、国税の適用額、他所得、その他の税額控除を個別に照合してください。"),
         ('AND(ISNUMBER(B33),B33>0,OR(NOT(ISNUMBER(B34)),B34<B33))',
          "SAFE-TAX-027 要確認。住宅ローン控除の所得税適用額があるため、控除可能額（G36）を確認してください。"),
         ('AND(N(B34)>0,' + housing_2022_unknown + ')',
@@ -1064,13 +1177,13 @@ def build(source, output):
         (unsupported, "警告：入力内容から個別照合が必要と判定しました"),
         (f'AND(N({ref(ADVANCED,"B24")})>0,N(B34)>0)',
          "警告：分離課税と住宅ローン控除の併用は税額控除の再配分検証が必要です"),
-        (f'AND(D24<>"ワンストップ",N(B34)>0,ISNUMBER(B38),B38>0,{remaining_levy}<{donation_resident})',
+        (f'AND(N({ref(ADVANCED,"B24")})>0,N(B34)>0,ISNUMBER(B38),B38>0,{remaining_levy}<{donation_resident})',
          "警告：住宅ローン控除後の住民税枠が不足するため、寄附限度額を個別に照合してください"),
         (f'OR(COUNTIF({ref("整合性チェック","B4:B12")},"OK")<>9,{ref("自動回帰テスト","B49")}<>"PASS")',
          "エラー：税制マスタまたは内蔵検証に異常があります"),
         (f'OR(NOT(ISNUMBER({ref(RESIDENT,"B24")})),NOT(ISNUMBER({ref(RESIDENT,"B25")})))',
          "エラー：住民税または寄附額を算定できません"),
-        (f'AND(D24="確定申告",N({ref(ADVANCED,"B24")})=0,OR({taxable}<=0,'
+        (f'AND(D24="確定申告",N(B34)<=0,N({ref(ADVANCED,"B24")})=0,OR({taxable}<=0,'
          f'ABS({ref(RESIDENT,"B20")}-{taxable})>{settings_b10},'
          f'{rate}<>LOOKUP({taxable},{bracket_limits},{bracket_rates}),'
          f'MAX(0,{candidate}-{settings_b8})>{taxable}-LOOKUP({taxable},{bracket_limits},{previous_bracket_max})))',
@@ -1099,9 +1212,11 @@ def build(source, output):
     )
     resident["B26"] = (f'=IFERROR(IF({ref(HOME,"B28")}="正常",'
                        f'IF(N({ref(ADVANCED,"B24")})>0,{ref(SPLIT_ALLOC,"B46")},'
+                       f'IF(AND({ref(HOME,"D24")}="確定申告",'
+                       f'N({ref(HOME,"B34")})>0),{ref(MORTGAGE_RETURN,"B46")},'
                        f'IF(AND({ref(HOME,"D24")}="ワンストップ",'
-                       f'N({ref(HOME,"B34")})>0),{one_stop_housing_limit},{prior})),'
-                       f'""),"")')
+                       f'N({ref(HOME,"B34")})>0),{one_stop_housing_limit},'
+                       f'{prior}))),""),"")')
     bar(detail, 1, "ふるさと納税｜計算根拠")
     note(detail, 2, "=" + ref(HOME, "B28"))
     note(detail, 3, f'="所得年 "&{ref(HOME,"D4")}&" ｜ 住民税課税年度 "&{ref(HOME,"D5")}&" ｜ 税制版 "&{ref(HOME,"B29")}')
