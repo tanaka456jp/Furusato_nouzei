@@ -5,15 +5,16 @@ figures and separately confirmed family/filing facts are required. The
 calculation uses independently maintained Fraction-based statutory oracles,
 NOT formulas imported from the distributed workbook.
 
-This strict v1 covers cases without life/earthquake or other additional
-deductions, income adjustments, mortgage or other tax credits. More complex
-salary-only cases are NOT COMPARABLE until separately modelled/reviewed.
+This strict v2 supports independently confirmed life/earthquake insurance
+premiums when the optional `insurance` record is supplied. Income adjustments,
+mortgage and other tax credits remain NOT COMPARABLE. No real identifiers.
 """
 import argparse
 import json
 from pathlib import Path
 
 from audit_withholding_reconciliation import reconcile
+from audit_insurance_deductions import calculate_insurance
 from audit_salary_donation_limit import (
     independent_salary_ceiling,
     verified_family_deductions,
@@ -51,7 +52,7 @@ def compare_case(case):
     """Return categorical findings only. Do not expose tax values or IDs."""
     def hold(reason):
         return {"status": "NOT_COMPARABLE", "reason": reason}
-    if not isinstance(case, dict) or set(case) != set(ROOT_KEYS):
+    if not isinstance(case, dict) or set(case) not in (set(ROOT_KEYS), set(ROOT_KEYS) | {"insurance"}):
         return hold("UNEXPECTED_CASE_FIELDS")
     year = case["year"]
     if type(year) is not int or year not in (2025, 2026):
@@ -95,19 +96,26 @@ def compare_case(case):
         if conf.get("nta_fifth_table_rechecked") is not True:
             return hold("SOURCE_SALARY_TABLE_REVIEW_REQUIRED")
     try:
+        ins = (calculate_insurance(year=year, record=case["insurance"])
+               if "insurance" in case else
+               {"national_life": 0, "resident_life": 0,
+                "national_earthquake": 0, "resident_earthquake": 0})
         deductions = verified_family_deductions(
             year=year, salary_income=income,
             social_insurance=source["social_insurance"], **family)
         if deductions["resident_income_levy_exempt"]:
             return hold("RESIDENT_INCOME_LEVY_EXEMPT")
-        if deductions["national_deductions"] != source["deductions_reference"]:
+        if (deductions["national_deductions"] + ins["national_life"]
+                + ins["national_earthquake"] != source["deductions_reference"]):
             return hold("SOURCE_DEDUCTIONS_INCLUDE_UNMODELLED_CREDITS_OR_DEDUCTIONS")
         source_check = reconcile(year, source)
         if source_check["source_tax"] != "MATCH":
             return hold("SOURCE_YEAR_END_TAX_NOT_RECONCILED")
         independent = independent_salary_ceiling(
             year=year, salary_income=income,
-            resident_deductions=deductions["resident_deductions"],
+            resident_deductions=(deductions["resident_deductions"]
+                                 + ins["resident_life"]
+                                 + ins["resident_earthquake"]),
             personal_difference=deductions["personal_difference"],
             municipality=case["municipality"])
     except (ValueError, KeyError, StopIteration, TypeError):
