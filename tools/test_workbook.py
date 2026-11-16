@@ -22,6 +22,25 @@ class WorkbookTest(unittest.TestCase):
         cls.baseline = load_workbook(cls.source)
         cls.book = load_workbook(cls.target)
 
+    def test_2026_verified_under23_life_formula_and_existing_year_preservation(self):
+        general = self.book[ENGINE]["F19"].value
+        original = self.baseline[ENGINE]["F19"].value
+        self.assertIsInstance(original, str)
+        self.assertTrue(original.startswith("="))
+        self.assertTrue(general.startswith("=IF(AND("))
+        self.assertIn("'設定・税率'!B4=2026", general)
+        self.assertIn("'操作画面'!B25=\\"あり\\"", general)
+        self.assertIn("'操作画面'!B19", general)
+        self.assertIn("'操作画面'!B20", general)
+        self.assertIn("ROUNDUP(", general)
+        self.assertIn(">60000,MAX(", general)
+        self.assertIn("MIN(60000,", general)
+        self.assertTrue(general.endswith("," + original[1:] + ")"))
+        self.assertLess(len(general), 8192)
+        # Original aggregate cap (120k) must remain intact.
+        self.assertEqual(self.book[ENGINE]["F24"].value,
+                         self.baseline[ENGINE]["F24"].value)
+
     def test_thirty_relative_individual_tax_and_resident_wiring(self):
         rel = self.book["特定親族明細"]
         home = self.book[HOME]
