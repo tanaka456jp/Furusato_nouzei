@@ -121,6 +121,25 @@ class ReleaseReadinessTest(unittest.TestCase):
         self.assertIn("住民税決定通知書は不要", windows)
         self.assertIn("住宅ローン控除", windows)
 
+    def test_signed_distribution_requires_trusted_local_certificate_and_hash(self):
+        from pathlib import Path
+        root = Path(__file__).resolve().parents[1]
+        script = (root / "tools/verify_signed_release_local.ps1").read_text(
+            encoding="utf-8-sig")
+        for evidence in ("Get-AuthenticodeSignature",
+                         "ExpectedPackageSha256",
+                         "ExpectedSignerThumbprint",
+                         "READER_EXE_AUTHENTICODE_NOT_TRUSTED",
+                         "SIGNER_CERTIFICATE_MISMATCH",
+                         "REVIEW_ONLY_ZIP_CANNOT_BE_RELEASED",
+                         "INDEPENDENT_PACKAGE_SHA256_MISMATCH",
+                         "manual_publisher_approval = 'REQUIRED'",
+                         "release_decision = 'HOLD'"):
+            self.assertIn(evidence, script)
+        self.assertNotIn("New-SelfSignedCertificate", script)
+        self.assertNotIn("SignTool sign", script)
+        self.assertNotIn("Set-AuthenticodeSignature", script)
+
     def test_no_evidence_always_hold(self):
         report = evaluate(HEAD)
         self.assertEqual(report["release_decision"], "HOLD")
