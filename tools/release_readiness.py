@@ -4,10 +4,10 @@ import json
 import re
 from pathlib import Path
 
-SCHEMA = "furusato-release-readiness/v1"
+SCHEMA = "furusato-release-readiness/v2"
 REQUIRED = (
     "ci_exact_commit",
-    "real_tax_and_resident_notice_reconciliation",
+    "salary_only_independent_withholding_reconciliation",
     "screen_1920x1080_100pct",
     "screen_1920x1080_125pct",
     "screen_1366x768_150pct",
@@ -21,7 +21,7 @@ REQUIRED = (
 # These are metadata checks only; a claimed role is not identity verification.
 REVIEWER_ROLES = {
     "ci_exact_commit": ("qa_operator", "release_operator"),
-    "real_tax_and_resident_notice_reconciliation": ("tax_professional", "external_reviewer"),
+    "salary_only_independent_withholding_reconciliation": ("tax_professional", "external_reviewer"),
     "screen_1920x1080_100pct": ("qa_operator", "external_reviewer"),
     "screen_1920x1080_125pct": ("qa_operator", "external_reviewer"),
     "screen_1366x768_150pct": ("qa_operator", "external_reviewer"),
@@ -81,7 +81,7 @@ def evaluate(head_sha, manifest=None):
                          else "EVIDENCE_INCOMPLETE"),
         "checks": states,
         "blockers": sorted(set(blockers)),
-        "note": "Metadata or green CI alone cannot prove tax results, physical display, physical printing, live GAS, or code signing.",
+        "note": "A year-end-adjusted salary-only withholding slip can support an independently calculated donation ceiling without a resident-tax notice. Evidence of source-year tax, verified conditions, current Excel comparison, physical display/printing, live GAS and code signing remains necessary.",
     }
 
 

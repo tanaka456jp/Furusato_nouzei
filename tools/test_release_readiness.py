@@ -29,6 +29,21 @@ class ReleaseReadinessTest(unittest.TestCase):
         self.assertIn("if ($display.display_mode_observed -and", src)
         self.assertNotIn('scenario_approved = $measured', src)
 
+
+    def test_resident_notice_is_never_a_required_gate(self):
+        self.assertNotIn("real_tax_and_resident_notice_reconciliation",REQUIRED)
+        self.assertIn("salary_only_independent_withholding_reconciliation",REQUIRED)
+        self.assertEqual(SCHEMA, "furusato-release-readiness/v2")
+        old_manifest={"schema":"furusato-release-readiness/v1",
+                      "head_sha":HEAD,
+                      "checks":{"real_tax_and_resident_notice_reconciliation":{
+                          "status":"REVIEWED","sha256":"f"*64,
+                          "reviewer_role":"tax_professional","head_sha":HEAD}}}
+        old=evaluate(HEAD,old_manifest)
+        self.assertEqual(old["release_decision"],"HOLD")
+        self.assertIn("SCHEMA_MISSING_OR_UNSUPPORTED",old["blockers"])
+        self.assertIn("UNKNOWN_CHECK_KEYS",old["blockers"])
+
     def test_no_evidence_always_hold(self):
         report = evaluate(HEAD)
         self.assertEqual(report["release_decision"], "HOLD")
@@ -51,9 +66,9 @@ class ReleaseReadinessTest(unittest.TestCase):
         entry = {"status": "REVIEWED", "sha256": "f" * 64,
                  "reviewer_role": "release_operator", "head_sha": HEAD}
         report = evaluate(HEAD, {"schema": SCHEMA, "head_sha": HEAD,
-                                 "checks": {"real_tax_and_resident_notice_reconciliation": entry}})
-        self.assertEqual(report["checks"]["real_tax_and_resident_notice_reconciliation"], "INVALID")
-        self.assertIn("INVALID_REAL_TAX_AND_RESIDENT_NOTICE_RECONCILIATION", report["blockers"])
+                                 "checks": {"salary_only_independent_withholding_reconciliation": entry}})
+        self.assertEqual(report["checks"]["salary_only_independent_withholding_reconciliation"], "INVALID")
+        self.assertIn("INVALID_SALARY_ONLY_INDEPENDENT_WITHHOLDING_RECONCILIATION", report["blockers"])
         self.assertEqual(report["release_decision"], "HOLD")
 
     def test_each_gate_accepts_only_its_authorized_role(self):
