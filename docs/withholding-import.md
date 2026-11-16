@@ -133,7 +133,7 @@ GitHub・CI・外部サーバーへ送信しません。
 戻り値の `scope=SYNTHETIC_ONLY` と `donation_limit=NOT_VERIFIED`
 は常に保持します。配偶者・扶養、住民税非課税、住宅ローン控除、
 医療費控除、分離課税やその他税額控除等の未検証実案件へ転用してはなりません。
-住民税通知書や自治体の課税処理・端数差を含む実原票の限度額照合は別途必要です。
+住民税決定通知書を用いた照合は要求しません。年末調整済みの給与所得のみで条件を個別確認できるケースでは、源泉徴収票の同年分G04/G05/G06/G08から所得税・住民税所得割・寄附限度額を独立に再計算し、Excelの限度額と照合します（詳細は docs/salary-only-withholding-independent-audit.md）。その他所得や所得控除・住宅ローン控除等、当年の条件が不足する場合は推測せず個別確認が必要です。
 
 参考：国税庁 No.1155
 https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1155.htm
