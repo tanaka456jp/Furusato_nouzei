@@ -464,6 +464,22 @@ class WorkbookTest(unittest.TestCase):
         self.assertIn('ResetSeparateInputs ThisWorkbook.Worksheets("操作画面")', source)
         self.assertTrue(self.book[HOME]["B38"].protection.locked)
 
+    def test_one_stop_housing_uses_available_resident_levy_without_hold(self):
+        result = self.book[RESIDENT]["B26"].value
+        verdict = self.book[HOME]["B28"].value
+        self.assertIn('D24="ワンストップ"', result)
+        self.assertIn("'操作画面'!B34", result)
+        self.assertIn("'操作画面'!B38", result)
+        self.assertIn("'住民税再計算'!B16", result)
+        self.assertIn("ROUNDDOWN((", result)
+        self.assertIn("+2000)/1000,0)*1000", result)
+        self.assertIn("MIN(", result)
+        self.assertIn('D24<>"ワンストップ",N(B34)>0,ISNUMBER(B38)', verdict)
+        # The nominal 20% cap is not replaced with a post-housing levy:
+        # capacity is tested only at final display, after the statutory cap.
+        self.assertNotIn("'操作画面'!B38", self.book[RESIDENT]["B19"].value)
+        self.assertLess(len(result), 8192)
+
     def test_separate_credit_grid_cannot_leak_into_ordinary_estimate(self):
         formula = self.book[HOME]["B28"].value
         self.assertIn("SAFE-TAX-026", formula)
