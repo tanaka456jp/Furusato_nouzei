@@ -95,11 +95,38 @@ class IndependentInsuranceDeductionTest(unittest.TestCase):
         self.assertEqual(r["resident_life"], 70_000)
         old_only = calculate_insurance(year=2026, record=insurance(
             new_life=30_000, old_life=100_000,
+            life_reference=50_000,
+            no_2026_under23_life_exception_confirmed=False,
+            verified_2026_under23_dependent=True))
+        self.assertEqual(old_only["national_life"], 50_000)
+        self.assertEqual(old_only["resident_life"], 35_000)
+
+    def test_2026_old_premium_sixty_thousand_transition_no_illegal_sum(self):
+        # Under the special 60k combined cap, old premiums at 60k may
+        # combine; over 60k, the NTA No.1140 combined option is unavailable.
+        for old_paid, expected_national, expected_resident in (
+            (59_999, 60_000, 32_500),
+            (60_000, 60_000, 32_500),
+            (60_001, 40_001, 32_501),
+            (100_000, 50_000, 35_000),
+        ):
+            with self.subTest(old_paid=old_paid):
+                r = calculate_insurance(year=2026, record=insurance(
+                    old_life=old_paid, new_life=30_000,
+                    life_reference=expected_national,
+                    no_2026_under23_life_exception_confirmed=False,
+                    verified_2026_under23_dependent=True))
+                self.assertEqual(r["national_life"], expected_national)
+                self.assertEqual(r["resident_life"], expected_resident)
+
+    def test_2026_new_only_can_outperform_old_only(self):
+        result = calculate_insurance(year=2026, record=insurance(
+            old_life=100_000, new_life=120_000,
             life_reference=60_000,
             no_2026_under23_life_exception_confirmed=False,
             verified_2026_under23_dependent=True))
-        self.assertEqual(old_only["national_life"], 60_000)
-        self.assertEqual(old_only["resident_life"], 35_000)
+        self.assertEqual(result["national_life"], 60_000)
+        self.assertEqual(result["resident_life"], 35_000)
 
     def test_under23_eligibility_unknown_or_contradictory_is_hold(self):
         for changes in (
