@@ -74,7 +74,7 @@ python tools/reconcile_salary_only_from_slip.py --input private_cases.json --sum
 `tools/audit_insurance_deductions.py` は税制マスタのExcel数式を呼ばず、独立に保険料控除を計算します。保険料控除額の原票欄だけから**支払保険料を逆算してはいけません**。各契約の控除証明書等に記載された実際の支払額を別に確認した上で、源泉票G27・G28と国税上の控除額を照合します。住民税に適用する額は**所得税用の額を流用せず**、住民税の別表で算出します。
 
 - 必須：`insurance`の７種類の支払額は`new_life, old_life, care, new_pension, old_pension, earthquake, old_long`（円、該当なしは0）。`life_reference`と`earthquake_reference`には原票に記載の**所得税控除額**を入力します。旧長期と地震保険が重複計上されないことを確認し、`distinct_earthquake_contracts_confirmed=true`とします。
-- 2026年：23歳未満扶養親族を有する場合の**新生命保険料控除上乗せ**について、適用なしが確認できた場合に限り`no_2026_under23_life_exception_confirmed=true`とできます。適用可能性が残る場合にはfalseとして**NOT_COMPARABLE**にします。令和8年新制度の上乗せ計算自体は未対応です。
+- 2026年：23歳未満の扶養親族が**いない**ことを確認した場合は従来どおり`no_2026_under23_life_exception_confirmed=true`とします。23歳未満の扶養親族が**いる**ことを別途確認した場合は、`no_2026_under23_life_exception_confirmed=false`かつ任意追加の`verified_2026_under23_dependent=true`を指定して、所得税の新生命保険料控除の特例（上限6万円、支払額3万／6万／12万円の境界）を計算します。`family`に`under16`、`general`又は`special`が少なくとも1人必要で、`general`の場合は年齢の別途確認が必須です。住民税の新生命保険料控除上限2万8千円は変更しません。該当有無が未確認・確認情報が矛盾する場合は**NOT_COMPARABLE**です。2025年分にこの2026年特例キーを設定した場合も照合対象外にします。
 - G06には既存の社会保険料・基礎控除等に、**独立計算した所得税用の生命・地震保険料控除**を足した値を照合。住民税所得割の計算には**住民税用の生命・地震保険料控除**を加えます。未入力や不一致はNOT_COMPARABLE。
 - 源泉徴収票の他所得、複数給与の未確定合算、住宅ローン控除、所得金額調整控除、住民税独自の特殊控除は従来どおりHOLD。保険控除の追加だけで全税制の実証とはしません。
 
@@ -99,3 +99,28 @@ python tools/reconcile_salary_only_from_slip.py --input private_cases.json --sum
 この例は控除証明書を照合した**実在納税者の記録ではありません**。合成テストの一部として税制式・分岐を確認するもので、実原票からの正式版合格を証明しません。原票・住所・氏名・納税者番号・実額をGitHub、Actions、PRコメント、コミットに載せないでください。
 
 根拠：[国税庁No.1140（生命保険料控除）](https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1140.htm)、[京都市（住民税の所得控除）](https://www.city.kyoto.lg.jp/gyozai/page/0000028135.html)、[京都市令和8年度市税のしおり](https://www.city.kyoto.lg.jp/gyozai/cmsfiles/contents/0000125/125883/99_R8shizei_no_shiori%28zentai%29.pdf)。適用年に応じた法令確認は引き続き必須です。
+
+### 令和8年特例の合成確認ケース（実原票ではない）
+
+給与収入700万円・給与所得520万円・社会保険料100万円、16歳未満の確認済扶養親族1人、新生命保険料支払額12万円の**2026年合成例**です。基本例のyearを2026にし、`family.under16=1`、`source.deductions_reference=1730000`、`source.income_tax_withheld=272000`、`workbook.resident_income_levy=371600`、`workbook.donation_limit=108000`としたうえで次の`insurance`を追加します。
+
+```json
+"insurance": {
+  "new_life": 120000,
+  "old_life": 0,
+  "care": 0,
+  "new_pension": 0,
+  "old_pension": 0,
+  "earthquake": 0,
+  "old_long": 0,
+  "life_reference": 60000,
+  "earthquake_reference": 0,
+  "distinct_earthquake_contracts_confirmed": true,
+  "no_2026_under23_life_exception_confirmed": false,
+  "verified_2026_under23_dependent": true
+}
+```
+
+この計算では所得税の一般生命保険料控除は6万円ですが、住民税の同控除は2万8千円で据え置きます。一般生命保険料の旧新双方がある場合には所得税側6万円までの合算選択、住民税側の従来の旧新選択を独立判定します。2026年特例の適格性は本人の証明・家族の年齢と所得等の確認が前提で、原票の表面だけから推定しません。2026年分が未確定である間は令和7年の実票を令和8年に読み替えて`MATCH_REFERENCE`にしません。
+
+公式出典：[国税庁 令和8年分 年末調整のあらまし](https://www.nta.go.jp/publication/pamph/gensen/aramashi2026/pdf/04.pdf)、[財務省 令和7年度税制改正の解説](https://www.mof.go.jp/tax_policy/tax_reform/outline/fy2025/explanation/PDF/p0137-0264.pdf)（192頁以下）。
