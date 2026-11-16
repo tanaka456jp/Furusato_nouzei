@@ -599,6 +599,51 @@ try {
         }
         Assert-Value $homeSheet.Range('B14').Value2 $(if ($year -eq 2025) { 1630000 } else { 1670000 }) "$year computed total deductions"
         Assert-Value $homeSheet.Range('B8').Value2 109000 "$year donation estimate"
+        # Compare the REAL Excel COM result against an independent
+        # year-end salary-only statutory Python oracle, not a copied
+        # workbook formula or a resident-tax decision notice.
+        $confirmed = @{}
+        foreach($condition in @('year_end_adjusted','one_salary_source',
+            'no_other_income','no_unmodelled_deductions','no_tax_credits',
+            'no_salary_income_adjustment','nta_fifth_table_rechecked',
+            'family_eligibility_confirmed','resident_municipality_confirmed',
+            'donation_filing_method_confirmed','no_post_adjustment_changes')) {
+            $confirmed[$condition] = $true
+        }
+        $syntheticSlip = [ordered]@{
+            year = [int]$year
+            confirmations = $confirmed
+            family = @{
+                spouse='none'; general=0; special=0; elderly=0
+                cohabiting_elderly=0; under16=0
+            }
+            source = @{
+                salary_gross=7000000; salary_reference=5200000
+                deductions_reference=$(if ($year -eq 2025) {1630000} else {1670000})
+                income_tax_withheld=$(if ($year -eq 2025) {292500} else {284300})
+                social_insurance=1000000
+            }
+            workbook = @{
+                year=[int]$year
+                donation_limit=[int][double]$homeSheet.Range('B8').Value2
+                resident_income_levy=[int][double]$homeSheet.Range('D8').Value2
+            }
+            municipality='designated'
+        }
+        $tempOracleInput = Join-Path $env:RUNNER_TEMP ('furusato_independent_salary_only_'+$year+'_'+[guid]::NewGuid().ToString('N')+'.json')
+        try {
+            $caseJson = ConvertTo-Json -InputObject @($syntheticSlip) -Depth 10
+            [IO.File]::WriteAllText($tempOracleInput,$caseJson,[Text.UTF8Encoding]::new($false))
+            & python .\tools\reconcile_salary_only_from_slip.py --input $tempOracleInput --min-cases 1
+            if ($LASTEXITCODE -ne 0) {
+                throw ('Independent salary-only statutory reconciliation differs from Excel COM in year '+$year)
+            }
+        } finally {
+            if (Test-Path -LiteralPath $tempOracleInput) {
+                Remove-Item -LiteralPath $tempOracleInput -Force
+            }
+        }
+        QA-Stage ('salary-only-withholding-independent-compare-'+$year+'-pass')
     }
     QA-Stage 'synthetic-years-pass'
     # NTA No.1411 rounds the >8.5m child-related income adjustment
