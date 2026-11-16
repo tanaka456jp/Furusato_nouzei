@@ -115,6 +115,15 @@ class PriorYearProjectionTest(unittest.TestCase):
                 self.assertEqual(
                     compare_projection(c)["status"], "NOT_COMPARABLE")
 
+    def test_under23_flag_without_verified_family_is_hold(self):
+        case = make_case(True)
+        case["family"]["under16"] = 0
+        case["workbook"]["resident_taxable_income"] = 3_742_000
+        verdict = compare_projection(case)
+        self.assertEqual(verdict["status"], "NOT_COMPARABLE")
+        self.assertEqual(verdict["reason"],
+                         "UNDER23_DEPENDENT_NOT_IN_TARGET_FAMILY")
+
     def test_source_year_is_not_current_year_evidence(self):
         c = make_case(False)
         c["workbook"]["resident_taxable_income"] = 3_711_000
