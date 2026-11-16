@@ -46,6 +46,7 @@ jobs:
           python tools/test_collect_local_release_evidence.py
           python tools/test_release_display_matrix.py
           python tools/test_release_readiness.py
+          python tools/test_signed_release_negative.py
           python tools/test_distribution_integrity.py
           python tools/test_package_ready_to_use_review.py
           python tools/release_readiness.py --head "${{ github.event.pull_request.head.sha || github.sha }}" --output release_readiness_hold.json
