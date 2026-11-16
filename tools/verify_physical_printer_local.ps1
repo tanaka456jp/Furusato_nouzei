@@ -47,6 +47,16 @@ if ($printer.WorkOffline -or [string]$printer.PortName -match '(?i)^(?:FILE:|POR
     [string]$printer.DriverName -match '(?i)pdf|xps|fax|one.?note|virtual|document.writer') {
     throw 'PHYSICAL_PRINTER_NOT_VERIFIED'
 }
+function Assert-ExplicitActivePrinter {
+    param([string]$Actual,[string]$Expected)
+    if (-not $Actual.StartsWith($Expected,[StringComparison]::OrdinalIgnoreCase)) {
+        throw 'EXCEL_ACTIVE_PRINTER_DOES_NOT_MATCH_EXPLICIT_SELECTION'
+    }
+    $suffix = $Actual.Substring($Expected.Length)
+    if ($suffix -ne '' -and $suffix -notmatch '^\s+(?:on|で)\s+') {
+        throw 'EXCEL_ACTIVE_PRINTER_DOES_NOT_MATCH_EXPLICIT_SELECTION'
+    }
+}
 $original = $sha
 $excel = $null
 $book = $null
@@ -74,16 +84,12 @@ try {
     $sheet.PageSetup.Orientation = 1 # xlPortrait
     # Excel's ActivePrinter may include a localized port suffix (NeXX:).
     # Refuse to fall back to any other default printer.
-    if ([string]$excel.ActivePrinter -notlike ('*'+$PrinterName+'*')) {
-        throw 'EXCEL_ACTIVE_PRINTER_DOES_NOT_MATCH_EXPLICIT_SELECTION'
-    }
+    Assert-ExplicitActivePrinter -Actual ([string]$excel.ActivePrinter) -Expected $PrinterName
     # PrintPreview is interactive and blocks until the operator closes it.
     # The operator must visually inspect the page, then CLOSE (not Print).
     $previewWasInvoked = $true
     [void]$sheet.PrintPreview()
-    if ([string]$excel.ActivePrinter -notlike ('*'+$PrinterName+'*')) {
-        throw 'PRINTER_CHANGED_DURING_PREVIEW'
-    }
+    Assert-ExplicitActivePrinter -Actual ([string]$excel.ActivePrinter) -Expected $PrinterName
     # One print command, one page, one copy, specified active printer only.
     [void]$sheet.PrintOut(1,1,1,$false)
     $printWasSubmitted = $true
