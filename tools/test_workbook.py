@@ -428,6 +428,9 @@ class WorkbookTest(unittest.TestCase):
         self.assertNotIn("B13-B14", mortgage)
         self.assertIn("SAFE-TAX-028", formula)
         self.assertIn("SAFE-TAX-029", formula)
+        self.assertIn("SAFE-TAX-033", formula)
+        self.assertIn("SAFE-TAX-034", formula)
+        self.assertIn('D24="ワンストップ",N(B34)>0,ISNUMBER(B35),B35=D4',formula)
         # Exercise both 2022 statutory resident-credit ceilings with
         # real Excel evaluation, including zero residual income-tax use.
         real_qa = (ROOT / "tools/verify_excel.ps1").read_text(encoding="utf-8-sig")
