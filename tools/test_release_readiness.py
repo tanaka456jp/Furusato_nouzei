@@ -142,6 +142,33 @@ class ReleaseReadinessTest(unittest.TestCase):
         self.assertNotIn("SignTool sign", script)
         self.assertNotIn("Set-AuthenticodeSignature", script)
 
+    def test_physical_printer_local_acceptance_requires_real_printer_and_explicit_consent(self):
+        from pathlib import Path
+        root = Path(__file__).resolve().parents[1]
+        source = (root / "tools/verify_physical_printer_local.ps1").read_text(
+            encoding="utf-8-sig")
+        for token in (
+            "SyntheticDataReviewed", "AllowOnePagePrint",
+            "EXPLICIT_SYNTHETIC_DATA_AND_PHYSICAL_PRINT_CONSENT_REQUIRED",
+            "REVIEWED_SYNTHETIC_WORKBOOK_HASH_MISMATCH",
+            "Get-CimInstance -ClassName Win32_Printer",
+            "PHYSICAL_PRINTER_NOT_VERIFIED",
+            "Assert-ExplicitActivePrinter",
+            "EXCEL_ACTIVE_PRINTER_DOES_NOT_MATCH_EXPLICIT_SELECTION",
+            "AutomationSecurity = 3", "PrintPreview()",
+            "PrintOut(1,1,1,$false)", "paper_physically_observed = $false",
+            "paper_readability_reviewed = $false",
+            "release_decision = 'HOLD'",
+        ):
+            with self.subTest(token=token):
+                self.assertIn(token, source)
+        self.assertNotIn("-notlike ('*'+$PrinterName+'*')", source)
+        self.assertNotIn("Get-Printer | Select-Object -First 1", source)
+        self.assertNotIn("PrintOut(1,0", source)
+        docs = (root / "docs/release-acceptance-one-pass.md").read_text(encoding="utf-8-sig")
+        self.assertIn("verify_physical_printer_local.ps1", docs)
+        self.assertIn("AllowOnePagePrint", docs)
+
     def test_no_evidence_always_hold(self):
         report = evaluate(HEAD)
         self.assertEqual(report["release_decision"], "HOLD")
