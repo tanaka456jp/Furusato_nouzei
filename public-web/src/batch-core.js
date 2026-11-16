@@ -161,10 +161,19 @@
     row.reason="計算条件または税額整合性の不一致";
     return row;
    }
-   row.status=row.sourceYear<row.year?"前年参考概算":"概算";
+   // Commit the displayed amount atomically: malformed calculation details
+   // must never leave a previously assigned donation limit visible.
+   const calc=result&&result.calculation;
+   const basic=calc?.basicIncomeTaxDeductionYen;
+   const social=calc?.socialInsuranceYen;
+   if(!safeAmount(result?.donationLimitYen)||!safeAmount(basic)||
+      !safeAmount(social)||!safeAmount(basic+social)){
+    row.reason="計算内訳の整合性を確認できません";
+    return row;
+   }
+   row.appliedDeductionsYen=basic+social;
    row.donationLimitYen=result.donationLimitYen;
-   row.appliedDeductionsYen=result.calculation.basicIncomeTaxDeductionYen+
-     result.calculation.socialInsuranceYen;
+   row.status=row.sourceYear<row.year?"前年参考概算":"概算";
    row.reason=(row.deductionsOverrideActive
     ?"⚠ 所得控除合計は手入力上書き中・他の入力変更に自動追随しません。":"")+
     (row.sourceYear<row.year
