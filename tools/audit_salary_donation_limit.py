@@ -242,6 +242,11 @@ def independent_family_mortgage_case(*, year, salary_income, social_insurance,
         resident_deductions=values["resident_deductions"],
         personal_difference=values["personal_difference"],
         municipality=municipality)
+    # The high-income one-stop additional credit uses a statutory 33%
+    # reference even when the national marginal rate is 40% or 45%; the
+    # ordinary 100% replacement model is not valid at those brackets.
+    if limit["special_ratio"] < Fraction(56307, 100000):
+        raise ValueError("HIGH_INCOME_ONE_STOP_NOT_VERIFIED")
     if type(mortgage_possible) is not int or not 0<=mortgage_possible<=10**12:
         raise ValueError("INVALID_MORTGAGE_AMOUNT")
     if mortgage_possible>0 and (
