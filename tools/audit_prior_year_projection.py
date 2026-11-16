@@ -11,15 +11,29 @@ from pathlib import Path
 
 from audit_insurance_deductions import calculate_insurance
 from audit_salary_donation_limit import (
-    independent_salary_ceiling, verified_family_deductions,
+    independent_salary_ceiling, independent_one_stop_after_housing,
+    verified_family_deductions,
 )
+from audit_withholding_reconciliation import progressive_income_tax
 from audit_withholding_reconciliation import reconcile
 
 SOURCE_FIELDS = frozenset((
     "salary_gross", "salary_reference", "deductions_reference",
     "income_tax_withheld", "social_insurance",
 ))
+# Housing is separately verified historical source evidence, not a reason to
+# reject an otherwise reconciled 2025 slip. The 2026 housing estimate needs
+# its own explicit, independent review of the 2026 loan-credit amount.
+SOURCE_HOUSING_FIELDS = frozenset((
+    "mortgage_credit", "mortgage_possible_credit",
+    "mortgage_occupancy_year", "mortgage_claim_count",
+))
 TARGET_FIELDS = frozenset(("salary_gross", "salary_income", "social_insurance"))
+TARGET_HOUSING_FIELDS = frozenset((
+    "mortgage_possible_credit", "mortgage_occupancy_year",
+    "mortgage_claim_count", "filing_method", "eligibility_reviewed",
+))
+EXPECTED_HOUSING_FIELDS = frozenset(("resident_mortgage_transfer",))
 FAMILY_FIELDS = frozenset((
     "spouse", "general", "special", "elderly", "cohabiting_elderly", "under16",
 ))
@@ -60,13 +74,46 @@ def compare_projection(case):
     if any(confirms[k] is not True for k in CONFIRMATIONS):
         return hold("UNVERIFIED_TARGET_YEAR_PROJECTION")
     source, target, book = case["source"], case["target"], case["workbook"]
-    if (not isinstance(source, dict) or set(source) != SOURCE_FIELDS or
-            not all(_money(value) for value in source.values())):
+    if not isinstance(source, dict):
         return hold("UNVERIFIED_SOURCE_YEAR_WITHHOLDING")
-    if (not isinstance(target, dict) or set(target) != TARGET_FIELDS or
-            not all(_money(value) for value in target.values())):
+    source_keys = set(source)
+    with_source_housing = source_keys == SOURCE_FIELDS | SOURCE_HOUSING_FIELDS
+    if (source_keys not in (SOURCE_FIELDS, SOURCE_FIELDS | SOURCE_HOUSING_FIELDS)
+            or not all(_money(value) for value in source.values())):
+        return hold("UNVERIFIED_SOURCE_YEAR_WITHHOLDING")
+    if with_source_housing:
+        if (source["mortgage_possible_credit"] <= 0 or
+                source["mortgage_credit"] > source["mortgage_possible_credit"] or
+                source["mortgage_claim_count"] != 1 or
+                not 2023 <= source["mortgage_occupancy_year"] <= 2025):
+            return hold("UNVERIFIED_SOURCE_HOUSING_CREDIT")
+    if not isinstance(target, dict):
         return hold("UNVERIFIED_TARGET_YEAR_AMOUNTS")
-    if (not isinstance(book, dict) or set(book) != EXPECTED_FIELDS or
+    target_keys = set(target)
+    with_target_housing = target_keys == TARGET_FIELDS | TARGET_HOUSING_FIELDS
+    if target_keys not in (TARGET_FIELDS, TARGET_FIELDS | TARGET_HOUSING_FIELDS):
+        return hold("UNVERIFIED_TARGET_YEAR_AMOUNTS")
+    if not all(_money(target[k]) for k in TARGET_FIELDS):
+        return hold("UNVERIFIED_TARGET_YEAR_AMOUNTS")
+    if with_source_housing and not with_target_housing:
+        return hold("TARGET_MORTGAGE_REVIEW_MISSING")
+    if with_target_housing:
+        if (any(not _money(target[k]) for k in (
+                "mortgage_possible_credit", "mortgage_occupancy_year",
+                "mortgage_claim_count")) or
+                target["filing_method"] != "one_stop" or
+                target["eligibility_reviewed"] is not True):
+            return hold("UNVERIFIED_TARGET_HOUSING_OR_FILING")
+        if target["mortgage_possible_credit"] > 0:
+            if (target["mortgage_claim_count"] != 1 or
+                    not 2023 <= target["mortgage_occupancy_year"] <= 2026):
+                return hold("UNVERIFIED_TARGET_HOUSING_CLASS")
+        elif (target["mortgage_claim_count"] != 0 or
+              target["mortgage_occupancy_year"] != 0):
+            return hold("CONTRADICTORY_NO_HOUSING_DECLARATION")
+    expected_fields = EXPECTED_FIELDS | (
+        EXPECTED_HOUSING_FIELDS if with_target_housing else frozenset())
+    if (not isinstance(book, dict) or set(book) != expected_fields or
             not all(_money(value) for value in book.values())):
         return hold("INCOMPLETE_EXCEL_PROJECTION_EVIDENCE")
     if (not isinstance(case["family"], dict) or
@@ -130,6 +177,25 @@ def compare_projection(case):
     except (ValueError, KeyError, TypeError, StopIteration):
         return hold("UNVERIFIED_OR_OUT_OF_SCOPE_TARGET_TAX_RULE")
 
+    housing_transfer = 0
+    if with_target_housing and target["mortgage_possible_credit"] > 0:
+        national_taxable = max(
+            0, target["salary_income"] - national_deductions) // 1000 * 1000
+        before_credit = progressive_income_tax(national_taxable)
+        housing_possible = target["mortgage_possible_credit"]
+        # 2026 one-stop filing: no national donation-income deduction changes
+        # the housing credit; 2022 7% and non-salary credits are out of scope.
+        housing_applied = min(housing_possible, before_credit)
+        basic_delta = (
+            max(0, family["national_basic"] - 480_000)
+            if target["mortgage_occupancy_year"] <= 2025 else 0)
+        housing_transfer = min(
+            housing_possible - housing_applied, 97_500,
+            ((national_taxable + basic_delta) // 1000) * 50)
+    one_stop = independent_one_stop_after_housing(
+        nominal_thousand_yen=oracle["thousand_yen_reference"],
+        resident_income_levy=oracle["resident_income_levy"],
+        resident_mortgage_credit=housing_transfer)
     expected = {
         "target_salary_income": target["salary_income"],
         "national_life": ins["national_life"],
@@ -140,12 +206,19 @@ def compare_projection(case):
         "resident_deductions": resident_deductions,
         "resident_taxable_income": oracle["resident_taxable_income"],
         "resident_income_levy": oracle["resident_income_levy"],
-        "donation_limit": oracle["thousand_yen_reference"],
+        "donation_limit": (
+            one_stop["one_stop_effective_thousand_yen_reference"]
+            if with_target_housing else oracle["thousand_yen_reference"]),
     }
+    if with_target_housing:
+        expected["resident_mortgage_transfer"] = housing_transfer
     for key, value in expected.items():
         if book[key] != value:
             return {"status": "MISMATCH", "reason": "INDEPENDENT_" + key.upper()}
-    return {"status": "MATCH_REFERENCE", "reason": "SOURCE_YEAR_SEPARATED_TARGET_LOCAL_DEDUCTIONS"}
+    return {"status": "MATCH_REFERENCE", "reason": (
+        "SOURCE_YEAR_HOUSING_AND_TARGET_ONE_STOP_VERIFIED"
+        if with_target_housing else
+        "SOURCE_YEAR_SEPARATED_TARGET_LOCAL_DEDUCTIONS")}
 
 
 def evaluate(cases, min_cases=2):
