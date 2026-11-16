@@ -497,7 +497,7 @@ class WorkbookTest(unittest.TestCase):
         self.assertIn("MIN(MAX(0,B5-MIN(B3,B5)),B9", model["B6"].value)
         self.assertIn("'住民税再計算'!B19", model["B10"].value)
         self.assertIn("'住民税再計算'!B22", model["B11"].value)
-        self.assertIn("B2-F50", model["G50"].value)
+        self.assertIn("$B$2-F50", model["G50"].value)
         self.assertIn("H50-I50", model["K50"].value)
         self.assertIn("G50+$B$12", model["J50"].value)
         self.assertIn("$B$7-J50-L50-M50", model["N50"].value)
