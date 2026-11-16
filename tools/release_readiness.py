@@ -17,6 +17,20 @@ REQUIRED = (
 )
 
 
+# Evidence reviewers must have a role appropriate to the specific acceptance gate.
+# These are metadata checks only; a claimed role is not identity verification.
+REVIEWER_ROLES = {
+    "ci_exact_commit": ("qa_operator", "release_operator"),
+    "real_tax_and_resident_notice_reconciliation": ("tax_professional", "external_reviewer"),
+    "screen_1920x1080_100pct": ("qa_operator", "external_reviewer"),
+    "screen_1920x1080_125pct": ("qa_operator", "external_reviewer"),
+    "screen_1366x768_150pct": ("qa_operator", "external_reviewer"),
+    "physical_printer_preview_and_output": ("qa_operator", "external_reviewer"),
+    "live_google_gas_independent_acceptance": ("qa_operator", "external_reviewer"),
+    "signed_distribution_and_sha256": ("release_operator", "external_reviewer"),
+}
+
+
 def evaluate(head_sha, manifest=None):
     """Inventory a safe metadata manifest; HOLD is unconditional."""
     if not isinstance(head_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", head_sha):
@@ -52,9 +66,7 @@ def evaluate(head_sha, manifest=None):
             and re.fullmatch(r"[0-9a-f]{64}", entry["sha256"]) is not None
             and entry["sha256"] != "0" * 64
             and entry.get("head_sha") == head_sha
-            and entry.get("reviewer_role") in (
-                "tax_professional", "qa_operator",
-                "release_operator", "external_reviewer")
+            and entry.get("reviewer_role") in REVIEWER_ROLES[key]
         )
         if valid:
             states[key] = "REVIEW_RECORDED_NOT_INDEPENDENTLY_VERIFIED"
