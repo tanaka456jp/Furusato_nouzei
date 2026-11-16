@@ -97,6 +97,16 @@ class DisplayMatrixContract(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "SCREENSHOT_NOT_PNG"):
             inspect_display_matrix(self.folders, SHA)
 
+    def test_png_payload_crc_corruption_is_rejected(self):
+        path = self.folders[0] / EXPECTED_IMAGES[0]
+        data = bytearray(path.read_bytes())
+        # Modify a text-chunk byte without updating the PNG CRC.
+        pos = data.index(b"synthetic=")
+        data[pos] ^= 1
+        path.write_bytes(data)
+        with self.assertRaisesRegex(ValueError, "SCREENSHOT_PNG_CRC_MISMATCH"):
+            inspect_display_matrix(self.folders, SHA)
+
     def test_no_customer_names_or_filenames_from_private_input_emitted(self):
         report = inspect_display_matrix(self.folders, SHA)
         self.assertEqual(set(report), {
