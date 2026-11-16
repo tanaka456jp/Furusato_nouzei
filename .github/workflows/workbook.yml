@@ -44,6 +44,7 @@ jobs:
           python tools/test_reconcile_salary_only_from_slip.py
           python tools/test_prior_year_projection.py
           python tools/test_collect_local_release_evidence.py
+          python tools/test_release_display_matrix.py
           python tools/test_release_readiness.py
           python tools/test_distribution_integrity.py
           python tools/test_package_ready_to_use_review.py
@@ -71,6 +72,14 @@ jobs:
           if ($errors.Count -gt 0) {
             throw ($errors | Out-String)
           }
+      - name: Parse local signed-release verifier (syntax only)
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          $file = (Resolve-Path ./tools/verify_signed_release_local.ps1).Path
+          [System.Management.Automation.Language.Parser]::ParseFile($file, [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { throw ($errors | Out-String) }
       - name: Attach one-click diagnostic launcher
         run: |
           cp tools/START_EXCEL_PROBE.cmd tools/run_excel_open_probe.ps1 tools/probe_excel_open.ps1 Excel_open_probes/
@@ -146,6 +155,7 @@ jobs:
           python tools/test_reconcile_salary_only_from_slip.py
           python tools/test_prior_year_projection.py
           python tools/test_collect_local_release_evidence.py
+          python tools/test_release_display_matrix.py
           python tools/verify_separate_oracle.py
           if ($LASTEXITCODE -ne 0) { throw 'Workbook static regression failed' }
           node tools/test_excel_gas_v4183.cjs
