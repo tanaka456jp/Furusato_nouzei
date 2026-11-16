@@ -226,6 +226,164 @@ try {
     $homeSheet.Range('B11').Value2 = 2026.0
     $homeSheet.Range('B12,B15:B16').ClearContents()
     $excel.Run('TaxLawUpdater.RecalculateCase')
+    # Mandatory official-review gate: 2025 source slips are evidence only.
+    # Recalculate all 2026 income-tax and RESIDENT deductions independently
+    # from the existing premium/family controls; no extra operator fields.
+    # These are fictitious, non-identifying sources. No PDF enters Actions.
+    QA-Stage 'prior-year-projection-independent-resident-compare-start'
+    $projectionEngine = $book.Worksheets.Item('ふるさと納税限度額計算')
+    $projectionResident = $book.Worksheets.Item('住民税再計算')
+    $projectionAdditional = $book.Worksheets.Item('追加人的控除')
+    $projectionCases = @()
+    foreach ($sample in @(
+        @{
+            Name='ordinary'; OldG26=1705902; OldG08=276900
+            OldLife=65000; OldEarth=10902
+            NewLifePaid=50000; NewPensionPaid=50000; NewEarthPaid=10902
+            Under16=0; NewNationalLife=65000; NewEarth=10902
+            NewNationalDeductions=1745902; NewResidentLife=53000
+            NewResidentEarth=5451; NewResidentDeductions=1488451
+            NewResidentTaxable=3711000; NewResidentLevy=368500
+            NewDonation=107000; EligibleUnder23=$false
+        },
+        @{
+            Name='under23'; OldG26=1670000; OldG08=284300
+            OldLife=40000; OldEarth=0
+            NewLifePaid=120000; NewPensionPaid=0; NewEarthPaid=0
+            Under16=1; NewNationalLife=60000; NewEarth=0
+            NewNationalDeductions=1730000; NewResidentLife=28000
+            NewResidentEarth=0; NewResidentDeductions=1458000
+            NewResidentTaxable=3742000; NewResidentLevy=371600
+            NewDonation=108000; EligibleUnder23=$true
+        }
+    )) {
+        $settings.Range('B4').Value2 = 2026.0
+        $homeSheet.Range('B4').Value2 = 2026.0
+        $homeSheet.Range('B11').Value2 = 2025.0
+        $homeSheet.Range('B12').Value2 = 7000000.0
+        $homeSheet.Range('B15').Value2 = [double]$sample.OldG08
+        $homeSheet.Range('B16').Value2 = 1000000.0
+        $homeSheet.Range('B19:B24,D11:D23,D25,B33:B36').ClearContents()
+        $homeSheet.Range('B19').Value2 = [double]$sample.NewLifePaid
+        $homeSheet.Range('B21').Value2 = [double]$sample.NewPensionPaid
+        $homeSheet.Range('B24').Value2 = [double]$sample.NewEarthPaid
+        $homeSheet.Range('B25').Value2 = $(if ($sample.EligibleUnder23) { 'あり' } else { 'なし' })
+        if ($sample.Under16 -gt 0) {
+            $homeSheet.Range('D23').Value2 = [double]$sample.Under16
+        }
+        $homeSheet.Range('D22').Value2 = '該当なし'
+        $homeSheet.Range('D24').Value2 = 'ワンストップ'
+        $homeSheet.Range('D33').Value2 = '未確認'
+        $projectionRef.Range('B13:B18,B20,B41,B43:B44').ClearContents()
+        $projectionRef.Range('B14').Value2 = [double]$sample.OldG26
+        $projectionRef.Range('B15').Value2 = 5200000.0
+        $projectionRef.Range('B16').Value2 = [double]$sample.OldLife
+        $projectionRef.Range('B17').Value2 = [double]$sample.OldEarth
+        $projectionRef.Range('B20').Value2 = 'READY_FOR_EXCEL_CROSSCHECK'
+        $excel.Run('TaxLawUpdater.RecalculateCase')
+        Assert-Value $homeSheet.Range('D31').Value2 $sample.OldG26 ('Historical slip G26 '+$sample.Name)
+        Assert-Value $homeSheet.Range('B31').Value2 $sample.NewNationalDeductions ('2026 national target not prior G26 '+$sample.Name)
+        Assert-Value $homeSheet.Range('B17').Value2 $sample.NewNationalLife ('2026 national life '+$sample.Name)
+        Assert-Value $homeSheet.Range('B18').Value2 $sample.NewEarth ('2026 national earthquake '+$sample.Name)
+        if ([string]$homeSheet.Range('B28').Value2 -notlike 'SAFE-TAX-030*' -or
+            [string]$homeSheet.Range('B8').Value2 -ne '') {
+            throw ('Unverified historical-source projection escaped HOLD '+$sample.Name)
+        }
+        $homeSheet.Range('D33').Value2 = '確認済'
+        $projectionRef.Range('B20').Value2 = 'VERIFIED_AFTER_CORRECTION'
+        $excel.Run('TaxLawUpdater.RecalculateCase')
+        $projectionRef.Range('B41').Value2 = [string]$projectionRef.Range('B42').Value2
+        $excel.Run('TaxLawUpdater.RecalculateCase')
+        Assert-Value $homeSheet.Range('B28').Value2 '正常' ('Verified 2026 projection '+$sample.Name)
+        Assert-Value $projectionEngine.Range('H24').Value2 $sample.NewResidentLife ('Resident life '+$sample.Name)
+        Assert-Value $projectionEngine.Range('H25').Value2 $sample.NewResidentEarth ('Resident earthquake '+$sample.Name)
+        Assert-Value $projectionResident.Range('B6').Value2 $sample.NewResidentTaxable ('Direct resident taxable '+$sample.Name)
+        Assert-Value $homeSheet.Range('D8').Value2 $sample.NewResidentLevy ('2026 resident levy '+$sample.Name)
+        Assert-Value $homeSheet.Range('B8').Value2 $sample.NewDonation ('2026 projected donation '+$sample.Name)
+        $observedResidentDeductions = [int][double]$homeSheet.Range('B16').Value2
+        foreach ($piece in @('H15','H24','H25','H38','H40')) {
+            $observedResidentDeductions += [int][double]$projectionEngine.Range($piece).Value2
+        }
+        $observedResidentDeductions += [int][double]$projectionAdditional.Range('D12').Value2
+        Assert-Value $observedResidentDeductions $sample.NewResidentDeductions ('Resident deductions sum '+$sample.Name)
+        $insurance = @{
+            new_life=[int]$sample.NewLifePaid; old_life=0; care=0
+            new_pension=[int]$sample.NewPensionPaid; old_pension=0
+            earthquake=[int]$sample.NewEarthPaid; old_long=0
+            life_reference=[int]$sample.NewNationalLife
+            earthquake_reference=[int]$sample.NewEarth
+            distinct_earthquake_contracts_confirmed=$true
+            no_2026_under23_life_exception_confirmed=(-not $sample.EligibleUnder23)
+        }
+        if ($sample.EligibleUnder23) {
+            $insurance.verified_2026_under23_dependent=$true
+        }
+        $projectionCases += @{
+            source_year=2025; target_year=2026
+            source=@{
+                salary_gross=7000000; salary_reference=5200000
+                deductions_reference=[int]$sample.OldG26
+                income_tax_withheld=[int]$sample.OldG08
+                social_insurance=1000000
+            }
+            target=@{
+                salary_gross=7000000
+                salary_income=[int][double]$homeSheet.Range('B13').Value2
+                social_insurance=1000000
+            }
+            family=@{
+                spouse='none'; general=0; special=0; elderly=0
+                cohabiting_elderly=0; under16=[int]$sample.Under16
+            }
+            insurance=$insurance
+            municipality='designated'
+            confirmations=@{
+                target_pay_and_insurance_reviewed=$true
+                family_eligibility_reviewed=$true
+                municipality_reviewed=$true
+                one_stop_filing_confirmed=$true
+                no_other_income_or_credits=$true
+                no_unverified_manual_overrides=$true
+                source_deductions_not_reused=$true
+            }
+            workbook=@{
+                source_deductions_reference=[int][double]$homeSheet.Range('D31').Value2
+                target_salary_income=[int][double]$homeSheet.Range('B13').Value2
+                national_life=[int][double]$homeSheet.Range('B17').Value2
+                national_earthquake=[int][double]$homeSheet.Range('B18').Value2
+                national_deductions=[int][double]$homeSheet.Range('B31').Value2
+                resident_life=[int][double]$projectionEngine.Range('H24').Value2
+                resident_earthquake=[int][double]$projectionEngine.Range('H25').Value2
+                resident_deductions=[int]$observedResidentDeductions
+                resident_taxable_income=[int][double]$projectionResident.Range('B6').Value2
+                resident_income_levy=[int][double]$homeSheet.Range('D8').Value2
+                donation_limit=[int][double]$homeSheet.Range('B8').Value2
+            }
+        }
+        QA-Stage ('prior-year-projection-'+$sample.Name+'-resident-check-pass')
+    }
+    $projectionInputJson = Join-Path $env:RUNNER_TEMP (
+        'furusato_synthetic_prior_projection_'+[guid]::NewGuid().ToString('N')+'.json')
+    try {
+        [IO.File]::WriteAllText($projectionInputJson,
+            (ConvertTo-Json -InputObject @($projectionCases) -Depth 12),
+            [Text.UTF8Encoding]::new($false))
+        & python .\tools\audit_prior_year_projection.py --input $projectionInputJson --min-cases 2
+        if ($LASTEXITCODE -ne 0) {
+            throw '2025-to-2026 Excel projection differs from independent resident deduction oracle'
+        }
+    } finally {
+        Remove-Item -LiteralPath $projectionInputJson -Force -ErrorAction SilentlyContinue
+    }
+    QA-Stage 'prior-year-projection-independent-resident-compare-pass'
+    $homeSheet.Range('B19:B24,D11:D23,D25,B33:B36').ClearContents()
+    $homeSheet.Range('B25').Value2 = 'なし'
+    $homeSheet.Range('D33').Value2 = '未確認'
+    $homeSheet.Range('D24').Value2 = '確定申告'
+    $homeSheet.Range('B11').Value2 = 2026.0
+    $homeSheet.Range('B12,B15:B16').ClearContents()
+    $projectionRef.Range('B13:B18,B20,B41,B43:B44').ClearContents()
+    $excel.Run('TaxLawUpdater.RecalculateCase')
     QA-Stage 'prior-year-withholding-projection-pass'
     QA-Stage 'deduction-override-synthetic-start'
     $homeSheet.Range('B12').Value2 = 7000000.0
