@@ -8,6 +8,7 @@ import argparse
 import json
 import re
 import struct
+import zlib
 from pathlib import Path
 
 MODES = ("1920x1080@100", "1920x1080@125", "1366x768@150")
@@ -24,15 +25,46 @@ def _safe_png(folder, name):
     path = folder / name
     if path.is_symlink() or not path.is_file() or not 100 < path.stat().st_size < 25_000_000:
         raise ValueError("SCREENSHOT_MISSING_OR_UNSAFE")
+    # A syntactically valid PNG header alone cannot prove the screenshot
+    # survived transport. Validate every chunk CRC and the IEND marker.
     with path.open("rb") as f:
-        header = f.read(24)
-    if (len(header) != 24 or
-            header[:8] != b"\x89PNG\r\n\x1a\n" or
-            header[12:16] != b"IHDR"):
-        raise ValueError("SCREENSHOT_NOT_PNG")
-    width, height = struct.unpack(">II", header[16:24])
-    if not 400 <= width <= 6000 or not 240 <= height <= 4000:
-        raise ValueError("SCREENSHOT_DIMENSIONS_OUT_OF_SCOPE")
+        signature = f.read(8)
+        if signature != b"\x89PNG\r\n\x1a\n":
+            raise ValueError("SCREENSHOT_NOT_PNG")
+        saw_header = saw_idat = saw_end = False
+        chunk_count = 0
+        while True:
+            size_data = f.read(4)
+            if not size_data:
+                break
+            if len(size_data) != 4:
+                raise ValueError("SCREENSHOT_PNG_TRUNCATED")
+            chunk_len = struct.unpack(">I", size_data)[0]
+            if chunk_len > 25_000_000:
+                raise ValueError("SCREENSHOT_PNG_CHUNK_TOO_LARGE")
+            kind = f.read(4)
+            data = f.read(chunk_len)
+            checksum = f.read(4)
+            if len(kind) != 4 or len(data) != chunk_len or len(checksum) != 4:
+                raise ValueError("SCREENSHOT_PNG_TRUNCATED")
+            crc_expected = struct.unpack(">I", checksum)[0]
+            if zlib.crc32(kind + data) & 0xFFFFFFFF != crc_expected:
+                raise ValueError("SCREENSHOT_PNG_CRC_MISMATCH")
+            chunk_count += 1
+            if chunk_count == 1:
+                if kind != b"IHDR" or chunk_len != 13:
+                    raise ValueError("SCREENSHOT_NOT_PNG")
+                width, height = struct.unpack(">II", data[:8])
+                if not 400 <= width <= 6000 or not 240 <= height <= 4000:
+                    raise ValueError("SCREENSHOT_DIMENSIONS_OUT_OF_SCOPE")
+                saw_header = True
+            if kind == b"IDAT":
+                saw_idat = True
+            if kind == b"IEND":
+                saw_end = True
+                break
+        if not (saw_header and saw_idat and saw_end) or f.read(1):
+            raise ValueError("SCREENSHOT_PNG_INCOMPLETE")
 
 
 def inspect_display_matrix(folders, workbook_sha256):
