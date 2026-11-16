@@ -920,9 +920,10 @@ def build(source, output):
          "警告：源泉徴収票の金額と確認欄を入力してください"),
         ("OR(" + ",".join(invalid) + ")", "エラー：金額・人数・控除の内訳を源泉徴収票と照合してください"),
         (f'OR(ABS({ref(INPUT,"B34")}-B13-'
-         f'IF(ISNUMBER({ref(ADVANCED,"B13")}),{ref(ADVANCED,"B13")},'
+         f'IF(AND({same_source_year},ISNUMBER({ref(ADVANCED,"B13")})),'
+         f'{ref(ADVANCED,"B13")},'
          'IF(AND(B12>8500000,B25="あり"),'
-         '(MIN(B12,10000000)-8500000)*0.1,0)))>10000,'
+         'ROUNDUP((MIN(B12,10000000)-8500000)/10,0),0)))>10000,'
          f'{ref(RESIDENT,"B16")}<=0)',
          "警告：給与所得または住民税所得割を個別に照合してください"),
         (f'AND(N({ref(ADVANCED,"B24")})>0,'

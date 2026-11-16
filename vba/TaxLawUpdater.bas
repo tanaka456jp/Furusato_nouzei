@@ -812,8 +812,13 @@ Public Sub ReviewWithholding()
             End If
         End If
     End If
-    ValidateSpouseSource home, extra
-    ValidateSpecialRelativeSource home, extra, relatives
+    ' These fields certify the original document year. The target year's
+    ' spouse/relative eligibility and deductions can legitimately differ.
+    ' B7 and the exact stamped inputs are required before a projection.
+    If Not isProjection Then
+        ValidateSpouseSource home, extra
+        ValidateSpecialRelativeSource home, extra, relatives
+    End If
     Application.Calculate
     If Len(Trim$(CStr(home.Range("D25").Value2))) > 0 Then
         If MsgBox("所得控除合計は手入力上書き中です。" & vbCrLf & _
