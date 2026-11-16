@@ -131,6 +131,22 @@ try {
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Reviewed 2025 source 2026 projection'
     Assert-Value $homeSheet.Range('B8').Value2 109000 'Projected 2026 donation limit matches 2026 target'
+    # Year-2025 G08=0 cannot be interpreted as the year-2026 tax
+    # calculation having no withholding / being an unsupported return.
+    $homeSheet.Range('B15').Value2 = 0.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    if ([string]$homeSheet.Range('B28').Value2 -eq '正常') {
+        throw 'Review stamp was silently reused after editing old-year G08'
+    }
+    $projectionRef.Range('B41').Value2 = [string]$projectionRef.Range('B42').Value2
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Prior-year withholding of zero must not veto target-year estimate'
+    Assert-Value $homeSheet.Range('B8').Value2 109000 'Prior-year withholding zero leaves 2026 estimate intact'
+    $homeSheet.Range('B15').Value2 = 285800.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    $projectionRef.Range('B41').Value2 = [string]$projectionRef.Range('B42').Value2
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Projected source withholding reinstated after review'
     $projectionRef.Range('B43').Value2 = 100000.0
     $projectionRef.Range('B44').Value2 = 150000.0
     $excel.Run('TaxLawUpdater.RecalculateCase')
@@ -150,6 +166,19 @@ try {
     $homeSheet.Range('B12').Value2 = 1950000.0
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value $homeSheet.Range('B13').Value2 1210000 '2025 salary reference cannot override 2026 salary table'
+    # Gross=9m and a confirmed under-23 dependent: 2026 adjustment is
+    # (9m-8.5m)/10=50,000 even if the 2025 source recorded something else.
+    $projectionRef.Range('B13').Value2 = 12345.0
+    $homeSheet.Range('B12').Value2 = 9000000.0
+    $homeSheet.Range('B25').Value2 = 'あり'
+    $homeSheet.Range('D23').Value2 = 1.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B13').Value2 7000000 '2025 source salary adjustment must not override 2026'
+    $projectionRef.Range('B13').ClearContents()
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B13').Value2 7000000 '2026 under23 salary adjustment independent of 2025 source'
+    $homeSheet.Range('D23').ClearContents()
+    $homeSheet.Range('B25').Value2 = 'なし'
     $projectionRef.Range('B13:B18,B20,B41,B43:B44').ClearContents()
     $homeSheet.Range('B7').Value2 = '未確認'
     $homeSheet.Range('B11').Value2 = 2026.0

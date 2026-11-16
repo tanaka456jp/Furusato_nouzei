@@ -642,6 +642,10 @@ def build(source, output):
     for row, label in enumerate(("寡婦", "ひとり親（母）", "ひとり親（父）", "勤労学生"), 7):
         book["追加人的控除"][f"B{row}"] = f'=IF({ref(HOME, "D22")}="{label}",1,0)'
 
+    # A previous-year withholding document is reference evidence, not a
+    # current-year tax determination. Restrict references and source-tax
+    # sanity checks to the same income year throughout the calculator.
+    same_source_year = 'IFERROR(1*B11,0)=D4'
     # Salary and premiums are user inputs; corresponding deductions are
     # calculated from approved year masters, not retyped.
     derived = {
@@ -659,7 +663,7 @@ def build(source, output):
                  'ROUNDDOWN(B12/4000,0)*4000*'
                  'IF(B12<=3600000,0.7,0.8)-IF(B12<=3600000,80000,440000)),'
                  f'{ref(INPUT,"B34")})-'
-                 f'IF(ISNUMBER({ref(ADVANCED,"B13")}),'
+                 f'IF(AND({same_source_year},ISNUMBER({ref(ADVANCED,"B13")})),'
                  f'{ref(ADVANCED,"B13")},'
                  'IF(AND(B12>8500000,B25="あり"),'
                  'ROUNDUP((MIN(B12,10000000)-8500000)/10,0),0)))))'),
@@ -707,7 +711,8 @@ def build(source, output):
         'AND(D25<>"",OR(NOT(ISNUMBER(D25)),D25<0,D25>100000000,D25<>INT(D25)))',
         # Source total is provenance only. A manual adjustment of current-year
         # social insurance must not be rejected against historic slip totals.
-        'MAX(D11:D13,D19:D21)>30', 'COUNT(D17:D18)>1', 'B13>B12', 'B15>B12', 'B16>B14',
+        'MAX(D11:D13,D19:D21)>30', 'COUNT(D17:D18)>1', 'B13>B12',
+                f'AND({same_source_year},B15>B12)', 'B16>B14',
                 # Special-relative deductions (>58/62万円 income) are NOT
                 # statutory dependents for the under-23 salary adjustment.
                 # Only individually confirmed regular special dependents
@@ -753,7 +758,7 @@ def build(source, output):
         +f'N({ref(ADVANCED,"B21")})>0,'
         +f'{ref(ADVANCED,"B20")}="REQUIRES_REVIEW",'
         +f'AND({ref(ADVANCED,"B40")}<>"",{ref(ADVANCED,"B20")}<>"VERIFIED_AFTER_CORRECTION"),'
-        +f'AND(D24="確定申告",B15=0,B34="",N({ref(ADVANCED,"B24")})=0),'
+        +f'AND({same_source_year},D24="確定申告",B15=0,B34="",N({ref(ADVANCED,"B24")})=0),'
         f'{income_levy_basis}<=IF({eligible_family_count}=0,450000,'
         f'350000*(1+{eligible_family_count})+420000),'
         f'AND(OR(SUM(D19:D21)>0,D22<>"該当なし"),'
@@ -889,7 +894,6 @@ def build(source, output):
     # fail closed rather than silently being interpreted as zero.
     unhandled_ordinary_credits = 'OR(' + ','.join(f'D{row}<>0' for row in range(72, 78)) + ')'
     projection = 'AND(IFERROR(1*B11,0)=2025,D4=2026)'
-    same_source_year = 'IFERROR(1*B11,0)=D4'
     projected_source_mortgage = f'OR(N({ref(ADVANCED,"B43")})>0,N({ref(ADVANCED,"B44")})>0)'
     status = [
         ('B44<>"給与・通常"', "詳細設定の55行目以降で状態と試算額を確認してください。"),
