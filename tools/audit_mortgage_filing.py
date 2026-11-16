@@ -39,11 +39,13 @@ def calculate_mortgage_filing_case(
         raise ValueError("UNVERIFIED_HOUSING_OCCUPANCY")
     if mortgage_possible <= 0:
         raise ValueError("HOUSING_CREDIT_NOT_PRESENT")
-    if housing_class not in ("ordinary_5pct", "transitional_7pct"):
+    if housing_class not in ("ordinary_5pct", "verified_2022_5pct",
+                             "transitional_7pct"):
         raise ValueError("UNVERIFIED_HOUSING_CLASS")
-    if (housing_class == "transitional_7pct" and occupancy_year != 2022):
+    if ((housing_class == "transitional_7pct" and occupancy_year != 2022) or
+            (housing_class == "verified_2022_5pct" and occupancy_year != 2022)):
         raise ValueError("INELIGIBLE_TRANSITION_CLASS")
-    if (housing_class == "ordinary_5pct" and occupancy_year == 2022):
+    if housing_class == "ordinary_5pct" and occupancy_year == 2022:
         # 2022 occupancy requires independently reviewed 5% / 7% class.
         raise ValueError("UNVERIFIED_2022_HOUSING_CLASS")
     if (salary_income <= 0 or national_deductions > salary_income or
