@@ -1,6 +1,6 @@
 """Release checks must never approve solely from synthetic CI or metadata."""
 import unittest
-from release_readiness import REQUIRED, SCHEMA, evaluate
+from release_readiness import REQUIRED, SCHEMA, REVIEWER_ROLES, evaluate
 
 HEAD = "a" * 40
 
@@ -31,12 +31,31 @@ class ReleaseReadinessTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             evaluate("not-a-commit")
 
+    def test_tax_gate_cannot_be_signed_off_by_release_operator(self):
+        entry = {"status": "REVIEWED", "sha256": "f" * 64,
+                 "reviewer_role": "release_operator", "head_sha": HEAD}
+        report = evaluate(HEAD, {"schema": SCHEMA, "head_sha": HEAD,
+                                 "checks": {"real_tax_and_resident_notice_reconciliation": entry}})
+        self.assertEqual(report["checks"]["real_tax_and_resident_notice_reconciliation"], "INVALID")
+        self.assertIn("INVALID_REAL_TAX_AND_RESIDENT_NOTICE_RECONCILIATION", report["blockers"])
+        self.assertEqual(report["release_decision"], "HOLD")
+
+    def test_each_gate_accepts_only_its_authorized_role(self):
+        self.assertEqual(set(REVIEWER_ROLES), set(REQUIRED))
+        checks = {key: {"status": "REVIEWED", "sha256": "f" * 64,
+                        "reviewer_role": REVIEWER_ROLES[key][0], "head_sha": HEAD}
+                  for key in REQUIRED}
+        report = evaluate(HEAD, {"schema": SCHEMA, "head_sha": HEAD, "checks": checks})
+        self.assertEqual(report["blockers"], [])
+        self.assertEqual(report["release_decision"], "HOLD")
+
     def test_all_recorded_evidence_still_not_release_authorization(self):
-        one = {"status": "REVIEWED", "sha256": "f" * 64,
-               "reviewer_role": "external_reviewer", "head_sha": HEAD}
+        checks = {key: {"status": "REVIEWED", "sha256": "f" * 64,
+                        "reviewer_role": REVIEWER_ROLES[key][0], "head_sha": HEAD}
+                  for key in REQUIRED}
         report = evaluate(HEAD, {
             "schema": SCHEMA, "head_sha": HEAD,
-            "checks": {key: one.copy() for key in REQUIRED}})
+            "checks": checks})
         self.assertEqual(report["blockers"], [])
         self.assertEqual(report["review_stage"], "MANUAL_FINAL_AUDIT_REQUIRED")
         self.assertEqual(report["release_decision"], "HOLD")
