@@ -1440,6 +1440,69 @@ try {
     Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Family mortgage matrix restore'
     Assert-Value $homeSheet.Range('B8').Value2 109000 'Family matrix standard reference restored'
     QA-Stage 'family-mortgage-donation-matrix-pass'
+    # Actual Windows Excel proof: filing uses the change in *total tax paid*
+    # before/after donation, not the pre-housing 20% statutory reference.
+    # All amounts below are synthetic; the workbook and calculations stay
+    # isolated from personal documents and any released installation.
+    QA-Stage 'mortgage-filing-tax-difference-start'
+    $mortgageFiling = $workbook.Worksheets('住宅確申寄附検算')
+    $settings.Range('B4').Value2 = 2026.0
+    $homeSheet.Range('B4').Value2 = 2026.0
+    $homeSheet.Range('B11').Value2 = 2026.0
+    $homeSheet.Range('B12').Value2 = 7000000.0
+    $homeSheet.Range('B15').Value2 = 0.0
+    $homeSheet.Range('B16').Value2 = 1000000.0
+    $homeSheet.Range('D11:D23,D25').ClearContents()
+    $homeSheet.Range('D22').Value2 = '該当なし'
+    $homeSheet.Range('D24').Value2 = '確定申告'
+    $homeSheet.Range('B25').Value2 = 'なし'
+    $homeSheet.Range('D35').Value2 = '未確認'
+    $relativeSheet.Range('B4:B33,C7:C33').ClearContents()
+    $relativeSheet.Range('D4:D33').Value2 = '未確認'
+    $sourceAudit.Range('B14,B20,B38:B39,B41').ClearContents()
+    $homeSheet.Range('B33').Value2 = 100000.0
+    $homeSheet.Range('B34').Value2 = 100000.0
+    $homeSheet.Range('B35').Value2 = 2024.0
+    $homeSheet.Range('B36').Value2 = 1.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B14').Value2 1670000 'Filing housing national deductions'
+    Assert-Value $mortgageFiling.Range('B3').Value2 278500 'Filing housing pre-credit income tax'
+    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Verified filing housing class'
+    Assert-Value $homeSheet.Range('D8').Value2 374500 'Filing housing resident levy'
+    Assert-Value $homeSheet.Range('B8').Value2 109000 'Filing low mortgage donation reference'
+    Assert-Value $mortgageFiling.Range('Q50').Value2 2001 'Filing low housing residual 109k donation burden'
+    $homeSheet.Range('B33').Value2 = 278500.0
+    $homeSheet.Range('B34').Value2 = 300000.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Verified fully applied housing'
+    Assert-Value $homeSheet.Range('B38').Value2 21500 'Housing resident transfer before donation'
+    Assert-Value $homeSheet.Range('B8').Value2 2000 'Filing high mortgage strict 2k reference'
+    Assert-Value $mortgageFiling.Range('Q50').Value2 2450 'Filing high housing 109k donation burden'
+    $homeSheet.Range('B33').Value2 = 0.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    if ([string]$homeSheet.Range('B28').Value2 -notlike 'SAFE-TAX-035*' -or
+        [string]$homeSheet.Range('B8').Value2 -ne '') {
+        throw 'Unreconciled national housing applied amount exposed donation reference'
+    }
+    $homeSheet.Range('B33').Value2 = 278500.0
+    $homeSheet.Range('B35').Value2 = 2026.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'First-year housing tax-return accepted'
+    Assert-Value $homeSheet.Range('B8').Value2 2000 'First-year housing filing conservative reference'
+    $homeSheet.Range('D24').Value2 = 'ワンストップ'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    if ([string]$homeSheet.Range('B28').Value2 -notlike 'SAFE-TAX-033*' -or
+        [string]$homeSheet.Range('B8').Value2 -ne '') {
+        throw 'First-year housing incorrectly permitted one-stop filing'
+    }
+    $homeSheet.Range('B33:B36').ClearContents()
+    $homeSheet.Range('D35').Value2 = '未確認'
+    $homeSheet.Range('B15').Value2 = 285800.0
+    $homeSheet.Range('D24').Value2 = 'ワンストップ'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Mortgage filing synthetic regressions restore'
+    Assert-Value $homeSheet.Range('B8').Value2 109000 'Mortgage filing regression base reference restore'
+    QA-Stage 'mortgage-filing-tax-difference-pass'
     # Independently check the negative-rate-basis 90% statutory boundary
     # in REAL Excel rather than trusting the standalone arithmetic oracle.
     QA-Stage 'negative-rate-excel-oracle-start'
