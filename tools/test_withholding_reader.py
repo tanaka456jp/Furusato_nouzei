@@ -460,6 +460,39 @@ class WithholdingTest(unittest.TestCase):
             self.assertEqual(same["fields"]["salary_gross"],5000000)
             self.assertNotIn("CONFLICT_salary_gross",same["warnings"])
 
+    def test_verified_mortgage_applied_credit_zero_withholding_is_comparable(self):
+        # SYNTHETIC source-only example. A mortgage credit is NOT a blanket
+        # reason for withholding-tax reconciliation to fail closed. Its
+        # current-year resident-tax / donation effects are separate checks.
+        numbers = {
+            "salary_gross": 7_000_000,
+            "salary_reference": 5_200_000,
+            "deductions_reference": 1_600_000,
+            "social_insurance": 1_000_000,
+            "income_tax_withheld": 0,
+            "mortgage_credit": 292_500,
+            "mortgage_possible_credit": 350_000,
+            "mortgage_claim_count": 1,
+            "mortgage_occupancy_year": 2024,
+        }
+        source = finish(2025, numbers, "PDF_TEXT")
+        self.assertEqual(source["status"], "READY_FOR_EXCEL_CROSSCHECK")
+        verified = reconcile(2025, source["fields"])
+        self.assertEqual(verified["source_tax"], "MATCH")
+        self.assertEqual(verified["donation_limit"], "NOT_VERIFIED")
+        self.assertEqual(verified["reason"], "YEAR_END_SALARY_TAX_MODEL")
+        # The applied credit (G29) cannot be guessed from the possible
+        # credit (G36), nor reused as next year's applied credit.
+        for missing in ("mortgage_credit", "mortgage_occupancy_year"):
+            incomplete = dict(numbers)
+            incomplete.pop(missing)
+            with self.subTest(missing=missing):
+                held = finish(2025, incomplete, "PDF_TEXT")
+                self.assertEqual(held["status"], "REQUIRES_REVIEW")
+        invalid = finish(2025, {**numbers, "mortgage_credit": 360_000}, "PDF_TEXT")
+        self.assertEqual(invalid["status"], "REQUIRES_REVIEW")
+        self.assertIn("MORTGAGE_APPLIED_EXCEEDS_POSSIBLE", invalid["warnings"])
+
     def test_housing_occupancy_and_credit_differ(self):
         self.assertEqual(extract_occupancy_year("控除の額の内訳 1回目N01 令和 6 1 1 1回目G37"),
                          {"mortgage_occupancy_year":2024})
