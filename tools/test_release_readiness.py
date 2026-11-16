@@ -134,7 +134,10 @@ class ReleaseReadinessTest(unittest.TestCase):
                          "REVIEW_ONLY_ZIP_CANNOT_BE_RELEASED",
                          "INDEPENDENT_PACKAGE_SHA256_MISMATCH",
                          "manual_publisher_approval = 'REQUIRED'",
-                         "macro_workbook_signature = 'NOT_CHECKED_MANUAL_OFFICE_REVIEW_REQUIRED'",
+                         "macro_workbook_signature = 'CONTAINER_DETECTED_CRYPTOGRAPHIC_VALIDITY_NOT_VERIFIED'",
+                         "macro_signature_office_validation = 'REQUIRED_BEFORE_RELEASE'",
+                         "VBA_MACRO_SIGNATURE_NOT_DISCOVERED",
+                         "MACRO_WORKBOOK_VBA_PROJECT_MISSING_OR_INVALID",
                          "UNEXPECTED_RELEASE_PACKAGE_CONTENTS",
                          "release_decision = 'HOLD'"):
             self.assertIn(evidence, script)
