@@ -52,6 +52,83 @@ try {
         $xlsm[0].Length -gt 100000000) {
         throw 'RELEASE_WORKBOOK_SIZE_INVALID'
     }
+    # A signed EXE alone cannot prove the distributed XLSM VBA is signed.
+    # The presence test below is structural, not cryptographic validation.
+    $localXlsm = Join-Path $work 'Furusato_nouzei.xlsm'
+    [IO.Compression.ZipFileExtensions]::ExtractToFile($xlsm[0],$localXlsm)
+    $xlsmZip = [IO.Compression.ZipFile]::OpenRead($localXlsm)
+    try {
+        $vba = @($xlsmZip.Entries | Where-Object {
+            $_.FullName -ceq 'xl/vbaProject.bin'
+        })
+        if ($vba.Count -ne 1 -or $vba[0].Length -lt 1024 -or
+            $vba[0].Length -gt 30000000) {
+            throw 'MACRO_WORKBOOK_VBA_PROJECT_MISSING_OR_INVALID'
+        }
+        $signatureParts = @($xlsmZip.Entries | Where-Object {
+            $_.FullName -match '^xl/vbaProjectSignature(?:Agile|V3)?\.bin
+    if ($exe.Count -ne 1 -or $exe[0].Length -lt 10000 -or
+        $exe[0].Length -gt 120000000) {
+        throw 'READER_EXE_SIZE_OR_COUNT_INVALID'
+    }
+    $localExe = Join-Path $work 'FurusatoDocumentReader.exe'
+    [IO.Compression.ZipFileExtensions]::ExtractToFile($exe[0],$localExe)
+    $actualSignature = Get-AuthenticodeSignature -LiteralPath $localExe
+    if ($null -eq $actualSignature -or
+        $actualSignature.Status -ne [Management.Automation.SignatureStatus]::Valid -or
+        $null -eq $actualSignature.SignerCertificate) {
+        throw 'READER_EXE_AUTHENTICODE_NOT_TRUSTED'
+    }
+    $certificate = $actualSignature.SignerCertificate
+    if ($certificate.Thumbprint.ToUpperInvariant() -cne $expectedSigner) {
+        throw 'SIGNER_CERTIFICATE_MISMATCH'
+    }
+    if ($certificate.NotAfter.ToUniversalTime() -lt [DateTime]::UtcNow) {
+        throw 'SIGNER_CERTIFICATE_EXPIRED'
+    }
+    $evidence = [ordered]@{
+        schema = 'furusato-signed-distribution-local/v1'
+        archive_sha256 = $actualHash
+        reader_exe_sha256 = (Get-FileHash -LiteralPath $localExe -Algorithm SHA256).Hash.ToLowerInvariant()
+        authenticode = 'VALID_TRUSTED_EXPECTED_SIGNER'
+        certificate_thumbprint_verified = $true
+        macro_workbook_signature = 'CONTAINER_DETECTED_CRYPTOGRAPHIC_VALIDITY_NOT_VERIFIED'
+        macro_signature_office_validation = 'REQUIRED_BEFORE_RELEASE'
+        exact_release_members = 'THREE_EXPECTED_FILES_ONLY'
+        manual_publisher_approval = 'REQUIRED'
+        release_decision = 'HOLD'
+    }
+    $target = [IO.Path]::GetFullPath($EvidencePath)
+    $parent = [IO.Path]::GetDirectoryName($target)
+    if (-not (Test-Path -LiteralPath $parent -PathType Container)) {
+        [void][IO.Directory]::CreateDirectory($parent)
+    }
+    [IO.File]::WriteAllText($target,
+        ($evidence | ConvertTo-Json -Depth 3),
+        (New-Object System.Text.UTF8Encoding($false)))
+    Write-Host 'SIGNATURE_AND_ARCHIVE_HASH_VERIFIED_MANUAL_RELEASE_APPROVAL_REQUIRED'
+} finally {
+    $zip.Dispose()
+    Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
+}
+ -and
+            $_.Length -gt 128 -and $_.Length -lt 5000000
+        })
+        $embeddedSignature = $false
+        if ($signatureParts.Count -eq 0) {
+            $localVba = Join-Path $work 'vbaProject.bin'
+            [IO.Compression.ZipFileExtensions]::ExtractToFile($vba[0],$localVba)
+            $utf16Content = [Text.Encoding]::Unicode.GetString(
+                [IO.File]::ReadAllBytes($localVba))
+            $embeddedSignature = $utf16Content.Contains(
+                ([string][char]5 + 'DigitalSignature'))
+        }
+        if ($signatureParts.Count -eq 0 -and -not $embeddedSignature) {
+            throw 'VBA_MACRO_SIGNATURE_NOT_DISCOVERED'
+        }
+    } finally {
+        $xlsmZip.Dispose()
+    }
     $exe = @($zip.Entries | Where-Object { $_.FullName -ceq 'FurusatoDocumentReader.exe' })
     if ($exe.Count -ne 1 -or $exe[0].Length -lt 10000 -or
         $exe[0].Length -gt 120000000) {
