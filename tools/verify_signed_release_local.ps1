@@ -40,8 +40,17 @@ try {
     if ($names -contains 'NOT_FOR_PUBLIC_RELEASE.txt') {
         throw 'REVIEW_ONLY_ZIP_CANNOT_BE_RELEASED'
     }
-    foreach ($needed in @('Furusato_nouzei.xlsm','FurusatoDocumentReader.exe','README.txt')) {
+    $requiredNames = @('Furusato_nouzei.xlsm','FurusatoDocumentReader.exe','README.txt')
+    foreach ($needed in $requiredNames) {
         if ($names -notcontains $needed) { throw 'MISSING_EXPECTED_RELEASE_MEMBER' }
+    }
+    if ($names.Count -ne $requiredNames.Count) {
+        throw 'UNEXPECTED_RELEASE_PACKAGE_CONTENTS'
+    }
+    $xlsm = @($zip.Entries | Where-Object { $_.FullName -ceq 'Furusato_nouzei.xlsm' })
+    if ($xlsm.Count -ne 1 -or $xlsm[0].Length -lt 100000 -or
+        $xlsm[0].Length -gt 100000000) {
+        throw 'RELEASE_WORKBOOK_SIZE_INVALID'
     }
     $exe = @($zip.Entries | Where-Object { $_.FullName -ceq 'FurusatoDocumentReader.exe' })
     if ($exe.Count -ne 1 -or $exe[0].Length -lt 10000 -or
@@ -69,7 +78,8 @@ try {
         reader_exe_sha256 = (Get-FileHash -LiteralPath $localExe -Algorithm SHA256).Hash.ToLowerInvariant()
         authenticode = 'VALID_TRUSTED_EXPECTED_SIGNER'
         certificate_thumbprint_verified = $true
-        reviewed_package_is_public_release_candidate = $true
+        macro_workbook_signature = 'NOT_CHECKED_MANUAL_OFFICE_REVIEW_REQUIRED'
+        exact_release_members = 'THREE_EXPECTED_FILES_ONLY'
         manual_publisher_approval = 'REQUIRED'
         release_decision = 'HOLD'
     }
