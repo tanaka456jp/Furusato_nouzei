@@ -32,6 +32,23 @@ class SalaryDonationOracleTest(unittest.TestCase):
             independent_under23_salary_adjustment(
                 8_500_001,has_eligible_under23=1)
 
+    def test_insurance_difference_does_not_replace_statutory_special_ratio_basis(self):
+        # Under the local-tax statute the special rate uses resident-tax
+        # taxable income minus prescribed human/basic deduction differences.
+        # Do NOT replace this with actual national income-tax taxable income.
+        # Synthetic 2026: 5m salary income, 2.3m social, 120k national vs
+        # 70k resident life deduction. Actual national taxable is 1.91m,
+        # but the statutory special-rate basis is 2.2m - 50k - 190k = 1.96m.
+        result = independent_salary_ceiling(
+            year=2026, salary_income=5_000_000,
+            resident_deductions=2_800_000, personal_difference=50_000)
+        self.assertEqual(result["resident_taxable_income"], 2_200_000)
+        self.assertEqual(result["special_ratio"], Fraction(79_790, 100_000))
+        self.assertEqual(result["resident_income_levy"], 217_500)
+        self.assertEqual(result["thousand_yen_reference"], 56_000)
+        self.assertEqual(5_000_000 - (2_300_000 + 670_000 + 120_000),
+                         1_910_000)
+
     def test_negative_special_ratio_uses_90_pct_but_zero_uses_84895(self):
         for year in (2025,2026):
             negative=independent_salary_ceiling(
