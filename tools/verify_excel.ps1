@@ -162,6 +162,31 @@ try {
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Reviewed no housing credit in target year'
     $projectionRef.Range('B43:B44').ClearContents()
+    # Old slip with NO housing credit: declaring "none" while the target
+    # contains a mortgage credit MUST still HOLD. Even explicit zero is a
+    # contradictory filled-in target-year input and must be removed.
+    $homeSheet.Range('B33').Value2 = 0.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    $projectionRef.Range('B41').Value2 = [string]$projectionRef.Range('B42').Value2
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    if ([string]$homeSheet.Range('B28').Value2 -notlike 'SAFE-TAX-032*' -or
+        [string]$homeSheet.Range('B8').Value2 -ne '') {
+        throw 'No-credit confirmation contradicted an input without prior-year housing source'
+    }
+    $homeSheet.Range('B33').ClearContents()
+    $homeSheet.Range('B34').Value2 = 200000.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    $projectionRef.Range('B41').Value2 = [string]$projectionRef.Range('B42').Value2
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    if ([string]$homeSheet.Range('B28').Value2 -notlike 'SAFE-TAX-032*' -or
+        [string]$homeSheet.Range('B8').Value2 -ne '') {
+        throw 'No-credit confirmation contradicted 2026 mortgage possible credit'
+    }
+    $homeSheet.Range('B34').ClearContents()
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    $projectionRef.Range('B41').Value2 = [string]$projectionRef.Range('B42').Value2
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Clearing contradicting mortgage inputs restores verified projection'
     $projectionRef.Range('B15').Value2 = 1300000.0
     $homeSheet.Range('B12').Value2 = 1950000.0
     $excel.Run('TaxLawUpdater.RecalculateCase')
@@ -1682,6 +1707,12 @@ try {
     Assert-Value ([bool]($excel.Run('TaxLawUpdater.ImportResetDecisionForTest', 2026, $false))) $false 'Same person and year preserves independent inputs'
     Assert-Value ([bool]($excel.Run('TaxLawUpdater.ImportResetDecisionForTest', 2025, $false))) $true 'Same person but different year forces reset'
     Assert-Value ([bool]($excel.Run('TaxLawUpdater.ImportResetDecisionForTest', 2026, $true))) $true 'Different person same year forces reset'
+    # A 2025 slip used for tax-year 2026 cannot inherit historical
+    # additional income even if the same 2025 slip was previously present.
+    $homeSheet.Range('B11').Value2 = 2025.0
+    Assert-Value ([bool]($excel.Run('TaxLawUpdater.ImportResetDecisionForTest', 2025, $false))) $true 'Same prior-year slip with 2026 target must reset additional income'
+    $homeSheet.Range('B11').Value2 = 2026.0
+    Assert-Value ([bool]($excel.Run('TaxLawUpdater.ImportResetDecisionForTest', 2026, $false))) $false 'Restored current-year reimport may preserve current-year extra income'
     $importExtra.Range('B5').Value2 = 2500000.0
     $importExtra.Range('B6').Value2 = '65歳以上'
     $importExtra.Range('B8').Value2 = 900000.0

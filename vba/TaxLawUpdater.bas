@@ -469,7 +469,8 @@ Public Sub ImportWithholding()
         caution = caution & vbCrLf & vbCrLf & _
             "令和7年の原票を令和8年の試算に利用します。" & vbCrLf & _
             "令和7年の給与所得・所得控除合計・源泉税額は参考値です。" & vbCrLf & _
-            "令和8年の給与・基礎控除・扶養等を再計算し、試算条件の手動確認が必要です。"
+            "令和8年の給与・基礎控除・扶養等を再計算し、試算条件の手動確認が必要です。" & vbCrLf & _
+            "前年分の追加所得が翌年へ混入しないよう、年金・事業・雑所得・分離所得を初期化します。"
     End If
     If pageCount > 1 Then
         caution = caution & vbCrLf & "対象：PDFの" & _
@@ -495,7 +496,9 @@ Public Sub ImportWithholding()
     If taxpayerChoice = vbCancel Then GoTo CleanUp
     newTaxpayer = ImportMustResetAdditionalIncome(year, taxpayerChoice = vbYes)
     If newTaxpayer And taxpayerChoice = vbNo Then
-        MsgBox "同じ納税者でも所得年が異なるため、前年分の年金・事業・雑所得・分離所得を初期化します。", _
+        MsgBox "原票年・計算対象年または前回の取込年が異なるため、" & _
+               "年金・事業・雑所得・分離所得の旧入力を初期化します。" & vbCrLf & _
+               "対象年の見込額を再入力してください。元ブックはバックアップします。", _
                vbExclamation, "年分変更時の安全確認"
     End If
     backup = UniqueBackupPath(ThisWorkbook)
@@ -767,18 +770,23 @@ Public Sub ReviewWithholding()
             Err.Raise vbObjectError + 284, , _
                 "翌年試算の給与・社会保険料・扶養・当年住宅ローン控除を確認し、操作画面B7で条件を確定してください。"
         End If
+        ' "No mortgage credit" is an assertion about the target year
+        ' even when the prior-year slip has NO mortgage credit at all.
+        ' Reject every nonblank current-year amount, including a pasted
+        ' string or an explicit zero; the mutually exclusive inputs must
+        ' instead be cleared before this review can be accepted.
+        If CStr(home.Range("B7").Value2) = "住宅控除なし" And _
+            (Len(Trim$(CStr(home.Range("B33").Value2))) > 0 Or _
+             Len(Trim$(CStr(home.Range("B34").Value2))) > 0) Then
+            Err.Raise vbObjectError + 286, , _
+                "住宅控除なしを選んだ場合は当年の住宅ローン控除額・可能額を空欄にしてください。"
+        End If
         If CDbl(Val(CStr(extra.Range("B43").Value2))) > 0# Or _
            CDbl(Val(CStr(extra.Range("B44").Value2))) > 0# Then
             If CStr(home.Range("B7").Value2) = "確認済" And _
                Val(CStr(home.Range("B34").Value2)) <= 0 Then
                 Err.Raise vbObjectError + 285, , _
                     "原票に前年の住宅ローン控除があります。当年の適用額・可能額・入居年を入力するか、住宅控除なしを確認してください。"
-            End If
-            If CStr(home.Range("B7").Value2) = "住宅控除なし" And _
-                (Val(CStr(home.Range("B33").Value2)) > 0 Or _
-                 Val(CStr(home.Range("B34").Value2)) > 0) Then
-                Err.Raise vbObjectError + 286, , _
-                    "当年に住宅ローン控除を入力しているため、住宅控除なし確認と一致しません。"
             End If
         End If
     End If
@@ -903,12 +911,20 @@ Public Sub RecalculateCase()
 End Sub
 
 ' Remove case-specific confirmations and additional persons at import/new case.
-' Do not inherit independent income across tax years even for the same
-' individual. The withholding bridge provides the source income year.
+' Never carry independently entered pension, business, miscellaneous or
+' split income from a SOURCE year's slip into a different TARGET year.
+' The source document year alone cannot attest the applicable year of
+' manually entered other income. All projection imports reset these
+' inputs, even if the same taxpayer/same old slip is reimported; a local
+' backup precedes the reset, and the target-year numbers must be reentered.
 Private Function ImportMustResetAdditionalIncome(ByVal sourceYear As Long, _
     ByVal isDifferentTaxpayer As Boolean) As Boolean
+    Dim home As Worksheet
+    Set home = ThisWorkbook.Worksheets("操作画面")
     ImportMustResetAdditionalIncome = isDifferentTaxpayer Or _
-        CStr(ThisWorkbook.Worksheets("操作画面").Range("B11").Value2) <> CStr(sourceYear)
+        CStr(home.Range("B11").Value2) <> CStr(sourceYear) Or _
+        CStr(home.Range("B4").Value2) <> CStr(sourceYear) Or _
+        CStr(home.Range("D4").Value2) <> CStr(sourceYear)
 End Function
 
 ' Modal-free QA for the exact import decision. Only disposable CI workbook.
@@ -919,9 +935,9 @@ Public Function ImportResetDecisionForTest(ByVal sourceYear As Long, _
     ImportResetDecisionForTest = ImportMustResetAdditionalIncome(sourceYear, isDifferentTaxpayer)
 End Function
 
-' Reset only non-slip additional taxpayer inputs for NEW taxpayer imports.
-' Importing a corrected slip for the same taxpayer preserves separately
-' entered pension, business, miscellaneous, split income and special cases.
+' Reset non-slip additional taxpayer inputs on taxpayer, source-year, or
+' target-year changes. Same-year/same-taxpayer re-import may preserve
+' separate inputs. A 2025-source/2026-target projection ALWAYS clears.
 Private Sub PrepareAdditionalIncomeForImport(ByVal extra As Worksheet, _
                                              ByVal newTaxpayer As Boolean)
     If Not newTaxpayer Then Exit Sub
