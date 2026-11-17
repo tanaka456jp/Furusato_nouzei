@@ -669,6 +669,13 @@ jobs:
             throw 'Review bundle must have exact hash and stay HOLD'
           }
           'ReadyToUse REVIEW ZIP assembled from exactly accepted same-run XLSM and reader; release=HOLD.' >> $env:GITHUB_STEP_SUMMARY
+      - name: Record exact-head CI acceptance for the review package (NOT a release)
+        shell: powershell
+        run: |
+          python tools/test_ci_acceptance_receipt.py
+          if ($LASTEXITCODE -ne 0) { throw 'CI acceptance receipt negative tests failed' }
+          python tools/record_ci_acceptance.py --head-sha "${{ github.event.pull_request.head.sha || github.sha }}" --run-id "${{ github.run_id }}" --static "${{ needs.static.result }}" --windows-compat "${{ needs.windows_compat.result }}" --excel "${{ needs.excel.result }}" --document-reader "${{ needs.document_reader.result }}" --review ready_to_use_review_hold.json --archive Furusato_nouzei_ReadyToUse_REVIEW_HOLD.zip --output ci_exact_head_acceptance_hold.json
+          if ($LASTEXITCODE -ne 0) { throw 'Exact-head CI provenance / archive validation failed' }
       - name: Upload review-only ReadyToUse ZIP and anonymous SHA evidence
         uses: actions/upload-artifact@v4
         with:
@@ -676,5 +683,6 @@ jobs:
           path: |
             Furusato_nouzei_ReadyToUse_REVIEW_HOLD.zip
             ready_to_use_review_hold.json
+            ci_exact_head_acceptance_hold.json
           if-no-files-found: error
           retention-days: 14

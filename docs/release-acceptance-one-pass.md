@@ -95,3 +95,8 @@ python tools/collect_local_release_evidence.py check --manifest "C:\FurusatoPriv
 正式リリースのブランチ統合・タグ発行・公開・本番GAS更新は、この10項目を実物で承認した後の独立したリリース工程に限定する。
 
 署名確認の一次資料：[Microsoft Support・VBAマクロプロジェクトにデジタル署名する](https://support.microsoft.com/ja-jp/office/vba/digitally-sign-your-vba-macro-project)、[Microsoft Learn・ブック署名とマクロコード署名の違い](https://learn.microsoft.com/ja-jp/troubleshoot/microsoft-365-apps/excel/digital-signatures-code-signing)。
+
+
+## 自動CI完走証拠について（正式承認ではない）
+
+最新版の検証ZIP Artifactには `ci_exact_head_acceptance_hold.json` が同梱され、該当するPR HEAD/Run、静的・Windows・Excel・読取4ジョブ、ZIPと各バイナリのSHA-256を確定できる。 `ci_exact_head_gate=PASS` はソフトの自動検査範囲の記録に過ぎず、これを税理士の実原票レビューや署名済み正式配布物、実GAS、実画面・実印刷等の外部受入と取り違えない。

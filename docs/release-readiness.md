@@ -109,3 +109,10 @@ CI #44000373135は5ジョブすべてSUCCESS（Excel COM、VBAUpdaterの実書�
 レビュー用ReadyToUse ZIP生成ジョブはこれまでExcel実機と文書リーダーの成功だけに依存していた。このため静的テストやWindows互換性が失敗したRunでもレビューZIPが生成され得る不備があった。正確な同一HEADの `static`、`windows_compat`、`excel`、`document_reader` の**全てのSUCCESS**を必要条件へ変更し、回帰テストを追加。
 
 自動CIが5/5成功した場合でも、ローカル税務照合・実画面3条件・紙面印刷・実GAS・真正な署名と販売承認は別の受入条件であり、正式配布 `HOLD` は維持する。静的ジョブ内で事前作成する `release_readiness_hold.json` は外部レビュアーの証拠提出状態であって、CIが最後までSUCCESSしたかの実績レポートではない。両者を区別する。
+
+
+### 同一HEAD全CIジョブの自動受入記録と、人手の正式受入は別物（2026-11-17）
+
+`ready_to_use_review` は `static`、`windows_compat`、`excel`、`document_reader` の全成功が前提。さらに `tools/record_ci_acceptance.py` が、GitHubの同一Run/PR HEAD・4ジョブの成功・XLSM/EXE/READMEの実ZIP内ハッシュ・実ZIP SHA256を検査し、`ci_exact_head_acceptance_hold.json` を検証ZIPと同じArtifactに含める。検証用の署名なし成果物を署名済みと誤認させることも拒否する。この証拠は `ci_exact_head_gate=PASS` と `release_decision=HOLD` の両方を出力する。
+
+`release_readiness_hold.json` は社内税務専門家・画面・署名などの**人手受入証拠が未提出**であることを示す。自動CIが実際に不合格という意味ではない。両者を混同しない。旧版v4.18.2を維持し、正式配布は署名と外部受入が終わるまでHOLD。
