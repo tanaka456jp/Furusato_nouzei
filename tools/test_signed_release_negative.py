@@ -16,12 +16,15 @@ from pathlib import Path
 SCRIPT = Path(__file__).with_name("verify_signed_release_local.ps1")
 
 
-def _candidate(folder, include_vba, include_signature, relationship="absent"):
+def _candidate(folder, include_vba, include_signature, relationship="absent",
+               valid_ole_header=True, embedded_marker=False):
     workbook = io.BytesIO()
     with zipfile.ZipFile(workbook, "w", compression=zipfile.ZIP_STORED) as out:
         if include_vba:
             # Valid CFB header; rest is synthetic, deliberately unsigned.
-            out.writestr("xl/vbaProject.bin", bytes.fromhex("D0CF11E0A1B11AE1") + bytes(2040))
+            header = bytes.fromhex("D0CF11E0A1B11AE1") if valid_ole_header else b"NOT_OLE!"
+            marker = ("\x05" + "DigitalSignature").encode("utf-16-le") if embedded_marker else b""
+            out.writestr("xl/vbaProject.bin", header + bytes(2040) + marker)
         if include_signature:
             out.writestr("xl/vbaProjectSignature.bin", bytes(256))
         if relationship != "absent":
@@ -39,6 +42,10 @@ def _candidate(folder, include_vba, include_signature, relationship="absent"):
                 '<Relationship Id="rId1" Type="' + relation_type +
                 '" Target="' + target + '"' + target_mode + "/></Relationships>"
             )
+            if relationship in ("linked-and-external", "duplicate-linked"):
+                second_mode = ' TargetMode="External"' if relationship == "linked-and-external" else ""
+                second = '<Relationship Id="rId2" Type="' + relation_type + '" Target="vbaProjectSignature.bin"' + second_mode + "/>"
+                rels = rels.replace("</Relationships>", second + "</Relationships>")
             if relationship == "malformed":
                 rels = '<!DOCTYPE a [ <!ENTITY stolen SYSTEM "file:///etc/passwd"> ]><Relationships>&stolen;</Relationships>'
             out.writestr("xl/_rels/vbaProject.bin.rels", rels)
@@ -69,10 +76,13 @@ def _run_probe(folder, package):
 
 
 class LocalSignedReleaseNegativeAcceptance(unittest.TestCase):
-    def _assert_refused(self, *, vba, signature, expected, relationship="absent"):
+    def _assert_refused(self, *, vba, signature, expected, relationship="absent",
+                        valid_ole_header=True, embedded_marker=False):
         with tempfile.TemporaryDirectory(prefix="furusato_fake_release_") as root:
             folder = Path(root)
-            package = _candidate(folder, vba, signature, relationship)
+            package = _candidate(folder, vba, signature, relationship,
+                                 valid_ole_header=valid_ole_header,
+                                 embedded_marker=embedded_marker)
             rc, output = _run_probe(folder, package)
             self.assertNotEqual(rc, 0, "Unsafe package was accepted")
             self.assertIn(expected, output)
@@ -94,11 +104,36 @@ class LocalSignedReleaseNegativeAcceptance(unittest.TestCase):
             expected="VBA_SIGNATURE_RELATIONSHIP_MISSING")
 
     def test_wrong_type_target_or_external_relationship_is_rejected(self):
-        for relationship in ("wrong-type", "wrong-target", "external"):
+        cases = {
+            "wrong-type": "INVALID_VBA_SIGNATURE_RELATIONSHIP",
+            "wrong-target": "INVALID_VBA_SIGNATURE_RELATIONSHIP",
+            "external": "VBA_SIGNATURE_EXTERNAL_RELATIONSHIP",
+        }
+        for relationship, expected in cases.items():
             with self.subTest(relationship=relationship):
                 self._assert_refused(
                     vba=True, signature=True, relationship=relationship,
-                    expected="VBA_SIGNATURE_PART_NOT_ATTACHED_TO_PROJECT")
+                    expected=expected)
+
+    def test_linked_signature_cannot_skip_ole_container_validation(self):
+        self._assert_refused(
+            vba=True, signature=True, relationship="linked",
+            valid_ole_header=False, expected="INVALID_VBA_OLE_CONTAINER")
+
+    def test_fake_embedded_signature_marker_is_not_accepted(self):
+        self._assert_refused(
+            vba=True, signature=False, embedded_marker=True,
+            expected="VBA_MACRO_SIGNATURE_NOT_DISCOVERED")
+
+    def test_valid_link_plus_external_link_is_rejected(self):
+        self._assert_refused(
+            vba=True, signature=True, relationship="linked-and-external",
+            expected="VBA_SIGNATURE_EXTERNAL_RELATIONSHIP")
+
+    def test_duplicate_signature_relationship_is_rejected(self):
+        self._assert_refused(
+            vba=True, signature=True, relationship="duplicate-linked",
+            expected="DUPLICATE_VBA_SIGNATURE_RELATIONSHIP")
 
     def test_xml_entity_attack_fails_without_release_evidence(self):
         with tempfile.TemporaryDirectory(prefix="furusato_fake_release_") as root:

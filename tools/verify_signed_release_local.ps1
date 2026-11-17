@@ -65,84 +65,108 @@ try {
             $vba[0].Length -gt 30000000) {
             throw 'MACRO_WORKBOOK_VBA_PROJECT_MISSING_OR_INVALID'
         }
-        $signatureParts = @($xlsmZip.Entries | Where-Object {
-            $_.FullName -match '^xl/vbaProjectSignature(?:Agile|V3)?\.bin$' -and
-            $_.Length -gt 128 -and $_.Length -lt 5000000
-        })
-        # An unreferenced vbaProjectSignature.bin is not a VBA signature
-        # attached to the project. The signed part MUST have the OPC
-        # relationship from xl/vbaProject.bin. This remains presence-only.
-        if ($signatureParts.Count -gt 0) {
-            $relsEntry = @($xlsmZip.Entries | Where-Object {
-                $_.FullName -ceq 'xl/_rels/vbaProject.bin.rels'
-            })
-            if ($relsEntry.Count -ne 1 -or $relsEntry[0].Length -lt 50 -or
-                $relsEntry[0].Length -gt 65536) {
-                throw 'VBA_SIGNATURE_RELATIONSHIP_MISSING'
-            }
-            $relTypes = @{
-                'vbaProjectSignature.bin' = 'http://schemas.microsoft.com/office/2006/relationships/vbaProjectSignature'
-                'vbaProjectSignatureAgile.bin' = 'http://schemas.microsoft.com/office/2014/relationships/vbaProjectSignatureAgile'
-                'vbaProjectSignatureV3.bin' = 'http://schemas.microsoft.com/office/2020/07/relationships/vbaProjectSignatureV3'
-            }
-            $relsStream = $relsEntry[0].Open()
-            $xmlReader = $null
-            try {
-                $xmlSettings = New-Object System.Xml.XmlReaderSettings
-                $xmlSettings.DtdProcessing = [System.Xml.DtdProcessing]::Prohibit
-                $xmlSettings.XmlResolver = $null
-                $xmlSettings.MaxCharactersInDocument = 65536
-                $xmlReader = [System.Xml.XmlReader]::Create($relsStream,$xmlSettings)
-                $xmlDoc = New-Object System.Xml.XmlDocument
-                $xmlDoc.XmlResolver = $null
-                $xmlDoc.Load($xmlReader)
-            } finally {
-                if ($null -ne $xmlReader) { $xmlReader.Dispose() }
-                $relsStream.Dispose()
-            }
-            if ($xmlDoc.DocumentElement.LocalName -cne 'Relationships' -or
-                $xmlDoc.DocumentElement.NamespaceURI -cne 'http://schemas.openxmlformats.org/package/2006/relationships') {
-                throw 'INVALID_VBA_SIGNATURE_RELATIONSHIPS_XML'
-            }
-            $connected = $false
-            foreach ($relation in $xmlDoc.DocumentElement.ChildNodes) {
-                if ($relation.LocalName -cne 'Relationship' -or
-                    $relation.NamespaceURI -cne $xmlDoc.DocumentElement.NamespaceURI -or
-                    $relation.GetAttribute('TargetMode') -ne '') { continue }
-                $target = [string]$relation.GetAttribute('Target')
-                if (-not $relTypes.ContainsKey($target) -or
-                    [string]$relation.GetAttribute('Type') -cne $relTypes[$target]) { continue }
-                if (@($signatureParts | Where-Object {
-                    $_.FullName -ceq ('xl/' + $target)
-                }).Count -gt 0) {
-                    $connected = $true
-                    break
-                }
-            }
-            if (-not $connected) {
-                throw 'VBA_SIGNATURE_PART_NOT_ATTACHED_TO_PROJECT'
-            }
-        }
-        $embeddedSignature = $false
-        if ($signatureParts.Count -eq 0) {
-            $localVba = Join-Path $work 'vbaProject.bin'
-            [IO.Compression.ZipFileExtensions]::ExtractToFile($vba[0],$localVba)
-            $vbaBytes = [IO.File]::ReadAllBytes($localVba)
-            $cfbMagic = [byte[]]@(0xD0,0xCF,0x11,0xE0,0xA1,0xB1,0x1A,0xE1)
-            if ($vbaBytes.Length -lt 512) {
+        # Check the actual OLE/CFB header even when a detached signature
+        # part exists. A signature-looking ZIP entry must not bypass this.
+        $localVba = Join-Path $work 'vbaProject.bin'
+        [IO.Compression.ZipFileExtensions]::ExtractToFile($vba[0],$localVba)
+        $vbaStream = [IO.File]::OpenRead($localVba)
+        try {
+            [byte[]]$oleHeader = @(0,0,0,0,0,0,0,0)
+            [byte[]]$cfbMagic = @(0xD0,0xCF,0x11,0xE0,0xA1,0xB1,0x1A,0xE1)
+            if ($vbaStream.Read($oleHeader,0,8) -ne 8) {
                 throw 'INVALID_VBA_OLE_CONTAINER'
             }
             for ($byteIndex=0; $byteIndex -lt 8; $byteIndex++) {
-                if ($vbaBytes[$byteIndex] -ne $cfbMagic[$byteIndex]) {
+                if ($oleHeader[$byteIndex] -ne $cfbMagic[$byteIndex]) {
                     throw 'INVALID_VBA_OLE_CONTAINER'
                 }
             }
-            $utf16Content = [Text.Encoding]::Unicode.GetString($vbaBytes)
-            $embeddedSignature = $utf16Content.Contains(
-                ([string][char]5 + 'DigitalSignature'))
+        } finally {
+            $vbaStream.Dispose()
         }
-        if ($signatureParts.Count -eq 0 -and -not $embeddedSignature) {
+        $signatureParts = @($xlsmZip.Entries | Where-Object {
+            $_.FullName -cmatch '^xl/vbaProjectSignature(?:Agile|V3)?\.bin$'
+        })
+        # An OLE string resembling 'DigitalSignature' is not evidence of a
+        # cryptographic VBA signature. Require a linked signature OPC part.
+        # Legacy embedded-only projects are conservatively HOLD, pending an
+        # independent Office/VBE examination.
+        if ($signatureParts.Count -eq 0) {
             throw 'VBA_MACRO_SIGNATURE_NOT_DISCOVERED'
+        }
+        $signatureNames = @($signatureParts | ForEach-Object {
+            $_.FullName.Substring(3)
+        })
+        if (@($signatureNames | Select-Object -Unique).Count -ne $signatureNames.Count) {
+            throw 'DUPLICATE_VBA_SIGNATURE_PART'
+        }
+        foreach ($signaturePart in $signatureParts) {
+            if ($signaturePart.Length -le 128 -or $signaturePart.Length -ge 5000000) {
+                throw 'VBA_SIGNATURE_PART_SIZE_INVALID'
+            }
+        }
+        $relsEntry = @($xlsmZip.Entries | Where-Object {
+            $_.FullName -ceq 'xl/_rels/vbaProject.bin.rels'
+        })
+        if ($relsEntry.Count -ne 1 -or $relsEntry[0].Length -lt 50 -or
+            $relsEntry[0].Length -gt 65536) {
+            throw 'VBA_SIGNATURE_RELATIONSHIP_MISSING'
+        }
+        $relTypes = @{
+            'vbaProjectSignature.bin' = 'http://schemas.microsoft.com/office/2006/relationships/vbaProjectSignature'
+            'vbaProjectSignatureAgile.bin' = 'http://schemas.microsoft.com/office/2014/relationships/vbaProjectSignatureAgile'
+            'vbaProjectSignatureV3.bin' = 'http://schemas.microsoft.com/office/2020/07/relationships/vbaProjectSignatureV3'
+        }
+        $relsStream = $relsEntry[0].Open()
+        $xmlReader = $null
+        try {
+            $xmlSettings = New-Object System.Xml.XmlReaderSettings
+            $xmlSettings.DtdProcessing = [System.Xml.DtdProcessing]::Prohibit
+            $xmlSettings.XmlResolver = $null
+            $xmlSettings.MaxCharactersInDocument = 65536
+            $xmlReader = [System.Xml.XmlReader]::Create($relsStream,$xmlSettings)
+            $xmlDoc = New-Object System.Xml.XmlDocument
+            $xmlDoc.XmlResolver = $null
+            $xmlDoc.Load($xmlReader)
+        } finally {
+            if ($null -ne $xmlReader) { $xmlReader.Dispose() }
+            $relsStream.Dispose()
+        }
+        if ($xmlDoc.DocumentElement.LocalName -cne 'Relationships' -or
+            $xmlDoc.DocumentElement.NamespaceURI -cne 'http://schemas.openxmlformats.org/package/2006/relationships') {
+            throw 'INVALID_VBA_SIGNATURE_RELATIONSHIPS_XML'
+        }
+        $connectedTargets = @()
+        foreach ($relation in $xmlDoc.DocumentElement.ChildNodes) {
+            if ($relation.NodeType -ne [System.Xml.XmlNodeType]::Element) { continue }
+            if ($relation.LocalName -cne 'Relationship' -or
+                $relation.NamespaceURI -cne $xmlDoc.DocumentElement.NamespaceURI) {
+                throw 'INVALID_VBA_SIGNATURE_RELATIONSHIPS_XML'
+            }
+            if ([string]$relation.GetAttribute('TargetMode') -cne '') {
+                throw 'VBA_SIGNATURE_EXTERNAL_RELATIONSHIP'
+            }
+            $target = [string]$relation.GetAttribute('Target')
+            $type = [string]$relation.GetAttribute('Type')
+            if ([string]::IsNullOrEmpty($target) -or
+                [string]::IsNullOrEmpty($type)) {
+                throw 'INVALID_VBA_SIGNATURE_RELATIONSHIP'
+            }
+            $isSignatureType = @($relTypes.Values) -ccontains $type
+            $isSignatureTarget = $relTypes.ContainsKey($target)
+            if (-not $isSignatureType -and -not $isSignatureTarget) { continue }
+            if (-not $isSignatureType -or -not $isSignatureTarget -or
+                $type -cne $relTypes[$target] -or
+                $signatureNames -cnotcontains $target) {
+                throw 'INVALID_VBA_SIGNATURE_RELATIONSHIP'
+            }
+            if ($connectedTargets -ccontains $target) {
+                throw 'DUPLICATE_VBA_SIGNATURE_RELATIONSHIP'
+            }
+            $connectedTargets += $target
+        }
+        if ($connectedTargets.Count -ne $signatureNames.Count) {
+            throw 'VBA_SIGNATURE_PART_NOT_ATTACHED_TO_PROJECT'
         }
     } finally {
         $xlsmZip.Dispose()
