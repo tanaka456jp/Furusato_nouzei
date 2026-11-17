@@ -1,4 +1,5 @@
 """Release candidate workbook/README product identity negative contracts."""
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -49,6 +50,17 @@ class ReleaseCandidateBranding(unittest.TestCase):
             verify_release_readme(render(VER, HEAD), VER, "b" * 40)
         with self.assertRaisesRegex(ValueError, "INVALID_RELEASE_SOURCE_HEAD"):
             verify_release_readme(render(VER, HEAD), VER, "")
+
+    def test_release_instructions_match_candidate_version(self):
+        # Commands in operator guides must match the current XLSM/README branding.
+        docs = Path(__file__).resolve().parents[1] / "docs"
+        for name in ("release-acceptance-one-pass.md", "release-finalization.md"):
+            with self.subTest(document=name):
+                content = (docs / name).read_text(encoding="utf-8")
+                versions = re.findall(r"--version\s+(v\d+\.\d+\.\d+)", content)
+                self.assertTrue(versions, "Missing concrete release candidate command")
+                self.assertTrue(all(version == VER for version in versions),
+                                f"Stale release candidate version in {name}: {versions}")
 
     def test_assembler_only_stage_copy_preserving_bytes(self):
         with tempfile.TemporaryDirectory() as t:

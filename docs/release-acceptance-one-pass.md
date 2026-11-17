@@ -107,7 +107,7 @@ python tools/collect_local_release_evidence.py check --manifest "C:\FurusatoPriv
 `tools/verify_signed_release_local.ps1` を使用し、独立記録済みZIP SHA256、EXE Authenticode、署名者証明書、VBA署名構造を検査する。実際のExcel/VBEにおけるVBA署名の暗号学的真正性、署名後コード不変を人手で確認し、非公開の署名審査報告書を `signed_distribution_and_sha256` として登録する。秘密鍵を新規生成・公開・登録しない。
 
 ```powershell
-python tools/verify_excel_release_candidate.py --head "<PR #5の現HEAD>" --run-id <同一HEADの5/5 SUCCESS Run ID> --version v4.18.12 --archive "<署名済み候補ZIP>" --expected-archive-sha256 "<独立記録した64桁SHA256>" --ci-receipt "<ci_exact_head_acceptance_hold.json>" --manifest "<非公開9項目マニフェスト>" --signature-evidence "<ローカル署名検査JSON>" --output "<非公開候補照合JSON>"
+python tools/verify_excel_release_candidate.py --head "<PR #5の現HEAD>" --run-id <同一HEADの5/5 SUCCESS Run ID> --version v4.18.35 --archive "<署名済み候補ZIP>" --expected-archive-sha256 "<独立記録した64桁SHA256>" --ci-receipt "<ci_exact_head_acceptance_hold.json>" --manifest "<非公開9項目マニフェスト>" --signature-evidence "<ローカル署名検査JSON>" --output "<非公開候補照合JSON>"
 ```
 
 候補照合は `candidate_gate=METADATA_AND_ARCHIVE_CHECKED`、`release_decision=HOLD` まで。税務・実画面・実紙面・Office/VBE署名・公開権限と公開直前のハッシュ再照合を権限ある担当者が最終承認する必要がある。正式版v4.18.2用公開workflowを次期版へ転用せず、未署名REVIEW_HOLD ZIPをReleaseへ掲載しない。
