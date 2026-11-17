@@ -39,6 +39,33 @@ class SalaryOnlySlipReconciliationTest(unittest.TestCase):
         self.assertNotIn("7_000_000",repr(report))
         self.assertNotIn("5_200_000",repr(report))
 
+    def test_middle_salary_regular_fifth_table_independent_scenario(self):
+        # Independently pinned 3m regular row, not copied from Excel code.
+        # 2025 and 2026 differ in national basic deduction and source tax.
+        for year, deductions, withheld, limit in (
+            (2025, 1_880_000, 7_100, 15_000),
+            (2026, 2_040_000, 0, 14_000),
+        ):
+            case = example(year)
+            case["source"].update({
+                "salary_gross": 3_000_000,
+                "salary_reference": 2_020_000,
+                "deductions_reference": deductions,
+                "income_tax_withheld": withheld,
+            })
+            case["workbook"].update({
+                "donation_limit": limit,
+                "resident_income_levy": 56_500,
+            })
+            with self.subTest(year=year):
+                self.assertEqual(compare_case(case)["status"], "MATCH_REFERENCE")
+            wrong = example(year)
+            wrong["source"] = dict(case["source"])
+            wrong["workbook"] = dict(case["workbook"])
+            wrong["source"]["salary_reference"] += 800
+            self.assertEqual(compare_case(wrong)["reason"],
+                             "SOURCE_SALARY_NOT_RECONCILED_TO_NTA_TABLE")
+
     def test_not_a_prediction_of_2026_from_2025_slip(self):
         case=example(2025)
         case["workbook"]["year"]=2026

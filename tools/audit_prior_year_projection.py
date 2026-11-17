@@ -12,7 +12,7 @@ from pathlib import Path
 from audit_insurance_deductions import calculate_insurance
 from audit_salary_donation_limit import (
     independent_salary_ceiling, independent_one_stop_after_housing,
-    verified_family_deductions,
+    independent_nta_fifth_table_salary_income, verified_family_deductions,
 )
 from audit_withholding_reconciliation import progressive_income_tax
 from audit_withholding_reconciliation import reconcile
@@ -133,23 +133,26 @@ def compare_projection(case):
         # A flag alone is not proof that a qualifying child is in the
         # independently reviewed current-year family population.
         return hold("UNDER23_DEPENDENT_NOT_IN_TARGET_FAMILY")
-    if (source["salary_gross"] < 6_600_000 or
-            target["salary_gross"] < 6_600_000 or
+    if (source["salary_gross"] < 1_900_000 or
+            target["salary_gross"] < 2_200_000 or
             source["salary_gross"] > 20_000_000 or
             target["salary_gross"] > 20_000_000):
-        # Smaller gross salaries need the year-specific NTA Fifth Table;
-        # larger salaries exceed year-end adjustment eligibility.
+        # The low-end irregular rows are deliberately not guessed; 2025
+        # and 2026 have DIFFERENT year-specific first regular table bands.
         return hold("SALARY_TABLE_OR_YEAR_END_ADJUSTMENT_OUT_OF_SCOPE")
     if (book["source_deductions_reference"] != source["deductions_reference"] or
             book["target_salary_income"] != target["salary_income"]):
         return {"status": "MISMATCH", "reason": "SOURCE_OR_TARGET_PROVENANCE_MISMATCH"}
 
-    def salary_income(gross):
-        return (gross * 9 // 10 - 1_100_000 if gross <= 8_500_000
-                else gross - 1_950_000)
-
-    if (source["salary_reference"] != salary_income(source["salary_gross"]) or
-            target["salary_income"] != salary_income(target["salary_gross"])):
+    try:
+        source_income = independent_nta_fifth_table_salary_income(
+            2025, source["salary_gross"])
+        target_income = independent_nta_fifth_table_salary_income(
+            2026, target["salary_gross"])
+    except ValueError:
+        return hold("SALARY_TABLE_OR_YEAR_END_ADJUSTMENT_OUT_OF_SCOPE")
+    if (source["salary_reference"] != source_income or
+            target["salary_income"] != target_income):
         return hold("SOURCE_OR_TARGET_SALARY_NOT_RECONCILED")
 
     try:

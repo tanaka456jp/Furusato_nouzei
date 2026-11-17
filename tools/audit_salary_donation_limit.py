@@ -23,6 +23,37 @@ SPECIAL_RATES = ((1950000,84895),(3300000,79790),(6950000,69580),
                  (10**15,44055))
 
 
+def independent_nta_fifth_table_salary_income(year, gross):
+    """Year-specific independent salary-income reference (not workbook code).
+
+    Confirmed NTA Fifth Table 4,000-yen bands, safe normal bands only:
+    2025: 1,900,000<=gross<6,600,000 (2025 year-end Fifth Table)
+    2026: 2,200,000<=gross<6,600,000 (2026 year-end Fifth Table)
+    The exceptional 2026 2,191,000-2,199,999 rows, and lower salaries
+    require a separate literal-table reviewer; NEVER extrapolate them.
+    Sources:
+      https://www.nta.go.jp/publication/pamph/gensen/nencho2025/pdf/114.pdf
+      https://www.pref.fukushima.lg.jp/uploaded/attachment/766090.pdf
+    """
+    if type(year) is not int or year not in (2025, 2026):
+        raise ValueError("UNAPPROVED_YEAR")
+    if type(gross) is not int or gross < 0 or gross > 20_000_000:
+        raise ValueError("INVALID_YEAR_END_SALARY_GROSS")
+    verified_start = 1_900_000 if year == 2025 else 2_200_000
+    if gross < verified_start:
+        raise ValueError("FIFTH_TABLE_LOW_SALARY_REQUIRES_ROW_VERIFICATION")
+    if gross < 6_600_000:
+        # The statutory table groups these wages into 4,000-yen intervals;
+        # applying a percentage to unrounded gross is incorrect.
+        band_start = gross // 4_000 * 4_000
+        if gross < 3_600_000:
+            return band_start * 7 // 10 - 80_000
+        return band_start * 8 // 10 - 440_000
+    if gross <= 8_500_000:
+        return gross * 9 // 10 - 1_100_000
+    return gross - 1_950_000
+
+
 def independent_under23_salary_adjustment(salary_gross, *, has_eligible_under23):
     """NTA No.1411: exact integer 1-yen round-up for a verified child.
 

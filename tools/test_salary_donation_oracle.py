@@ -6,6 +6,38 @@ from audit_salary_donation_limit import independent_salary_ceiling, verified_fam
 
 class SalaryDonationOracleTest(unittest.TestCase):
 
+    def test_independent_nta_fifth_table_regular_salary_bands_both_years(self):
+        from audit_salary_donation_limit import independent_nta_fifth_table_salary_income as f
+        fixtures = (
+            (2025, 1_900_000, 1_250_000),
+            (2025, 1_903_999, 1_250_000),
+            (2025, 1_904_000, 1_252_800),
+            (2026, 2_200_000, 1_460_000),
+            (2026, 2_203_999, 1_460_000),
+            (2026, 2_204_000, 1_462_800),
+            (2025, 3_600_000, 2_440_000),
+            (2026, 3_604_000, 2_443_200),
+            (2026, 4_390_000, 3_070_400),
+            (2025, 6_599_999, 4_836_800),
+            (2026, 6_599_999, 4_836_800),
+            (2025, 6_600_000, 4_840_000),
+            (2026, 8_500_001, 6_550_001),
+        )
+        for year, gross, expected in fixtures:
+            with self.subTest(year=year, gross=gross):
+                self.assertEqual(f(year, gross), expected)
+        # Below the independently covered regular bands, request exact
+        # government-table inspection rather than interpolate.
+        for year, gross in ((2025, 1_899_999), (2026, 2_199_999),
+                            (2026, 2_191_000), (2025, 1_000_000)):
+            with self.subTest(year=year, gross=gross):
+                with self.assertRaisesRegex(ValueError, "ROW_VERIFICATION"):
+                    f(year, gross)
+        for year, gross in ((2027, 3_000_000), (2026, True),
+                            (2025, 20_000_001)):
+            with self.assertRaises(ValueError):
+                f(year, gross)
+
     def test_verified_under23_salary_adjustment_rounds_up_to_yen(self):
         from audit_salary_donation_limit import independent_under23_salary_adjustment
         cases = {

@@ -17,6 +17,7 @@ from audit_withholding_reconciliation import reconcile
 from audit_insurance_deductions import calculate_insurance
 from audit_salary_donation_limit import (
     independent_salary_ceiling,
+    independent_nta_fifth_table_salary_income,
     verified_family_deductions,
 )
 
@@ -90,20 +91,16 @@ def compare_case(case):
         return hold("NOT_YEAR_END_ADJUSTMENT_ELIGIBLE")
     if source["salary_gross"] <= 0 or source["salary_reference"] > source["salary_gross"]:
         return hold("INVALID_SOURCE_SALARY")
-    # NTA No.1410: independent formula for source salary>=6.6m.
-    # For smaller salaries the legally binding NTA Fifth Table is
-    # required and cannot be replaced by a simple percentage formula.
+    # Independently verify the NTA Fifth Table including the 4,000-yen
+    # salary bands. Keep special low-salary rows outside this formula-only
+    # crosscheck; the operator must examine those exact government rows.
     gross, income = source["salary_gross"], source["salary_reference"]
-    if gross >= 6_600_000:
-        expected = (gross * 9 // 10 - 1_100_000 if gross <= 8_500_000
-                    else gross - 1_950_000)
-        if income != expected:
-            return hold("SOURCE_SALARY_NOT_RECONCILED_TO_NTA_TABLE")
-    else:
-        # The operator MUST separately verify the source G05 using the
-        # actual year-specific Fifth Table, not a shortcut formula.
-        if conf.get("nta_fifth_table_rechecked") is not True:
-            return hold("SOURCE_SALARY_TABLE_REVIEW_REQUIRED")
+    try:
+        expected = independent_nta_fifth_table_salary_income(year, gross)
+    except ValueError:
+        return hold("SOURCE_SALARY_TABLE_REVIEW_REQUIRED")
+    if income != expected:
+        return hold("SOURCE_SALARY_NOT_RECONCILED_TO_NTA_TABLE")
     try:
         ins = (calculate_insurance(year=year, record=case["insurance"])
                if "insurance" in case else

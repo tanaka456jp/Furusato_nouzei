@@ -77,6 +77,43 @@ class PriorYearProjectionTest(unittest.TestCase):
             self.assertEqual(compare_projection(case)["status"], "MATCH_REFERENCE")
         self.assertEqual(evaluate(cases, min_cases=2)["status"], "PASS")
 
+    def test_middle_salary_2025_to_2026_fifth_table_projection(self):
+        case = make_case(False)
+        case["source"].update({
+            "salary_gross": 3_000_000,
+            "salary_reference": 2_020_000,
+            "deductions_reference": 1_880_000,
+            "income_tax_withheld": 7_100,
+        })
+        case["target"].update({
+            "salary_gross": 3_000_000, "salary_income": 2_020_000,
+        })
+        ins = case["insurance"]
+        for key in ("new_life", "old_life", "care", "new_pension", "old_pension",
+                    "earthquake", "old_long", "life_reference", "earthquake_reference"):
+            ins[key] = 0
+        case["workbook"].update({
+            "source_deductions_reference": 1_880_000,
+            "target_salary_income": 2_020_000,
+            "national_life": 0, "national_earthquake": 0,
+            "national_deductions": 2_040_000,
+            "resident_life": 0, "resident_earthquake": 0,
+            "resident_deductions": 1_430_000,
+            "resident_taxable_income": 590_000,
+            "resident_income_levy": 56_500,
+            "donation_limit": 14_000,
+        })
+        self.assertEqual(compare_projection(case)["status"], "MATCH_REFERENCE")
+        bad = copy.deepcopy(case)
+        bad["target"]["salary_income"] = 2_020_800
+        bad["workbook"]["target_salary_income"] = 2_020_800
+        self.assertEqual(compare_projection(bad)["reason"],
+                         "SOURCE_OR_TARGET_SALARY_NOT_RECONCILED")
+        low = copy.deepcopy(case)
+        low["target"]["salary_gross"] = 2_199_999
+        self.assertEqual(compare_projection(low)["reason"],
+                         "SALARY_TABLE_OR_YEAR_END_ADJUSTMENT_OUT_OF_SCOPE")
+
     def test_no_prior_year_national_deduction_reuse(self):
         c = make_case(True)
         c["workbook"]["resident_taxable_income"] = 3_742_000
