@@ -30,7 +30,7 @@ def make_xlsm(title=None):
 class ReleaseCandidateBranding(unittest.TestCase):
     def test_verified_workbook_labels_and_readme(self):
         verify_workbook_labels(make_xlsm(),VER)
-        verify_release_readme(render(VER,HEAD),VER)
+        verify_release_readme(render(VER,HEAD),VER,HEAD)
 
     def test_old_and_review_labels_rejected(self):
         for text in ("ふるさと納税 寄附限度額試算    v4.18.34",
@@ -40,9 +40,15 @@ class ReleaseCandidateBranding(unittest.TestCase):
         with self.assertRaises(ValueError):
             verify_workbook_labels(b"not an xlsm",VER)
         with self.assertRaises(ValueError):
-            verify_release_readme(render(VER,HEAD).replace(VER.encode(),b"v4.18.2"),VER)
+            verify_release_readme(render(VER,HEAD).replace(VER.encode(),b"v4.18.2"),VER,HEAD)
         with self.assertRaises(ValueError):
-            verify_release_readme(render(VER,HEAD)+b"NOT FOR PUBLIC DISTRIBUTION",VER)
+            verify_release_readme(render(VER,HEAD)+b"NOT FOR PUBLIC DISTRIBUTION",VER,HEAD)
+
+    def test_source_head_is_bound_to_release_candidate_readme(self):
+        with self.assertRaisesRegex(ValueError, "RELEASE_README_HEAD_MISMATCH"):
+            verify_release_readme(render(VER, HEAD), VER, "b" * 40)
+        with self.assertRaisesRegex(ValueError, "INVALID_RELEASE_SOURCE_HEAD"):
+            verify_release_readme(render(VER, HEAD), VER, "")
 
     def test_assembler_only_stage_copy_preserving_bytes(self):
         with tempfile.TemporaryDirectory() as t:
@@ -54,11 +60,11 @@ class ReleaseCandidateBranding(unittest.TestCase):
             book.write_bytes(make_xlsm())
             reader.write_bytes(b"synthetic-exe-no-signature"*500)
             readme.write_bytes(render(VER,HEAD))
-            h=assemble(book,reader,readme,target,VER)
+            h=assemble(book,reader,readme,target,VER,HEAD)
             self.assertEqual(len(h),64)
             self.assertTrue(target.is_file())
             with self.assertRaisesRegex(ValueError,"CANDIDATE_OVERWRITE"):
-                assemble(book,reader,readme,target,VER)
+                assemble(book,reader,readme,target,VER,HEAD)
 
 if __name__=="__main__":
     unittest.main(verbosity=2)

@@ -166,6 +166,9 @@ class ReleaseReadinessTest(unittest.TestCase):
                          "macro_workbook_signature = 'CONTAINER_DETECTED_CRYPTOGRAPHIC_VALIDITY_NOT_VERIFIED'",
                          "macro_signature_office_validation = 'REQUIRED_BEFORE_RELEASE'",
                          "VBA_MACRO_SIGNATURE_NOT_DISCOVERED",
+                         "OFFICE_VBA_SIGNATURE_NOT_RECOGNIZED",
+                         "VBASigned",
+                         "office_vba_signed_property = 'OFFICE_RECOGNIZED_SIGNED_PROJECT'",
                          "MACRO_WORKBOOK_VBA_PROJECT_MISSING_OR_INVALID",
                          "UNEXPECTED_RELEASE_PACKAGE_CONTENTS",
                          "release_decision = 'HOLD'"):

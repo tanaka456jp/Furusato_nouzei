@@ -12,7 +12,7 @@ from release_candidate_branding import verify_workbook_labels, verify_release_re
 def digest(content):
     return hashlib.sha256(content).hexdigest()
 
-def assemble(book, reader, readme, target, version):
+def assemble(book, reader, readme, target, version, head_sha):
     paths=[Path(p) for p in (book, reader, readme)]
     dest=Path(target)
     root=Path(__file__).resolve().parents[1]
@@ -29,7 +29,7 @@ def assemble(book, reader, readme, target, version):
     book_content=paths[0].read_bytes()
     readme_content=paths[2].read_bytes()
     verify_workbook_labels(book_content,version)
-    verify_release_readme(readme_content,version)
+    verify_release_readme(readme_content,version,head_sha)
     dest.parent.mkdir(parents=True,exist_ok=True)
     try:
         with ZipFile(dest,"x",ZIP_DEFLATED,compresslevel=6) as z:
@@ -51,8 +51,9 @@ def main():
     for name in ("book","reader","readme","target"):
         ap.add_argument("--"+name,required=True,type=Path)
     ap.add_argument("--version",required=True)
+    ap.add_argument("--head",required=True)
     a=ap.parse_args()
-    h=assemble(a.book,a.reader,a.readme,a.target,a.version)
+    h=assemble(a.book,a.reader,a.readme,a.target,a.version,a.head)
     print("CANDIDATE_ARCHIVE_SHA256="+h+" RELEASE_HOLD_SIGNATURE_AND_HUMAN_REVIEWS_NOT_VERIFIED")
 
 if __name__=="__main__":

@@ -48,13 +48,17 @@ def verify_workbook_labels(workbook_bytes, version):
         raise ValueError("INVALID_RELEASE_WORKBOOK_STRUCTURE") from exc
     return True
 
-def verify_release_readme(readme, version):
+def verify_release_readme(readme, version, head_sha):
+    if not isinstance(head_sha, str) or re.fullmatch(r"[0-9a-f]{40}", head_sha) is None:
+        raise ValueError("INVALID_RELEASE_SOURCE_HEAD")
     if not isinstance(readme, bytes) or not 0 < len(readme) <= 1048576:
         raise ValueError("INVALID_RELEASE_README")
     try:
         source = readme.decode("utf-8-sig")
     except UnicodeError as exc:
         raise ValueError("RELEASE_README_NOT_UTF8") from exc
+    if source.count("ソースHEAD：") != 1 or not source.endswith("ソースHEAD：" + head_sha + "\n"):
+        raise ValueError("RELEASE_README_HEAD_MISMATCH")
     if (not source.startswith("# ふるさと納税 寄附限度額試算 " + version + "\n")
             or not all(year in source for year in ("2025", "2026"))
             or not all(word in source for word in ("署名", "税額"))

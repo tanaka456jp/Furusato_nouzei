@@ -71,6 +71,7 @@ class ExcelPrepublicationTests(unittest.TestCase):
             "certificate_thumbprint_verified": True,
             "macro_workbook_signature":
                 "CONTAINER_DETECTED_CRYPTOGRAPHIC_VALIDITY_NOT_VERIFIED",
+            "office_vba_signed_property": "OFFICE_RECOGNIZED_SIGNED_PROJECT",
             "macro_signature_office_validation": "REQUIRED_BEFORE_RELEASE",
             "exact_release_members": "THREE_EXPECTED_FILES_ONLY",
             "manual_publisher_approval": "REQUIRED",
@@ -114,6 +115,8 @@ class ExcelPrepublicationTests(unittest.TestCase):
         self.assertEqual(result["product_scope"], PRODUCT_SCOPE)
         self.assertEqual(result["private_review_records"], 9)
         self.assertIn("REQUIRES_HUMAN", result["source_lineage_after_signing"])
+        self.assertEqual(result["office_vba_signed_property"],
+                         "OFFICE_RECOGNIZED_SIGNED_PROJECT")
 
     def test_mismatched_or_tampered_candidate_refused(self):
         with self.assertRaisesRegex(ValueError, "SHA256_MISMATCH"):
@@ -148,11 +151,21 @@ class ExcelPrepublicationTests(unittest.TestCase):
                              ("archive_sha256", "f" * 64),
                              ("reader_exe_sha256", "f" * 64),
                              ("macro_signature_office_validation", "PASS"),
+                             ("office_vba_signed_property", "UNVERIFIED"),
                              ("release_decision", "APPROVED")):
             with self.subTest(field=field):
                 evidence = dict(self.signature, **{field: value})
                 with self.assertRaisesRegex(ValueError, "SIGNED_ARCHIVE"):
                     self.run_check(signature=evidence)
+
+    def test_mismatched_readme_source_head_refused(self):
+        with ZipFile(self.archive, "w") as z:
+            z.writestr("Furusato_nouzei.xlsm", self.book_bytes)
+            z.writestr("FurusatoDocumentReader.exe", self.reader)
+            z.writestr("README.txt", render(VERSION, "b" * 40))
+        signature = dict(self.signature, archive_sha256=sha256(self.archive))
+        with self.assertRaisesRegex(ValueError, "RELEASE_README_HEAD_MISMATCH"):
+            self.run_check(signature=signature)
 
     def test_workbook_brand_and_readme_are_bound_to_official_version(self):
         with self.assertRaisesRegex(ValueError, "INVALID_NEXT_RELEASE_VERSION"):

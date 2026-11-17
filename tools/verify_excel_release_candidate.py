@@ -64,7 +64,7 @@ def verify(head, run_id, version, archive, expected_hash, ci, manifest, signatur
                      "v4.18.2".encode("utf-8") not in readme,
                      "REVIEW_OR_WRONG_VERSION_README")
             verify_workbook_labels(workbook_bytes, version)
-            verify_release_readme(readme, version)
+            verify_release_readme(readme, version, head)
     except BadZipFile as exc:
         raise ValueError("INVALID_RELEASE_ZIP_FORMAT") from exc
 
@@ -109,6 +109,8 @@ def verify(head, run_id, version, archive, expected_hash, ci, manifest, signatur
              signature.get("certificate_thumbprint_verified") is True and
              signature.get("macro_workbook_signature") ==
                  "CONTAINER_DETECTED_CRYPTOGRAPHIC_VALIDITY_NOT_VERIFIED" and
+             signature.get("office_vba_signed_property") ==
+                 "OFFICE_RECOGNIZED_SIGNED_PROJECT" and
              signature.get("macro_signature_office_validation") ==
                  "REQUIRED_BEFORE_RELEASE" and
              signature.get("exact_release_members") == "THREE_EXPECTED_FILES_ONLY" and
@@ -131,6 +133,7 @@ def verify(head, run_id, version, archive, expected_hash, ci, manifest, signatur
         "ci_review_only_not_signed_payload": True,
         "private_review_records": len(REQUIRED) - int(preprint_only),
         "source_lineage_after_signing": "REQUIRES_HUMAN_REVIEW",
+        "office_vba_signed_property": "OFFICE_RECOGNIZED_SIGNED_PROJECT",
         "office_vbe_signature": "REQUIRES_HUMAN_CRYPTOGRAPHIC_VALIDATION",
         "physical_tax_and_print_evidence": "REQUIRES_HUMAN_AUTHENTICITY_REVIEW",
         "release_authorization": "REQUIRES_EXPLICIT_FINAL_HUMAN_APPROVAL",

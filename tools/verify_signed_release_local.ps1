@@ -304,6 +304,45 @@ try {
     } finally {
         $xlsmZip.Dispose()
     }
+    # Excel itself must recognize a signed VBA project. This does not prove
+    # CA trust, revocation, publisher identity or signature cryptographic
+    # validity: those are separately reviewed in the actual Office UI.
+    # Never enable macros or run unattended VBE automation in this check.
+    $office = $null
+    $signedBook = $null
+    $officeVbaSigned = $false
+    try {
+        $office = New-Object -ComObject Excel.Application
+        $office.Visible = $false
+        $office.DisplayAlerts = $false
+        $office.AskToUpdateLinks = $false
+        $office.EnableEvents = $false
+        $office.AutomationSecurity = 3 # msoAutomationSecurityForceDisable
+        $signedBook = $office.Workbooks.Open($localXlsm,0,$true)
+        if ($null -eq $signedBook -or $office.Workbooks.Count -ne 1 -or
+            -not [string]::Equals([string]$signedBook.FullName,$localXlsm,
+                [StringComparison]::OrdinalIgnoreCase)) {
+            throw 'OFFICE_VBA_SIGNATURE_UNEXPECTED_WORKBOOK'
+        }
+        if ($signedBook.HasVBProject -ne $true) {
+            throw 'OFFICE_VBA_SIGNATURE_PROJECT_NOT_RECOGNIZED'
+        }
+        if ($signedBook.VBASigned -ne $true) {
+            throw 'OFFICE_VBA_SIGNATURE_NOT_RECOGNIZED'
+        }
+        $officeVbaSigned = $true
+    } finally {
+        if ($null -ne $signedBook) {
+            try { $signedBook.Close($false) } finally {
+                [void][Runtime.InteropServices.Marshal]::ReleaseComObject($signedBook)
+            }
+        }
+        if ($null -ne $office) {
+            try { $office.Quit() } finally {
+                [void][Runtime.InteropServices.Marshal]::ReleaseComObject($office)
+            }
+        }
+    }
     $exe = @($zip.Entries | Where-Object { $_.FullName -ceq 'FurusatoDocumentReader.exe' })
     if ($exe.Count -ne 1 -or $exe[0].Length -lt 10000 -or
         $exe[0].Length -gt 120000000) {
@@ -331,6 +370,7 @@ try {
         authenticode = 'VALID_TRUSTED_EXPECTED_SIGNER'
         certificate_thumbprint_verified = $true
         macro_workbook_signature = 'CONTAINER_DETECTED_CRYPTOGRAPHIC_VALIDITY_NOT_VERIFIED'
+        office_vba_signed_property = 'OFFICE_RECOGNIZED_SIGNED_PROJECT'
         macro_signature_office_validation = 'REQUIRED_BEFORE_RELEASE'
         exact_release_members = 'THREE_EXPECTED_FILES_ONLY'
         manual_publisher_approval = 'REQUIRED'

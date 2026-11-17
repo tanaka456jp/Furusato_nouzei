@@ -36,7 +36,7 @@ python tools/prepare_official_excel_release.py --head HEAD40 --run-id RUNID --ve
 
 ```powershell
 python tools/make_excel_release_readme.py --version v4.18.35 --head "<現在の40桁HEAD>" --output "<PRIVATE>\\README.txt"
-python tools/assemble_excel_candidate_local.py --book "<PRIVATE>\\Furusato_nouzei.xlsm" --reader "<PRIVATE>\\FurusatoDocumentReader.exe" --readme "<PRIVATE>\\README.txt" --version v4.18.35 --target "<PRIVATE>\\Furusato_candidate.zip"
+python tools/assemble_excel_candidate_local.py --book "<PRIVATE>\\Furusato_nouzei.xlsm" --reader "<PRIVATE>\\FurusatoDocumentReader.exe" --readme "<PRIVATE>\\README.txt" --version v4.18.35 --head "<現在の40桁HEAD>" --target "<PRIVATE>\\Furusato_candidate.zip"
 ```
 
 上記アーカイブ作成は署名を検証・適用しない。続けて既存の `verify_signed_release_local.ps1` と `verify_excel_release_candidate.py` で、EXE署名、VBA署名構造、ZIP SHA256、Excel表示版とREADME版、CI同一HEAD、非公開の税務レビューを照合する。
@@ -53,3 +53,8 @@ python tools/verify_excel_release_candidate.py --preprint-only --head "<HEAD>" -
 このモードは**印刷だけが未記録**のときに限り成功し、`EIGHT_NONPHYSICAL_GATES_RECORDED_PREPRINT_HOLD` を返す。ただし、メタデータの照合だけで証拠の真正性を証明するものではなく、署名・税務・実画面の人手による独立受入が必要。印刷済み証拠の虚偽記録や、署名・税務・画面の未達を許容しない。公開許可ではない。
 
 A4実印刷が完了したら、その物理印刷報告書のハッシュを非公開マニフェストに記録し、`--preprint-only` を外して9項目すべてを照合する。最終的な配布物ステージングも同じ9項目を必須とする。旧版の検証ZIPを利用したり、最後の印刷証拠を自動生成したりしない。
+
+
+## 追加：Excel自身によるVBA署名認識の検査
+
+ローカルの `verify_signed_release_local.ps1` は、XLSMの署名部品とVBAプロジェクトの関連付けに加え、Windows Excelで同梱の署名済み候補を**マクロ無効・読み取り専用**で開いて `Workbook.VBASigned` が真であることを必須にする。これはMicrosoftが公開するVBA署名の有無の確認用プロパティであり、**署名証明書の有効性、失効情報、署名者本人確認までは保証しない**。そのため `macro_signature_office_validation = REQUIRED_BEFORE_RELEASE` を残し、VBEの署名画面で証明書・発行者・チェーン・コード変更なしを発行者が独立確認するまでHOLDを維持する。無署名のREVIEW ZIPを再署名せずに公開しない。

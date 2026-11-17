@@ -24,7 +24,7 @@ def render(version, head):
         f"ソースHEAD：{head}\n"
     )
     encoded = data.encode("utf-8")
-    verify_release_readme(encoded, version)
+    verify_release_readme(encoded, version, head)
     return encoded
 
 def main():
