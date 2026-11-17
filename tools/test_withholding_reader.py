@@ -1,12 +1,63 @@
 """Synthetic parser tests: no actual personal documents in git or CI."""
 import json
+import runpy
+import sys
+from unittest.mock import patch
+from types import SimpleNamespace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
-from withholding_reader import CODE_MAP,detect_year,extract_codes,extract_labelled,extract_occupancy_year,extract,finish,write_bridge
+from withholding_reader import CODE_MAP,detect_year,extract_codes,extract_labelled,extract_occupancy_year,extract,finish,write_bridge,extract_pdf_batch,write_batch_bridge,pdf_page_count,family_transfer_warnings,extract_recipient_name,normalize_recipient_name
 
 
 class WithholdingTest(unittest.TestCase):
+    def test_page_probe_is_structure_only_and_returns_no_personal_text(self):
+        # Simulated PDF is five-page and contains no actual taxpayer data.
+        # The probe must not call get_text/get_pixmap/get_textpage.
+        class HeaderOnlyPDF:
+            is_encrypted = False
+            def __enter__(self): return self
+            def __exit__(self, *_): return False
+            def __len__(self): return 5
+            def __getitem__(self, idx):
+                raise AssertionError("Probe must never open a PDF page")
+        with TemporaryDirectory() as tmp:
+            inp = Path(tmp) / "fictional_five_people.pdf"
+            output = Path(tmp) / "private_count.txt"
+            inp.write_bytes(b"synthetic-placeholder-pdf-not-a-real-document")
+            fake = SimpleNamespace(open=lambda path: HeaderOnlyPDF())
+            with patch.dict("sys.modules", {"fitz": fake}):
+                self.assertEqual(pdf_page_count(inp), 5)
+                args = ["withholding_reader.py","--input",str(inp),
+                        "--output",str(output),"--probe-pages"]
+                with patch.object(sys,"argv",args):
+                    runpy.run_path(str(Path(__file__).with_name("withholding_reader.py")),
+                                   run_name="__main__")
+            self.assertEqual(output.read_bytes(), b"PDF_PAGES\t5\n")
+            self.assertNotIn(b"salary",output.read_bytes())
+            self.assertNotIn(b"personal",output.read_bytes())
+        vba = (Path(__file__).parent.parent / "vba" /
+               "TaxLawUpdater.bas").read_text(encoding="utf-8-sig")
+        self.assertIn("PdfPagesForImport", vba)
+        self.assertIn("--batch-bridge", vba)
+        self.assertIn("If pageCount > 1 Then", vba)
+        self.assertIn("BatchWithholding.BatchImportBridgeLocalFile(tempProbe)", vba)
+        self.assertIn("BatchWithholding.ShowBatch", vba)
+        self.assertIn("GoTo CleanUp",vba)
+
+    def test_page_probe_rejects_encrypted_pdf(self):
+        class Encrypted:
+            is_encrypted = True
+            def __enter__(self): return self
+            def __exit__(self, *_): return False
+            def __len__(self): return 5
+        with TemporaryDirectory() as tmp:
+            inp = Path(tmp) / "fictional_encrypted.pdf"
+            inp.write_bytes(b"not-actual-pdf")
+            with patch.dict("sys.modules",{"fitz":SimpleNamespace(open=lambda _:Encrypted())}):
+                with self.assertRaisesRegex(ValueError,"PDF_PAGE_PROBE_UNSUPPORTED"):
+                    pdf_page_count(inp)
+
     def test_years(self):
         self.assertEqual(detect_year("令和 8 年分 給与所得の源泉徴収票"),2026)
         self.assertEqual(detect_year("令和 7 年分"),2025)
@@ -27,9 +78,351 @@ class WithholdingTest(unittest.TestCase):
         self.assertEqual(result["social_insurance"],1600000)
         self.assertEqual(result["income_tax_withheld"],0)
 
+    def test_family_tax_slip_fields_are_not_silently_ignored(self):
+        # Exact anonymous G-field slots, matching the 2025/26 tax form.
+        ordered = ("G09","G10","G11","G12","G13","G14","G15","G16",
+                   "G17","G18","G19","G20","G21","G22","G23","G24")
+        def form(**amounts):
+            words = []
+            for idx, code in enumerate(ordered):
+                x = 23 + idx * 37
+                words.append((x,260,x+16,268,code))
+                value = amounts.get(code, 2 if code in ("G09","G10","G11") else 0)
+                words.append((x+22,260,x+34,268,str(value)))
+            return words
+        baseline = form()
+        self.assertEqual(family_transfer_warnings(baseline), [])
+        self.assertEqual(family_transfer_warnings(form(G18=1)), [])
+        self.assertEqual(family_transfer_warnings(form(G09=1,G12=380000)), [])
+        self.assertEqual(family_transfer_warnings(form(G13=2,G15=1,G16=2)), [])
+        self.assertEqual(family_transfer_warnings(form(G09=2,G12=380000)),
+                         ["FAMILY_SPOUSE_INCOME_NEEDED"])
+        self.assertEqual(family_transfer_warnings(form(G21=2,G22=1)),
+                         ["FAMILY_DISABLED_SUBCOUNT_INVALID"])
+        self.assertEqual(family_transfer_warnings(form(G14=1)),
+                         ["FAMILY_SECONDARY_OR_NONRESIDENT_REQUIRES_REVIEW"])
+        self.assertEqual(family_transfer_warnings(form(G24=1)),
+                         ["FAMILY_SECONDARY_OR_NONRESIDENT_REQUIRES_REVIEW"])
+        self.assertEqual(family_transfer_warnings([(435,265,446,271,"G20")]),
+                         ["FAMILY_LAYOUT_UNVERIFIED"])
+        fields, flags = extract_codes(form(G20=2,G13=1))
+        self.assertEqual(flags, [])
+        self.assertEqual(fields["under16_count"], 2)
+        self.assertEqual(fields["specific_dependent_count"], 1)
+        self.assertEqual(CODE_MAP["G73"],"secondary_special_relative_count")
+        self.assertNotEqual(CODE_MAP["G73"],"under16_count")
+        # A source with no reconstructable family row must be HOLD, never
+        # read as 'no spouse and no dependents' without evidence.
+        base = {"salary_gross":5000000,"salary_reference":3500000,
+                "deductions_reference":1500000,"income_tax_withheld":100000,
+                "social_insurance":800000}
+        unsafe = finish(2025,base,"PDF_TEXT",family_transfer_warnings([]))
+        self.assertEqual(unsafe["status"],"REQUIRES_REVIEW")
+        self.assertIn("FAMILY_LAYOUT_UNVERIFIED",unsafe["warnings"])
+        with TemporaryDirectory() as tmp:
+            path=Path(tmp)/"fictional_family_warning.tsv"
+            write_batch_bridge([{"page":1,**unsafe}],path)
+            self.assertTrue(path.read_bytes().isascii())
+            self.assertIn(b"FAMILY_LAYOUT_UNVERIFIED",path.read_bytes())
+
+
+    def test_spouse_income_uses_g43_never_personal_number_g42(self):
+        # On the statutory form G42 is spouse ID, G43 is spouse income.
+        # The fictional G42 sequence must never enter the numeric bridge.
+        self.assertNotIn("G42", CODE_MAP)
+        self.assertEqual(CODE_MAP["G43"], "spouse_total_income")
+        words = [
+            (100, 480, 120, 488, "G42"),
+            (125, 480, 210, 488, "111111111111"),
+            (270, 485, 281, 491, "G43"),
+            (319, 485, 375, 491, "310000"),
+        ]
+        fields, warnings = extract_codes(words)
+        self.assertEqual(warnings, [])
+        self.assertEqual(fields, {"spouse_total_income": 310000})
+        self.assertNotIn(111111111111, fields.values())
+
     def test_labelled(self):
         self.assertEqual(extract_labelled("支払金額：5,000,000\n社会保険料等の金額：1,000,000"),
                          {"salary_gross":5000000,"social_insurance":1000000})
+
+    def test_recipient_e03_name_only_and_safe_ascii_transport(self):
+        # All names here are FICTIONAL. Header E03 has one unambiguous
+        # recipient. The spouse, employer, identifier and relatives do not
+        # enter the name output or the numerical status JSON.
+        words = [
+            (47,154,59,160,"氏名"),
+            (77,154,88,160,"E03"),
+            (89,151,145,162,"架空一郎"),
+            (334,154,359,160,"(役職名)"),
+            (382,153,425,160,"代表取締役"),
+            (76,170,88,176,"G02"),
+            (91,168,209,177,"123456789012"),
+            (48,484,58,491,"氏名"),
+            (89,482,146,493,"配偶者氏名"),
+        ]
+        self.assertEqual(extract_recipient_name("",words),"架空一郎")
+        self.assertEqual(extract_recipient_name("氏名：架空二郎",[]),"架空二郎")
+        self.assertEqual(extract_recipient_name("氏名又は名称：架空商事",[]),None)
+        self.assertIsNone(extract_recipient_name("", words+[(78,155,88,160,"E03")]))
+        for invalid in ("=2+2","123456789012","a\tb","", "A", "住所：京都"):
+            self.assertIsNone(normalize_recipient_name(invalid))
+        self.assertEqual(normalize_recipient_name("　架空　太郎　"),"架空 太郎")
+        report = finish(2025,{
+            "salary_gross":7000000, "salary_reference":5200000,
+            "deductions_reference":1670000, "income_tax_withheld":100000,
+            "social_insurance":1000000
+        }, "PDF_TEXT")
+        with TemporaryDirectory() as tmp:
+            target = Path(tmp) / "fictional_names.tsv"
+            write_batch_bridge([{"page":1,**report,"recipient_name":"架空一郎"}],target)
+            raw = target.read_bytes()
+            self.assertTrue(raw.isascii())
+            self.assertNotIn("架空一郎".encode("utf-8"),raw)
+            self.assertNotIn(b"NAME\t",raw)
+            rows = [v.split("\t") for v in target.read_text("ascii").splitlines()]
+            hex_rows = [v[1] for v in rows if v[0] == "NAME_UTF8_HEX"]
+            self.assertEqual(len(hex_rows),1)
+            self.assertEqual(bytes.fromhex(hex_rows[0]).decode("utf-8"),"架空一郎")
+            with self.assertRaisesRegex(ValueError,"Invalid recipient name"):
+                write_batch_bridge([{"page":1,**report,
+                                   "recipient_name":"=HYPERLINK(1)"}],target)
+
+    def test_recipient_name_extracted_from_fictional_pdf_without_stdout_pii(self):
+        class FakePage:
+            def get_text(self, mode, sort=False):
+                if mode == "words":
+                    return [(77,154,88,160,"E03"),
+                            (89,151,145,162,"架空二郎"),
+                            (104,218,115,223,"G04"),
+                            (178,215,233,226,"7,000,000")]
+                return "令和 7 年分 給与所得の源泉徴収票\n氏名\nE03\n架空二郎\nG04\n7,000,000\n合計検査用の架空フォームです"
+        class FakeDoc:
+            is_encrypted = False
+            def __enter__(self): return self
+            def __exit__(self,*_): return False
+            def __len__(self): return 1
+            def __iter__(self): return iter([FakePage()])
+        with TemporaryDirectory() as tmp:
+            source = Path(tmp) / "fictional.pdf"
+            source.write_bytes(b"fixture-only-not-a-real-pdf")
+            with patch.dict("sys.modules", {"fitz":SimpleNamespace(open=lambda _:FakeDoc())}):
+                records=extract_pdf_batch(source)
+            self.assertEqual(len(records),1)
+            self.assertEqual(records[0]["recipient_name"],"架空二郎")
+            output = Path(tmp) / "numeric_ascii.tsv"
+            write_batch_bridge(records,output)
+            self.assertNotIn("架空二郎".encode("utf-8"),output.read_bytes())
+
+    def test_private_multi_page_pdf_separates_taxpayers_and_disposes_identifiers(self):
+        # Entirely synthetic pages: do not place actual source slips in CI.
+        class FakePage:
+            def __init__(self, text):
+                self.text = text
+            def get_text(self, mode, sort=False):
+                return [] if mode == "words" else self.text
+
+        class FakeDoc:
+            is_encrypted = False
+            def __init__(self, pages):
+                self.pages = [FakePage(p) for p in pages]
+            def __len__(self):
+                return len(self.pages)
+            def __iter__(self):
+                return iter(self.pages)
+            def __enter__(self):
+                return self
+            def __exit__(self, *_):
+                return False
+
+        fictional = [
+            "令和 7 年分 給与所得の源泉徴収票\n"
+            "氏名：SYNTHETIC_PERSON_ONE\n住所：SYNTHETIC_ADDRESS\n"
+            "支払金額：7,000,000\n給与所得控除後の金額：5,200,000\n"
+            "所得控除の額の合計額：1,670,000\n源泉徴収税額：500,000\n"
+            "社会保険料等の金額：1,000,000\n",
+            "令和 8 年分 給与所得の源泉徴収票\n"
+            "氏名：SYNTHETIC_PERSON_TWO\n勤務先：SYNTHETIC_EMPLOYER\n"
+            "支払金額：5,000,000\n給与所得控除後の金額：3,560,000\n"
+            "所得控除の額の合計額：1,400,000\n源泉徴収税額：80,000\n"
+            "社会保険料等の金額：850,000\n",
+        ]
+        with TemporaryDirectory() as tmp:
+            file = Path(tmp) / "fictional_2_slips.pdf"
+            file.write_bytes(b"test-only-placeholder-PDF-content")
+            fake_fitz = SimpleNamespace(open=lambda path: FakeDoc(fictional))
+            with patch.dict("sys.modules", {"fitz": fake_fitz}):
+                records = extract_pdf_batch(file)
+            self.assertEqual([x["page"] for x in records], [1, 2])
+            self.assertEqual([x["year"] for x in records], [2025, 2026])
+            self.assertEqual(records[0]["fields"]["salary_gross"], 7000000)
+            self.assertEqual(records[1]["fields"]["salary_gross"], 5000000)
+            self.assertEqual(records[0]["fields"]["social_insurance"], 1000000)
+            self.assertEqual(records[1]["fields"]["social_insurance"], 850000)
+            output = Path(tmp) / "batch.tsv"
+            write_batch_bridge(records, output)
+            raw = output.read_bytes()
+            self.assertTrue(raw.isascii(), "bridge must be ASCII-only")
+            self.assertIn(b"PAGE\t1\n", raw)
+            self.assertIn(b"ENDPAGE\t1\nPAGE\t2\n", raw)
+            self.assertIn(b"salary_gross\t7000000\n", raw)
+            self.assertIn(b"salary_gross\t5000000\n", raw)
+            self.assertNotIn(b"SYNTHETIC_PERSON", raw)
+            self.assertNotIn(b"ADDRESS", raw)
+            self.assertNotIn(b"EMPLOYER", raw)
+            report = str(records)
+            self.assertNotIn("SYNTHETIC_PERSON", report)
+
+    def test_five_page_2025_batch_preserves_blank_social_and_housing_fields(self):
+        # A completely fictional five-page PDF model. No actual financial
+        # amounts or identifiers are copied from the user's source PDF.
+        def tokens(gross, salary, deductions, withheld, social):
+            cells = [
+                ((104, 218, 115, 223, "G04"),
+                 (178, 215, 233, 226, f"{gross:,}")),
+                ((231, 209, 242, 215, "G05"),
+                 (289, 207, 344, 218, f"{salary:,}")),
+                ((341, 209, 352, 215, "G06"),
+                 (398, 207, 453, 218, f"{deductions:,}")),
+                ((452, 218, 463, 223, "G08"),
+                 (533, 215, 560, 224, f"{withheld:,}")),
+            ]
+            if social is not None:
+                cells.append(((138, 308, 149, 314, "G26"),
+                              (215, 305, 260, 314, f"{social:,}")))
+            else:
+                # The next column is a life-insurance deduction, NOT social
+                # insurance. An absent G26 must not borrow a G27 value.
+                cells.extend([
+                    ((138, 308, 149, 314, "G26"),),
+                    ((300, 308, 311, 314, "G27"),
+                     (365, 305, 410, 314, "42,000")),
+                ])
+            # Mock the 2025/26 anonymized family-code row. Checkbox
+            # values 2 mean unchecked; other numbered slots are empty/zero.
+            for idx, code in enumerate(("G09","G10","G11","G12","G13","G14",
+                                         "G15","G16","G17","G18","G19","G20",
+                                         "G21","G22","G23","G24")):
+                x=20+idx*36
+                value=2 if code in ("G09","G10","G11") else 0
+                cells.append(((x,265,x+17,273,code),
+                              (x+23,265,x+33,273,str(value))))
+            return [w for pair in cells for w in pair]
+
+        fixtures = [
+            (6900000, 5000000, 1800000, 140000, 950000),
+            (5100000, 3560000, 1500000, 0, 740000),
+            (3900000, 2600000, 1250000, 35000, 580000),
+            (1200000, 550000, 740000, 0, None),
+            (3400000, 2300000, 1140000, 46000, 415000),
+        ]
+
+        class Page:
+            def __init__(self, ordinal, entry):
+                self.ordinal = ordinal
+                self.words = tokens(*entry)
+                self.text = (
+                    "令和 7 年分\n"
+                    "源泉徴収票の架空レイアウト検証用であり"
+                    "実際の納税者の記載事項は含まれていません\n"
+                )
+            def get_text(self, kind, sort=False):
+                return self.words if kind == "words" else self.text
+
+        class Document:
+            is_encrypted = False
+            def __enter__(self):
+                return self
+            def __exit__(self, *_):
+                return False
+            def __len__(self):
+                return len(fixtures)
+            def __iter__(self):
+                return iter(Page(i, x) for i, x in enumerate(fixtures, 1))
+
+        with TemporaryDirectory() as tmp:
+            pdf = Path(tmp) / "synthetic_five_taxpayers.pdf"
+            pdf.write_bytes(b"synthetic-pdf-mock")
+            fitz_fake = SimpleNamespace(open=lambda _: Document())
+            with patch.dict("sys.modules", {"fitz": fitz_fake}):
+                pages = extract_pdf_batch(pdf)
+            self.assertEqual(len(pages), 5)
+            self.assertEqual([x["year"] for x in pages], [2025] * 5)
+            self.assertEqual([x["status"] for x in pages], [
+                "READY_FOR_EXCEL_CROSSCHECK",
+                "READY_FOR_EXCEL_CROSSCHECK",
+                "READY_FOR_EXCEL_CROSSCHECK",
+                "REQUIRES_REVIEW",
+                "READY_FOR_EXCEL_CROSSCHECK",
+            ])
+            self.assertNotIn("social_insurance", pages[3]["fields"])
+            self.assertEqual(pages[3]["fields"]["life_deduction_reference"], 42000)
+            self.assertEqual(pages[4]["fields"]["social_insurance"], 415000)
+            self.assertNotEqual(
+                pages[0]["fields"]["salary_gross"],
+                pages[1]["fields"]["salary_gross"],
+                "never reuse a previous taxpayer's income"
+            )
+            destination = Path(tmp) / "safe_page_bridge.tsv"
+            write_batch_bridge(pages, destination)
+            content = destination.read_bytes()
+            self.assertEqual(sum(line.startswith(b"PAGE\t") for line in content.splitlines()), 5)
+            self.assertIn(b"ENDPAGE\t4\nPAGE\t5\n", content)
+            page4 = content.split(b"PAGE\t4\n", 1)[1].split(b"ENDPAGE\t4\n", 1)[0]
+            self.assertNotIn(b"social_insurance\t", page4)
+            self.assertIn(b"life_deduction_reference\t42000", page4)
+            self.assertIn(b"STATUS\tREQUIRES_REVIEW", page4)
+            self.assertNotIn(b"name", content.lower())
+            self.assertTrue(content.isascii())
+
+    def test_ambiguous_code_stays_per_page_hold_without_bridge_failure(self):
+        # An ambiguous numeric field must not abort all taxpayers' import.
+        tokens = [
+            (104, 218, 115, 223, "G04"),
+            (178, 215, 233, 226, "5,000,000"),
+            (237, 215, 263, 226, "5,100,000"),
+        ]
+        fields, warnings = extract_codes(tokens)
+        self.assertNotIn("salary_gross", fields)
+        self.assertEqual(warnings, ["AMBIGUOUS_SALARY_GROSS"])
+        hold = finish(2025, fields, "PDF_TEXT", warnings)
+        self.assertEqual(hold["status"], "REQUIRES_REVIEW")
+        with TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "ambiguous.tsv"
+            write_batch_bridge([{"page": 1, **hold}], dest)
+            output = dest.read_bytes()
+            self.assertTrue(output.isascii())
+            self.assertIn(b"AMBIGUOUS_SALARY_GROSS", output)
+            self.assertNotIn(b"salary_gross\t", output)
+
+    def test_batch_rejects_wrong_page_count_and_unsafe_bridge_values(self):
+        with TemporaryDirectory() as tmp:
+            file = Path(tmp) / "fictional_slips.pdf"
+            file.write_bytes(b"synthetic-local-input")
+            fake_fitz = SimpleNamespace(
+                open=lambda _: type("InvalidDoc", (), {
+                    "is_encrypted":False,
+                    "__enter__":lambda self: self,
+                    "__exit__":lambda self,*args:False,
+                    "__len__":lambda self:21
+                })()
+            )
+            with patch.dict("sys.modules", {"fitz":fake_fitz}):
+                with self.assertRaises(ValueError):
+                    extract_pdf_batch(file)
+            valid = finish(2025,{
+                "salary_gross":5000000,
+                "salary_reference":3560000,
+                "deductions_reference":1400000,
+                "social_insurance":850000,
+                "income_tax_withheld":80000,
+            }, "PDF_TEXT")
+            with self.assertRaises(ValueError):
+                write_batch_bridge([{"page":2, **valid}],Path(tmp)/"wrong.tsv")
+            with self.assertRaises(ValueError):
+                write_batch_bridge([{"page":1, **valid,
+                                     "warnings":["NAME:\tBAD"]}],
+                                   Path(tmp)/"unsafe.tsv")
 
     def test_structured_csv_does_not_leak_names(self):
         with TemporaryDirectory() as tmp:
@@ -111,15 +504,20 @@ class WithholdingTest(unittest.TestCase):
         words=[
             (380,265,391,271,"G72"),(395,264,402,271,"1"),
             (408,265,419,271,"G73"),(423,264,430,271,"2"),
+            (435,265,446,271,"G20"),(451,264,458,271,"2"),
             (33,300,44,305,"G74"),(102,296,138,305,"630,000"),
         ]
         self.assertEqual(CODE_MAP["G72"],"special_relative_count")
-        self.assertEqual(CODE_MAP["G73"],"under16_count")
+        self.assertEqual(CODE_MAP["G20"],"under16_count")
+        self.assertEqual(CODE_MAP["G73"],"secondary_special_relative_count")
         self.assertEqual(CODE_MAP["G74"],"special_relative_deduction_reference")
         fields,flags=extract_codes(words)
         self.assertEqual(flags,[])
+        self.assertIn("FAMILY_LAYOUT_UNVERIFIED",
+                      family_transfer_warnings(words))
         self.assertEqual(fields,{
             "special_relative_count":1,
+            "secondary_special_relative_count":2,
             "under16_count":2,
             "special_relative_deduction_reference":630000,
         })

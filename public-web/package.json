@@ -1,0 +1,15 @@
+{
+  "name": "furusato-public-web-ocr-review",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Build-only offline OCR dependencies; no hosting or third-party API",
+  "scripts": {
+    "build": "node scripts/build.cjs",
+    "test": "node tests/test-ocr-review.cjs && node tests/test-public-web.cjs"
+  },
+  "dependencies": {
+    "tesseract.js": "7.0.0",
+    "@tesseract.js-data/jpn": "1.0.0",
+    "pdfjs-dist": "6.3.289"
+  }
+}

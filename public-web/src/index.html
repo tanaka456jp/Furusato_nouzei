@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <meta name="description" content="ふるさと納税の寄附目安額を、ブラウザ内で簡易試算できる無料ツール。現在は2025年・2026年の限定条件で検証中です。">
+  <title>ふるさと納税 限度額シミュレーター｜公開前検証</title>
+  <link rel="stylesheet" href="./style.css">
+  <script src="./engine.js" defer></script>
+  <script src="./app.js" defer></script>
+  <script src="./ocr-review.js" defer></script>
+  <script src="./ocr-quality.js" defer></script>
+  <script src="./ocr-image-header.js" defer></script>
+  <script src="./pdf-compat.js" defer></script>
+  <script src="./ocr-layout.js" defer></script>
+  <script src="./pdf-gcodes.js" defer></script>
+  <script src="./ocr-perspective.js" defer></script>
+  <script src="./ocr-regions.js" defer></script>
+  <script src="./vendor/tesseract/tesseract.min.js" defer></script>
+  <script src="./ocr.js" defer></script>
+  <script src="./batch-name.js" defer></script>
+  <script src="./batch-core.js" defer></script>
+  <script src="./batch.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">本文へ移動</a>
+  <header class="header">
+    <div class="container topbar">
+      <a href="./index.html" class="brand" aria-label="ふるさと納税シミュレーター ホーム">ふるさと納税 <span>限度額シミュレーター</span></a>
+      <span class="status">公開前の検証版</span>
+    </div>
+  </header>
+  <main id="main" class="container">
+    <section class="intro">
+      <p class="eyebrow">無料 · ログイン不要 · 入力値はブラウザ内のみ</p>
+      <h1>ふるさと納税の寄附目安額を、<br>わかりやすく試算。</h1>
+      <p class="lead">給与と社会保険料などを入力するだけ。個人情報の送信や会員登録をせず、対応する条件で概算を確認できます。</p>
+      <p class="notice"><strong>検証中：</strong>このWebページは公開前の検証用です。現在は2025年・2026年の単一給与所得など限られた条件だけに対応し、申告・寄附額の確定には使えません。2025年源泉票を用いた2026年試算は、2026年見込額へ訂正・再確認した場合のみ行います。</p>
+    </section>
+    <div class="layout">
+      <section class="panel" aria-labelledby="calc-title">
+        <div class="panel-head">
+          <p class="eyebrow">STEP 01</p>
+          <h2 id="calc-title">基本情報を入力</h2>
+          <p>すべて円単位です。源泉徴収票の試験的な端末内OCRを選べます。結果は原票照合が必要です。</p>
+        </div>
+        <section class="ocr-panel" aria-labelledby="ocr-title">
+          <p class="eyebrow">OPTIONAL · LOCAL OCR</p>
+          <h3 id="ocr-title">源泉徴収票から読み取る（試験機能）</h3>
+          <p>画像・PDFはこの端末で処理し、サーバーにアップロードしません。読み取りには時間がかかることがあります。原票照合なしでは自動確定しません。</p>
+          <p class="smallprint">OCRの品質判定は所得年と計算に必要な4金額だけを対象とし、氏名・住所・勤務先などの認識精度は評価しません。扶養・追加控除の有無は別途ご自身で確認してください。</p>
+          <label>源泉徴収票（JPEG・PNG・1ページPDF、8MB以下）
+            <input id="slipFile" type="file" accept="image/jpeg,image/png,application/pdf">
+          </label>
+          <div class="ocr-actions">
+            <button id="slipScan" type="button" class="secondary">端末内で読み取る</button>
+            <label class="ocr-confirm"><input id="slipConfirm" type="checkbox" disabled> 原票と年分・4金額・その他控除の有無を確認しました</label>
+            <button id="slipTransfer" type="button" class="secondary" disabled>確認済み候補を入力欄へ反映</button>
+          </div>
+          <div id="slipReview" class="ocr-report" role="status" aria-live="polite" hidden></div>
+          <p class="smallprint">源泉徴収票は個人情報です。OCRには日本語言語モデルを端末へ読み込む必要があります。認識に相違がある場合はHOLDとして手入力してください。</p>
+        </section>
+        <form id="calculator" novalidate>
+          <div class="fields">
+            <label>所得年
+              <select name="year" required><option value="2026">2026年（令和8年）</option><option value="2025">2025年（令和7年）</option></select>
+            </label>
+            <label>寄附金控除の手続き
+              <select name="filing" required><option value="one-stop">ワンストップ特例</option><option value="return">確定申告</option></select>
+            </label>
+            <label>給与支払金額 <small>年収・源泉徴収票「支払金額」</small>
+              <input type="text" inputmode="numeric" autocomplete="off" spellcheck="false" name="salaryGross" placeholder="例：7000000" maxlength="12" required>
+            </label>
+            <label>社会保険料等の金額
+              <input type="text" inputmode="numeric" autocomplete="off" spellcheck="false" name="socialInsurance" placeholder="例：1000000" maxlength="12" required>
+            </label>
+            <label>給与所得控除後の金額 <small>試算対象年の見込額を入力（前年原票の金額は参考値、手入力可）</small>
+              <input type="text" inputmode="numeric" autocomplete="off" spellcheck="false" name="salaryIncomeReference" placeholder="任意：源泉徴収票の記載額" maxlength="12">
+            </label>
+            <label>所得控除の額の合計額 <small>原票・当年見込額の照合用。追加控除があればHOLDします。</small>
+              <input type="text" inputmode="numeric" autocomplete="off" spellcheck="false" name="deductionsReference" placeholder="原票・見込額の照合値" maxlength="12">
+            </label>
+            <label class="deduction-override-input">所得控除合計額を手入力上書き（任意）
+              <small>入力すると上記の照合額よりこちらを優先します。対応外の控除額は計算せずHOLDします。</small>
+              <input type="text" inputmode="numeric" autocomplete="off" spellcheck="false" name="deductionsOverride" placeholder="空欄なら通常計算" maxlength="12" aria-describedby="deductionsOverrideStatus">
+            </label>
+          </div>
+          <p id="deductionsOverrideStatus" class="deductions-override-status" role="status" aria-live="polite" hidden>⚠ 所得控除合計額を手入力上書き中。社会保険料・扶養・本人所得の変更に自動追随しません。空欄にすると通常計算に戻ります。未検証の控除額はHOLDします。</p>
+          <fieldset class="conditions">
+            <legend>追加の控除・所得がある場合</legend>
+            <p>次の項目に該当する場合はチェックしてください。未対応条件では目安額を表示せず、安全のため停止します。</p>
+            <div class="checkgrid">
+              <label><input type="checkbox" name="hasSpouse"> 配偶者控除・配偶者特別控除</label>
+              <label><input type="checkbox" name="hasDependents"> 扶養親族・特定親族</label>
+              <label><input type="checkbox" name="hasLifeInsurance"> 生命保険料控除</label>
+              <label><input type="checkbox" name="hasEarthquakeInsurance"> 地震保険料控除</label>
+              <label><input type="checkbox" name="hasMortgage"> 住宅ローン控除</label>
+              <label><input type="checkbox" name="hasOtherIncome"> 給与以外の所得・複数給与</label>
+              <label><input type="checkbox" name="hasMedical"> 医療費・iDeCo・障害者等</label>
+              <label><input type="checkbox" name="hasSplitIncome"> 分離課税所得</label>
+              <label><input type="checkbox" name="hasIncomeAdjustment"> 所得金額調整控除対象</label>
+              <label><input type="checkbox" name="hasNonstandardConditions"> 標準条件外・不明な控除</label>
+            </div>
+          </fieldset>
+          <label class="confirm"><input type="checkbox" name="correctedSourceReviewed"> OCRで取り込んだ金額を手修正した場合、原票・見込額の根拠を再照合しました（変更前のOCR判定は無効）</label>
+          <label class="confirm"><input type="checkbox" name="forecastReviewed"> 前年の源泉徴収票を使う場合、給与・社会保険料・給与所得額・所得控除額を試算対象年の見込額に補正し、扶養等の条件を改めて確認しました（前年資料を使わない場合は不要）</label>
+          <label class="confirm"><input type="checkbox" name="acknowledgedExclusions" required> 上記の該当有無を確認しました（チェックがない場合は計算を停止します）</label>
+          <div class="actions"><button type="submit" class="primary">寄附目安額を試算する</button><button type="reset" class="secondary">入力をクリア</button></div>
+        </form>
+        <h2 class="print-only">ふるさと納税 寄附上限額の試算結果（検証版）</h2>
+        <div id="result" class="result" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+      </section>
+      <aside class="side" aria-label="ご利用上のご案内">
+        <section class="aside-card">
+          <p class="eyebrow">プライバシー</p>
+          <h2>所得情報をサーバーに送信しない</h2>
+          <p>この検証版は入力を端末内で計算します。アカウント登録、入力履歴のサーバー保存、外部OCRや広告の読み込みは行いません。OCRのコードと言語モデルはこのサイトから読み込みます。</p>
+        </section>
+        <section class="aside-card">
+          <p class="eyebrow">適用範囲</p>
+          <h2>対応しない場合はHOLD</h2>
+          <p>給与850万円超、扶養・保険料・住宅ローン控除、その他所得、自治体差等は実務確認が必要です。入力を変更して停止理由を消すのではなく、税額を個別に確認してください。</p>
+        </section>
+        <section class="aside-card">
+          <p class="eyebrow">税制根拠</p>
+          <h2>公的資料で確認</h2>
+          <p><a href="https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1155.htm" target="_blank" rel="noopener noreferrer">国税庁 No.1155 ふるさと納税</a></p>
+          <p><a href="https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1410.htm" target="_blank" rel="noopener noreferrer">国税庁 No.1410 給与所得控除</a></p>
+        </section>
+      </aside>
+    </div>
+    <section class="batch-panel panel" aria-labelledby="batch-title">
+      <p class="eyebrow">OPTIONAL · MULTI-PERSON LOCAL REVIEW</p>
+      <h2 id="batch-title">複数人を一括試算（複数ページPDF）</h2>
+      <p>1ページにつき<strong>1人分の源泉徴収票</strong>があるPDFを、端末内でページ順に読み取ります（最大20ページ・8MB）。受給者氏名はB列相当欄へ入力・訂正でき、参照源泉票の年分と試算対象年を別々に扱います。2025年原票から2026年を試算する場合は2026年の見込額へ修正してください。</p>
+      <p class="notice">同じ方の複数勤務先の源泉徴収票や1ページに複数人分を配置したPDFは自動合算できません。扶養・配偶者・生命保険料控除・住宅ローン控除・複数給与など未対応条件がある方は、確認チェックを付けずHOLDのままにしてください。</p>
+      <label class="batch-file-label">複数ページの源泉徴収票PDF（端末内のみ）
+        <input id="batchPdf" type="file" accept="application/pdf">
+      </label>
+      <div class="actions batch-actions">
+        <button id="batchScan" type="button" class="secondary">PDFをページごとに読み取る</button>
+        <button id="batchCalculate" type="button" class="primary" disabled>確認済みの対象者を一括試算</button>
+        <button id="batchDownload" type="button" class="secondary" disabled>結果一覧をCSV保存</button>
+        <button id="batchPrint" type="button" class="secondary" disabled>結果一覧を印刷・PDF保存</button>
+        <button id="batchClear" type="button" class="secondary">一覧を消去</button>
+      </div>
+      <p id="batchStatus" role="status" aria-live="polite">PDFを選択するとページごとに確認できます。確認が終わっていない方の限度額は表示しません。</p>
+      <div class="batch-viewport">
+        <table id="batchTable" class="batch-table" hidden>
+          <caption>源泉徴収票の個別試算一覧（HOLDは金額非表示）</caption>
+          <thead><tr>
+            <th scope="col">ページ</th><th scope="col">氏名（訂正可）</th>
+            <th scope="col">参照源泉票年</th><th scope="col">試算対象年</th>
+            <th scope="col">支払金額（見込額）</th>
+            <th scope="col">給与所得</th><th scope="col">所得控除合計（入力候補・訂正可）</th>
+            <th scope="col">所得控除合計（計算使用額）</th>
+            <th scope="col">社会保険料等</th><th scope="col">手続き</th>
+            <th scope="col">対象年見込額を確認</th>
+            <th scope="col">追加控除等の未対応条件なし</th>
+            <th scope="col">前年参考額を当年見込額へ補正済み</th>
+            <th scope="col">寄附上限額の概算</th><th scope="col">状態</th>
+          </tr></thead>
+          <tbody id="batchRows"></tbody>
+        </table>
+      </div>
+      <p class="smallprint">各対象者の氏名・年分・見込額を確認し、原票照合と未対応条件確認の2つをチェックしてください。前年の源泉票を参考に翌年を試算するときだけ、さらに見込額補正の確認が必要です。未確認・未対応はHOLDで金額非表示。CSVは明示保存のみ生成し、氏名・所得・PDFはサーバーへ送信しません。端末上のCSV・印刷物には個人情報が残ります。</p>
+    </section>
+    <section class="explainer">
+      <h2>試算前に知っておきたいこと</h2>
+      <div class="info-grid">
+        <article><h3>自己負担2,000円の考え方</h3><p>ふるさと納税は、所定の条件を満たす寄附額のうち2,000円を超える部分について、所得税・住民税の控除を受けられる制度です。ただし、所得や控除の状況により上限は変わります。</p></article>
+        <article><h3>所得年と住民税の年度</h3><p>2025年分の所得は原則2026年度、2026年分の所得は原則2027年度の個人住民税に関係します。寄附の年分と税額の対象年度を混同しないでください。</p></article>
+        <article><h3>確定申告する場合</h3><p>確定申告をする場合はワンストップ特例が無効になります。申告書の寄附金控除と住民税に関する事項を適切に記載する必要があります。</p></article>
+      </div>
+      <p class="source">出典：<a href="https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1155.htm" target="_blank" rel="noopener noreferrer">国税庁「ふるさと納税（寄附金控除）」</a>。制度解説は一般的な内容で、個々の税務判断を保証しません。</p>
+    </section>
+  </main>
+  <footer class="footer"><div class="container footerlinks"><span>ふるさと納税 限度額シミュレーター · 検証版</span><nav aria-label="フッター"><a href="./about.html">このサイトについて</a><a href="./privacy.html">プライバシー</a></nav></div></footer>
+</body>
+</html>
