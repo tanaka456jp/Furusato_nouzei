@@ -215,6 +215,30 @@ class ReleaseReadinessTest(unittest.TestCase):
         self.assertIn("INVALID_SALARY_ONLY_INDEPENDENT_WITHHOLDING_RECONCILIATION", report["blockers"])
         self.assertEqual(report["release_decision"], "HOLD")
 
+    def test_malformed_evidence_never_counts_as_reviewed(self):
+        base = {"status": "REVIEWED", "sha256": "f" * 64,
+                "reviewer_role": "tax_professional", "head_sha": HEAD}
+        bad_cases = (
+            {"status": "APPROVED"},
+            {"sha256": "0" * 64},
+            {"sha256": "F" * 64},
+            {"sha256": "not-a-hash"},
+            {"head_sha": "b" * 40},
+            {"reviewer_role": "release_operator"},
+            {"reviewer_role": ["tax_professional"]},
+            {"taxpayer_name": "PRIVATE_DO_NOT_EMIT"},
+        )
+        gate = "salary_only_independent_withholding_reconciliation"
+        for change in bad_cases:
+            with self.subTest(change=repr(change)):
+                evidence = dict(base, **change)
+                report = evaluate(HEAD, {"schema": SCHEMA, "head_sha": HEAD,
+                                         "checks": {gate: evidence}})
+                self.assertEqual(report["checks"][gate], "INVALID")
+                self.assertIn("INVALID_" + gate.upper(), report["blockers"])
+                self.assertEqual(report["release_decision"], "HOLD")
+                self.assertNotIn("PRIVATE_DO_NOT_EMIT", repr(report))
+
     def test_each_gate_accepts_only_its_authorized_role(self):
         self.assertEqual(set(REVIEWER_ROLES), set(REQUIRED))
         checks = {key: {"status": "REVIEWED", "sha256": "f" * 64,
