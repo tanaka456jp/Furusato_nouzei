@@ -64,11 +64,11 @@ class WorkbookTest(unittest.TestCase):
         self.assertIn('IF(B28<>"正常",""',home["B8"].value)
         self.assertIn('IF(B28<>"正常",""',home["D8"].value)
         self.assertIn('LEFT($B$28,4)="入力待ち"',
-                      [x for rules in home.conditional_formatting.values()
-                       for rule in rules for x in (rule.formula or [])])
+                      [x for rule in home.conditional_formatting["A9:D9"]
+                       for x in (rule.formula or [])])
         self.assertIn('LEFT($B$28,4)<>"入力待ち"',
-                      [x for rules in home.conditional_formatting.values()
-                       for rule in rules for x in (rule.formula or [])])
+                      [x for rule in home.conditional_formatting["A9:D9"]
+                       for x in (rule.formula or [])])
 
     def test_conservative_separate_city_prefecture_100yen_rounding(self):
         levy = self.book[RESIDENT]["B16"].value
