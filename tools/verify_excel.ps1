@@ -105,6 +105,8 @@ try {
     Assert-Value $checks.Range('B47').Value2 52 'Regression cases'
     Assert-Value $checks.Range('B49').Value2 'PASS' 'Regression verdict'
     Assert-Value $homeSheet.Range('B8').Value2 '' 'Blank input hides limit'
+    Assert-Value ([string]$homeSheet.Range('B28').Value2) '入力待ち：支払金額・源泉徴収税額・社会保険料等を入力してください' 'Fresh form neutral waiting state'
+    Assert-Value ([string]$homeSheet.Range('B9').Value2) '入力待ち：支払金額・源泉徴収税額・社会保険料等を入力してください' 'Visible guidance instead of red error'
     Assert-Value $detail.Visible 2 'Calculation details start hidden'
     QA-Stage 'initial-regressions-pass'
     # Synthetic live Excel COM regression: the source total is audit-only;

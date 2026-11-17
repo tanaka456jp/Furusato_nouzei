@@ -54,6 +54,22 @@ class WorkbookTest(unittest.TestCase):
         self.assertIn("SUM(", details)
         self.assertIn("'追加人的控除'!D12", details)
 
+    def test_fresh_sheet_has_neutral_input_prompt_and_no_calc_bypass(self):
+        home = self.book[HOME]
+        formula = home["B28"].value
+        self.assertTrue(formula.startswith("=IF(AND(COUNT(B12,B15,B16)<3,"))
+        self.assertIn("COUNTA(B12,B15,B16)=COUNT(B12,B15,B16)", formula)
+        self.assertIn("入力待ち：支払金額・源泉徴収税額・社会保険料等を入力してください",formula)
+        self.assertIn("エラー：入力または計算式を確認してください",formula)
+        self.assertIn('IF(B28<>"正常",""',home["B8"].value)
+        self.assertIn('IF(B28<>"正常",""',home["D8"].value)
+        self.assertIn('LEFT($B$28,4)="入力待ち"',
+                      [x for rules in home.conditional_formatting.values()
+                       for rule in rules for x in (rule.formula or [])])
+        self.assertIn('LEFT($B$28,4)<>"入力待ち"',
+                      [x for rules in home.conditional_formatting.values()
+                       for rule in rules for x in (rule.formula or [])])
+
     def test_conservative_separate_city_prefecture_100yen_rounding(self):
         levy = self.book[RESIDENT]["B16"].value
         baseline = self.baseline[RESIDENT]["B16"].value

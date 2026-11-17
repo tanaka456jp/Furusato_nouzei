@@ -442,7 +442,7 @@ def build(source, output):
     home.conditional_formatting.add(
         "A9:D9",
         FormulaRule(
-            formula=['AND($B$28<>"正常",$B$28<>"")'],
+            formula=['AND($B$28<>"正常",$B$28<>"",LEFT($B$28,4)<>"入力待ち")'],
             fill=PatternFill("solid", fgColor="FCE8E6"),
             font=Font(name="Yu Gothic", bold=True, color="A4242D"),
         ),
@@ -453,6 +453,14 @@ def build(source, output):
             formula=['$B$28="正常"'],
             fill=PatternFill("solid", fgColor="EAF5ED"),
             font=Font(name="Yu Gothic", bold=True, color="206E40"),
+        ),
+    )
+    home.conditional_formatting.add(
+        "A9:D9",
+        FormulaRule(
+            formula=['LEFT($B$28,4)="入力待ち"'],
+            fill=PatternFill("solid", fgColor="EDF4FE"),
+            font=Font(name="Yu Gothic", bold=True, color="1C4976"),
         ),
     )
     bar(home, 10, "源泉徴収票から転記・該当する控除の内訳")
@@ -1192,7 +1200,13 @@ def build(source, output):
     formula = '"正常"'
     for condition, message in reversed(status):
         formula = f'IF({condition},"{message}",{formula})'
-    home["B28"] = f'=IFERROR({formula},"エラー：入力または計算式を確認してください")'
+    # Show a neutral initial-input prompt only when required amounts are
+    # genuinely empty (not nonnumeric pasted values); retain fail-closed
+    # tax-calculation checks as soon as all three core amounts are present.
+    # Do not reference B26: it depends on B28 and would introduce a cycle.
+    waiting = 'AND(COUNT(B12,B15,B16)<3,COUNTA(B12,B15,B16)=COUNT(B12,B15,B16))'
+    home["B28"] = (f'=IF({waiting},"入力待ち：支払金額・源泉徴収税額・社会保険料等を入力してください",'
+                   f'IFERROR({formula},"エラー：入力または計算式を確認してください"))' )
     home.row_dimensions[28].hidden = True
     checks = book["自動回帰テスト"]
     checks["B49"] = '=IF(COUNTIF(H4:H45,"PASS")+COUNTIF(D58:D63,"PASS")+COUNTIF(H66:H69,"PASS")=52,"PASS","FAIL")'
