@@ -286,10 +286,15 @@ def main():
         parser.error("--folder and --source are required outside --self-test")
     folder = args.folder.resolve(strict=True)
     source = args.source.read_text(encoding="utf-8-sig")
-    version_match = re.search(r"v4\.18\.\d+ 分離課税検証版", source)
+    # Read the exact version encoded in the generated Excel header.
+    # Do not require a development-only "検証版" badge for a pre-signing candidate.
+    version_match = re.search(
+        r'bar\(home, 1, "ふるさと納税 寄附限度額試算[ ]+(v4\.18\.\d+)"\)',
+        source,
+    )
     if not version_match:
         raise AssertionError("Workbook revision not identifiable")
-    version = version_match.group(0).split()[0]
+    version = version_match.group(1)
     reports = [audit(folder / filename, count, folder) for filename, count in PDFS]
     with fitz.open(folder / "split-result.pdf") as doc:
         page2 = re.sub(r"\s+", "", doc[1].get_text(sort=True))

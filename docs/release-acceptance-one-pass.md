@@ -24,10 +24,10 @@
 - 1920×1080、125%
 - 1366×768、150%
 
-各条件で個別のプライベートフォルダを作り、次を実行する。
+各条件で個別のプライベートフォルダを作り、対象Excelに個人情報がないことを担当者が確認したうえで次を実行する。ローカル補助は元ファイルのSHA-256を維持し、ランナー用の隔離一時領域に匿名コピーを作成して既存の表示検査を起動する。CIや非対話環境からは拒否する。実ディスプレイ設定は変更しない。
 
 ```powershell
-.\tools\probe_display_layout.ps1 -Workbook "C:\FurusatoPrivateReview\2026-11\Synthetic.xlsm" -EvidenceDirectory "C:\FurusatoPrivateReview\2026-11\display_1920_100"
+.\tools\probe_display_layout_local.ps1 -Workbook "C:\FurusatoPrivateReview\2026-11\Synthetic.xlsm" -EvidenceDirectory "C:\FurusatoPrivateReview\2026-11\display_1920_100" -SyntheticDataReviewed
 ```
 
 2、3条件目は `-EvidenceDirectory` を `display_1920_125` と `display_1366_150` に変える。各実行はシート部分のみの3画像と観測JSONを作る。Windows画面から得られた `EnumDisplaySettingsW` の表示モードおよびExcelのDPIを確認する。

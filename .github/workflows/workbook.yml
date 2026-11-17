@@ -45,6 +45,7 @@ jobs:
           python tools/test_prior_year_projection.py
           python tools/test_collect_local_release_evidence.py
           python tools/test_release_display_matrix.py
+          python tools/test_local_display_wrapper.py
           python tools/test_release_readiness.py
           python tools/test_excel_release_candidate.py
           python tools/test_release_candidate_branding.py
@@ -76,6 +77,13 @@ jobs:
           if ($errors.Count -gt 0) {
             throw ($errors | Out-String)
           }
+      - name: Parse private local display wrapper (syntax only)
+        shell: pwsh
+        run: |
+          $tokens=$null; $errors=$null
+          $file=(Resolve-Path ./tools/probe_display_layout_local.ps1).Path
+          [System.Management.Automation.Language.Parser]::ParseFile($file,[ref]$tokens,[ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { throw ($errors | Out-String) }
       - name: Parse local signed-release verifier (syntax only)
         shell: pwsh
         run: |
