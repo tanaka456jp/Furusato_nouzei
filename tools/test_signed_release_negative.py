@@ -17,7 +17,7 @@ SCRIPT = Path(__file__).with_name("verify_signed_release_local.ps1")
 
 
 def _candidate(folder, include_vba, include_signature, relationship="absent",
-               valid_ole_header=True, embedded_marker=False):
+               valid_ole_header=True, embedded_marker=False, content_types="valid"):
     workbook = io.BytesIO()
     with zipfile.ZipFile(workbook, "w", compression=zipfile.ZIP_STORED) as out:
         if include_vba:
@@ -49,6 +49,22 @@ def _candidate(folder, include_vba, include_signature, relationship="absent",
             if relationship == "malformed":
                 rels = '<!DOCTYPE a [ <!ENTITY stolen SYSTEM "file:///etc/passwd"> ]><Relationships>&stolen;</Relationships>'
             out.writestr("xl/_rels/vbaProject.bin.rels", rels)
+        if content_types != "absent":
+            ct_ns = "http://schemas.openxmlformats.org/package/2006/content-types"
+            ct_entries = []
+            if content_types != "missing-project":
+                ct_entries.append('<Override PartName="/xl/vbaProject.bin" ContentType="application/vnd.ms-office.vbaProject"/>')
+            if include_signature and content_types != "missing-signature":
+                ct = ("application/octet-stream" if content_types == "wrong-signature"
+                      else "application/vnd.ms-office.vbaProjectSignature")
+                sig_override = '<Override PartName="/xl/vbaProjectSignature.bin" ContentType="' + ct + '"/>'
+                ct_entries.append(sig_override)
+                if content_types == "duplicate-signature":
+                    ct_entries.append(sig_override)
+            xml = '<Types xmlns="' + ct_ns + '">' + "".join(ct_entries) + "</Types>"
+            if content_types == "xml-entity":
+                xml = '<!DOCTYPE Types [<!ENTITY x SYSTEM "file:///etc/passwd">]>' + xml
+            out.writestr("[Content_Types].xml", xml)
         # Large but harmless stored bytes satisfy the release package size
         # lower bound without generating any real executable or workbook.
         out.writestr("xl/worksheets/sheet1.xml", bytes(110_000))
@@ -77,12 +93,12 @@ def _run_probe(folder, package):
 
 class LocalSignedReleaseNegativeAcceptance(unittest.TestCase):
     def _assert_refused(self, *, vba, signature, expected, relationship="absent",
-                        valid_ole_header=True, embedded_marker=False):
+                        valid_ole_header=True, embedded_marker=False, content_types="valid"):
         with tempfile.TemporaryDirectory(prefix="furusato_fake_release_") as root:
             folder = Path(root)
             package = _candidate(folder, vba, signature, relationship,
                                  valid_ole_header=valid_ole_header,
-                                 embedded_marker=embedded_marker)
+                                 embedded_marker=embedded_marker, content_types=content_types)
             rc, output = _run_probe(folder, package)
             self.assertNotEqual(rc, 0, "Unsafe package was accepted")
             self.assertIn(expected, output)
@@ -134,6 +150,31 @@ class LocalSignedReleaseNegativeAcceptance(unittest.TestCase):
         self._assert_refused(
             vba=True, signature=True, relationship="duplicate-linked",
             expected="DUPLICATE_VBA_SIGNATURE_RELATIONSHIP")
+
+    def test_invalid_content_type_mappings_are_refused(self):
+        cases = {
+            "absent": "VBA_SIGNATURE_CONTENT_TYPES_MISSING",
+            "missing-project": "VBA_SIGNATURE_CONTENT_TYPE_MISMATCH",
+            "missing-signature": "VBA_SIGNATURE_CONTENT_TYPE_MISMATCH",
+            "wrong-signature": "VBA_SIGNATURE_CONTENT_TYPE_MISMATCH",
+            "duplicate-signature": "DUPLICATE_OR_INVALID_CONTENT_TYPE_OVERRIDE",
+        }
+        for content_types, expected in cases.items():
+            with self.subTest(content_types=content_types):
+                self._assert_refused(vba=True, signature=True,
+                                     relationship="linked", content_types=content_types,
+                                     expected=expected)
+
+    def test_xxe_content_types_are_refused(self):
+        with tempfile.TemporaryDirectory(prefix="furusato_fake_release_") as root:
+            folder = Path(root)
+            package = _candidate(folder, True, True, "linked", content_types="xml-entity")
+            rc, output = _run_probe(folder, package)
+            self.assertNotEqual(rc, 0)
+            self.assertFalse((folder / "must_not_be_created.json").exists())
+            self.assertNotIn(
+                "SIGNATURE_AND_ARCHIVE_HASH_VERIFIED_MANUAL_RELEASE_APPROVAL_REQUIRED",
+                output)
 
     def test_xml_entity_attack_fails_without_release_evidence(self):
         with tempfile.TemporaryDirectory(prefix="furusato_fake_release_") as root:

@@ -78,3 +78,10 @@ Run #43825689764 の実画面証拠ZIPをダウンロードして確認した結
 - **承認権限：** 税額に関する2項目と住宅ローン確定申告1項目は税務専門家または外部レビュー担当者、署名配布はリリース担当者または外部レビュー担当者が確認。自己申告のJSONだけでは本人や証拠の真正性を証明できないため、人手による最終承認を必須とします。
 
 公式資料：[国税庁 No.1155](https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1155.htm)、[住宅ローン控除の初年度申告](https://www.nta.go.jp/publication/pamph/koho/kurashi/html/05_1.htm)、[令和8年度住民税の住宅ローン控除の基礎控除差](https://www.city.tomigusuku.lg.jp/kurashi_tetsuzuki/zeikin/3/9204.html)。
+
+
+### OPCの署名内容タイプ検査（2026-11-17）
+
+ローカル署名配布検査では、VBAプロジェクトと署名パーツの関連付けに加え、XLSMの `[Content_Types].xml` が示すVBA・署名の内容タイプも一致必須としました。欠落・誤った型・重複宣言・XML外部エンティティ・内部ZIPの同名エントリは拒否します。構造検査は暗号学的なVBA署名の真正性検証ではありません。Office/VBEでの署名確認と人手承認を別途必須とし、正式配布HOLDを維持します。
+
+一次資料：[Microsoft VBA Project Signature](https://learn.microsoft.com/en-us/openspecs/office_file_formats/ms-xlsb/8fbb98c8-bf03-429e-b6e8-ae024539b5b9)、[Agile Signature](https://learn.microsoft.com/en-us/openspecs/office_file_formats/ms-xlsb/301bfe6b-5acc-4223-81e6-4ee2cc3fc09b)、ECMA-376 OPC。

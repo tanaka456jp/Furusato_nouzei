@@ -58,6 +58,10 @@ try {
     [IO.Compression.ZipFileExtensions]::ExtractToFile($xlsm[0],$localXlsm)
     $xlsmZip = [IO.Compression.ZipFile]::OpenRead($localXlsm)
     try {
+        $innerNames = @($xlsmZip.Entries | ForEach-Object { $_.FullName })
+        if (@($innerNames | Select-Object -Unique).Count -ne $innerNames.Count) {
+            throw 'DUPLICATE_XLSM_PACKAGE_ENTRY'
+        }
         $vba = @($xlsmZip.Entries | Where-Object {
             $_.FullName -ceq 'xl/vbaProject.bin'
         })
@@ -167,6 +171,80 @@ try {
         }
         if ($connectedTargets.Count -ne $signatureNames.Count) {
             throw 'VBA_SIGNATURE_PART_NOT_ATTACHED_TO_PROJECT'
+        }
+        # OPC content types determine whether Office recognizes these parts.
+        # A linked and present signature-looking file is not enough.
+        $typeEntries = @($xlsmZip.Entries | Where-Object {
+            $_.FullName -ceq '[Content_Types].xml'
+        })
+        if ($typeEntries.Count -ne 1 -or $typeEntries[0].Length -lt 60 -or
+            $typeEntries[0].Length -gt 131072) {
+            throw 'VBA_SIGNATURE_CONTENT_TYPES_MISSING'
+        }
+        $ctStream = $typeEntries[0].Open()
+        $ctReader = $null
+        try {
+            $ctSettings = New-Object System.Xml.XmlReaderSettings
+            $ctSettings.DtdProcessing = [System.Xml.DtdProcessing]::Prohibit
+            $ctSettings.XmlResolver = $null
+            $ctSettings.MaxCharactersInDocument = 131072
+            $ctReader = [System.Xml.XmlReader]::Create($ctStream,$ctSettings)
+            $ctDoc = New-Object System.Xml.XmlDocument
+            $ctDoc.XmlResolver = $null
+            $ctDoc.Load($ctReader)
+        } finally {
+            if ($null -ne $ctReader) { $ctReader.Dispose() }
+            $ctStream.Dispose()
+        }
+        $ctNs = 'http://schemas.openxmlformats.org/package/2006/content-types'
+        if ($ctDoc.DocumentElement.LocalName -cne 'Types' -or
+            $ctDoc.DocumentElement.NamespaceURI -cne $ctNs) {
+            throw 'INVALID_VBA_SIGNATURE_CONTENT_TYPES_XML'
+        }
+        $defaults = @{}
+        $overrides = @{}
+        foreach ($node in $ctDoc.DocumentElement.ChildNodes) {
+            if ($node.NodeType -ne [System.Xml.XmlNodeType]::Element) { continue }
+            if ($node.NamespaceURI -cne $ctNs) {
+                throw 'INVALID_VBA_SIGNATURE_CONTENT_TYPES_XML'
+            }
+            if ($node.LocalName -ceq 'Default') {
+                $key = [string]$node.GetAttribute('Extension')
+                if (-not $key -or $defaults.ContainsKey($key)) {
+                    throw 'DUPLICATE_OR_INVALID_CONTENT_TYPE_DEFAULT'
+                }
+                $defaults[$key] = [string]$node.GetAttribute('ContentType')
+            } elseif ($node.LocalName -ceq 'Override') {
+                $key = [string]$node.GetAttribute('PartName')
+                if (-not $key -or -not $key.StartsWith('/') -or
+                    $overrides.ContainsKey($key)) {
+                    throw 'DUPLICATE_OR_INVALID_CONTENT_TYPE_OVERRIDE'
+                }
+                $overrides[$key] = [string]$node.GetAttribute('ContentType')
+            } else {
+                throw 'INVALID_VBA_SIGNATURE_CONTENT_TYPES_XML'
+            }
+        }
+        $expectedTypes = @{
+            'xl/vbaProject.bin' = 'application/vnd.ms-office.vbaProject'
+            'xl/vbaProjectSignature.bin' = 'application/vnd.ms-office.vbaProjectSignature'
+            'xl/vbaProjectSignatureAgile.bin' = 'application/vnd.ms-office.vbaProjectSignatureAgile'
+            'xl/vbaProjectSignatureV3.bin' = 'application/vnd.ms-office.vbaProjectSignatureV3'
+        }
+        foreach ($partName in @('xl/vbaProject.bin') + @(
+            $signatureParts | ForEach-Object { $_.FullName }
+        )) {
+            $partKey = '/' + $partName
+            if ($overrides.ContainsKey($partKey)) {
+                $actualType = [string]$overrides[$partKey]
+            } elseif ($defaults.ContainsKey('bin')) {
+                $actualType = [string]$defaults['bin']
+            } else {
+                $actualType = ''
+            }
+            if ($actualType -cne [string]$expectedTypes[$partName]) {
+                throw 'VBA_SIGNATURE_CONTENT_TYPE_MISMATCH'
+            }
         }
     } finally {
         $xlsmZip.Dispose()
