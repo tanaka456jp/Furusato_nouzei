@@ -208,6 +208,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'VBAUpdater sandbox staging contract failed' }
           python tools/test_withholding_reader.py
           if ($LASTEXITCODE -ne 0) { throw 'Offline withholding reader test failed' }
+      - name: Reject synthetic unsigned VBA in native Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          python tools/test_signed_release_negative.py
+          if ($LASTEXITCODE -ne 0) { throw 'Native unsigned-VBA release guard regression' }
       - name: Verify native PowerShell 5.1 and Japanese-path extraction
         shell: powershell
         run: |
