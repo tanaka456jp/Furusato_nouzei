@@ -19,7 +19,8 @@ def _candidate(folder, include_vba, include_signature, relationship="absent"):
     workbook = io.BytesIO()
     with zipfile.ZipFile(workbook, "w", compression=zipfile.ZIP_STORED) as out:
         if include_vba:
-            out.writestr("xl/vbaProject.bin", bytes(2048))
+            # Valid CFB header; rest is synthetic, deliberately unsigned.
+            out.writestr("xl/vbaProject.bin", bytes.fromhex("D0CF11E0A1B11AE1") + bytes(2040))
         if include_signature:
             out.writestr("xl/vbaProjectSignature.bin", bytes(256))
         if relationship != "absent":
