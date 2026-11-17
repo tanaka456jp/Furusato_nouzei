@@ -57,7 +57,7 @@ def _render_review_readme(guide, head_sha):
         "---\\n\\n"
         "以下は既存のユーザーガイドを検証版向けに表示修正した参考資料です。\\n\\n"
     )
-    return (notice.replace("\\\\n", "\\n") + original).encode("utf-8")
+    return (notice.replace(chr(92) + 'n', chr(10)) + original).encode("utf-8")
 
 
 def package_review(book, reader, acceptance, guide, target, *, head_sha):

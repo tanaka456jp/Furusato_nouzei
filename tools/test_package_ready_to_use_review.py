@@ -47,6 +47,7 @@ class ReadyToUseReviewTests(unittest.TestCase):
             self.assertIn(HEAD, readme)
             self.assertIn("正式配布HOLD", readme)
             self.assertIn("Excel 365", readme)
+            self.assertIn(chr(10) + chr(10) + "対象開発コミット", readme)
             self.assertNotIn("本パッケージはv4.18.2正式版です。", readme)
             self.assertEqual(report["review_readme_sha256"],
                              hashlib.sha256(archive.read("README.txt")).hexdigest())
