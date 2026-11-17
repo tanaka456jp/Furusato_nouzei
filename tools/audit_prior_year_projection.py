@@ -133,12 +133,11 @@ def compare_projection(case):
         # A flag alone is not proof that a qualifying child is in the
         # independently reviewed current-year family population.
         return hold("UNDER23_DEPENDENT_NOT_IN_TARGET_FAMILY")
-    if (source["salary_gross"] < 1_900_000 or
-            target["salary_gross"] < 2_200_000 or
+    if (source["salary_gross"] <= 0 or target["salary_gross"] <= 0 or
             source["salary_gross"] > 20_000_000 or
             target["salary_gross"] > 20_000_000):
-        # The low-end irregular rows are deliberately not guessed; 2025
-        # and 2026 have DIFFERENT year-specific first regular table bands.
+        # Year-end adjustment eligibility still requires a genuine positive
+        # salary source, regardless of the independent table's zero-income row.
         return hold("SALARY_TABLE_OR_YEAR_END_ADJUSTMENT_OUT_OF_SCOPE")
     if (book["source_deductions_reference"] != source["deductions_reference"] or
             book["target_salary_income"] != target["salary_income"]):

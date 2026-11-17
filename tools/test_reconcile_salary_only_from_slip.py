@@ -66,6 +66,38 @@ class SalaryOnlySlipReconciliationTest(unittest.TestCase):
             self.assertEqual(compare_case(wrong)["reason"],
                              "SOURCE_SALARY_NOT_RECONCILED_TO_NTA_TABLE")
 
+    def test_low_salary_and_2026_special_table_rows_are_reconciled(self):
+        # These fully synthetic cases exercise table exceptions and taxes.
+        cases = (
+            (2025, 1_900_000, 1_250_000, 1_000_000,
+             12_700, 74_500, 19_000),
+            (2026, 2_190_000, 1_450_000, 1_090_000,
+             18_300, 94_500, 24_000),
+        )
+        for year, gross, income, deductions, withheld, levy, ceiling in cases:
+            case = example(year)
+            case["source"].update({
+                "salary_gross": gross, "salary_reference": income,
+                "deductions_reference": deductions,
+                "income_tax_withheld": withheld,
+                "social_insurance": 50_000,
+            })
+            case["workbook"].update({
+                "resident_income_levy": levy,
+                "donation_limit": ceiling,
+            })
+            with self.subTest(year=year):
+                self.assertEqual(compare_case(case),
+                                 {"status": "MATCH_REFERENCE",
+                                  "reason": "INDEPENDENT_1000_YEN_SALARY_ONLY_REFERENCE"})
+            # A verified gross whose income box contains a different
+            # statutory table row must never pass.
+            changed = example(year)
+            changed["source"] = dict(case["source"], salary_reference=income+1)
+            changed["workbook"] = dict(case["workbook"])
+            self.assertEqual(compare_case(changed)["reason"],
+                             "SOURCE_SALARY_NOT_RECONCILED_TO_NTA_TABLE")
+
     def test_not_a_prediction_of_2026_from_2025_slip(self):
         case=example(2025)
         case["workbook"]["year"]=2026

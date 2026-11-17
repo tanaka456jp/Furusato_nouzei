@@ -26,15 +26,28 @@ class SalaryDonationOracleTest(unittest.TestCase):
         for year, gross, expected in fixtures:
             with self.subTest(year=year, gross=gross):
                 self.assertEqual(f(year, gross), expected)
-        # Below the independently covered regular bands, request exact
-        # government-table inspection rather than interpolate.
-        for year, gross in ((2025, 1_899_999), (2026, 2_199_999),
-                            (2026, 2_191_000), (2025, 1_000_000)):
+        # In these low-end rows the years differ; 2026's three special
+        # steps must not be approximated by the normal 4,000-yen formula.
+        low_rows = (
+            (2025, 0, 0), (2025, 650_999, 0),
+            (2025, 651_000, 1_000),
+            (2025, 1_899_999, 1_249_999),
+            (2026, 740_999, 0), (2026, 741_000, 1_000),
+            (2026, 1_900_000, 1_160_000),
+            (2026, 2_190_999, 1_450_999),
+            (2026, 2_191_000, 1_451_000),
+            (2026, 2_192_999, 1_451_000),
+            (2026, 2_193_000, 1_453_000),
+            (2026, 2_195_999, 1_453_000),
+            (2026, 2_196_000, 1_456_000),
+            (2026, 2_199_999, 1_456_000),
+            (2026, 2_200_000, 1_460_000),
+        )
+        for year, gross, expected in low_rows:
             with self.subTest(year=year, gross=gross):
-                with self.assertRaisesRegex(ValueError, "ROW_VERIFICATION"):
-                    f(year, gross)
+                self.assertEqual(f(year, gross), expected)
         for year, gross in ((2027, 3_000_000), (2026, True),
-                            (2025, 20_000_001)):
+                            (2025, 20_000_001), (2026, -1)):
             with self.assertRaises(ValueError):
                 f(year, gross)
 

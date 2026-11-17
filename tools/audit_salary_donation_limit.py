@@ -26,11 +26,13 @@ SPECIAL_RATES = ((1950000,84895),(3300000,79790),(6950000,69580),
 def independent_nta_fifth_table_salary_income(year, gross):
     """Year-specific independent salary-income reference (not workbook code).
 
-    Confirmed NTA Fifth Table 4,000-yen bands, safe normal bands only:
-    2025: 1,900,000<=gross<6,600,000 (2025 year-end Fifth Table)
-    2026: 2,200,000<=gross<6,600,000 (2026 year-end Fifth Table)
-    The exceptional 2026 2,191,000-2,199,999 rows, and lower salaries
-    require a separate literal-table reviewer; NEVER extrapolate them.
+    Independently verified year-end Fifth Table throughout the salary range:
+    2025: wages below 651,000 are zero; 651,000-1,899,999 subtract 650,000.
+    2026: wages below 741,000 are zero; 741,000-2,190,999 subtract 740,000.
+    2026: 2,191,000-2,199,999 uses three explicitly published flat rows.
+    Both years then use 4,000-yen bands up to wages below 6,600,000.
+    Only salary-income table reconstruction: no unverified tax credits,
+    family eligibility, income adjustments or filing-method approval.
     Sources:
       https://www.nta.go.jp/publication/pamph/gensen/nencho2025/pdf/114.pdf
       https://www.pref.fukushima.lg.jp/uploaded/attachment/766090.pdf
@@ -39,9 +41,23 @@ def independent_nta_fifth_table_salary_income(year, gross):
         raise ValueError("UNAPPROVED_YEAR")
     if type(gross) is not int or gross < 0 or gross > 20_000_000:
         raise ValueError("INVALID_YEAR_END_SALARY_GROSS")
-    verified_start = 1_900_000 if year == 2025 else 2_200_000
-    if gross < verified_start:
-        raise ValueError("FIFTH_TABLE_LOW_SALARY_REQUIRES_ROW_VERIFICATION")
+    if year == 2025:
+        if gross < 651_000:
+            return 0
+        if gross < 1_900_000:
+            return gross - 650_000
+    else:
+        if gross < 741_000:
+            return 0
+        if gross < 2_191_000:
+            return gross - 740_000
+        # NTA's 2026 low-salary exception is NOT a 4,000-yen band.
+        if gross < 2_193_000:
+            return 1_451_000
+        if gross < 2_196_000:
+            return 1_453_000
+        if gross < 2_200_000:
+            return 1_456_000
     if gross < 6_600_000:
         # The statutory table groups these wages into 4,000-yen intervals;
         # applying a percentage to unrounded gross is incorrect.

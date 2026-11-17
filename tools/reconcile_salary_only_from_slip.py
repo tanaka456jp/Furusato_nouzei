@@ -91,9 +91,9 @@ def compare_case(case):
         return hold("NOT_YEAR_END_ADJUSTMENT_ELIGIBLE")
     if source["salary_gross"] <= 0 or source["salary_reference"] > source["salary_gross"]:
         return hold("INVALID_SOURCE_SALARY")
-    # Independently verify the NTA Fifth Table including the 4,000-yen
-    # salary bands. Keep special low-salary rows outside this formula-only
-    # crosscheck; the operator must examine those exact government rows.
+    # Reconstruct both years' actual Fifth Table, including the distinct
+    # low-salary thresholds and 2026 special flat rows. This is independent
+    # of the workbook, not a substitute for corroborating the source slip.
     gross, income = source["salary_gross"], source["salary_reference"]
     try:
         expected = independent_nta_fifth_table_salary_income(year, gross)

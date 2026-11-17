@@ -111,8 +111,47 @@ class PriorYearProjectionTest(unittest.TestCase):
                          "SOURCE_OR_TARGET_SALARY_NOT_RECONCILED")
         low = copy.deepcopy(case)
         low["target"]["salary_gross"] = 2_199_999
+        # This salary is now a covered 2026 exceptional flat row.
+        # The prior 3m salary-income transcription MUST NOT pass.
         self.assertEqual(compare_projection(low)["reason"],
-                         "SALARY_TABLE_OR_YEAR_END_ADJUSTMENT_OUT_OF_SCOPE")
+                         "SOURCE_OR_TARGET_SALARY_NOT_RECONCILED")
+
+    def test_2025_to_2026_low_salary_basic_deduction_and_income_split(self):
+        # Same gross, distinct statutory salary incomes and basic amounts.
+        base = make_case(False)
+        base["source"].update({
+            "salary_gross": 2_100_000,
+            "salary_reference": 1_390_000,
+            "deductions_reference": 880_000,
+            "income_tax_withheld": 26_000,
+            "social_insurance": 0,
+        })
+        base["target"].update({
+            "salary_gross": 2_100_000,
+            "salary_income": 1_360_000,
+            "social_insurance": 0,
+        })
+        for key in ("new_life", "old_life", "care", "new_pension",
+                    "old_pension", "earthquake", "old_long",
+                    "life_reference", "earthquake_reference"):
+            base["insurance"][key] = 0
+        base["workbook"].update({
+            "source_deductions_reference": 880_000,
+            "target_salary_income": 1_360_000,
+            "national_life": 0, "national_earthquake": 0,
+            "national_deductions": 1_040_000,
+            "resident_life": 0, "resident_earthquake": 0,
+            "resident_deductions": 430_000,
+            "resident_taxable_income": 930_000,
+            "resident_income_levy": 90_500,
+            "donation_limit": 23_000,
+        })
+        self.assertEqual(compare_projection(base)["status"], "MATCH_REFERENCE")
+        wrong = copy.deepcopy(base)
+        wrong["target"]["salary_income"] = 1_390_000
+        wrong["workbook"]["target_salary_income"] = 1_390_000
+        self.assertEqual(compare_projection(wrong)["reason"],
+                         "SOURCE_OR_TARGET_SALARY_NOT_RECONCILED")
 
     def test_no_prior_year_national_deduction_reuse(self):
         c = make_case(True)
