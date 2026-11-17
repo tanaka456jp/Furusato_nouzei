@@ -727,6 +727,36 @@ try {
         Assert-Value $homeSheet.Range('B28').Value2 '正常' "$year status"
         Assert-Value $homeSheet.Range('D8').Value2 374500 "$year resident income levy"
         Assert-Value $homeSheet.Range('B13').Value2 5200000 "$year computed salary income"
+        if ($year -eq 2025) {
+            # Independently pinned 2025 NTA Fifth Table rows, not values
+            # copied from the workbook. These boundary observations were
+            # missing from the Excel COM suite, although Python had fixtures.
+            QA-Stage 'nta-2025-salary-boundaries-start'
+            $fifthTable2025 = @(
+                @{ Gross=650999; Expected=0 },
+                @{ Gross=651000; Expected=1000 },
+                @{ Gross=1899999; Expected=1249999 },
+                @{ Gross=1900000; Expected=1250000 },
+                @{ Gross=1903999; Expected=1250000 },
+                @{ Gross=1904000; Expected=1252800 },
+                @{ Gross=3599999; Expected=2437200 },
+                @{ Gross=3600000; Expected=2440000 },
+                @{ Gross=3600001; Expected=2440000 },
+                @{ Gross=4390000; Expected=3070400 },
+                @{ Gross=6599999; Expected=4836800 },
+                @{ Gross=6600000; Expected=4840000 },
+                @{ Gross=8500000; Expected=6550000 },
+                @{ Gross=8500001; Expected=6550001 }
+            )
+            foreach ($sample in $fifthTable2025) {
+                $homeSheet.Range('B12').Value2 = [double]$sample.Gross
+                $excel.Run('TaxLawUpdater.RecalculateCase')
+                Assert-Value $homeSheet.Range('B13').Value2 $sample.Expected ('NTA 2025 salary ' + $sample.Gross)
+            }
+            QA-Stage 'nta-2025-salary-boundaries-pass'
+            $homeSheet.Range('B12').Value2 = 7000000.0
+            $excel.Run('TaxLawUpdater.RecalculateCase')
+        }
         if ($year -eq 2026) {
             # Published R8 source form sample: ¥5m salary -> ¥3.56m income.
             $homeSheet.Range('B12').Value2 = 5000000
@@ -746,7 +776,15 @@ try {
                 @{ Gross=2196000; Expected=1456000 },
                 @{ Gross=2199999; Expected=1456000 },
                 @{ Gross=2200000; Expected=1460000 },
-                @{ Gross=2200001; Expected=1460000 }
+                @{ Gross=2200001; Expected=1460000 },
+                @{ Gross=3599999; Expected=2437200 },
+                @{ Gross=3600000; Expected=2440000 },
+                @{ Gross=3600001; Expected=2440000 },
+                @{ Gross=4390000; Expected=3070400 },
+                @{ Gross=6599999; Expected=4836800 },
+                @{ Gross=6600000; Expected=4840000 },
+                @{ Gross=8500000; Expected=6550000 },
+                @{ Gross=8500001; Expected=6550001 }
             )
             foreach($sample in $specialSalary2026) {
                 $homeSheet.Range('B12').Value2 = [double]$sample.Gross
