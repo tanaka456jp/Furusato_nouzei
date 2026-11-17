@@ -208,7 +208,11 @@
    const v=r.sourceValid?r.candidates:null;
    lines.push([r.page,labelFor(r),r.sourceYear??"",r.year??"",
     v?.salaryGross??"",v?.salaryIncomeReference??"",
-    v?.deductionsReference??"",r.appliedDeductionsYen??"",
+    v?.deductionsReference??"",
+    ((r.status==="概算"||r.status==="前年参考概算")&&
+      r.confirmed===true&&r.noExclusions===true&&
+      (r.sourceYear===r.year||r.forecastReviewed===true)&&
+      safeAmount(r.appliedDeductionsYen))?r.appliedDeductionsYen:"",
     r.deductionsOverrideActive?"手入力上書き・自動追随なし":"自動算定（原票照合）",v?.socialInsurance??"",
     r.filing==="return"?"確定申告":"ワンストップ",
     (r.status==="概算"||r.status==="前年参考概算")&&
