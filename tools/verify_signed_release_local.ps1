@@ -304,6 +304,29 @@ try {
     } finally {
         $xlsmZip.Dispose()
     }
+    # Verify the independent EXE Authenticode trust and expected publisher first.
+    # This allows the unsigned synthetic negative tests to run on hosted Windows
+    # without Excel, while signed candidates still require the Office/VBA gate.
+    $exe = @($zip.Entries | Where-Object { $_.FullName -ceq 'FurusatoDocumentReader.exe' })
+    if ($exe.Count -ne 1 -or $exe[0].Length -lt 10000 -or
+        $exe[0].Length -gt 120000000) {
+        throw 'READER_EXE_SIZE_OR_COUNT_INVALID'
+    }
+    $localExe = Join-Path $work 'FurusatoDocumentReader.exe'
+    [IO.Compression.ZipFileExtensions]::ExtractToFile($exe[0],$localExe)
+    $actualSignature = Get-AuthenticodeSignature -LiteralPath $localExe
+    if ($null -eq $actualSignature -or
+        $actualSignature.Status -ne [Management.Automation.SignatureStatus]::Valid -or
+        $null -eq $actualSignature.SignerCertificate) {
+        throw 'READER_EXE_AUTHENTICODE_NOT_TRUSTED'
+    }
+    $certificate = $actualSignature.SignerCertificate
+    if ($certificate.Thumbprint.ToUpperInvariant() -cne $expectedSigner) {
+        throw 'SIGNER_CERTIFICATE_MISMATCH'
+    }
+    if ($certificate.NotAfter.ToUniversalTime() -lt [DateTime]::UtcNow) {
+        throw 'SIGNER_CERTIFICATE_EXPIRED'
+    }
     # Excel itself must recognize a signed VBA project. This does not prove
     # CA trust, revocation, publisher identity or signature cryptographic
     # validity: those are separately reviewed in the actual Office UI.
@@ -312,7 +335,11 @@ try {
     $signedBook = $null
     $officeVbaSigned = $false
     try {
-        $office = New-Object -ComObject Excel.Application
+        try {
+            $office = New-Object -ComObject Excel.Application -ErrorAction Stop
+        } catch {
+            throw 'OFFICE_EXCEL_COM_UNAVAILABLE_FOR_SIGNATURE_REVIEW'
+        }
         $office.Visible = $false
         $office.DisplayAlerts = $false
         $office.AskToUpdateLinks = $false
@@ -342,26 +369,6 @@ try {
                 [void][Runtime.InteropServices.Marshal]::ReleaseComObject($office)
             }
         }
-    }
-    $exe = @($zip.Entries | Where-Object { $_.FullName -ceq 'FurusatoDocumentReader.exe' })
-    if ($exe.Count -ne 1 -or $exe[0].Length -lt 10000 -or
-        $exe[0].Length -gt 120000000) {
-        throw 'READER_EXE_SIZE_OR_COUNT_INVALID'
-    }
-    $localExe = Join-Path $work 'FurusatoDocumentReader.exe'
-    [IO.Compression.ZipFileExtensions]::ExtractToFile($exe[0],$localExe)
-    $actualSignature = Get-AuthenticodeSignature -LiteralPath $localExe
-    if ($null -eq $actualSignature -or
-        $actualSignature.Status -ne [Management.Automation.SignatureStatus]::Valid -or
-        $null -eq $actualSignature.SignerCertificate) {
-        throw 'READER_EXE_AUTHENTICODE_NOT_TRUSTED'
-    }
-    $certificate = $actualSignature.SignerCertificate
-    if ($certificate.Thumbprint.ToUpperInvariant() -cne $expectedSigner) {
-        throw 'SIGNER_CERTIFICATE_MISMATCH'
-    }
-    if ($certificate.NotAfter.ToUniversalTime() -lt [DateTime]::UtcNow) {
-        throw 'SIGNER_CERTIFICATE_EXPIRED'
     }
     $evidence = [ordered]@{
         schema = 'furusato-signed-distribution-local/v1'
