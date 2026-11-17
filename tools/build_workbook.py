@@ -226,7 +226,7 @@ def build(source, output):
         home.add_data_validation(validation)
         validation.add(home[cell])
 
-    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.18.34 分離課税検証版")
+    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.18.35")
     bar(extra, 1, "追加所得・分離課税（所得年内で事前試算）")
     extra.merge_cells("A3:D3")
     extra["A3"] = "翌年度の住民税通知書は参照せず、所得年内の収入・経費・控除と法定税率表から計算します。"
@@ -985,7 +985,7 @@ def build(source, output):
     # to resident tax must then be recalculated on the post-donation basis.
     # No VBA event writes to this hidden, formula-only calculation surface.
     mortgage_filing.sheet_view.showGridLines = False
-    mortgage_filing["A1"] = "確定申告・住宅ローン控除併用：寄附額別の実税負担差分（検証版）"
+    mortgage_filing["A1"] = "確定申告・住宅ローン控除併用：寄附額別の実税負担差分"
     mortgage_fields = {
         "B2": ("所得税課税所得（寄附前）",
                f'=ROUNDDOWN(MAX(0,N({ref(ENGINE,"D15")})-N({ref(HOME,"B14")})),-3)'),

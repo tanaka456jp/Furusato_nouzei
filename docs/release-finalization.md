@@ -28,3 +28,16 @@ manual_human_review, release_decision (HOLD).
 python tools/prepare_official_excel_release.py --head HEAD40 --run-id RUNID --version vX.Y.Z --candidate SIGNED.zip --expected-sha256 EXPECTED64 --ci-receipt ci_exact_head_acceptance_hold.json --private-manifest private_manifest.json --signature-evidence signature_verification.json --physical-paper-review private_paper_review.json --output-folder NEW_PRIVATE_STAGE_DIR
 
 これは署名済み候補の元バイトを変更せずにZIP・SHA256SUMS.txt・release-preflight-vX.Y.Z.jsonを生成する。成功でも STAGED_NOT_PUBLISHED / HOLD。最終の発行者と本人確認、署名原本、公開対象SHAと未使用タグ、GitHubの正式Release公開は別途の明示的な承認と操作を要する。既存v4.18.2リリースは上書きしない。
+
+
+## 正式候補の表示とREADMEを一致させる（署名前）
+次期Excelブックは v4.18.35 を候補版番号とし、「検証版」という表示を削除する。ただしこれは配布承認ではない。
+ソースHEADの全CI（Excel実機を含む）が成功し、税務/表示の受入が済んだ後、正規の証明書でExcel VBAプロジェクトとEXEに署名する。Office/VBEの署名真正性を確認した後、次の作業をGit管理外のPC上で行う。
+
+```powershell
+python tools/make_excel_release_readme.py --version v4.18.35 --head "<現在の40桁HEAD>" --output "<PRIVATE>\\README.txt"
+python tools/assemble_excel_candidate_local.py --book "<PRIVATE>\\Furusato_nouzei.xlsm" --reader "<PRIVATE>\\FurusatoDocumentReader.exe" --readme "<PRIVATE>\\README.txt" --version v4.18.35 --target "<PRIVATE>\\Furusato_candidate.zip"
+```
+
+上記アーカイブ作成は署名を検証・適用しない。続けて既存の `verify_signed_release_local.ps1` と `verify_excel_release_candidate.py` で、EXE署名、VBA署名構造、ZIP SHA256、Excel表示版とREADME版、CI同一HEAD、非公開の税務レビューを照合する。
+実印刷はこの最終署名済み候補を用い、印刷するブックが同一SHA256か確認する。検証版REVIEW_HOLD ZIPを正式版として流用しない。

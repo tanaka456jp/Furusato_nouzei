@@ -5,17 +5,32 @@ import tempfile
 import unittest
 from pathlib import Path
 from zipfile import ZipFile
+from io import BytesIO
+from openpyxl import Workbook
+from make_excel_release_readme import render
 
 from release_readiness import PRODUCT_SCOPE, REQUIRED, REVIEWER_ROLES, SCHEMA
 from verify_excel_release_candidate import verify, sha256
 
 HEAD = "a" * 40
 RUN = 44043000554
-VERSION = "v4.18.12"
+VERSION = "v4.18.35"
 
 
 def digest(data):
     return hashlib.sha256(data).hexdigest()
+
+
+def workbook_bytes(label="ふるさと納税 寄附限度額試算    " + VERSION):
+    book = Workbook()
+    book.active.title = "操作画面"
+    book.active["A1"] = label
+    mortgage = book.create_sheet("住宅確申寄附検算")
+    mortgage["A1"] = "確定申告・住宅ローン控除併用：寄附額別の実税負担差分"
+    stream = BytesIO()
+    book.save(stream)
+    book.close()
+    return stream.getvalue()
 
 
 class ExcelPrepublicationTests(unittest.TestCase):
@@ -24,10 +39,12 @@ class ExcelPrepublicationTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.archive = Path(self.tmp.name) / "synthetic-signed-candidate.zip"
         self.reader = b"synthetic-reader-byte-fixture" * 64
+        self.book_bytes = workbook_bytes()
+        self.readme = render(VERSION, HEAD)
         with ZipFile(self.archive, "w") as zipfile:
-            zipfile.writestr("Furusato_nouzei.xlsm", b"synthetic-xlsm" * 256)
+            zipfile.writestr("Furusato_nouzei.xlsm", self.book_bytes)
             zipfile.writestr("FurusatoDocumentReader.exe", self.reader)
-            zipfile.writestr("README.txt", ("# Excel " + VERSION + " release\n").encode())
+            zipfile.writestr("README.txt", self.readme)
         self.manifest = {
             "schema": SCHEMA, "head_sha": HEAD, "checks": {
                 key: {"status": "REVIEWED", "sha256": "f" * 64,
@@ -114,11 +131,25 @@ class ExcelPrepublicationTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "SIGNED_ARCHIVE"):
                     self.run_check(signature=evidence)
 
+    def test_workbook_brand_and_readme_are_bound_to_official_version(self):
+        with self.assertRaisesRegex(ValueError, "INVALID_NEXT_RELEASE_VERSION"):
+            self.run_check(version="v4.18.2")
+        for title in ("ふるさと納税 寄附限度額試算    v4.18.34",
+                      "ふるさと納税 寄附限度額試算    v4.18.35 検証版"):
+            with self.subTest(title=title):
+                with ZipFile(self.archive, "w") as z:
+                    z.writestr("Furusato_nouzei.xlsm", workbook_bytes(title))
+                    z.writestr("FurusatoDocumentReader.exe", self.reader)
+                    z.writestr("README.txt", self.readme)
+                signature = dict(self.signature, archive_sha256=sha256(self.archive))
+                with self.assertRaisesRegex(ValueError, "BRANDING_INVALID"):
+                    self.run_check(signature=signature)
+
     def test_old_edition_and_review_marker_refused(self):
         with self.assertRaisesRegex(ValueError, "INVALID_NEXT_RELEASE_VERSION"):
             self.run_check(version="v4.18.2")
         with ZipFile(self.archive, "w") as z:
-            z.writestr("Furusato_nouzei.xlsm", b"x")
+            z.writestr("Furusato_nouzei.xlsm", self.book_bytes)
             z.writestr("FurusatoDocumentReader.exe", self.reader)
             z.writestr("README.txt", "正式配布HOLD " + VERSION)
         signature = dict(self.signature, archive_sha256=sha256(self.archive))

@@ -8,6 +8,7 @@ from pathlib import Path
 from zipfile import BadZipFile, ZipFile
 
 from record_ci_acceptance import JOBS
+from release_candidate_branding import verify_workbook_labels, verify_release_readme
 from release_readiness import PRODUCT_SCOPE, REQUIRED, SCHEMA, evaluate
 
 HEAD_RE = re.compile(r"[0-9a-f]{40}\Z")
@@ -55,12 +56,15 @@ def verify(head, run_id, version, archive, expected_hash, ci, manifest, signatur
             _require(z.testzip() is None, "RELEASE_ZIP_CRC_FAILURE")
             reader_sha = hashlib.sha256(z.read("FurusatoDocumentReader.exe")).hexdigest()
             workbook_sha = hashlib.sha256(z.read("Furusato_nouzei.xlsm")).hexdigest()
+            workbook_bytes = z.read("Furusato_nouzei.xlsm")
             readme = z.read("README.txt")
             _require(version.encode("ascii") in readme and
                      b"NOT FOR PUBLIC DISTRIBUTION" not in readme and
                      "正式配布HOLD".encode("utf-8") not in readme and
-                     "v4.18.2 正式版".encode("utf-8") not in readme,
+                     "v4.18.2".encode("utf-8") not in readme,
                      "REVIEW_OR_WRONG_VERSION_README")
+            verify_workbook_labels(workbook_bytes, version)
+            verify_release_readme(readme, version)
     except BadZipFile as exc:
         raise ValueError("INVALID_RELEASE_ZIP_FORMAT") from exc
 
