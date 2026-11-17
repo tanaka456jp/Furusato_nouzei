@@ -84,6 +84,29 @@ class ExcelPrepublicationTests(unittest.TestCase):
         x.update(overrides)
         return verify(**x)
 
+    def test_preprint_only_eight_gates_pass_and_paper_stays_pending(self):
+        manifest = copy.deepcopy(self.manifest)
+        del manifest["checks"]["physical_printer_preview_and_output"]
+        with self.assertRaisesRegex(ValueError, "EXCEL_PRIVATE_REVIEWS_INCOMPLETE"):
+            self.run_check(manifest=manifest)
+        receipt = self.run_check(manifest=manifest, preprint_only=True)
+        self.assertEqual(receipt["candidate_gate"],
+                         "EIGHT_NONPHYSICAL_GATES_RECORDED_PREPRINT_HOLD")
+        self.assertEqual(receipt["physical_paper_gate"], "PENDING")
+        self.assertEqual(receipt["private_review_records"], 8)
+        self.assertEqual(receipt["release_decision"], "HOLD")
+
+        # Preprint is not a generic override. All other gates are still required.
+        del manifest["checks"]["signed_distribution_and_sha256"]
+        with self.assertRaisesRegex(ValueError, "PREPRINT_REQUIRES_ALL_EIGHT"):
+            self.run_check(manifest=manifest, preprint_only=True)
+        manifest = copy.deepcopy(self.manifest)
+        manifest["checks"]["physical_printer_preview_and_output"]["status"] = "INVALID"
+        with self.assertRaisesRegex(ValueError, "PREPRINT_REQUIRES_ALL_EIGHT"):
+            self.run_check(manifest=manifest, preprint_only=True)
+        with self.assertRaisesRegex(ValueError, "PREPRINT_REQUIRES_ALL_EIGHT"):
+            self.run_check(preprint_only=True)
+
     def test_all_claims_still_hold_and_web_is_separate(self):
         result = self.run_check()
         self.assertEqual(result["candidate_gate"], "METADATA_AND_ARCHIVE_CHECKED")

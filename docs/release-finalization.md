@@ -41,3 +41,15 @@ python tools/assemble_excel_candidate_local.py --book "<PRIVATE>\\Furusato_nouze
 
 上記アーカイブ作成は署名を検証・適用しない。続けて既存の `verify_signed_release_local.ps1` と `verify_excel_release_candidate.py` で、EXE署名、VBA署名構造、ZIP SHA256、Excel表示版とREADME版、CI同一HEAD、非公開の税務レビューを照合する。
 実印刷はこの最終署名済み候補を用い、印刷するブックが同一SHA256か確認する。検証版REVIEW_HOLD ZIPを正式版として流用しない。
+
+## 実印刷を最後にするための二段階検査
+
+実印刷の前に、非公開9項目マニフェストの `physical_printer_preview_and_output` を**未記録のまま**、ほか8項目のレビュー証拠と署名済み候補ZIPが揃った状態で次を実行する。
+
+```powershell
+python tools/verify_excel_release_candidate.py --preprint-only --head "<HEAD>" --run-id <Run> --version v4.18.35 --archive "<最終署名済み候補ZIP>" --expected-archive-sha256 "<独立記録したZIP SHA256>" --ci-receipt "<CIレシートJSON>" --manifest "<印刷以外8項目の社内JSON>" --signature-evidence "<ローカル署名検査JSON>" --output "<非公開の印刷前照合JSON>"
+```
+
+このモードは**印刷だけが未記録**のときに限り成功し、`EIGHT_NONPHYSICAL_GATES_RECORDED_PREPRINT_HOLD` を返す。ただし、メタデータの照合だけで証拠の真正性を証明するものではなく、署名・税務・実画面の人手による独立受入が必要。印刷済み証拠の虚偽記録や、署名・税務・画面の未達を許容しない。公開許可ではない。
+
+A4実印刷が完了したら、その物理印刷報告書のハッシュを非公開マニフェストに記録し、`--preprint-only` を外して9項目すべてを照合する。最終的な配布物ステージングも同じ9項目を必須とする。旧版の検証ZIPを利用したり、最後の印刷証拠を自動生成したりしない。

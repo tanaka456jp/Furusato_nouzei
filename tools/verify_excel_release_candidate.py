@@ -26,7 +26,7 @@ def _require(condition, reason):
         raise ValueError(reason)
 
 
-def verify(head, run_id, version, archive, expected_hash, ci, manifest, signature):
+def verify(head, run_id, version, archive, expected_hash, ci, manifest, signature, *, preprint_only=False):
     """Check publicly safe metadata plus actual signed-package bytes; always HOLD.
 
     Signing changes EXE/XLSM hashes: the unsigned CI-review member digests
@@ -83,11 +83,24 @@ def verify(head, run_id, version, archive, expected_hash, ci, manifest, signatur
              manifest.get("schema") == SCHEMA and
              manifest.get("head_sha") == head, "EXCEL_SCOPE_MANIFEST_INVALID")
     assessment = evaluate(head, manifest)
-    _require(assessment["product_scope"] == PRODUCT_SCOPE and
-             not assessment["blockers"] and
-             len(assessment["checks"]) == len(REQUIRED) and
-             assessment["review_stage"] == "MANUAL_FINAL_AUDIT_REQUIRED",
-             "EXCEL_PRIVATE_REVIEWS_INCOMPLETE")
+    paper_gate = "physical_printer_preview_and_output"
+    paper_blocker = "MISSING_PHYSICAL_PRINTER_PREVIEW_AND_OUTPUT"
+    if preprint_only:
+        # Explicitly the ONLY missing gate is the not-yet-performed physical
+        # A4 paper review. A failed or fabricated paper record is never waived.
+        _require(assessment["product_scope"] == PRODUCT_SCOPE and
+                 assessment["blockers"] == [paper_blocker] and
+                 assessment["checks"][paper_gate] == "MISSING" and
+                 all(value == "REVIEW_RECORDED_NOT_INDEPENDENTLY_VERIFIED"
+                     for key, value in assessment["checks"].items()
+                     if key != paper_gate),
+                 "PREPRINT_REQUIRES_ALL_EIGHT_NONPHYSICAL_REVIEWS")
+    else:
+        _require(assessment["product_scope"] == PRODUCT_SCOPE and
+                 not assessment["blockers"] and
+                 len(assessment["checks"]) == len(REQUIRED) and
+                 assessment["review_stage"] == "MANUAL_FINAL_AUDIT_REQUIRED",
+                 "EXCEL_PRIVATE_REVIEWS_INCOMPLETE")
     _require(isinstance(signature, dict) and
              signature.get("schema") == "furusato-signed-distribution-local/v1" and
              signature.get("archive_sha256") == actual_hash and
@@ -108,13 +121,15 @@ def verify(head, run_id, version, archive, expected_hash, ci, manifest, signatur
         "source_head_sha": head,
         "ci_run_id": run_id,
         "version": version,
-        "candidate_gate": "METADATA_AND_ARCHIVE_CHECKED",
+        "candidate_gate": ("EIGHT_NONPHYSICAL_GATES_RECORDED_PREPRINT_HOLD"
+                           if preprint_only else "METADATA_AND_ARCHIVE_CHECKED"),
+        "physical_paper_gate": "PENDING" if preprint_only else "RECORDED_NOT_VERIFIED",
         "candidate_archive_sha256": actual_hash,
         "candidate_workbook_sha256": workbook_sha,
         "candidate_reader_sha256": reader_sha,
         "ci_review_zip_sha256": ci["review_zip_sha256"],
         "ci_review_only_not_signed_payload": True,
-        "private_review_records": len(REQUIRED),
+        "private_review_records": len(REQUIRED) - int(preprint_only),
         "source_lineage_after_signing": "REQUIRES_HUMAN_REVIEW",
         "office_vbe_signature": "REQUIRES_HUMAN_CRYPTOGRAPHIC_VALIDATION",
         "physical_tax_and_print_evidence": "REQUIRES_HUMAN_AUTHENTICITY_REVIEW",
@@ -134,6 +149,8 @@ def main():
     p.add_argument("--manifest", type=Path, required=True)
     p.add_argument("--signature-evidence", type=Path, required=True)
     p.add_argument("--output", type=Path, required=True)
+    p.add_argument("--preprint-only", action="store_true",
+                   help="Allow ONLY the physical print gate to remain missing; still HOLD")
     a = p.parse_args()
     try:
         root = Path(__file__).resolve().parents[1]
@@ -147,7 +164,8 @@ def main():
             return json.loads(path.read_text(encoding="utf-8-sig"))
         report = verify(a.head, a.run_id, a.version, a.archive,
                         a.expected_archive_sha256, read(a.ci_receipt),
-                        read(a.manifest), read(a.signature_evidence))
+                        read(a.manifest), read(a.signature_evidence),
+                        preprint_only=a.preprint_only)
         output.parent.mkdir(parents=True, exist_ok=True)
         with output.open("x", encoding="utf-8") as result:
             json.dump(report, result, ensure_ascii=False, indent=2)
