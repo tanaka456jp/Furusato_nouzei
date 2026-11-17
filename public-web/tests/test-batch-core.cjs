@@ -208,9 +208,6 @@ assert.equal(partial.sourceValid,true);
 assert.equal(partial.confirmed,false,"Manual fill must revoke source confirmation");
 batch.calculate(partial,win.FurusatoEngine,guard);
 assert.equal(partial.status,"HOLD");
-dom.window.close();
-console.log("PUBLIC_BATCH_PER_PAGE_LOCAL_SAFETY_SYNTHETIC_PASS; no private slips; no deploy");
-
 // A stale calculated deduction total must not leak into CSV after confirmation is revoked.
 const stale=batch.fromPage(20,basic2026);
 stale.confirmed=true;stale.noExclusions=true;
@@ -218,5 +215,8 @@ batch.calculate(stale,win.FurusatoEngine,guard);
 assert.equal(stale.status,"概算");
 assert.equal(stale.appliedDeductionsYen,1670000);
 stale.confirmed=false;
-const staleColumns=batch.csv([stale]).split("\\r\\n")[1];
+const staleColumns=batch.csv([stale]).split("\r\n")[1];
 assert.ok(!staleColumns.includes('"1670000"'),"unconfirmed calculation details must not export");
+
+dom.window.close();
+console.log("PUBLIC_BATCH_PER_PAGE_LOCAL_SAFETY_SYNTHETIC_PASS; no private slips; no deploy");
