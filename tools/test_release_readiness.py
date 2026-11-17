@@ -1,6 +1,6 @@
 """Release checks must never approve solely from synthetic CI or metadata."""
 import unittest
-from release_readiness import REQUIRED, SCHEMA, REVIEWER_ROLES, evaluate
+from release_readiness import REQUIRED, SCHEMA, PRODUCT_SCOPE, REVIEWER_ROLES, evaluate
 
 HEAD = "a" * 40
 
@@ -43,6 +43,21 @@ class ReleaseReadinessTest(unittest.TestCase):
         self.assertNotIn('scenario_approved = $measured', src)
 
 
+    def test_excel_offline_scope_excludes_live_gas_without_waiving_tax_and_signatures(self):
+        self.assertEqual(PRODUCT_SCOPE, "EXCEL_STANDALONE_NO_GAS_RUNTIME")
+        self.assertNotIn("live_google_gas_independent_acceptance", REQUIRED)
+        self.assertEqual(len(REQUIRED), 9)
+        result = evaluate(HEAD)
+        self.assertEqual(result["product_scope"], PRODUCT_SCOPE)
+        self.assertIn("MISSING_SIGNED_DISTRIBUTION_AND_SHA256", result["blockers"])
+        old = evaluate(HEAD, {"schema": "furusato-release-readiness/v3",
+                              "head_sha": HEAD, "checks": {
+                                  "live_google_gas_independent_acceptance": {
+                                      "status": "REVIEWED", "sha256": "f" * 64,
+                                      "reviewer_role": "qa_operator", "head_sha": HEAD}}})
+        self.assertIn("SCHEMA_MISSING_OR_UNSUPPORTED", old["blockers"])
+        self.assertIn("UNKNOWN_CHECK_KEYS", old["blockers"])
+
     def test_resident_notice_is_never_a_required_gate(self):
         self.assertNotIn("real_tax_and_resident_notice_reconciliation",REQUIRED)
         self.assertIn("salary_only_independent_withholding_reconciliation",REQUIRED)
@@ -52,7 +67,7 @@ class ReleaseReadinessTest(unittest.TestCase):
             REVIEWER_ROLES["prior_year_projection_independent_resident_deductions"],
             ("tax_professional", "external_reviewer"),
         )
-        self.assertEqual(SCHEMA, "furusato-release-readiness/v3")
+        self.assertEqual(SCHEMA, "furusato-release-readiness/v4")
         old_manifest={"schema":"furusato-release-readiness/v1",
                       "head_sha":HEAD,
                       "checks":{"real_tax_and_resident_notice_reconciliation":{
@@ -117,13 +132,13 @@ class ReleaseReadinessTest(unittest.TestCase):
         self.assertIn("SCHEMA_MISSING_OR_UNSUPPORTED", old_format["blockers"])
         self.assertEqual(old_format["release_decision"], "HOLD")
 
-    def test_release_gate_documentation_matches_required_v3_schema(self):
+    def test_release_gate_documentation_matches_required_v4_excel_scope(self):
         from pathlib import Path
         root = Path(__file__).resolve().parents[1]
         documentation = (root / "docs/release-readiness.md").read_text(encoding="utf-8-sig")
-        self.assertIn("正式受入までに必要な10条件", documentation)
-        self.assertIn("schema: furusato-release-readiness/v3", documentation)
-        self.assertEqual(len(REQUIRED), 10)
+        self.assertIn("Excel単体版の正式受入に必要な9条件", documentation)
+        self.assertIn("schema: furusato-release-readiness/v4", documentation)
+        self.assertEqual(len(REQUIRED), 9)
         for key in REQUIRED:
             with self.subTest(check=key):
                 self.assertIn("| `" + key + "` |", documentation)

@@ -54,9 +54,9 @@ PC①などExcelがインストールされている作業端末で、**匿名�
 
 実際に紙を受け取って文字切れ・改ページ・印刷品質・税額整合を確認した報告書と紙面のスキャンを**非公開フォルダ**に保存し、独立レビュー証拠として扱います。スクリプトが出力するJSONは印刷命令の成否のみで、`paper_physically_observed=false`、`paper_readability_reviewed=false`、`release_decision=HOLD` を維持します。プリンタースプーラーが命令を受けたことは紙面の実物確認に相当しません。
 
-## 実GAS受入（合成41ケースとは別）
+## Web/GAS版の別製品受入（Excel単体配布の必須項目ではない）
 
-認証済みの**実際のGoogle Apps Script Webデプロイ**に対して匿名の独立テスト案件を用い、動いているデプロイID、実行日時、HTTP応答、税額・限度額の独立照合、変更権限と配信版の紐付けを確認する。GASのソースをローカルNode.jsで再実行した41ケース一致はこの条件の代わりにならない。現行本番GASへの書込み・再配信は、別途許可された変更のみ行う。実GASを実行できない場合はこの条件をHOLDとする。
+Web/GAS版の正式配布では、認証済みの**実際のGoogle Apps Script Webデプロイ**に対して匿名の独立テスト案件を用い、動いているデプロイID、実行日時、HTTP応答、税額・限度額の独立照合、変更権限と配信版の紐付けを確認する。GASのソースをローカルNode.jsで再実行した41ケース一致はこの条件の代わりにならない。現行本番GASへの書込み・再配信は、別途許可された変更のみ行う。この条件はWeb/GAS版のHOLD要因だが、GASランタイムを利用しないExcel版の9項目受入は妨げない。
 
 ### 既存のWeb版PRを用いた実GAS読取検証
 
@@ -80,7 +80,7 @@ node gas/scripts/check-live-ocr-readiness.cjs --verify-remote
 
 この検査は同梱EXEのAuthenticodeを確認すると同時に、XLSM内部の **VBAプロジェクトと署名コンテナーの存在を確認**します。署名コンテナーが存在しない配布候補は拒否します。ただし、署名コンテナーの存在は署名の真正性・有効性・VBAコードへの結び付きを証明しないため、Excelの**VBAプロジェクト署名の暗号学的検証までは完了しません**。マクロを署名配布する場合は、実際のOfficeでVBAプロジェクト署名の証明書・有効性・発行者を別途確認し、署名後のVBAソース変更がないことを証明してください。検査用ZIPに余分なファイルが含まれる場合も拒否します。コード署名・ハッシュ一致が成立しても税務・画面・印刷・実GASの最終承認を省略しない。
 
-## 10項目の社内オフライン受入マニフェスト
+## Excel単体版9項目の社内オフライン受入マニフェスト
 
 **作成するだけでは承認にならない。** 根拠となるプライベートの報告書を担当者が確認した後、その報告書のSHA-256と担当者区分のみ記録する。氏名・住所・源泉徴収金額・フォルダパスなどはマニフェストに一切記載しない。
 
@@ -90,13 +90,24 @@ python tools/collect_local_release_evidence.py record --manifest "C:\FurusatoPri
 python tools/collect_local_release_evidence.py check --manifest "C:\FurusatoPrivateReview\2026-11\acceptance_manifest.json" --head "<Draft PR #5 の現HEAD SHA40桁>"
 ```
 
-`record` は各証拠項目に対して必要回数だけ実行する。許可されないレビュアー区分、証拠ファイル欠落、同一項目への重複記録、GitHub内ファイル、現在のHEADと不一致の証拠を拒否する。**全10項目が記録されても `release_decision=HOLD` とし、権限ある人間による最終承認と実物の再照合を必要とする。** マニフェストはリポジトリや公開CIに追加しない。
+`record` は各証拠項目に対して必要回数だけ実行する。許可されないレビュアー区分、証拠ファイル欠落、同一項目への重複記録、GitHub内ファイル、現在のHEADと不一致の証拠を拒否する。**全9項目が記録されても `release_decision=HOLD` とし、権限ある人間による最終承認と実物の再照合を必要とする。** マニフェストはリポジトリや公開CIに追加しない。
 
-正式リリースのブランチ統合・タグ発行・公開・本番GAS更新は、この10項目を実物で承認した後の独立したリリース工程に限定する。
+正式リリースのブランチ統合・タグ発行・公開・本番GAS更新は、このExcel版9項目を実物で承認した後の独立したリリース工程に限定する。
 
 署名確認の一次資料：[Microsoft Support・VBAマクロプロジェクトにデジタル署名する](https://support.microsoft.com/ja-jp/office/vba/digitally-sign-your-vba-macro-project)、[Microsoft Learn・ブック署名とマクロコード署名の違い](https://learn.microsoft.com/ja-jp/troubleshoot/microsoft-365-apps/excel/digital-signatures-code-signing)。
 
 
 ## 自動CI完走証拠について（正式承認ではない）
 
-最新版の検証ZIP Artifactには `ci_exact_head_acceptance_hold.json` が同梱され、該当するPR HEAD/Run、静的・Windows・Excel・読取4ジョブ、ZIPと各バイナリのSHA-256を確定できる。 `ci_exact_head_gate=PASS` はソフトの自動検査範囲の記録に過ぎず、これを税理士の実原票レビューや署名済み正式配布物、実GAS、実画面・実印刷等の外部受入と取り違えない。
+最新版の検証ZIP Artifactには `ci_exact_head_acceptance_hold.json` が同梱され、該当するPR HEAD/Run、静的・Windows・Excel・読取4ジョブ、ZIPと各バイナリのSHA-256を確定できる。 `ci_exact_head_gate=PASS` はソフトの自動検査範囲の記録に過ぎず、これを税理士の実原票レビューや署名済み正式配布物、実画面・実印刷等の外部受入と取り違えない。
+
+
+## 次期Excel版の署名済み候補：公開前の固定手順
+
+`tools/verify_signed_release_local.ps1` を使用し、独立記録済みZIP SHA256、EXE Authenticode、署名者証明書、VBA署名構造を検査する。実際のExcel/VBEにおけるVBA署名の暗号学的真正性、署名後コード不変を人手で確認し、非公開の署名審査報告書を `signed_distribution_and_sha256` として登録する。秘密鍵を新規生成・公開・登録しない。
+
+```powershell
+python tools/verify_excel_release_candidate.py --head "<PR #5の現HEAD>" --run-id <同一HEADの5/5 SUCCESS Run ID> --version v4.18.12 --archive "<署名済み候補ZIP>" --expected-archive-sha256 "<独立記録した64桁SHA256>" --ci-receipt "<ci_exact_head_acceptance_hold.json>" --manifest "<非公開9項目マニフェスト>" --signature-evidence "<ローカル署名検査JSON>" --output "<非公開候補照合JSON>"
+```
+
+候補照合は `candidate_gate=METADATA_AND_ARCHIVE_CHECKED`、`release_decision=HOLD` まで。税務・実画面・実紙面・Office/VBE署名・公開権限と公開直前のハッシュ再照合を権限ある担当者が最終承認する必要がある。正式版v4.18.2用公開workflowを次期版へ転用せず、未署名REVIEW_HOLD ZIPをReleaseへ掲載しない。

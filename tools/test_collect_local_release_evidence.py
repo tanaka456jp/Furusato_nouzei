@@ -68,7 +68,7 @@ class LocalEvidenceIntakeTest(unittest.TestCase):
                 self.manifest, gate, self.sample, "tax_professional",
                 explicitly_reviewed=True)
 
-    def test_all_ten_reviews_still_hold_and_head_change_invalidates(self):
+    def test_all_nine_excel_reviews_still_hold_and_head_change_invalidates(self):
         for gate in REQUIRED:
             record_local_evidence(
                 self.manifest, gate, self.sample, REVIEWER_ROLES[gate][0],

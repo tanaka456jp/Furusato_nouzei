@@ -1,4 +1,4 @@
-"""Local-only privacy-safe evidence manifest for the ten release HOLD gates.
+"""Local-only privacy-safe evidence manifest for the nine offline Excel gates.
 
 Never uploads files, opens GitHub, emails, prints, changes screen modes, signs
 binaries or approves a release. A human must verify the true evidence/identity;

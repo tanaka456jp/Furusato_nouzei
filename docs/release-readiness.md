@@ -4,7 +4,7 @@
 
 `python tools/release_readiness.py --head <HEADの40文字SHA> --output release_readiness_hold.json` で、実データや氏名を送信せずに未完了条件を列挙できます。住民税決定通知書を受入条件に含めません。CIは証拠未提出として常に `release_decision=HOLD` のレポートを出力し、Artifactに添付します。個人情報や顧客原票はGitHub/CIにアップロードしないでください。
 
-## 正式受入までに必要な10条件
+## Excel単体版の正式受入に必要な9条件
 
 | 証拠の種類 | 内容 |
 |---|---|
@@ -14,10 +14,9 @@
 | `screen_1920x1080_125pct` | 1920×1080・125%の実Windows画面 |
 | `screen_1366x768_150pct` | 1366×768・150%の実Windows画面 |
 | `physical_printer_preview_and_output` | 印刷プレビューと実プリンタの紙面出力 |
-| `live_google_gas_independent_acceptance` | 実Google GAS環境での独立受入（合成41ケースのJavaScript比較とは別） |
 | `signed_distribution_and_sha256` | 次期版の署名済み配布物とSHA256、公開物の改ざん防止検証 |
 
-外部保管したレビュー済証拠を整理する場合だけ、`--manifest <ローカルJSON>`を用います。形式は `schema: furusato-release-readiness/v3`、`head_sha`、上記10キーを持つ `checks` で、各キーは `{"status":"REVIEWED","sha256":"64桁小文字hex","reviewer_role":"tax_professional","head_sha":"同じHEADの40桁SHA"}` です。役割欄は用途に応じた `qa_operator`、`release_operator`、`external_reviewer` も可能。**本人の氏名・住所・税額・証拠そのものは書かないこと。**
+外部保管したレビュー済証拠を整理する場合だけ、`--manifest <ローカルJSON>`を用います。形式は `schema: furusato-release-readiness/v4`、`head_sha`、上記9キーを持つ `checks` で、各キーは `{"status":"REVIEWED","sha256":"64桁小文字hex","reviewer_role":"tax_professional","head_sha":"同じHEADの40桁SHA"}` です。役割欄は用途に応じた `qa_operator`、`release_operator`、`external_reviewer` も可能。**本人の氏名・住所・税額・証拠そのものは書かないこと。**
 
 この形式だけでは証拠の真正性は立証されないため、全ての欄を記入しても結果は `MANUAL_FINAL_AUDIT_REQUIRED`／`HOLD` に留まります。別途、真正な現物、法令、署名者、同年度税額とリリース承認を確認してください。既存の正式v4.18.2、main、本番GAS、Web PR #6には影響させません。
 
@@ -40,7 +39,7 @@ Windowsジョブで `Get-AuthenticodeSignature` を使用して同梱の `Furusa
 
 正式v4.18.2には `ReadyToUse.zip` があるため、次期版も同じ提供方式を維持します。 `ready_to_use_review` ジョブが、**同一GitHub Actions Run** の「PC① Excel/VBAUpdater/GAS受入済みXLSM」「Windows読取EXE」だけを取得し、XLSMのSHA256がExcel実機受入レポートと一致する場合に限り `Furusato_nouzei_ReadyToUse_REVIEW_HOLD.zip` を作成します。ZIP内には元バイトのXLSM、読取EXE、ユーザーガイド、`NOT_FOR_PUBLIC_RELEASE.txt` を含めます。検証用ZIPのSHA256・各EXE/XLSMのSHA256を匿名JSONに記録。再構築によるバイナリ内容改変をせず、古い別Run成果物を混ぜません。
 
-**このZIPは検証専用です。** コード署名・実税務・画面3条件・紙面印刷・live GAS・最終承認の代わりにはならず、正式Releaseや既存v4.18.2への上書きは行いません。テストには架空のバイト列だけを使い、実顧客書類はCIへ送信しません。
+**このZIPは検証専用です。** コード署名・実税務・画面3条件・紙面印刷・最終承認の代わりにはならず、正式Releaseや既存v4.18.2への上書きは行いません。テストには架空のバイト列だけを使い、実顧客書類はCIへ送信しません。
 
 
 ### 2026-11-16 実CIのDPI撮影障害検出と修正
@@ -108,7 +107,7 @@ CI #44000373135は5ジョブすべてSUCCESS（Excel COM、VBAUpdaterの実書�
 
 レビュー用ReadyToUse ZIP生成ジョブはこれまでExcel実機と文書リーダーの成功だけに依存していた。このため静的テストやWindows互換性が失敗したRunでもレビューZIPが生成され得る不備があった。正確な同一HEADの `static`、`windows_compat`、`excel`、`document_reader` の**全てのSUCCESS**を必要条件へ変更し、回帰テストを追加。
 
-自動CIが5/5成功した場合でも、ローカル税務照合・実画面3条件・紙面印刷・実GAS・真正な署名と販売承認は別の受入条件であり、正式配布 `HOLD` は維持する。静的ジョブ内で事前作成する `release_readiness_hold.json` は外部レビュアーの証拠提出状態であって、CIが最後までSUCCESSしたかの実績レポートではない。両者を区別する。
+自動CIが5/5成功した場合でも、ローカル税務照合・実画面3条件・紙面印刷・真正な署名と販売承認は別の受入条件であり、正式配布 `HOLD` は維持する。静的ジョブ内で事前作成する `release_readiness_hold.json` は外部レビュアーの証拠提出状態であって、CIが最後までSUCCESSしたかの実績レポートではない。両者を区別する。
 
 
 ### 同一HEAD全CIジョブの自動受入記録と、人手の正式受入は別物（2026-11-17）
@@ -116,3 +115,11 @@ CI #44000373135は5ジョブすべてSUCCESS（Excel COM、VBAUpdaterの実書�
 `ready_to_use_review` は `static`、`windows_compat`、`excel`、`document_reader` の全成功が前提。さらに `tools/record_ci_acceptance.py` が、GitHubの同一Run/PR HEAD・4ジョブの成功・XLSM/EXE/READMEの実ZIP内ハッシュ・実ZIP SHA256を検査し、`ci_exact_head_acceptance_hold.json` を検証ZIPと同じArtifactに含める。検証用の署名なし成果物を署名済みと誤認させることも拒否する。この証拠は `ci_exact_head_gate=PASS` と `release_decision=HOLD` の両方を出力する。
 
 `release_readiness_hold.json` は社内税務専門家・画面・署名などの**人手受入証拠が未提出**であることを示す。自動CIが実際に不合格という意味ではない。両者を混同しない。旧版v4.18.2を維持し、正式配布は署名と外部受入が終わるまでHOLD。
+
+### 2026-11-17：Excel単体版の製品範囲とCI後処理
+
+Excel/VBAとローカル文書リーダーは、承認済みGitHub税制カタログを使用する。実GASデプロイを呼び出さないため、マニフェストは **furusato-release-readiness/v4**、製品範囲は **EXCEL_STANDALONE_NO_GAS_RUNTIME**、税務3・画面3・実印刷・同一HEAD CI・署名済み配布の9項目を必須とする。Web版PR #6の実GAS/認証受入は別製品で行う。固定GAS計算エンジンとの合成41件比較は追加の回帰検査として継続するが、実GAS配布承認と同義ではない。
+
+Run #44043000554では税額・VBAUpdater・Excel/GAS合成比較が成功した後、匿名 review.zip のロックによって最終CleanがFAILし、ready_to_use_reviewがSKIPPED。匿名隔離ディレクトリの削除を最大12回リトライし、残った場合は保守警告を残して計算テストの成否を偽らない。実顧客資料はCIに投入禁止。
+
+署名済み次期候補は `tools/verify_excel_release_candidate.py` で候補ZIP SHA256、同一HEAD/Runの受入レシート、非公開9項目マニフェスト、ローカル署名検査証拠を照合する。Excel/VBE署名真正性・税務・紙面の人手承認は別途必須。判定は必ずHOLDで、許可なくmain、v4.18.2、本番GAS、PR #6、公開タグ/Releaseを変更しない。

@@ -46,6 +46,7 @@ jobs:
           python tools/test_collect_local_release_evidence.py
           python tools/test_release_display_matrix.py
           python tools/test_release_readiness.py
+          python tools/test_excel_release_candidate.py
           python tools/test_signed_release_negative.py
           python tools/test_distribution_integrity.py
           python tools/test_package_ready_to_use_review.py
@@ -622,8 +623,23 @@ jobs:
         shell: powershell
         run: |
           $work = Join-Path $env:RUNNER_TEMP ('furusato-' + $env:GITHUB_RUN_ID + '-' + $env:GITHUB_RUN_ATTEMPT)
-          if (Test-Path -LiteralPath $work) {
-            Remove-Item -LiteralPath $work -Recurse -Force
+          # Only anonymous synthetic fixtures are created under this unique path.
+          # Transient file locks on review.zip are not an Excel calculation failure.
+          for ($attempt = 1; $attempt -le 12; $attempt++) {
+            if (-not (Test-Path -LiteralPath $work)) { break }
+            try {
+              Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction Stop
+            } catch {
+              if ($attempt -eq 12) {
+                Write-Warning 'SYNTHETIC_TEMP_CLEANUP_INCOMPLETE: runner maintenance needed'
+                'Synthetic runner temp cleanup incomplete; review human maintenance; Release is HOLD.' >> $env:GITHUB_STEP_SUMMARY
+                break
+              }
+              Start-Sleep -Seconds 2
+            }
+          }
+          if (-not (Test-Path -LiteralPath $work)) {
+            'Isolated synthetic temporary Excel files removed.' >> $env:GITHUB_STEP_SUMMARY
           }
 
   # Create a user-testable ReadyToUse review bundle from EXACTLY the two

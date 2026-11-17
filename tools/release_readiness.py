@@ -4,7 +4,8 @@ import json
 import re
 from pathlib import Path
 
-SCHEMA = "furusato-release-readiness/v3"
+SCHEMA = "furusato-release-readiness/v4"
+PRODUCT_SCOPE = "EXCEL_STANDALONE_NO_GAS_RUNTIME"
 REQUIRED = (
     "ci_exact_commit",
     "salary_only_independent_withholding_reconciliation",
@@ -14,7 +15,6 @@ REQUIRED = (
     "screen_1920x1080_125pct",
     "screen_1366x768_150pct",
     "physical_printer_preview_and_output",
-    "live_google_gas_independent_acceptance",
     "signed_distribution_and_sha256",
 )
 
@@ -30,7 +30,6 @@ REVIEWER_ROLES = {
     "screen_1920x1080_125pct": ("qa_operator", "external_reviewer"),
     "screen_1366x768_150pct": ("qa_operator", "external_reviewer"),
     "physical_printer_preview_and_output": ("qa_operator", "external_reviewer"),
-    "live_google_gas_independent_acceptance": ("qa_operator", "external_reviewer"),
     "signed_distribution_and_sha256": ("release_operator", "external_reviewer"),
 }
 
@@ -79,13 +78,14 @@ def evaluate(head_sha, manifest=None):
             blockers.append("INVALID_" + key.upper())
     return {
         "schema": SCHEMA,
+        "product_scope": PRODUCT_SCOPE,
         "head_sha": head_sha,
         "release_decision": "HOLD",
         "review_stage": ("MANUAL_FINAL_AUDIT_REQUIRED" if not blockers
                          else "EVIDENCE_INCOMPLETE"),
         "checks": states,
         "blockers": sorted(set(blockers)),
-        "note": "A year-end-adjusted salary-only withholding slip can support an independently calculated donation ceiling without a resident-tax notice. Evidence of source-year tax, 2025-to-2026 independent resident deductions, independently reviewed tax-return and housing-credit reallocation, verified conditions, current Excel comparison, physical display/printing, live GAS and code signing remains necessary.",
+        "note": "A year-end-adjusted salary-only withholding slip can support an independently calculated donation ceiling without a resident-tax notice. Evidence of source-year tax, 2025-to-2026 independent resident deductions, independently reviewed tax-return and housing-credit reallocation, verified conditions, current Excel comparison, physical display/printing and trusted code signing remains necessary. Live GAS deployment acceptance belongs to the separate Web/GAS product.",
     }
 
 
