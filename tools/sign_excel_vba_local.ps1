@@ -175,13 +175,6 @@ try {
         -not ([IO.Path]::GetFileName($destination) -match '(?i)_TEST_ONLY\.xlsm$')) {
         throw 'UNTRUSTED_TEST_SIGNATURE_REQUIRES_TEST_ONLY_FILENAME'
     }
-    if (-not $AllowUntrustedTestCertificate) {
-        $uri = $null
-        if (-not [Uri]::TryCreate($TimestampUrl, [UriKind]::Absolute, [ref]$uri) -or
-            $null -eq $uri -or $uri.Scheme -ne 'https') {
-            throw 'HTTPS_RFC3161_TIMESTAMP_URL_REQUIRED'
-        }
-    }
     if ($EvidencePath) {
         $evidence = [IO.Path]::GetFullPath($EvidencePath)
         if (Test-Path -LiteralPath $evidence) {
@@ -201,6 +194,13 @@ try {
         throw 'SOURCE_WORKBOOK_SHA256_NOT_ACCEPTED'
     }
     $originalVbaSha = Get-VbaProjectSha256 $source
+    if (-not $AllowUntrustedTestCertificate) {
+        $uri = $null
+        if (-not [Uri]::TryCreate($TimestampUrl, [UriKind]::Absolute, [ref]$uri) -or
+            $null -eq $uri -or $uri.Scheme -ne 'https') {
+            throw 'HTTPS_RFC3161_TIMESTAMP_URL_REQUIRED'
+        }
+    }
     $tool = Find-X86SignTool
     $thumb = $CertificateThumbprint.ToUpperInvariant()
     $cert = Require-CodeSigningCertificate $thumb
