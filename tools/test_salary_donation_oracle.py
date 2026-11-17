@@ -296,6 +296,27 @@ class SalaryDonationOracleTest(unittest.TestCase):
             independent_salary_ceiling(year=2026,salary_income=5_200_000,
                        resident_deductions=1_430_000,municipality="unknown")
 
+    def test_city_and_prefecture_truncation_without_insurance_premiums(self):
+        # The first case separates the pooled ¥100 floor from the assessed
+        # amounts. In the second case a ¥2,350 unrounded levy yields
+        # different assessed totals under the two standard local splits.
+        for year in (2025, 2026):
+            for municipality, resident_deductions, expected_parts in (
+                ("standard", 1_429_000, (224_700, 149_800)),
+                ("designated", 1_429_000, (299_600, 74_900)),
+                ("standard", 5_153_000, (1_400, 900)),
+                ("designated", 5_153_000, (1_800, 400)),
+            ):
+                with self.subTest(year=year, municipality=municipality,
+                                  resident_deductions=resident_deductions):
+                    result = independent_salary_ceiling(
+                        year=year, salary_income=5_200_000,
+                        resident_deductions=resident_deductions,
+                        municipality=municipality,
+                    )
+                    self.assertEqual(result["resident_income_levy_parts"], expected_parts)
+                    self.assertEqual(result["resident_income_levy"], sum(expected_parts))
+
     def test_single_taxpayer_universal_exemption_fails_closed(self):
         for year in (2025, 2026):
             with self.assertRaisesRegex(ValueError, "INCOME_LEVY_EXEMPT"):

@@ -3,7 +3,8 @@
 param(
     [Parameter(Mandatory=$true)][string]$Workbook,
     [string]$EvidencePath = '',
-    [string]$PdfEvidencePath = ''
+    [string]$PdfEvidencePath = '',
+    [ValidatePattern('^[a-f0-9]{40}$')][string]$SourceHead
 )
 $ErrorActionPreference = 'Stop'
 $Workbook = (Resolve-Path -LiteralPath $Workbook).Path
@@ -125,6 +126,7 @@ try {
     $homeSheet.Range('B25').Value2 = 'なし'
     $homeSheet.Range('D22').Value2 = '該当なし'
     $homeSheet.Range('D24').Value2 = '確定申告'
+    $homeSheet.Range('D51').Value2 = '標準市町村'
     $projectionRef.Range('B13:B18,B20,B41,B43:B44').ClearContents()
     $projectionRef.Range('B14').Value2 = 1630000.0
     $projectionRef.Range('B15').Value2 = 5200000.0
@@ -400,6 +402,11 @@ try {
     Assert-Value $homeSheet.Range('B14').Value2 1800000 'Manual override amount used'
     if ([string]$homeSheet.Range('D26').Value2 -notlike '*上書き中*') {
         throw 'Manual override warning was not displayed'
+    }
+    if ([string]$homeSheet.Range('B28').Value2 -notlike 'SAFE-TAX-038*' -or
+        [string]$homeSheet.Range('B8').Value2 -ne '' -or
+        [string]$homeSheet.Range('D8').Value2 -ne '') {
+        throw 'Unverified deduction override escaped HOLD'
     }
     $homeSheet.Range('B16').Value2 = 1050000.0
     $excel.Run('TaxLawUpdater.RecalculateCase')
@@ -843,6 +850,51 @@ try {
         }
         QA-Stage ('salary-only-withholding-independent-compare-'+$year+'-pass')
     }
+    QA-Stage 'salary-only-municipal-rounding-start'
+    $municipalRoundingSheet = $book.Worksheets.Item('住民税再計算')
+    foreach ($taxYear in @(2025, 2026)) {
+        $settings.Range('B4').Value2 = [double]$taxYear
+        $homeSheet.Range('B4').Value2 = [double]$taxYear
+        $homeSheet.Range('B11').Value2 = [double]$taxYear
+        $homeSheet.Range('B12').Value2 = 7000000.0
+        $homeSheet.Range('B19:B24').ClearContents()
+        $homeSheet.Range('D24').Value2 = 'ワンストップ'
+        foreach ($municipalCase in @(
+            @{Social=999000; Pooled=374600; Standard=374500; Designated=374500},
+            @{Social=4723000; Pooled=2300; Standard=2300; Designated=2200}
+        )) {
+            # Separate assessed shares and pooled comparison come from
+            # different formulas in the same real workbook.
+            $homeSheet.Range('B16').Value2 = [double]$municipalCase.Social
+            $homeSheet.Range('B15').Value2 = $(if ($municipalCase.Social -eq 4723000) {0.0} elseif ($taxYear -eq 2025) {292700.0} else {284500.0})
+            foreach ($jurisdiction in @(
+                @{Label='標準市町村'; Expected=$municipalCase.Standard},
+                @{Label='標準指定都市'; Expected=$municipalCase.Designated}
+            )) {
+                $homeSheet.Range('D51').Value2 = $jurisdiction.Label
+                $excel.Run('TaxLawUpdater.RecalculateCase')
+                Assert-Value $homeSheet.Range('B28').Value2 '正常' ('Municipal assessment status '+$taxYear)
+                Assert-Value $homeSheet.Range('D8').Value2 $jurisdiction.Expected ('Municipal assessed levy '+$taxYear+' '+$jurisdiction.Label)
+                Assert-Value $municipalRoundingSheet.Range('B35').Value2 $municipalCase.Pooled ('Pooled comparator levy '+$taxYear)
+            }
+        }
+        $homeSheet.Range('D51').Value2 = '条例差・不明'
+        $excel.Run('TaxLawUpdater.RecalculateCase')
+        if ([string]$homeSheet.Range('B28').Value2 -notlike 'SAFE-TAX-036*' -or
+            [string]$homeSheet.Range('B8').Value2 -ne '' -or
+            [string]$homeSheet.Range('D8').Value2 -ne '') {
+            throw ('Unknown ordinary municipal tax regime escaped HOLD '+$taxYear)
+        }
+        $homeSheet.Range('D51').Value2 = '標準市町村'
+        $homeSheet.Range('B12').Value2 = 20000001.0
+        $excel.Run('TaxLawUpdater.RecalculateCase')
+        if ([string]$homeSheet.Range('B28').Value2 -notlike 'SAFE-TAX-037*' -or
+            [string]$homeSheet.Range('B8').Value2 -ne '' -or
+            [string]$homeSheet.Range('D8').Value2 -ne '') {
+            throw ('Salary above year-end-adjustment limit escaped HOLD '+$taxYear)
+        }
+    }
+    QA-Stage 'salary-only-municipal-rounding-pass'
     # This is the first real-Excel COM versus independent Python comparison
     # WITH actual life and earthquake premiums. Only synthetic input is used.
     QA-Stage 'insurance-cross-tax-independent-compare-start'
@@ -1718,9 +1770,13 @@ try {
         $incomeTestExtra.Range('B12').Value2 = 300000.0
         $excel.Run('TaxLawUpdater.RecalculateCase')
         Assert-Value $incomeTestExtra.Range('B30').Value2 1300000 ('Child total income '+$sample.Year)
-        Assert-Value $homeSheet.Range('B28').Value2 '正常' ('Child with extra business income must not be exempt '+$sample.Year)
-        if ([double]$homeSheet.Range('D8').Value2 -le 0) {
-            throw ('Positive resident levy not calculated '+$sample.Year)
+        if ([string]$homeSheet.Range('B28').Value2 -notlike 'SAFE-TAX-039*' -or
+            [string]$homeSheet.Range('B8').Value2 -ne '' -or
+            [string]$homeSheet.Range('D8').Value2 -ne '') {
+            throw ('Mixed business and salary estimate escaped HOLD '+$sample.Year)
+        }
+        if ([double]$book.Worksheets.Item('住民税再計算').Range('B16').Value2 -le 0) {
+            throw ('Positive intermediate resident levy suppressed by salary-only exemption '+$sample.Year)
         }
         # Special-status exemption also uses total income, not B13.
         $incomeTestExtra.Range('B12').ClearContents()
@@ -1736,7 +1792,11 @@ try {
         $incomeTestExtra.Range('B12').Value2 = 300000.0
         $excel.Run('TaxLawUpdater.RecalculateCase')
         Assert-Value $incomeTestExtra.Range('B30').Value2 1500000 ('Widow total income '+$sample.Year)
-        Assert-Value $homeSheet.Range('B28').Value2 '正常' ('Protected status combined income above exemption '+$sample.Year)
+        if ([string]$homeSheet.Range('B28').Value2 -notlike 'SAFE-TAX-039*' -or
+            [string]$homeSheet.Range('B8').Value2 -ne '' -or
+            [string]$homeSheet.Range('D8').Value2 -ne '') {
+            throw ('Protected-status mixed-income estimate escaped HOLD '+$sample.Year)
+        }
     }
     $incomeTestExtra.Range('B12').ClearContents()
     $settings.Range('B4').Value2 = 2026.0
@@ -2144,12 +2204,27 @@ try {
             throw 'PDF layout evidence destination already exists'
         }
         [void][IO.Directory]::CreateDirectory($PdfEvidencePath)
+        $pdfHashes = [ordered]@{}
         foreach ($name in @('FurusatoQA.pdf', 'FurusatoQA_hidden.pdf', 'split-result.pdf', 'split-result.print-inputs.json', 'home-overview.pdf')) {
             $inputPdf = Join-Path $dir $name
             if (-not (Test-Path -LiteralPath $inputPdf -PathType Leaf)) {
                 throw ('Synthetic PDF/layout proof is missing: ' + $name)
             }
             Copy-Item -LiteralPath $inputPdf -Destination (Join-Path $PdfEvidencePath $name) -ErrorAction Stop
+            $pdfHashes[$name] = (Get-FileHash -LiteralPath $inputPdf -Algorithm SHA256).Hash.ToLowerInvariant()
+        }
+        if ($SourceHead) {
+            Assert-Value ((Get-FileHash -LiteralPath $Workbook -Algorithm SHA256).Hash) $sourceSha256 'Unchanged workbook during PDF export'
+            $printSource = [ordered]@{
+                schema = 'furusato-excel-pdf-source/v2'
+                source_head = $SourceHead
+                workbook_sha256 = $sourceSha256.ToLowerInvariant()
+                home_print_area = [string]$homeSheet.PageSetup.PrintArea
+                detail_print_area = [string]$detail.PageSetup.PrintArea
+                files = $pdfHashes
+            }
+            [IO.File]::WriteAllText((Join-Path $PdfEvidencePath 'pdf_source.json'),
+                ($printSource | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))
         }
         QA-Stage 'synthetic-pdf-audit-input-export-pass'
     }

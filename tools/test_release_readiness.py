@@ -38,8 +38,7 @@ class ReleaseReadinessTest(unittest.TestCase):
         self.assertIn('$display.current_mode_pixels', src)
         self.assertIn('physical_resolution_verified = $false', src)
         self.assertIn('$display.display_mode_observed', src)
-        self.assertIn('observation_requires_manual_visual_review = $true', src)
-        self.assertIn('scenario_observed_not_certified = $measured', src)
+        self.assertIn('mode = $measured', src)
         self.assertIn("if ($display.display_mode_observed -and", src)
         self.assertNotIn('scenario_approved = $measured', src)
 
@@ -155,23 +154,21 @@ class ReleaseReadinessTest(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         script = (root / "tools/verify_signed_release_local.ps1").read_text(
             encoding="utf-8-sig")
-        for evidence in ("Get-AuthenticodeSignature",
+        for evidence in ("Get-LocalAuthenticodeSignature",
                          "ExpectedPackageSha256",
                          "ExpectedSignerThumbprint",
                          "READER_EXE_AUTHENTICODE_NOT_TRUSTED",
                          "SIGNER_CERTIFICATE_MISMATCH",
                          "REVIEW_ONLY_ZIP_CANNOT_BE_RELEASED",
                          "INDEPENDENT_PACKAGE_SHA256_MISMATCH",
-                         "manual_publisher_approval = 'REQUIRED'",
-                         "macro_workbook_signature = 'CONTAINER_DETECTED_CRYPTOGRAPHIC_VALIDITY_NOT_VERIFIED'",
-                         "macro_signature_office_validation = 'REQUIRED_BEFORE_RELEASE'",
                          "VBA_MACRO_SIGNATURE_NOT_DISCOVERED",
                          "OFFICE_VBA_SIGNATURE_NOT_RECOGNIZED",
                          "VBASigned",
                          "office_vba_signed_property = 'OFFICE_RECOGNIZED_SIGNED_PROJECT'",
                          "MACRO_WORKBOOK_VBA_PROJECT_MISSING_OR_INVALID",
                          "UNEXPECTED_RELEASE_PACKAGE_CONTENTS",
-                         "release_decision = 'HOLD'"):
+                         "OFFICE_SIP_CRYPTOGRAPHICALLY_VERIFIED",
+                         "ExpectedReaderSigningState", "signature_gate = 'PASS'"):
             self.assertIn(evidence, script)
         self.assertNotIn("New-SelfSignedCertificate", script)
         self.assertNotIn("SignTool sign", script)

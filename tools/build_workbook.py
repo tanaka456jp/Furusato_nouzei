@@ -144,37 +144,39 @@ def build(source, output):
         f'{previous_resident_taxable[1:]})'
     )
 
-    # Separate city/prefecture 100-yen truncation matters for local levy.
-    # Until the municipality is verified, never silently select the lower
-    # of the ordinary-city (6/4) and designated-city (8/2) results: that
-    # would misstate a designated-city taxpayer's levy for some inputs.
-    # In this narrowly supported salary/insurance path emit a numeric result
-    # only when BOTH allocations agree; otherwise return blank so that the
-    # resident-tax/donation readiness checks fail closed. Other paths retain
-    # the frozen baseline; final release remains HOLD until the jurisdiction
-    # and allocation of individual tax credits are verified.
+    # Round the assessed city/prefecture shares independently in ordinary
+    # salary cases, with or without life/earthquake premiums. The standard
+    # jurisdiction is chosen in the same input as the separate-income mode.
+    # Keep legacy split-tax intermediate amounts for their existing checks.
     original_levy = resident["B16"].value
     if not isinstance(original_levy, str) or not original_levy.startswith("="):
         raise ValueError("BASELINE_RESIDENT_LEVY_FORMULA_MISSING")
-    net_levy = 'MAX(0,B15-B14)'
-    designated = (f'ROUNDDOWN({net_levy}*0.8,-2)+'
-                  f'ROUNDDOWN({net_levy}*0.2,-2)')
-    standard = (f'ROUNDDOWN({net_levy}*0.6,-2)+'
-                f'ROUNDDOWN({net_levy}*0.4,-2)')
-    insurance_paid = f'SUM({ref(HOME, "B19:B24")})'
+    # The baseline aggregate also serves as an explicitly pooled historical
+    # comparison against the pinned GAS algorithm. It is not the UI result.
+    resident["A35"] = "比較用・合算所得割（100円未満切捨て）"
+    resident["B35"] = '=IF(B15="","",ROUNDDOWN(ROUND(MAX(0,B15-B14),2),-2))'
+    net_levy = 'ROUND(MAX(0,B15-B14),2)'
+    municipality = ref(HOME, "D51")
+    standard_city = f'{municipality}="標準市町村"'
+    designated_city = f'{municipality}="標準指定都市"'
+
+    def assessed_levy(city_share):
+        # ROUND removes binary floating artefacts at an integer ¥100 edge.
+        return "+".join(
+            f'ROUNDDOWN(ROUND({net_levy}*{share}/10,3),-2)'
+            for share in (city_share, 10 - city_share)
+        )
+
     safe_standard_salary_only = (
-        f'AND(B15<>"",{insurance_paid}>0,'
-        f'{ref("設定・税率", "B4")}>=2025,'
-        f'{ref("設定・税率", "B4")}<=2026,'
-        f'N({ref(ADVANCED, "B24")})=0,'
-        f'N({ref(ADVANCED, "B27")})=0,'
+        f'AND(B15<>"",{direct_salary_scope},'
         f'NOT(ISNUMBER({ref(INPUT, "B15")})),'
         f'NOT(ISNUMBER({ref(INPUT, "B16")})),'
         f'SUM({ref(ENGINE, "J51:J53")})=0)'
     )
-    jurisdiction_invariant = f'IF({designated}={standard},{designated},"")'
     resident["B16"] = (
-        f'=IF({safe_standard_salary_only},{jurisdiction_invariant},'
+        f'=IF({safe_standard_salary_only},'
+        f'IF({standard_city},{assessed_levy(6)},'
+        f'IF({designated_city},{assessed_levy(8)},"")),'
         f'{original_levy[1:]})'
     )
 
@@ -418,7 +420,7 @@ def build(source, output):
     note(home, 6, '="税制版 "&B29&" ｜ "&B30')
     home["B29"] = "2026-11-05-bundled"
     home.merge_cells("A2:D2")
-    home["A2"] = "詳細設定・申告分離課税へ"
+    home["A2"] = "詳細設定（課税自治体・申告分離課税）"
     home["A2"].hyperlink = Hyperlink(ref="A2", location="'操作画面'!A42")
     home["A2"].style = "Hyperlink"
     home["A2"].alignment = Alignment(vertical="center")
@@ -1111,6 +1113,12 @@ def build(source, output):
     projection = 'AND(IFERROR(1*B11,0)=2025,D4=2026)'
     projected_source_mortgage = f'OR(N({ref(ADVANCED,"B43")})>0,N({ref(ADVANCED,"B44")})>0)'
     filing_housing = 'AND(D24="確定申告",N(B34)>0)'
+    additional_income_inputs = [
+        ref(ADVANCED, f"B{row}") for row in (5, 8, 9, 10, 11, 12, 26)
+    ]
+    unverified_additional_income = "OR(" + ",".join(
+        f'AND({cell}<>"",{cell}<>0)' for cell in additional_income_inputs
+    ) + ")"
     housing_unverified = (
         f'OR(D25<>"",N({ref(ADVANCED,"B28")})>0,'
         f'N({ref(ADVANCED,"B24")})>0,'
@@ -1121,6 +1129,10 @@ def build(source, output):
     )
     status = [
         ('B44<>"給与・通常"', "詳細設定の55行目以降で状態と試算額を確認してください。"),
+        (f'NOT(OR({standard_city},{designated_city}))',
+         "SAFE-TAX-036 要確認。詳細設定の課税自治体を確認してください。条例差・不明の場合は試算を停止します。"),
+        ('B12>20000000',
+         "SAFE-TAX-037 要確認。給与収入2,000万円超は年末調整の対象外です。通常試算の対象外です。"),
         (unhandled_ordinary_credits,
          "SAFE-TAX-026 要確認。詳細設定の税額控除は通常計算に反映されません。入力内容を個別に照合してください。"),
         ('AND(D24="ワンストップ",N(B34)>0,ISNUMBER(B35),B35=D4)',
@@ -1154,6 +1166,11 @@ def build(source, output):
          'AND(D22<>"該当なし",D22<>"寡婦",D22<>"ひとり親（母）",D22<>"ひとり親（父）",D22<>"勤労学生"))',
          "警告：源泉徴収票の金額と確認欄を入力してください"),
         ("OR(" + ",".join(invalid) + ")", "エラー：金額・人数・控除の内訳を源泉徴収票と照合してください"),
+        (f'OR(D25<>"",N({ref(INPUT,"B13")})<>0,{ref(INPUT,"B15")}<>"",'
+         f'{ref(INPUT,"B16")}<>"",{ref(INPUT,"B19")}<>"")',
+         "SAFE-TAX-038 要確認。手入力控除を含む通常試算は保留します。控除内訳を確認し、自動計算に戻してください。"),
+        (unverified_additional_income,
+         "SAFE-TAX-039 要確認。年金・事業・不動産・雑所得を含む通常試算は保留します。総所得と控除を個別照合してください。"),
         (f'OR(ABS({ref(INPUT,"B34")}-B13-'
          f'IF(AND({same_source_year},ISNUMBER({ref(ADVANCED,"B13")})),'
          f'{ref(ADVANCED,"B13")},'

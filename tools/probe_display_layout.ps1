@@ -1,8 +1,9 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 # Isolated synthetic workbook only. Never capture the whole desktop.
 param(
     [Parameter(Mandatory=$true)][string]$Workbook,
-    [Parameter(Mandatory=$true)][string]$EvidenceDirectory
+    [Parameter(Mandatory=$true)][string]$EvidenceDirectory,
+    [ValidatePattern('^[a-f0-9]{40}$')][string]$SourceHead
 )
 $ErrorActionPreference = 'Stop'
 $source = (Resolve-Path -LiteralPath $Workbook -ErrorAction Stop).Path
@@ -22,8 +23,85 @@ $book = $null
 $status = 'UNVERIFIED'
 $reason = ''
 $display = $null
-$pictureName = $null
 $measured = $null
+$pictures = @()
+$commands = @()
+$worksheetReadback = @()
+$workbookHash = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant()
+
+function Measure-Commands($book, [double]$pixelsPerPoint) {
+    $checks = @(
+        @{ Sheet = 1; Cell = 'A5'; Macro = 'TaxLawUpdate' },
+        @{ Sheet = 1; Cell = 'A7'; Macro = 'NewCase' },
+        @{ Sheet = 1; Cell = 'B7'; Macro = 'SaveCase' },
+        @{ Sheet = 1; Cell = 'C7'; Macro = 'ShowDetails' },
+        @{ Sheet = 1; Cell = 'D7'; Macro = 'RecalculateCase' },
+        @{ Sheet = 1; Cell = 'B5'; Macro = 'ShowAdvanced' },
+        @{ Sheet = 1; Cell = 'B3'; Macro = 'ImportWithholding' },
+        @{ Sheet = 1; Cell = 'C3'; Macro = 'ReviewWithholding' },
+        @{ Sheet = 2; Cell = 'A17'; Macro = 'ReturnHome' },
+        @{ Sheet = 2; Cell = 'B17'; Macro = 'PrintDetails' },
+        @{ Sheet = 2; Cell = 'C17'; Macro = 'ExportDetails' }
+    )
+    $sheets = @($book.Worksheets.Item(1), $book.Worksheets.Item('計算根拠'))
+    if ($sheets[0].Name -cne '操作画面' -or
+        $sheets[0].Buttons().Count -ne 8 -or $sheets[1].Buttons().Count -ne 3) {
+        throw 'UNEXPECTED_WORKSHEET_COMMAND_COUNT'
+    }
+    $surface = [Drawing.Bitmap]::new(1,1)
+    $graphics = [Drawing.Graphics]::FromImage($surface)
+    try {
+        foreach ($check in $checks) {
+            $sheet = $sheets[$check.Sheet - 1]
+            $cell = $sheet.Range($check.Cell)
+            $button = $sheet.Buttons().Item('btn'+$check.Macro)
+            $left = [double]$button.Left
+            $top = [double]$button.Top
+            $width = [double]$button.Width
+            $height = [double]$button.Height
+            # The commands occupy distinct anchor cells. Containment also
+            # ensures they cannot obscure adjacent editable cells or links.
+            if ($left -lt [double]$cell.Left -or $top -lt [double]$cell.Top -or
+                $left + $width -gt [double]$cell.Left + [double]$cell.Width -or
+                $top + $height -gt [double]$cell.Top + [double]$cell.Height) {
+                throw ('COMMAND_OVERLAP_OR_CLIP_' + $check.Macro)
+            }
+            $onAction = ([string]$button.OnAction).Replace("'",'')
+            if ($onAction -cne ('Furusato_nouzei.xlsm!TaxLawUpdater.' + $check.Macro)) {
+                throw ('UNEXPECTED_COMMAND_ACTION_' + $check.Macro)
+            }
+            $characters = $button.Characters()
+            $caption = [string]$characters.Text
+            $points = [double]$characters.Font.Size
+            if ([string]::IsNullOrWhiteSpace($caption) -or $points -lt 8) {
+                throw ('COMMAND_CAPTION_NOT_READABLE_' + $check.Macro)
+            }
+            $style = if ([bool]$characters.Font.Bold) { [Drawing.FontStyle]::Bold } else { [Drawing.FontStyle]::Regular }
+            $font = [Drawing.Font]::new([string]$characters.Font.Name,
+                [single]($points * $pixelsPerPoint), $style, [Drawing.GraphicsUnit]::Pixel)
+            try {
+                $size = $graphics.MeasureString($caption, $font, [Drawing.PointF]::Empty,
+                    [Drawing.StringFormat]::GenericTypographic)
+            } finally { $font.Dispose() }
+            $spareWidth = [int][Math]::Floor($width * $pixelsPerPoint) - [int][Math]::Ceiling($size.Width)
+            $spareHeight = [int][Math]::Floor($height * $pixelsPerPoint) - [int][Math]::Ceiling($size.Height)
+            if ($spareWidth -lt 6 -or $spareHeight -lt 4) {
+                throw ('COMMAND_CAPTION_CLIPS_' + $check.Macro)
+            }
+            [ordered]@{
+                command = $check.Macro
+                anchor = $check.Cell
+                inside_anchor = $true
+                expected_action = $true
+                font_points = $points
+                spare_pixels = @($spareWidth, $spareHeight)
+            }
+        }
+    } finally {
+        $graphics.Dispose()
+        $surface.Dispose()
+    }
+}
 try {
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
@@ -59,7 +137,25 @@ public static class FurusatoWindowCapture {
     public static extern bool EnumDisplaySettings(string deviceName, int modeNum, ref DEVMODE devMode);
 }
 '@
-    $screen = [Windows.Forms.Screen]::PrimaryScreen
+    $excel = New-Object -ComObject Excel.Application
+    $excel.DisplayAlerts = $false
+    $excel.AskToUpdateLinks = $false
+    $excel.EnableEvents = $false
+    $excel.AutomationSecurity = 3 # ForceDisable; no workbook macros run.
+    $excel.Visible = $true
+    $book = $excel.Workbooks.Open($source,0,$true)
+    if ($excel.Workbooks.Count -ne 1 -or
+        -not [string]::Equals([string]$book.FullName,$source,[StringComparison]::OrdinalIgnoreCase)) {
+        throw 'UNEXPECTED_EXCEL_WORKBOOK'
+    }
+    $home = $book.Worksheets.Item(1)
+    $home.Activate()
+    $excel.ActiveWindow.Zoom = 85
+    $excel.WindowState = -4137 # xlMaximized for this Excel instance.
+    Start-Sleep -Milliseconds 750
+    $hwnd = [IntPtr]([int]$excel.Hwnd)
+    if ($hwnd -eq [IntPtr]::Zero) { throw 'NO_EXCEL_WINDOW_HANDLE' }
+    $screen = [Windows.Forms.Screen]::FromHandle($hwnd)
     if ($null -eq $screen) { throw 'NO_INTERACTIVE_SCREEN' }
     # Screen bounds in this process can be DPI-virtualized. We record them
     # as observed, never as a certification of physical panel dimensions.
@@ -89,27 +185,6 @@ public static class FurusatoWindowCapture {
                                           [int]$deviceMode.dmPelsHeight)
         $display.display_mode_observed = $true
     }
-    $excel = New-Object -ComObject Excel.Application
-    $excel.DisplayAlerts = $false
-    $excel.AskToUpdateLinks = $false
-    $excel.EnableEvents = $false
-    $excel.AutomationSecurity = 3 # ForceDisable; no workbook macros run.
-    $excel.Visible = $true
-    $book = $excel.Workbooks.Open($source,0,$true)
-    if ($excel.Workbooks.Count -ne 1 -or
-        -not [string]::Equals([string]$book.FullName,$source,[StringComparison]::OrdinalIgnoreCase)) {
-        throw 'UNEXPECTED_EXCEL_WORKBOOK'
-    }
-    $book.Worksheets.Item(1).Activate()
-    $excel.ActiveWindow.Zoom = 85
-    $excel.WindowState = -4143 # xlNormal
-    $excel.Width = [Math]::Min(1000,[Math]::Max(650,$width - 120))
-    $excel.Height = [Math]::Min(760,[Math]::Max(550,$height - 120))
-    $excel.Left = 20
-    $excel.Top = 20
-    Start-Sleep -Milliseconds 750
-    $hwnd = [IntPtr]([int]$excel.Hwnd)
-    if ($hwnd -eq [IntPtr]::Zero) { throw 'NO_EXCEL_WINDOW_HANDLE' }
     $rect = New-Object FurusatoWindowCapture+RECT
     if (-not [FurusatoWindowCapture]::GetWindowRect($hwnd,[ref]$rect)) {
         throw 'EXCEL_WINDOW_GEOMETRY_UNAVAILABLE'
@@ -122,23 +197,6 @@ public static class FurusatoWindowCapture {
     $display.observed_scale_percent = if ($dpi -ge 72 -and $dpi -le 384) {
         [int][Math]::Round(100*$dpi/96)
     } else { $null }
-    # The screen bounds may be logical/virtualized pixels. This inference
-    # is NOT a hardware readout and never constitutes release acceptance.
-    $inferred = $null
-    if ($dpi -ge 96 -and $dpi -le 288) {
-        $factor = [double]$dpi / 96.0
-        $hypothesisWidth = [int][Math]::Round($width * $factor)
-        $hypothesisHeight = [int][Math]::Round($height * $factor)
-        $display.inferred_pixels_if_dpi_virtualized = @($hypothesisWidth,$hypothesisHeight)
-        $display.physical_resolution_verified = $false
-        if ($hypothesisWidth -eq 1920 -and $hypothesisHeight -eq 1080 -and
-            $display.observed_scale_percent -eq 125) {
-            $inferred = '1920x1080@125'
-        } elseif ($hypothesisWidth -eq 1366 -and $hypothesisHeight -eq 768 -and
-                  $display.observed_scale_percent -eq 150) {
-            $inferred = '1366x768@150'
-        }
-    }
     # Only the current DEVMODE width/height can identify the observed
     # Windows output mode. This STILL is not visual sign-off or a guarantee
     # of the monitor panel's native resolution.
@@ -154,6 +212,16 @@ public static class FurusatoWindowCapture {
     if ($pxw -lt 500 -or $pxh -lt 400 -or $pxw -gt 6000 -or $pxh -gt 4000) {
         throw 'IMPLAUSIBLE_EXCEL_WINDOW_DIMENSIONS'
     }
+    if ($null -eq $measured) { throw 'UNSUPPORTED_OR_UNMEASURED_DISPLAY_MODE' }
+    $commands = @(Measure-Commands $book ($dpi * 0.85 / 72))
+    $link = $home.Range('A2').Hyperlinks.Item(1)
+    if ([string]$link.Address -or [string]$link.SubAddress -cne "'操作画面'!A42") {
+        throw 'UNEXPECTED_WORKSHEET_LINK_TARGET'
+    }
+    $link.Follow()
+    if ([int]$excel.ActiveCell.Row -ne 42 -or [int]$excel.ActiveCell.Column -ne 1) {
+        throw 'WORKSHEET_LINK_DID_NOT_NAVIGATE'
+    }
     # On this runner a 180px crop left the ribbon and formula bar visible.
     # Limit evidence to worksheet-only regions. Capture three scroll
     # positions: upper controls, source inputs, and projection controls.
@@ -165,14 +233,27 @@ public static class FurusatoWindowCapture {
     if ($top -lt 170 -or $cropWidth -lt 420 -or $cropHeight -lt 250) {
         throw 'EXCEL_SHEET_REGION_TOO_SMALL'
     }
-    $pictures = @()
     foreach ($capture in @(
-        @{ row = 1; name = 'review_excel_window_sheet_only.png' },
-        @{ row = 12; name = 'review_excel_window_lower_section.png' },
-        @{ row = 28; name = 'review_excel_window_mortgage_and_projection.png' }
+        @{ row = 1; focus = 'B4'; last = 11; name = 'review_excel_window_sheet_only.png' },
+        @{ row = 12; focus = 'B12'; last = 30; name = 'review_excel_window_lower_section.png' },
+        @{ row = 31; focus = 'D33'; last = 39; name = 'review_excel_window_mortgage_and_projection.png' }
     )) {
+        $home.Range($capture.focus).Select()
+        if ([string]$excel.ActiveCell.Address($false,$false) -cne $capture.focus) {
+            throw 'WORKSHEET_INPUT_NOT_FOCUSABLE'
+        }
+        $excel.ActiveWindow.ScrollColumn = 1
         $excel.ActiveWindow.ScrollRow = [int]$capture.row
         Start-Sleep -Milliseconds 450
+        $visible = $excel.ActiveWindow.VisibleRange
+        $firstRow = [int]$visible.Row
+        $lastRow = $firstRow + [int]$visible.Rows.Count - 1
+        # Require an extra row and column because VisibleRange includes
+        # partially visible trailing rows or columns.
+        if ($firstRow -ne [int]$capture.row -or $lastRow -le [int]$capture.last -or
+            [int]$visible.Column -ne 1 -or [int]$visible.Columns.Count -lt 5) {
+            throw 'WORKSHEET_CONTENT_CLIPPED_BY_VIEWPORT'
+        }
         $bitmap = New-Object System.Drawing.Bitmap($pxw,$pxh)
         $graphics = [Drawing.Graphics]::FromImage($bitmap)
         try {
@@ -212,10 +293,24 @@ public static class FurusatoWindowCapture {
             $graphics.Dispose()
             $bitmap.Dispose()
         }
-        $pictures += [string]$capture.name
+        $pictures += [ordered]@{
+            file = [string]$capture.name
+            sha256 = (Get-FileHash -LiteralPath (Join-Path $EvidenceDirectory $capture.name) -Algorithm SHA256).Hash.ToLowerInvariant()
+            sampled_colors = $colors.Count
+            pixels = @($cropWidth, $cropHeight)
+        }
+        $worksheetReadback += [ordered]@{
+            first_row = $firstRow
+            last_row = $lastRow
+            first_column = [int]$visible.Column
+            column_count = [int]$visible.Columns.Count
+            focused_cell = [string]$capture.focus
+        }
     }
-    $pictureName = $pictures[0]
-    $status = 'CAPTURED_REQUIRES_VISUAL_REVIEW'
+    if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant() -cne $workbookHash) {
+        throw 'DISPLAY_WORKBOOK_CHANGED_DURING_CAPTURE'
+    }
+    $status = 'MEASURED'
 } catch {
     $reason = [string]$_.Exception.Message
     if ($reason -match 'UNEXPECTED_EXCEL_WORKBOOK|generated synthetic|isolated runner') {
@@ -235,18 +330,17 @@ public static class FurusatoWindowCapture {
     [GC]::Collect()
     [GC]::WaitForPendingFinalizers()
     $report = [ordered]@{
-        schema = 'furusato-display-review/v1'
+        schema = 'furusato-display-review/v2'
         status = $status
-        release_approved = $false
-        generated_workbook_sha256 = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant()
+        source_head = $SourceHead
+        workbook_sha256 = $workbookHash
         display_observation = $display
-        scenario_observed_not_certified = $measured
-        observation_requires_manual_visual_review = $true
-        scenario_inferred_from_virtualized_bounds_not_certified = $inferred
-        screenshot = $pictureName
+        mode = $measured
+        excel_zoom_percent = 85
+        commands = @($commands)
+        worksheet_readback = @($worksheetReadback)
         screenshots = @($pictures)
-        unverified_scenarios = @('1920x1080@100','1920x1080@125','1366x768@150')
-        limitation = 'Observed runner display only; no display configuration changed; visual inspection and other resolutions remain HOLD'
+        inside_workbook_link = if ($status -eq 'MEASURED') { 'A2->A42' } else { $null }
         failure_category = if ($reason) { ($reason -replace '[^A-Z0-9_]','_').Substring(0,[Math]::Min(80,($reason -replace '[^A-Z0-9_]','_').Length)) } else { '' }
     }
     $json = $report | ConvertTo-Json -Depth 6

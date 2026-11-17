@@ -143,5 +143,100 @@ def main():
     print("SIGNED_CANDIDATE_STAGED_NOT_PUBLISHED RELEASE_HOLD")
     return 0
 
+
+def build_automated_candidate(head, run_id, run_attempt, jobs, book, reader, excel_dir,
+                              display_dir, pdf_dir, reader_report, output):
+    from collect_reader_notices import NOTICE_NAME, NOTICE_LIMIT
+    from package_ready_to_use_review import package_distribution
+    from record_ci_acceptance import digest_file
+    from release_readiness import (AUTOMATED_SCHEMA, RELEASE_JOBS, RELEASE_ZIP, VERSION,
+                                   read_evidence, require, valid_sha, validate_runner)
+    from verify_excel_release_candidate import verify_distribution
+
+    require(type(run_id) is int and run_id > 0 and type(run_attempt) is int and run_attempt > 0,
+            "INVALID_CANDIDATE_RUN")
+    require(jobs == {job: "success" for job in RELEASE_JOBS if job != "ready_to_use_review"},
+            "CANDIDATE_CI_PREREQUISITES_INCOMPLETE")
+    book_sha, reader_sha = digest_file(book), digest_file(reader)
+    reader_evidence = read_evidence(reader_report)
+    notice = reader_report.with_name(NOTICE_NAME)
+    require(notice.is_file() and 0 < notice.stat().st_size <= NOTICE_LIMIT,
+            "THIRD_PARTY_NOTICES_MISSING")
+    notice_sha = digest_file(notice)
+    require(notice.read_bytes().startswith(
+                f"FurusatoDocumentReader.exe third-party notices\nSource HEAD: {head}\n".encode("ascii")),
+            "THIRD_PARTY_NOTICES_HEAD_MISMATCH")
+    require(reader_evidence == {
+        "schema": "furusato-reader-build/v1", "head_sha": head, "run_id": run_id,
+        "run_attempt": run_attempt, "exe_sha256": reader_sha,
+        "exe_authenticode": "UNSIGNED", "windows_cli_accepted": True, "pdf_backend": "pypdfium2",
+        "third_party_notices_sha256": notice_sha,
+    }, "READER_BUILD_OR_AUTHENTICODE_EVIDENCE_MISMATCH")
+    names = ("release_runner.json", "excel_acceptance.json", "compile_source.json",
+             "compile_final.json", "display_acceptance.json", "audit.json",
+             "vbaupdater_bridge.json", "vbaupdater_push.json", "excel_gas_41_comparison.json",
+             "release_signing.json")
+    folders = (excel_dir, excel_dir, excel_dir, excel_dir, display_dir, pdf_dir,
+               excel_dir, excel_dir, excel_dir, excel_dir)
+    reports = [read_evidence(folder / name) for name, folder in zip(names, folders)]
+    runner = reports[0]
+    require(runner.get("run_id") == run_id and runner.get("run_attempt") == run_attempt,
+            "EXCEL_RUNNER_WRONG_RUN_ATTEMPT")
+    scope = validate_runner(head, book_sha, *reports)
+    require(not output.exists(), "CANDIDATE_OUTPUT_ALREADY_EXISTS")
+    output.mkdir(parents=True)
+    archive = output / RELEASE_ZIP
+    package_distribution(book, reader, archive, head_sha=head, version=VERSION,
+                         accepted_workbook_sha256=book_sha, accepted_reader_sha256=reader_sha,
+                         signing_state=scope["signing_state"], signing_evidence=reports[-1])
+    payload = verify_distribution(archive, head, VERSION, book_sha, reader_sha,
+                                  scope["signing_state"], reports[-1])
+    if scope["signing_state"] == "SIGNED":
+        require(payload["vba_project_sha256"] == reports[-1]["signed_vba_project_sha256"],
+                "FINAL_VBA_PROJECT_SHA256_MISMATCH")
+    require(all(valid_sha(value) for value in payload.values()), "INVALID_CANDIDATE_SHA256")
+
+    shutil.copyfile(notice, output / NOTICE_NAME)
+    require(digest_file(output / NOTICE_NAME) == notice_sha, "THIRD_PARTY_NOTICES_SHA256_CHANGED")
+    report = {
+        "schema": AUTOMATED_SCHEMA, "head_sha": head, "version": VERSION,
+        "run_id": run_id, "run_attempt": run_attempt, "prerequisite_jobs": jobs,
+        "release_decision": "AWAITING_LIVE_GITHUB_VERIFICATION",
+        "reader_authenticode": "UNSIGNED", "signing_evidence": reports[-1],
+        "third_party_notices_sha256": notice_sha, **scope, **payload,
+    }
+    (output / "candidate.json").write_text(
+        json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return report
+
+
+def automated_main(argv):
+    from release_readiness import RELEASE_JOBS
+    parser = argparse.ArgumentParser(description="Assemble the exact-run release candidate.")
+    parser.add_argument("--head", required=True)
+    parser.add_argument("--run-id", type=int, required=True)
+    parser.add_argument("--run-attempt", type=int, required=True)
+    for name in RELEASE_JOBS:
+        if name != "ready_to_use_review":
+            parser.add_argument("--" + name.replace("_", "-"), required=True)
+    for name in ("book", "reader", "excel-dir", "display-dir", "pdf-dir", "reader-report", "output"):
+        parser.add_argument("--" + name, type=Path, required=True)
+    a = parser.parse_args(argv)
+    try:
+        build_automated_candidate(
+            a.head, a.run_id, a.run_attempt,
+            {key: getattr(a, key) for key in RELEASE_JOBS if key != "ready_to_use_review"},
+            a.book, a.reader, a.excel_dir, a.display_dir, a.pdf_dir, a.reader_report, a.output)
+    except (OSError, ValueError, TypeError, KeyError) as exc:
+        print("AUTOMATED_EXCEL_RELEASE_HOLD", str(exc) if isinstance(exc, ValueError)
+              else type(exc).__name__)
+        return 2
+    print("AUTOMATED_EXCEL_CANDIDATE_VERIFIED_AWAITING_LIVE_CI")
+    return 0
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    import sys
+
+    is_automated = sys.argv[1:2] == ["--automated"]
+    raise SystemExit(automated_main(sys.argv[2:]) if is_automated else main())

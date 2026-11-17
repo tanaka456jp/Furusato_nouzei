@@ -5,20 +5,26 @@ from tempfile import TemporaryDirectory
 import subprocess
 import sys
 import unittest
+from unittest.mock import patch
 from withholding_reader import CODE_MAP,detect_year,extract_codes,extract_labelled,extract_occupancy_year,extract,finish,write_bridge,pdf_page_count
 from audit_withholding_reconciliation import progressive_income_tax, reconcile
+
+
+def pdf_fixture_library():
+    try:
+        # Production uses PDFium. Use the separate audit-only library to
+        # create fixtures so the parser is tested against independent files.
+        import pypdfium2
+        import fitz
+    except ImportError as exc:
+        raise unittest.SkipTest("PDF runtime or independent fixture writer omitted") from exc
+    return fitz
 
 
 class WithholdingTest(unittest.TestCase):
     def test_multiple_pdf_pages_require_explicit_selection_and_review(self):
         # Two different, synthetic taxpayers in one PDF. No private documents.
-        try:
-            import fitz
-        except ImportError:
-            # The minimal Windows compatibility job intentionally omits
-            # PyMuPDF. Dedicated static and packaged EXE jobs execute
-            # this real parser test with the pinned PDF dependency.
-            self.skipTest("PyMuPDF PDF-page test runs in parser/EXE jobs")
+        fitz = pdf_fixture_library()
         with TemporaryDirectory() as tmp:
             file=Path(tmp)/"two-slips.pdf"
             doc=fitz.open()
@@ -65,10 +71,7 @@ class WithholdingTest(unittest.TestCase):
 
     def test_pdf_text_g20_child_count_and_g73_secondary_count_do_not_mix(self):
         """Exercise the actual PDF word-extraction path, not only word tuples."""
-        try:
-            import fitz
-        except ImportError:
-            self.skipTest("PyMuPDF smoke runs in document-reader EXE jobs")
+        fitz = pdf_fixture_library()
         with TemporaryDirectory() as tmp:
             pdf = Path(tmp) / "anonymous-g20-g73.pdf"
             doc = fitz.open()
@@ -112,6 +115,56 @@ class WithholdingTest(unittest.TestCase):
             self.assertIn("under16_count\t4", payload)
             self.assertIn("STATUS\tREQUIRES_REVIEW", payload)
             self.assertNotIn("special_relative_subordinate_count\t", payload)
+
+    def test_pdf_text_and_blank_selected_page_do_not_mix(self):
+        fitz = pdf_fixture_library()
+        with TemporaryDirectory() as temp:
+            source = Path(temp) / "合成のみ.pdf"
+            with fitz.open() as doc:
+                page = doc.new_page()
+                page.insert_text((40, 30), "G04 7,000,000")
+                page.insert_text((40, 55), "G08 0")
+                page.insert_text((40, 80), "G26 1,000,000")
+                page.insert_text((40, 120), "SYNTHETIC PDF TEXT PAGE")
+                doc.new_page()
+                doc.save(source)
+            with patch("withholding_reader.image_words") as ocr:
+                self.assertEqual(pdf_page_count(source), 2)
+                self.assertEqual(extract(source)["fields"], {})
+                self.assertEqual(extract(source, page_number=1)["fields"]["salary_gross"],
+                                 7_000_000)
+                blank = extract(source, page_number=2)
+                self.assertEqual(blank["format"], "SCAN_OCR_PAGE_SELECTED")
+                self.assertEqual(blank["status"], "REQUIRES_REVIEW")
+                self.assertEqual(blank["fields"], {})
+                self.assertIn("MULTIPAGE_SELECTED_PAGE_REVIEW", blank["warnings"])
+                ocr.assert_not_called()
+
+    def test_pdf_image_render_preserves_ocr_scale_and_review(self):
+        fitz = pdf_fixture_library()
+        with TemporaryDirectory() as temp:
+            source = Path(temp) / "synthetic-raster.pdf"
+            with fitz.open() as doc:
+                page = doc.new_page(width=250, height=175)
+                page.insert_text((20, 35), "G04 7,000,000", fontsize=14)
+                png = page.get_pixmap().tobytes("png")
+                page = doc.new_page(width=250, height=175)
+                page.insert_image(page.rect, stream=png)
+                doc.delete_page(0)
+                doc.save(source)
+
+            def ocr(image, scale):
+                self.assertEqual((image.mode, image.size, scale), ("RGB", (500, 350), 2))
+                self.assertTrue(any(lo < hi for lo, hi in image.getextrema()))
+                return ("令和 8 年分", [(20, 24, 45, 35, "G04"), (50, 24, 109, 35, "7,000,000")])
+
+            with patch("withholding_reader.image_words", side_effect=ocr) as simulated_ocr:
+                report = extract(source)
+            simulated_ocr.assert_called_once()
+            self.assertEqual(report["format"], "SCAN_OCR")
+            self.assertEqual(report["fields"], {"salary_gross": 7_000_000})
+            self.assertEqual(report["status"], "REQUIRES_REVIEW")
+            self.assertIn("OCR_REQUIRES_VERIFICATION", report["warnings"])
 
     def test_spouse_g43_requires_age_review(self):
         # Synthetic G43/G46 geometry, not an actual taxpayer slip.

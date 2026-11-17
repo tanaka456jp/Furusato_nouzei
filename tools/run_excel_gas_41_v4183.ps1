@@ -43,7 +43,7 @@ if(-not (Test-Path -LiteralPath (Split-Path $out -Parent) -PathType Container)){
 }
 $workbookSha=(Get-FileHash -LiteralPath $workbookPath -Algorithm SHA256).Hash.ToLowerInvariant()
 $engineSha=(Get-FileHash -LiteralPath $enginePath -Algorithm SHA256).Hash.ToLowerInvariant()
-$excel=$null;$book=$null;$screenSheet=$null;$master=$null;$ownsExcel=$false
+$excel=$null;$book=$null;$screenSheet=$null;$resident=$null;$master=$null;$ownsExcel=$false
 $observed=@();$probes=@()
 try {
   # Never attach to, modify or terminate an already-running Excel session.
@@ -72,6 +72,7 @@ public static class FurusatoExcelParityPidV4183 {
   $book=$excel.Workbooks.Open($workbookPath,0,$true)
   if(-not $book.ReadOnly){throw 'Accepted XLSM must open read-only'}
   $screenSheet=$book.Worksheets.Item('操作画面')
+  $resident=$book.Worksheets.Item('住民税再計算')
   $master=$book.Worksheets.Item('設定・税率')
   # The workflow has already matched this exact XLSM SHA-256 to an accepted
   # real-Excel evidence report. Reject the production v4.18.2 and unrelated
@@ -97,6 +98,7 @@ public static class FurusatoExcelParityPidV4183 {
     $screenSheet.Range('B15').Value2=[double]0
     $screenSheet.Range('B16').Value2=[double]$case.socialInsurance
     $screenSheet.Range('D24').Value2='ワンストップ'
+    $screenSheet.Range('D51').Value2='標準市町村'
     $excel.Calculate()
     $state=[int]$excel.CalculationState
     for($attempt=0;$attempt -lt 12 -and $state -eq 1;$attempt++){
@@ -113,9 +115,12 @@ public static class FurusatoExcelParityPidV4183 {
     $status=[string]$screenSheet.Range('B28').Value2
     if($status -cne '正常'){throw ('Excel did not return NORMAL for '+$case.id+'; '+$status)}
     $income=$screenSheet.Range('B13').Value2
-    $levy=$screenSheet.Range('D8').Value2
+    # The pinned GAS engine uses a pooled ¥100 floor. Preserve its
+    # like-for-like comparison and separately record the assessed amount.
+    $levy=$resident.Range('B35').Value2
+    $assessedLevy=$screenSheet.Range('D8').Value2
     $limit=$screenSheet.Range('B8').Value2
-    foreach($val in @($income,$levy,$limit)){
+    foreach($val in @($income,$levy,$assessedLevy,$limit)){
       if($null -eq $val -or
          -not ($val -is [double] -or $val -is [int] -or $val -is [long]) -or
          $val -lt 0 -or $val -gt 1000000000000 -or
@@ -129,13 +134,15 @@ public static class FurusatoExcelParityPidV4183 {
       status='NORMAL';statusText=$status;calcState=$state
       salaryIncomeYen=[long]$income
       residentIncomeLevyYen=[long]$levy
+      residentAssessedIncomeLevyYen=[long]$assessedLevy
       donationLimitYen=[long]$limit
     }
     if($counter -le 3){$probes+= $record}
     else{$observed+= $record}
     Write-Output ('EXCEL_GAS_COM_41 '+$counter+'/44 '+$record.id+
       ' gross='+$record.salaryGross+'; income='+$record.salaryIncomeYen+
-      '; residentLevy='+$record.residentIncomeLevyYen+
+      '; pooledLevy='+$record.residentIncomeLevyYen+
+      '; assessedLevy='+$record.residentAssessedIncomeLevyYen+
       '; limit='+$record.donationLimitYen+'; state='+$state)
   }
   $changed=($probes[0].salaryIncomeYen -ne $probes[1].salaryIncomeYen) -and
@@ -223,6 +230,7 @@ public static class FurusatoExcelParityPidV4183 {
     workbookSha256=$workbookSha
     gasCommitSha=$expectedCommit
     gasEngineSha256=$engineSha
+    levyComparisonBasis='POOLED_BEFORE_MUNICIPAL_SPLIT'
     macrosDisabled=$true;readOnly=$true
     dynamicABA=$true;existingExcelPidsProtected=$true
     calculationDiagnostics=$calcDiagnostic
@@ -239,6 +247,7 @@ finally {
   if($null -ne $book){try{$book.Close($false)}catch{}}
   if($ownsExcel -and $null -ne $excel){try{$excel.Quit()}catch{}}
   if($null -ne $master){[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($master)}
+  if($null -ne $resident){[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($resident)}
   if($null -ne $screenSheet){[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($screenSheet)}
   if($null -ne $book){[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($book)}
   if($null -ne $excel){[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($excel)}

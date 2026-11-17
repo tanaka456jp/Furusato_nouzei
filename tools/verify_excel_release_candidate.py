@@ -181,5 +181,18 @@ def main():
         return 2
 
 
+
+def verify_distribution(archive, head, version, book_sha, reader_sha, signing_state, signing_evidence):
+    """Verify the canonical distribution and return only publishable digest fields."""
+    from package_ready_to_use_review import verify_distribution_archive
+
+    report = verify_distribution_archive(
+        archive, head_sha=head, version=version, accepted_workbook_sha256=book_sha,
+        accepted_reader_sha256=reader_sha, signing_state=signing_state, signing_evidence=signing_evidence)
+    return {key: report[key] for key in (
+        "archive_sha256", "workbook_sha256", "reader_sha256", "readme_sha256", "vba_project_sha256"
+    )}
+
+
 if __name__ == "__main__":
     sys.exit(main())

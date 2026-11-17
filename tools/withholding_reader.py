@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import csv
 import json
+import math
 from pathlib import Path
 import re
 import sys
@@ -155,42 +157,119 @@ def image_words(image, scale=1):
     return " ".join(w[4] for w in words),words
 
 
-def pdf_page_count(path):
-    """Return the number of PDF pages without extracting identifiers or values."""
-    path=Path(path)
+@contextmanager
+def open_pdf(path):
     if path.suffix.lower()!=".pdf" or path.stat().st_size>25*1024*1024:
         raise ValueError("Expected a PDF no larger than 25 MiB")
-    try: import fitz
-    except ImportError as exc: raise RuntimeError("PyMuPDF is required") from exc
-    with fitz.open(str(path)) as doc:
-        if len(doc)<1 or len(doc)>100: raise ValueError("PDF must have 1 to 100 pages")
+    try:
+        import pypdfium2
+    except ImportError as exc:
+        raise RuntimeError("Local PDFium runtime unavailable") from exc
+    document = pypdfium2.PdfDocument(path)
+    try:
+        if not 1 <= len(document) <= 100:
+            raise ValueError("PDF must have 1 to 100 pages")
+        yield document
+    finally:
+        document.close()
+
+
+def pdf_page_count(path):
+    """Return the number of PDF pages without extracting identifiers or values."""
+    with open_pdf(Path(path)) as doc:
         return len(doc)
+
+
+def pdf_words(text_page, page_top):
+    """Return word boxes in points from the page top for same-row matching."""
+    import pypdfium2.raw as pdfium
+
+    words = []
+    letters = []
+    boxes = []
+
+    def finish_word():
+        if not letters:
+            return
+        words.append((min(box[0] for box in boxes), min(box[1] for box in boxes),
+                      max(box[2] for box in boxes), max(box[3] for box in boxes),
+                      "".join(letters)))
+        letters.clear()
+        boxes.clear()
+
+    count = text_page.count_chars()
+    if count < 0 or count > 100_000:
+        raise ValueError("PDF text length outside supported range")
+    for index in range(count):
+        # PDFium's text string may omit or insert codepoints. Use its
+        # character-array indices for both Unicode and geometry.
+        code = pdfium.FPDFText_GetUnicode(text_page, index)
+        if not code or code > 0x10FFFF:
+            finish_word()
+            continue
+        char = chr(code)
+        if char.isspace() or pdfium.FPDFText_IsGenerated(text_page, index) == 1:
+            finish_word()
+            continue
+        left, bottom, right, top = text_page.get_charbox(index, loose=True)
+        box = (left, page_top - top, right, page_top - bottom)
+        if not all(math.isfinite(coord) for coord in box) or right <= left or top <= bottom:
+            finish_word()
+            continue
+        if boxes:
+            prev = boxes[-1]
+            line_step = abs((box[1] + box[3] - prev[1] - prev[3]) / 2)
+            height = min(box[3] - box[1], prev[3] - prev[1])
+            if line_step > max(2, height / 2) or left - prev[2] > max(2, height / 2):
+                finish_word()
+        letters.append(char)
+        boxes.append(box)
+    finish_word()
+    return words
+
+
+def pdf_content(path, page_number):
+    with open_pdf(path) as doc:
+        multiple = len(doc) > 1
+        if page_number is None and multiple:
+            return "", [], "MULTIPAGE_REVIEW"
+        if page_number is not None and (
+                type(page_number) is not int or not 1 <= page_number <= len(doc)):
+            raise ValueError("Selected PDF page out of range")
+        page = doc[(page_number or 1) - 1]
+        try:
+            text_page = page.get_textpage()
+            try:
+                if not 0 <= text_page.count_chars() <= 100_000:
+                    raise ValueError("PDF text length outside supported range")
+                text = text_page.get_text_bounded()
+                if len(text.strip()) >= 40:
+                    return (text, pdf_words(text_page, page.get_bbox()[3]),
+                            "PDF_PAGE_SELECTED" if multiple else "PDF_TEXT")
+            finally:
+                text_page.close()
+            scale = 2
+            width, height = page.get_size()
+            if not (0 < width <= 10_000 and 0 < height <= 10_000
+                    and math.ceil(width * scale) * math.ceil(height * scale) <= 20_000_000):
+                raise ValueError("PDF OCR raster outside supported size")
+            bitmap = page.render(scale=scale, may_draw_forms=False)
+            try:
+                with bitmap.to_pil().convert("RGB") as image:
+                    mode = "SCAN_OCR_PAGE_SELECTED" if multiple else "SCAN_OCR"
+                    if all(lo == hi for lo, hi in image.getextrema()):
+                        return "", [], mode
+                    return (*image_words(image, scale), mode)
+            finally:
+                bitmap.close()
+        finally:
+            page.close()
 
 
 def document_content(path,page_number=None):
     suffix=path.suffix.lower()
     if suffix==".pdf":
-        try: import fitz
-        except ImportError as exc: raise RuntimeError("PyMuPDF is required") from exc
-        doc=fitz.open(str(path))
-        try:
-            if len(doc)<1 or len(doc)>100: raise ValueError("PDF must have 1 to 100 pages")
-            multiple=(len(doc)>1)
-            if page_number is None and multiple:
-                return "",[],"MULTIPAGE_REVIEW"
-            if page_number is not None and (
-                    type(page_number) is not int or page_number<1 or page_number>len(doc)):
-                raise ValueError("Selected PDF page out of range")
-            page=doc[0 if page_number is None else page_number-1]
-            words=page.get_text("words",sort=True)
-            text=page.get_text("text",sort=True)
-            if len(text.strip())>=40:
-                return text,words,"PDF_PAGE_SELECTED" if multiple else "PDF_TEXT"
-            from PIL import Image
-            pic=page.get_pixmap(matrix=fitz.Matrix(2,2),alpha=False)
-            mode="SCAN_OCR_PAGE_SELECTED" if multiple else "SCAN_OCR"
-            return (*image_words(Image.frombytes("RGB",(pic.width,pic.height),pic.samples),2),mode)
-        finally: doc.close()
+        return pdf_content(path, page_number)
     if suffix in {".png",".jpg",".jpeg",".webp",".tif",".tiff",".bmp",".heic",".heif"}:
         from PIL import Image
         if suffix in {".heic",".heif"}:

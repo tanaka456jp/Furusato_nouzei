@@ -1,6 +1,7 @@
 <#
  Sign a local Excel VBA project using Microsoft Office SIP + Windows SDK x86 SignTool.
- Local preflight is default; -Execute requires an opt-in and never runs in CI.
+ Local preflight is default. CI execution requires an explicitly approved,
+ exact-HEAD private signing context on the repository's self-hosted runner.
  This does not generate, export, import, or upload private signing keys.
 #>
 [CmdletBinding()]
@@ -15,39 +16,45 @@ param(
     [Parameter(Mandatory=$true)]
     [ValidatePattern('^[0-9a-fA-F]{64}$')]
     [string]$ExpectedSourceSha256,
+    [ValidatePattern('^[0-9a-f]{40}$')][string]$ExpectedHeadSha,
     [switch]$Execute,
+    [switch]$PrivateSelfHostedRunner,
     [switch]$AllowUntrustedTestCertificate
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'office_vba_signature_common.ps1')
 
 function Require-LocalSigningContext {
-    if ($Execute -and ($env:CI -eq 'true' -or $env:GITHUB_ACTIONS -eq 'true' -or
-                       $env:TF_BUILD -eq 'True')) {
+    if (-not $PrivateSelfHostedRunner -and $Execute -and
+        ($env:CI -eq 'true' -or $env:GITHUB_ACTIONS -eq 'true' -or $env:TF_BUILD -eq 'True')) {
         throw 'SIGNING_IN_CI_FORBIDDEN_USE_PRIVATE_LOCAL_MACHINE'
     }
-}
-function Find-X86SignTool {
-    if ($SignToolX86) {
-        $candidate = [IO.Path]::GetFullPath($SignToolX86)
-        if ($candidate -notmatch '(?i)[\\/]x86[\\/]signtool\.exe$' -or
-            -not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
-            throw 'X86_SIGNTOOL_PATH_INVALID'
+    if (-not $PrivateSelfHostedRunner) { return }
+    $branch = 'fix/excel-2026-salary-nta-20261107'
+    $repository = 'tanaka456jp/Furusato_nouzei'
+    if ($AllowUntrustedTestCertificate -or $env:GITHUB_ACTIONS -cne 'true' -or
+        $env:RUNNER_ENVIRONMENT -cne 'self-hosted' -or $env:RUNNER_OS -cne 'Windows' -or
+        $env:GITHUB_REPOSITORY -cne $repository -or $ExpectedHeadSha -cnotmatch '^[0-9a-f]{40}$' -or
+        $env:FURUSATO_SIGNING_APPROVED_HEAD -cne $ExpectedHeadSha -or
+        $env:FURUSATO_SIGNING_THUMBPRINT -ine $CertificateThumbprint -or
+        $env:FURUSATO_SIGNING_TIMESTAMP_URL -cne $TimestampUrl) {
+        throw 'PRIVATE_RUNNER_SIGNING_CONTEXT_NOT_APPROVED'
+    }
+    if ($env:GITHUB_EVENT_NAME -ceq 'pull_request') {
+        $event = Get-Content -LiteralPath $env:GITHUB_EVENT_PATH -Raw | ConvertFrom-Json
+        if ($event.number -ne 5 -or $event.pull_request.head.repo.full_name -cne $repository -or
+            $event.pull_request.head.ref -cne $branch -or $event.pull_request.head.sha -cne $ExpectedHeadSha) {
+            throw 'PRIVATE_RUNNER_SIGNING_PR_NOT_APPROVED'
         }
-        return $candidate
+    } elseif ($env:GITHUB_EVENT_NAME -cne 'workflow_dispatch' -or
+              $env:GITHUB_REF -cne "refs/heads/$branch" -or $env:GITHUB_SHA -cne $ExpectedHeadSha) {
+        throw 'PRIVATE_RUNNER_SIGNING_BRANCH_NOT_APPROVED'
     }
-    $programFiles86 = [Environment]::GetFolderPath('ProgramFilesX86')
-    if (-not $programFiles86) { throw 'X86_WINDOWS_SDK_NOT_FOUND' }
-    $kit = Join-Path $programFiles86 'Windows Kits\10\bin'
-    if (-not (Test-Path -LiteralPath $kit -PathType Container)) {
-        throw 'X86_WINDOWS_SDK_NOT_FOUND'
+    $checkedOut = [string](& git -C (Split-Path -Parent $PSScriptRoot) rev-parse HEAD 2>$null)
+    if ($LASTEXITCODE -ne 0 -or $checkedOut -cne $ExpectedHeadSha) {
+        throw 'PRIVATE_RUNNER_SIGNING_CHECKED_OUT_HEAD_MISMATCH'
     }
-    $found = @(Get-ChildItem -LiteralPath $kit -Directory |
-        Sort-Object -Property Name -Descending |
-        ForEach-Object { Join-Path $_.FullName 'x86\signtool.exe' } |
-        Where-Object { Test-Path -LiteralPath $_ -PathType Leaf })
-    if ($found.Count -eq 0) { throw 'X86_SIGNTOOL_NOT_FOUND' }
-    return [string]$found[0]
 }
 function Require-CodeSigningCertificate([string]$thumbprint) {
     $cert = Get-Item -LiteralPath ('Cert:\CurrentUser\My\' + $thumbprint) -ErrorAction SilentlyContinue
@@ -69,9 +76,14 @@ function Require-CodeSigningCertificate([string]$thumbprint) {
     }
     if (-not $hasCodeSigningEku) { throw 'CODE_SIGNING_EKU_REQUIRED' }
     if (-not $AllowUntrustedTestCertificate) {
+        if (($cert.SubjectName.RawData -join ':') -ceq ($cert.IssuerName.RawData -join ':')) {
+            throw 'SELF_ISSUED_CERTIFICATE_NOT_ALLOWED_FOR_RELEASE'
+        }
         $chain = New-Object Security.Cryptography.X509Certificates.X509Chain
         try {
             $chain.ChainPolicy.RevocationMode = [Security.Cryptography.X509Certificates.X509RevocationMode]::Online
+            [void]$chain.ChainPolicy.ApplicationPolicy.Add((New-Object Security.Cryptography.Oid('1.3.6.1.5.5.7.3.3')))
+            $chain.ChainPolicy.UrlRetrievalTimeout = [TimeSpan]::FromSeconds(15)
             if (-not $chain.Build($cert)) {
                 throw 'CERTIFICATE_CHAIN_OR_REVOCATION_NOT_VALIDATED'
             }
@@ -115,11 +127,6 @@ function Get-VbaProjectSha256([string]$path) {
     } finally {
         $archive.Dispose()
     }
-}
-function Invoke-OfficeSignTool([string]$tool, [string[]]$arguments, [string]$failureCode) {
-    # Do not expose signing-provider diagnostics, user identities or key aliases.
-    & $tool @arguments 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw $failureCode }
 }
 function Assert-OfficeRecognizesSignature([string]$path) {
     $office = $null
@@ -189,7 +196,7 @@ try {
         }
     }
     Require-VbaWorkbook $source
-    $sourceSha = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant()
+    $sourceSha = Get-SignatureFileSha256 $source
     if ($sourceSha -cne $ExpectedSourceSha256.ToLowerInvariant()) {
         throw 'SOURCE_WORKBOOK_SHA256_NOT_ACCEPTED'
     }
@@ -197,39 +204,47 @@ try {
     if (-not $AllowUntrustedTestCertificate) {
         $uri = $null
         if (-not [Uri]::TryCreate($TimestampUrl, [UriKind]::Absolute, [ref]$uri) -or
-            $null -eq $uri -or $uri.Scheme -ne 'https') {
+            $null -eq $uri -or $uri.Scheme -ne 'https' -or $uri.UserInfo -or
+            $uri.Query -or $uri.Fragment -or $uri.IsLoopback) {
             throw 'HTTPS_RFC3161_TIMESTAMP_URL_REQUIRED'
         }
     }
-    $tool = Find-X86SignTool
     $thumb = $CertificateThumbprint.ToUpperInvariant()
     $cert = Require-CodeSigningCertificate $thumb
+    $tool = Find-X86SignTool $SignToolX86
+    Require-X86OfficeSip
     if (-not $Execute) {
         Write-Host 'EXCEL_VBA_SIGNING_PREFLIGHT_PASS_EXECUTION_NOT_REQUESTED'
         return
     }
-    Copy-Item -LiteralPath $source -Destination $destination -ErrorAction Stop
+    [IO.File]::Copy($source, $destination, $false)
     $destinationCreated = $true
+    if ((Get-SignatureFileSha256 $destination) -cne $sourceSha) {
+        throw 'SIGNING_COPY_DIFFERS_FROM_ACCEPTED_INPUT'
+    }
     $arguments = @('sign', '/sha1', $thumb, '/s', 'My', '/fd', 'SHA256')
     if ($TimestampUrl) { $arguments += @('/tr', $TimestampUrl, '/td', 'SHA256') }
     $arguments += @($destination)
     Invoke-OfficeSignTool $tool $arguments 'OFFICE_SIP_SIGNTOOL_SIGN_FAILED'
     if (-not $AllowUntrustedTestCertificate) {
-        Invoke-OfficeSignTool $tool @('verify','/pa',$destination) 'OFFICE_SIP_SIGNTOOL_VERIFY_FAILED'
+        Assert-VerifiedOfficeVbaSignature $tool $destination $thumb
     }
     Assert-OfficeRecognizesSignature $destination
-    $signedSha = (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash.ToLowerInvariant()
+    $signedSha = Get-SignatureFileSha256 $destination
     if ($signedSha -eq $sourceSha) { throw 'SIGNING_DID_NOT_CHANGE_WORKBOOK_BYTES' }
     $signedVbaSha = Get-VbaProjectSha256 $destination
     if ($signedVbaSha -cne $originalVbaSha) {
         throw 'SIGNED_VBA_PROJECT_DIFFERS_FROM_ACCEPTED_INPUT'
     }
-    if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant() -cne $sourceSha) {
+    if ((Get-SignatureFileSha256 $source) -cne $sourceSha) {
         throw 'ACCEPTED_SOURCE_WORKBOOK_CHANGED_DURING_SIGNING'
     }
     if ($EvidencePath) {
         $record = [ordered]@{
-            schema = 'furusato-local-vba-signing/v1'
+            schema = 'furusato-local-vba-signing/v2'
+            head_sha = $ExpectedHeadSha
+            signing_state = $(if ($AllowUntrustedTestCertificate) { 'TEST_ONLY' } else { 'SIGNED' })
+            availability = 'AVAILABLE'
             source_workbook_sha256 = $sourceSha
             signed_workbook_sha256 = $signedSha
             accepted_vba_project_sha256 = $originalVbaSha
@@ -239,11 +254,17 @@ try {
             office_vba_signed_property = 'OFFICE_RECOGNIZED_SIGNED_PROJECT'
             signtool_verified = (-not $AllowUntrustedTestCertificate)
             certificate_chain_verified = (-not $AllowUntrustedTestCertificate)
+            timestamp_verified = (-not $AllowUntrustedTestCertificate)
             test_only = [bool]$AllowUntrustedTestCertificate
             release_approved = $false
         }
-        $record | ConvertTo-Json -Depth 5 |
-            Set-Content -LiteralPath $evidence -Encoding UTF8 -ErrorAction Stop
+        $evidenceFile = [IO.File]::Open($evidence, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write)
+        try {
+            $bytes = [Text.Encoding]::UTF8.GetBytes(($record | ConvertTo-Json -Depth 5) + "`n")
+            $evidenceFile.Write($bytes, 0, $bytes.Length)
+        } finally {
+            $evidenceFile.Dispose()
+        }
     }
     if ($AllowUntrustedTestCertificate) {
         Write-Host 'EXCEL_VBA_SIGNED_LOCAL_TEST_ONLY_NOT_FOR_DISTRIBUTION'

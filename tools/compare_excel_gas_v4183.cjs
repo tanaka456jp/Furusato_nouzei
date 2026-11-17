@@ -14,6 +14,7 @@ function compare(observation, cases, gasEngine, opts = {}) {
   if (!observation || observation.schema !== SCHEMA ||
       observation.source !== (opts.allowMock ? "MOCK" : ORIGINAL_SOURCE) ||
       observation.gasCommitSha !== PINNED_GAS_SHA ||
+      observation.levyComparisonBasis !== "POOLED_BEFORE_MUNICIPAL_SPLIT" ||
       !/^[0-9a-f]{64}$/.test(observation.workbookSha256 || "") ||
       !/^[0-9a-f]{64}$/.test(observation.gasEngineSha256 || "") ||
       observation.macrosDisabled !== true || observation.readOnly !== true ||
@@ -68,8 +69,11 @@ function compare(observation, cases, gasEngine, opts = {}) {
     if (row.status !== "NORMAL" || row.statusText !== "正常") reject("Excel HOLD or invalid status: " + row.id);
     if (row.calcState !== 0) reject("Excel not xlDone: " + row.id);
     done++;
-    for (const key of ["donationLimitYen", "salaryIncomeYen", "residentIncomeLevyYen"])
+    for (const key of ["donationLimitYen", "salaryIncomeYen", "residentIncomeLevyYen", "residentAssessedIncomeLevyYen"])
       if (!safeInt(row[key])) reject("invalid Excel numeric output: " + row.id + "/" + key);
+    if (row.residentAssessedIncomeLevyYen > row.residentIncomeLevyYen ||
+        row.residentIncomeLevyYen - row.residentAssessedIncomeLevyYen > 100)
+      reject("invalid municipal rounding in observed Excel output: " + row.id);
     if (nta2026.has(row.id) && row.salaryIncomeYen !== nta2026.get(row.id))
       reject("Excel violates 2026 NTA special salary band: " + row.id);
     salaryValues.add(row.salaryIncomeYen);
@@ -106,6 +110,7 @@ function compare(observation, cases, gasEngine, opts = {}) {
     schema: "furusato-excel-gas-41-comparison/v1",
     excelRevision: observation.excelRevision || "v4.18.3-review", gasCommitSha: PINNED_GAS_SHA,
     workbookSha256: observation.workbookSha256, gasEngineSha256: observation.gasEngineSha256,
+    levyComparisonBasis: observation.levyComparisonBasis,
     actualExcelCOM: !opts.allowMock, checked: 41, matched, mismatchCount: differences.length,
     excelCalculationDoneCount: done, excelCalculationPendingCount: pending,
     calculationStateVerdict: "DONE_41_OF_41",

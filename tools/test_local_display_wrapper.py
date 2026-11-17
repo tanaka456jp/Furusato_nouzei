@@ -16,7 +16,8 @@ class LocalDisplayWrapperContract(unittest.TestCase):
             "PRIVATE_DISPLAY_STAGING_SHA256_MISMATCH",
             "PRIVATE_DISPLAY_SOURCE_CHANGED_DURING_CAPTURE",
             "RUNNER_TEMP",
-            "LOCAL_SYNTHETIC_EXCEL_DISPLAY_CAPTURED_MANUAL_VISUAL_REVIEW_REQUIRED_RELEASE_HOLD",
+            "LOCAL_SYNTHETIC_EXCEL_DISPLAY_OBSERVED_SOURCE_BINDING_REQUIRED_RELEASE_HOLD",
+            "LOCAL_DISPLAY_CAPTURE_UNVERIFIED_",
         ):
             with self.subTest(token=token):
                 self.assertIn(token, source)
@@ -28,7 +29,7 @@ class LocalDisplayWrapperContract(unittest.TestCase):
         self.assertIn("AutomationSecurity = 3",original)
         self.assertIn("Workbooks.Open($source,0,$true)",original)
         self.assertIn("physical_resolution_verified = $false",original)
-        self.assertIn("observation_requires_manual_visual_review = $true",original)
+        self.assertIn("source_head = $SourceHead",original)
 
 if __name__=="__main__":
     unittest.main(verbosity=2)

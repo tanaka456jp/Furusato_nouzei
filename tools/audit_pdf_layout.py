@@ -11,6 +11,11 @@ import fitz  # pymupdf pinned by Windows Excel CI
 
 PDFS = (("FurusatoQA.pdf", 1), ("FurusatoQA_hidden.pdf", 1),
         ("split-result.pdf", 2), ("home-overview.pdf", 1))
+EXPECTED_PRINT_RANGES = {
+    "home_print_area": "$A$1:$D$39",
+    "detail_print_area": "$A$1:$D$23",
+}
+PDF_SOURCE_FILES = {name for name, _ in PDFS} | {"split-result.print-inputs.json"}
 SPLIT_PRINT_FIELDS = (
     "住宅の居住開始年", "適用上限反映済残高",
     "住宅控除可能額", "普通配当対象額",
@@ -237,11 +242,30 @@ def audit(pdfpath: Path, expected_pages: int, out: Path) -> dict:
                 x0, y0, x1, y1 = map(float, b[:4])
                 if x0 < -2 or y0 < -2 or x1 > w+2 or y1 > h+2:
                     raise AssertionError(f"{pdfpath.name}: text exceeds paper bounds")
+            margins = [
+                min(block[0] for block in blocks),
+                min(block[1] for block in blocks),
+                w - max(block[2] for block in blocks),
+                h - max(block[3] for block in blocks),
+            ]
+            if min(margins) < 14:
+                raise AssertionError(f"{pdfpath.name}: readable text is too close to the paper edge")
+            font_sizes = [
+                span["size"]
+                for block in page.get_text("dict")["blocks"] if "lines" in block
+                for line in block["lines"]
+                for span in line["spans"] if span["text"].strip()
+            ]
+            if not font_sizes or min(font_sizes) < 8:
+                raise AssertionError(f"{pdfpath.name}: printed text under 8 points")
             checked_words = assert_no_text_collision(page, f"{pdfpath.name} page {i+1}")
             filename = pdfpath.stem + f"_page{i+1}.png"
             page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5), alpha=False).save(out / filename)
             pages.append({"page": i+1, "size_pt": [round(w, 2), round(h, 2)],
-                          "text_blocks": len(blocks), "words_checked": checked_words, "png": filename})
+                          "text_blocks": len(blocks), "words_checked": checked_words,
+                          "text_margins_pt": [round(value, 2) for value in margins],
+                          "smallest_text_pt": round(min(font_sizes), 2), "png": filename,
+                          "png_sha256": hashlib.sha256((out / filename).read_bytes()).hexdigest()})
         if pdfpath.name == "split-result.pdf":
             print_proof = assert_split_print_source_proof(
                 pdfpath, doc[1].get_text(sort=True),
@@ -257,6 +281,10 @@ def audit(pdfpath: Path, expected_pages: int, out: Path) -> dict:
                 raise AssertionError(
                     "Split PDF allocation wraps to multiple printed lines"
                 )
+            first_page = "".join(first_page_lines)
+            for label in ("2026／2027", "120,000", "120,783", "1,718", "412,500", "320,700"):
+                if label not in first_page:
+                    raise AssertionError("Split PDF first page lacks: " + label)
             text = re.sub(r"\s+", "", doc[1].get_text(sort=True))
             for label in ("所得年", "住民税", "税制版",
                           "計算条件の照合", "住宅控除可能額",
@@ -265,16 +293,50 @@ def audit(pdfpath: Path, expected_pages: int, out: Path) -> dict:
                     raise AssertionError("Split PDF page two lacks: " + label)
         if pdfpath.name == "home-overview.pdf":
             text = re.sub(r"\s+", "", doc[0].get_text(sort=True))
-            for label in ("ふるさと納税", "109,000", "2026"):
+            for label in ("ふるさと納税", "109,000", "374,500", "7,000,000",
+                          "5,200,000", "1,000,000", "所得年2026", "住民税課税年度2027"):
                 if label not in text:
                     raise AssertionError("Home PDF has missing visible label/amount: " + label)
-    return {"pdf": pdfpath.name, "pages": pages, "source_proof": print_proof}
+        if pdfpath.name in ("FurusatoQA.pdf", "FurusatoQA_hidden.pdf"):
+            text = re.sub(r"\s+", "", doc[0].get_text(sort=True))
+            for label in ("所得年2026", "住民税課税年度2027", "109,000", "374,500", "74,900"):
+                if label not in text:
+                    raise AssertionError("Detail PDF has missing visible label/amount: " + label)
+    return {"pdf": pdfpath.name, "sha256": hashlib.sha256(pdfpath.read_bytes()).hexdigest(),
+            "pages": pages, "source_proof": print_proof}
+
+
+def verify_pdf_source(folder: Path, source_head: str, workbook_sha256: str) -> dict:
+    if (not re.fullmatch(r"[0-9a-f]{40}", source_head) or
+            not re.fullmatch(r"[0-9a-f]{64}", workbook_sha256)):
+        raise AssertionError("Invalid PDF acceptance source HEAD/workbook SHA-256")
+    evidence = folder / "pdf_source.json"
+    if evidence.is_symlink() or not evidence.is_file() or evidence.stat().st_size > 10_000:
+        raise AssertionError("PDF source evidence is missing or unsafe")
+    data = json.loads(evidence.read_text(encoding="utf-8-sig"))
+    if (not isinstance(data, dict) or
+            data.get("schema") != "furusato-excel-pdf-source/v2" or
+            data.get("source_head") != source_head or
+            data.get("workbook_sha256") != workbook_sha256 or
+            any(data.get(key) != expected for key, expected in EXPECTED_PRINT_RANGES.items())):
+        raise AssertionError("PDF source build or print area mismatch")
+    files = data.get("files")
+    if not isinstance(files, dict) or set(files) != PDF_SOURCE_FILES:
+        raise AssertionError("PDF source file set mismatch")
+    for name, expected_hash in files.items():
+        file = folder / name
+        if (file.is_symlink() or not file.is_file() or file.stat().st_size > 20_000_000 or
+                hashlib.sha256(file.read_bytes()).hexdigest() != expected_hash):
+            raise AssertionError("PDF source SHA-256 mismatch: " + name)
+    return {key: data[key] for key in EXPECTED_PRINT_RANGES}
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--folder", type=Path)
     parser.add_argument("--source", type=Path)
+    parser.add_argument("--source-head")
+    parser.add_argument("--workbook-sha256")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     collision_self_test()
@@ -282,9 +344,13 @@ def main():
     if args.self_test:
         print("PDF_AUDIT_SELF_TEST_PASS: collisions, proof geometry and mutations")
         return
-    if args.folder is None or args.source is None:
-        parser.error("--folder and --source are required outside --self-test")
+    if not all((args.folder, args.source, args.source_head, args.workbook_sha256)):
+        parser.error("--folder, --source, --source-head and --workbook-sha256 are required outside --self-test")
     folder = args.folder.resolve(strict=True)
+    output = folder / "audit.json"
+    if output.exists() or output.is_symlink():
+        raise AssertionError("Refusing PDF evidence overwrite")
+    print_ranges = verify_pdf_source(folder, args.source_head, args.workbook_sha256)
     source = args.source.read_text(encoding="utf-8-sig")
     # Read the exact version encoded in the generated Excel header.
     # Do not require a development-only "検証版" badge for a pre-signing candidate.
@@ -304,17 +370,18 @@ def main():
         home_text = re.sub(r"\s+", "", doc[0].get_text(sort=True))
     if version not in home_text:
         raise AssertionError("Home PDF review version mismatch: " + version)
-    report = {"status": "PASS", "revision": version, "pdfs": reports,
+    report = {"schema": "furusato-excel-pdf-acceptance/v2", "status": "PASS",
+              "source_head": args.source_head, "workbook_sha256": args.workbook_sha256,
+              "revision": version, "page_count": sum(len(item["pages"]) for item in reports),
+              "print_ranges": print_ranges, "pdfs": reports,
               "physical_printer_tested": False, "desktop_screens_tested": False,
               "text_collision_self_test": "PASS",
               "split_print_source_proof": "PASS",
               "split_print_row_geometry": "PASS"}
-    output = folder / "audit.json"
-    if output.exists():
-        raise AssertionError("Refusing PDF evidence overwrite")
-    output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    with output.open("x", encoding="utf-8") as result:
+        json.dump(report, result, ensure_ascii=False, indent=2)
     print("PDF_LAYOUT_PASS: A4 1+1+2+1 pages, eight printed inputs, no text overlap, PNG evidence")
-    print("PHYSICAL_PRINTER_AND_DESKTOP_SCREENSHOTS_HOLD")
+    print("PHYSICAL_PRINTER_NOT_TESTED")
 
 
 if __name__ == "__main__":

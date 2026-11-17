@@ -72,24 +72,30 @@ class WorkbookTest(unittest.TestCase):
             for expr in (rule.formula or [])
         ))
 
-    def test_conservative_separate_city_prefecture_100yen_rounding(self):
-        levy = self.book[RESIDENT]["B16"].value
+    def test_explicit_separate_city_prefecture_100yen_rounding(self):
+        resident = self.book[RESIDENT]
+        home = self.book[HOME]
+        levy = resident["B16"].value
         baseline = self.baseline[RESIDENT]["B16"].value
         self.assertIsInstance(baseline, str)
         self.assertTrue(baseline.startswith("="))
-        self.assertIn("ROUNDDOWN(MAX(0,B15-B14)*0.8,-2)", levy)
-        self.assertIn("ROUNDDOWN(MAX(0,B15-B14)*0.2,-2)", levy)
-        self.assertIn("ROUNDDOWN(MAX(0,B15-B14)*0.6,-2)", levy)
-        self.assertIn("ROUNDDOWN(MAX(0,B15-B14)*0.4,-2)", levy)
-        self.assertIn("'操作画面'!B19:B24", levy)
+        for share in (6, 4, 8, 2):
+            self.assertIn(f"ROUNDDOWN(ROUND(ROUND(MAX(0,B15-B14),2)*{share}/10,3),-2)", levy)
+        self.assertNotIn("'操作画面'!B19:B24", levy)
         self.assertIn("'例外・分離課税'!B24", levy)
         self.assertIn("'例外・分離課税'!B27", levy)
         self.assertIn("'ふるさと納税限度額計算'!J51:J53", levy)
-        # Do not silently take the lower result when city classification
-        # is unverified. Jurisdiction disagreement must stay non-numeric.
-        self.assertNotIn("MIN(ROUNDDOWN(MAX(0,B15-B14)", levy)
-        self.assertIn(',-2)=ROUNDDOWN(MAX(0,B15-B14)*0.6,-2)', levy)
-        self.assertIn(',""),', levy)
+        self.assertIn("'操作画面'!D51=\"標準市町村\"", levy)
+        self.assertIn("'操作画面'!D51=\"標準指定都市\"", levy)
+        self.assertEqual(home["D51"].value, "条例差・不明")
+        self.assertIn("SAFE-TAX-036", home["B28"].value)
+        self.assertIn("SAFE-TAX-037", home["B28"].value)
+        self.assertIn("SAFE-TAX-038", home["B28"].value)
+        self.assertIn("SAFE-TAX-039", home["B28"].value)
+        for row in (5, 8, 9, 10, 11, 12, 26):
+            self.assertIn(f"'例外・分離課税'!B{row}<>0", home["B28"].value)
+        self.assertEqual(resident["B35"].value,
+                         '=IF(B15="","",ROUNDDOWN(ROUND(MAX(0,B15-B14),2),-2))')
         self.assertTrue(levy.endswith("," + baseline[1:] + ")"))
         self.assertLess(len(levy), 8192)
 

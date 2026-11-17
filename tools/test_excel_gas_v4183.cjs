@@ -22,6 +22,7 @@ function fakeEngine(){
 }
 function fixture(source="MOCK"){
  return {schema:SCHEMA,source,gasCommitSha:PINNED_GAS_SHA,
+  levyComparisonBasis:"POOLED_BEFORE_MUNICIPAL_SPLIT",
   workbookSha256:"e".repeat(64),gasEngineSha256:"f".repeat(64),
   readOnly:true,macrosDisabled:true,dynamicABA:true,officialExcelSource:false,
   calculationDiagnostics: {
@@ -41,7 +42,8 @@ function fixture(source="MOCK"){
    return {...v,status:"NORMAL",statusText:"正常",calcState:0,
     donationLimitYen:e.donationLimitYen,
     salaryIncomeYen:e.calculation.salaryIncomeYen,
-    residentIncomeLevyYen:e.calculation.residentIncomeLevyYen};
+    residentIncomeLevyYen:e.calculation.residentIncomeLevyYen,
+    residentAssessedIncomeLevyYen:e.calculation.residentIncomeLevyYen - 100};
   })};
 }
 const matched=compare(fixture(),cases,fakeEngine(),{allowMock:true});
@@ -72,12 +74,18 @@ const changedAnchor=fixture();changedAnchor.calculationDiagnostics.transitions[1
 assert.throws(()=>compare(changedAnchor,cases,fakeEngine(),{allowMock:true}),/dynamic Excel anchor/);
 const wrongBand=fixture();wrongBand.results.find(r=>r.id==="Y2026_G2192999").salaryIncomeYen++;
 assert.throws(()=>compare(wrongBand,cases,fakeEngine(),{allowMock:true}),/violates 2026 NTA/);
-const mismatch=fixture();mismatch.results[0].residentIncomeLevyYen++;
+const mismatch=fixture();
+mismatch.results[0].residentIncomeLevyYen++;
+mismatch.results[0].residentAssessedIncomeLevyYen++;
 const diff=compare(mismatch,cases,fakeEngine(),{allowMock:true});
 assert.equal(diff.mismatchCount,1);
 assert.equal(diff.allNumericMatch,false);
 assert.equal(diff.releaseVerdict,"HOLD");
 assert.deepEqual(diff.differences[0].fields,["residentIncomeLevyYen"]);
+const inconsistentAllocation=fixture();inconsistentAllocation.results[0].residentAssessedIncomeLevyYen--;
+assert.throws(()=>compare(inconsistentAllocation,cases,fakeEngine(),{allowMock:true}),/invalid municipal rounding/);
+const ambiguousBasis=fixture();delete ambiguousBasis.levyComparisonBasis;
+assert.throws(()=>compare(ambiguousBasis,cases,fakeEngine(),{allowMock:true}),/untrusted source/);
 const status=fixture();status.results[0].status="HOLD";
 assert.throws(()=>compare(status,cases,fakeEngine(),{allowMock:true}),/Excel HOLD/);
 const noAba=fixture();noAba.dynamicABA=false;

@@ -48,10 +48,15 @@ try {
     if (-not $?) {
         throw 'LOCAL_DISPLAY_CAPTURE_FAILED'
     }
+    $reportPath = Join-Path $EvidenceDirectory 'display_review.json'
+    $report = Get-Content -LiteralPath $reportPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ($report.schema -cne 'furusato-display-review/v2' -or $report.status -cne 'MEASURED') {
+        throw ('LOCAL_DISPLAY_CAPTURE_UNVERIFIED_' + [string]$report.failure_category)
+    }
     if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -cne $sourceHash) {
         throw 'PRIVATE_DISPLAY_SOURCE_CHANGED_DURING_CAPTURE'
     }
-    Write-Host 'LOCAL_SYNTHETIC_EXCEL_DISPLAY_CAPTURED_MANUAL_VISUAL_REVIEW_REQUIRED_RELEASE_HOLD'
+    Write-Host 'LOCAL_SYNTHETIC_EXCEL_DISPLAY_OBSERVED_SOURCE_BINDING_REQUIRED_RELEASE_HOLD'
 } finally {
     $env:RUNNER_TEMP = $originalRunnerTemp
     if (Test-Path -LiteralPath $root) {

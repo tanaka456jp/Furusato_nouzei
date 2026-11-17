@@ -32,6 +32,7 @@ try {
     $homeSheet.Range('B25').Value2 = 'なし'
     $homeSheet.Range('D22').Value2 = '該当なし'
     $homeSheet.Range('D24').Value2 = '確定申告'
+    $homeSheet.Range('D51').Value2 = '標準市町村'
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Write-Output 'QA_STALE_BASELINE_RECALCULATED'
     if ([string]$homeSheet.Range('B28').Value2 -ne '正常' -or [int]$homeSheet.Range('B8').Value2 -ne 109000) {

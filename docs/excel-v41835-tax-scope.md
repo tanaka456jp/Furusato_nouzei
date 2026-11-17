@@ -1,0 +1,26 @@
+# Excel v4.18.35 税務照合範囲
+
+対象所得年は2025年（令和7年）と2026年（令和8年）です。個人住民税の課税年度はそれぞれ令和8年度と令和9年度です。年末調整後の通常の給与所得を再構成します。2026年の年末調整は改正施行後を基準にします。年の途中に死亡・出国するなどの準確定申告は対象外です。給与収入が2,000万円を超える通常試算は `SAFE-TAX-037` で停止します。[国税庁 令和7年分改正](https://www.nta.go.jp/users/gensen/2025kiso/index/shinkoku.htm)、[国税庁 令和8年分改正](https://www.nta.go.jp/users/gensen/2026kiso/index.htm)、[国税庁 年末調整の対象者](https://www.nta.go.jp/taxes/shiraberu/taxanswer/gensen/2665.htm)、[松戸市 令和9年度個人住民税](https://www.city.matsudo.chiba.jp/kurashi/zeikin_top/kojiin/shikenminzei/r9_zeiseikaisei.html)
+
+| 項目 | 含む範囲 | 参照・照合方法 |
+| --- | --- | --- |
+| 年末調整 | 給与所得控除の別表、所得税の基礎控除、課税所得1,000円未満切捨て、速算税率、復興特別所得税を含む年調年税額の100円未満切捨て | [2025年分 給与所得表](https://www.nta.go.jp/publication/pamph/gensen/nencho2025/pdf/114.pdf)、[2026年分 給与所得表](https://www.nta.go.jp/publication/pamph/gensen/nencho2026/pdf/114.pdf)、[基礎控除](https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1199.htm)、[所得税率](https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/2260.htm)、[年末調整のしかた](https://www.nta.go.jp/users/gensen/nencho/index/shikata.htm) |
+| 所得控除 | 合成給与事例で社会保険料、家族区分、課税要件を確認した配偶者・扶養、生命・地震保険料を照合。2026年の一般生命保険料は確認済み23歳未満扶養親族の特例を含む | [国税庁 2026年分の給与所得者向け資料](https://www.nta.go.jp/users/gensen/nencho/index/kyuyosyotokusya.htm)、[松戸市 所得要件](https://www.city.matsudo.chiba.jp/kurashi/zeikin_top/kojiin/shikenminzei/r9_zeiseikaisei.html)、[浦添市 住民税Q&A](https://www.city.urasoe.lg.jp/doc/2026103000097/) |
+| 住民税 | 標準市町村6:4と標準指定都市8:2。基礎控除、法定人的控除差、調整控除、自治体区分に従う所得割の計算。住民税の課税自治体は操作画面の詳細設定で選択する。初期値、条例差、空欄や未知値は `SAFE-TAX-036` で停止する | [京都市 調整控除](https://www.city.kyoto.lg.jp/gyozai/page/0000028147.html)、[山形市 所得割の端数処理](https://www.city.yamagata-yamagata.lg.jp/kurashi/zeikin/1006468/1006471/1004294.html)、[さいたま市 個人住民税申告の手引](https://www.city.saitama.lg.jp/001/153/004/001/p071549_d/fil/saitama-city-municipal-r8.pdf) |
+| ふるさと納税 | 寄附控除の基本分、調整控除後所得割20%に基づく特例分、所得税・住民税間の扱い、対応するワンストップ・確定申告のケース。控除割合を決める住民税課税所得から法定人的控除差と正の場合の所得税基礎控除48万円超過分を差し引く。193万円の上限は令和9年寄附分から | [国税庁 No.1155](https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1155.htm)、[調布市 寄附金税額控除](https://www.city.chofu.lg.jp/030010/p014041.html)、[横浜市 税制改正](https://www.city.yokohama.lg.jp/kurashi/koseki-zei-hoken/zeikin/zeisei/zeiseikaisei.files/0010_20260330.pdf) |
+| 住宅ローン控除 | 対応する取得区分と入居年で、所得税適用額、住民税への移行額、寄附前後の負担差を照合。2022年入居の5%・7%は取得・契約条件による。2026年入居の5%上限の基準は所得税課税総所得金額等 | [横浜市 令和8年度以降の税額控除](https://www.city.yokohama.lg.jp/kurashi/koseki-zei-hoken/zeikin/y-shizei/kojin-shiminzei-kenminzei/kojin-shiminzei-shosai/zeigakukoujoR8.html)、[広島市 令和9年度個人住民税](https://www.city.hiroshima.lg.jp/living/zei/1006016/1025582/1051560.html) |
+
+## 独立照合
+
+- `audit_statutory_tables.py` は二年度の法令テーブルと生成後ブックを比較します。給与別表の低額境界は `test_salary_donation_oracle.py` が個別に照合します。
+- 年末調整済み給与1件、他所得なしなどの条件を固定した合成原票について、`reconcile_salary_only_from_slip.py` が給与所得・年調年税額・住民税所得割・千円単位の寄附試算を独立計算します。`verify_excel.ps1` はPC①のExcelから得た実測値と照合します。原票上で判定できない家族、自治体、申告方式、保険料等の条件は確認済みの合成入力を用います。
+- 住民税の端数ケースは、給与700万円・社会保険料999,000円で合算比較額374,600円、分割後の所得割試算額374,500円。社会保険料4,723,000円の端数検査用ケースでは、標準市町村2,300円、標準指定都市2,200円。二年度、二自治体方式を独立Pythonと実Excelで確認する回帰です。合算比較額は固定GASの41件比較用で、課税自治体別の画面値とは計算経路が異なります。
+- `verify_separate_oracle.py` の有理数演算と累進帯別計算は、申告分離モードの控除配分・標準自治体区分・寄附前後の所得税・復興税・住民税・負担額を合成ケースで検証します。Excel側は `test_separate_excel.ps1` で同じ基準値と照合します。
+
+## 利用時に確かめる条件
+
+- 寄附先が5自治体以内で確定申告が不要など、ワンストップ特例の適用要件を満たすことを確認します。確定申告を行う場合は、ワンストップ特例申請分を含めて寄附を申告します。[国税庁 No.1155](https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1155.htm)
+- 独自の税率、非居住、他所得や控除の未確認の組合せ、繰越損失、複数の住宅控除、対象外の外国税額控除、自治体ごとの控除適用順や1円単位の賦課等は個別確認が必要です。分離課税は操作画面の専用モードで対応区分・居住自治体・適用条件が確定した範囲に限ります。
+- 所得控除合計の手入力上書きは入力内容の確認に使用できます。通常モードの公開試算は `SAFE-TAX-038` で停止し、控除内訳を入力して自動計算に戻すと再表示します。
+- 給与と年金・事業・不動産・雑所得を合わせる通常モードの公開試算は `SAFE-TAX-039` で停止します。収入・費用が相殺される場合も含みます。申告分離モードには独立の適用条件があります。
+- 回帰テストは合成データを使用します。個別の原票・確定申告・住民税の賦課決定や誤差のない寄附限度額は各事例の条件で確認してください。

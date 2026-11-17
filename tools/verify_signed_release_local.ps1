@@ -10,31 +10,55 @@ param(
     [Parameter(Mandatory=$true)][string]$Package,
     [Parameter(Mandatory=$true)][string]$ExpectedPackageSha256,
     [Parameter(Mandatory=$true)][string]$ExpectedSignerThumbprint,
+    [ValidateSet('SIGNED','UNSIGNED')][string]$ExpectedReaderSigningState = 'SIGNED',
+    [ValidatePattern('^[0-9a-fA-F]{40}$')][string]$ExpectedReaderSignerThumbprint,
+    [string]$SignToolX86 = '',
     [Parameter(Mandatory=$true)][string]$EvidencePath
 )
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'office_vba_signature_common.ps1')
 $packageFile = (Resolve-Path -LiteralPath $Package).Path
 $expectedHash = $ExpectedPackageSha256.Trim().ToLowerInvariant()
 $expectedSigner = ($ExpectedSignerThumbprint -replace '\s','').ToUpperInvariant()
 if ($expectedHash -cnotmatch '^[0-9a-f]{64}$' -or
-    $expectedSigner -cnotmatch '^[0-9A-F]{40,64}$') {
+    $expectedSigner -cnotmatch '^[0-9A-F]{40}$' -or
+    ($ExpectedReaderSigningState -ceq 'UNSIGNED' -and $ExpectedReaderSignerThumbprint)) {
     throw 'INVALID_EXPECTED_SIGNATURE_OR_HASH'
 }
+if ((Get-Item -LiteralPath $packageFile).Length -gt 150000000) { throw 'ARCHIVE_SIZE_INVALID' }
 if (Test-Path -LiteralPath $EvidencePath) {
     throw 'REFUSE_TO_OVERWRITE_RELEASE_EVIDENCE'
 }
-$actualHash = (Get-FileHash -LiteralPath $packageFile -Algorithm SHA256).Hash.ToLowerInvariant()
+$actualHash = Get-SignatureFileSha256 $packageFile
 if ($actualHash -cne $expectedHash) {
     throw 'INDEPENDENT_PACKAGE_SHA256_MISMATCH'
 }
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip = [IO.Compression.ZipFile]::OpenRead($packageFile)
-$work = Join-Path ([IO.Path]::GetTempPath()) ('furusato_signature_' + [Guid]::NewGuid().ToString('N'))
+$tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+$work = [IO.Path]::GetFullPath((Join-Path $tempRoot ('furusato_signature_' + [Guid]::NewGuid().ToString('N'))))
+if (-not $work.StartsWith($tempRoot, [StringComparison]::OrdinalIgnoreCase)) {
+    $zip.Dispose()
+    throw 'SIGNATURE_TEMP_PATH_INVALID'
+}
 [void][IO.Directory]::CreateDirectory($work)
 try {
     $names = @($zip.Entries | ForEach-Object { $_.FullName })
-    if (@($names | Select-Object -Unique).Count -ne $names.Count -or
-        @($names | Where-Object { $_ -match '(^[\\/]|\.\.|:)' }).Count -gt 0) {
+    $totalUncompressedSize = 0
+    foreach ($entry in $zip.Entries) {
+        $totalUncompressedSize += $entry.Length
+        $maximum = 120000000
+        if ($entry.FullName -ceq 'README.txt') { $maximum = 1048576 }
+        $kind = ($entry.ExternalAttributes -shr 16) -band 0xf000
+        if ($entry.Length -lt 1 -or $entry.Length -gt $maximum -or
+            $entry.CompressedLength -lt 1 -or $entry.Length -gt $entry.CompressedLength * 1000 -or
+            $kind -notin @(0, 0x8000) -or ($entry.ExternalAttributes -band 0x410)) {
+            throw 'UNSAFE_ZIP_ENTRIES'
+        }
+    }
+    if (@($names | ForEach-Object { $_.ToLowerInvariant() } | Select-Object -Unique).Count -ne $names.Count -or
+        @($names | Where-Object { $_ -match '([\\/]|\.\.|:)' }).Count -gt 0 -or
+        $totalUncompressedSize -gt 150000000) {
         throw 'UNSAFE_ZIP_ENTRIES'
     }
     if ($names -contains 'NOT_FOR_PUBLIC_RELEASE.txt') {
@@ -42,7 +66,7 @@ try {
     }
     $requiredNames = @('Furusato_nouzei.xlsm','FurusatoDocumentReader.exe','README.txt')
     foreach ($needed in $requiredNames) {
-        if ($names -notcontains $needed) { throw 'MISSING_EXPECTED_RELEASE_MEMBER' }
+        if ($names -cnotcontains $needed) { throw 'MISSING_EXPECTED_RELEASE_MEMBER' }
     }
     if ($names.Count -ne $requiredNames.Count) {
         throw 'UNEXPECTED_RELEASE_PACKAGE_CONTENTS'
@@ -59,8 +83,22 @@ try {
     $xlsmZip = [IO.Compression.ZipFile]::OpenRead($localXlsm)
     try {
         $innerNames = @($xlsmZip.Entries | ForEach-Object { $_.FullName })
-        if (@($innerNames | Select-Object -Unique).Count -ne $innerNames.Count) {
+        if (@($innerNames | ForEach-Object { $_.ToLowerInvariant() } | Select-Object -Unique).Count -ne $innerNames.Count) {
             throw 'DUPLICATE_XLSM_PACKAGE_ENTRY'
+        }
+        $innerTotal = 0
+        foreach ($entry in $xlsmZip.Entries) {
+            $innerTotal += $entry.Length
+            $kind = ($entry.ExternalAttributes -shr 16) -band 0xf000
+            if ($entry.FullName -match '(^/|[\\:]|(?:^|/)\.{1,2}(?:/|$)|//|/$)' -or
+                $entry.Length -lt 1 -or $entry.Length -gt 100000000 -or
+                $entry.CompressedLength -lt 1 -or $entry.Length -gt $entry.CompressedLength * 1000 -or
+                $kind -notin @(0, 0x8000) -or ($entry.ExternalAttributes -band 0x410)) {
+                throw 'UNSAFE_XLSM_PACKAGE_ENTRY'
+            }
+        }
+        if ($innerNames.Count -gt 5000 -or $innerTotal -gt 200000000) {
+            throw 'UNSAFE_XLSM_PACKAGE_ENTRY'
         }
         $vba = @($xlsmZip.Entries | Where-Object {
             $_.FullName -ceq 'xl/vbaProject.bin'
@@ -314,22 +352,29 @@ try {
     }
     $localExe = Join-Path $work 'FurusatoDocumentReader.exe'
     [IO.Compression.ZipFileExtensions]::ExtractToFile($exe[0],$localExe)
-    $actualSignature = Get-AuthenticodeSignature -LiteralPath $localExe
-    if ($null -eq $actualSignature -or
-        $actualSignature.Status -ne [Management.Automation.SignatureStatus]::Valid -or
-        $null -eq $actualSignature.SignerCertificate) {
-        throw 'READER_EXE_AUTHENTICODE_NOT_TRUSTED'
+    $actualSignature = Get-LocalAuthenticodeSignature $localExe
+    if ($ExpectedReaderSigningState -ceq 'SIGNED') {
+        if ($null -eq $actualSignature -or
+            $actualSignature.Status -ne [Management.Automation.SignatureStatus]::Valid -or
+            $null -eq $actualSignature.SignerCertificate) {
+            throw 'READER_EXE_AUTHENTICODE_NOT_TRUSTED'
+        }
+        $readerThumb = $expectedSigner
+        if ($ExpectedReaderSignerThumbprint) { $readerThumb = $ExpectedReaderSignerThumbprint.ToUpperInvariant() }
+        $certificate = $actualSignature.SignerCertificate
+        if ($certificate.Thumbprint.ToUpperInvariant() -cne $readerThumb) { throw 'SIGNER_CERTIFICATE_MISMATCH' }
+        $readerState = 'VALID_TRUSTED_EXPECTED_SIGNER'
+    } else {
+        if ($null -eq $actualSignature -or
+            $actualSignature.Status -ne [Management.Automation.SignatureStatus]::NotSigned) {
+            throw 'UNSIGNED_READER_EXE_STATE_MISMATCH'
+        }
+        $readerState = 'UNSIGNED'
     }
-    $certificate = $actualSignature.SignerCertificate
-    if ($certificate.Thumbprint.ToUpperInvariant() -cne $expectedSigner) {
-        throw 'SIGNER_CERTIFICATE_MISMATCH'
-    }
-    if ($certificate.NotAfter.ToUniversalTime() -lt [DateTime]::UtcNow) {
-        throw 'SIGNER_CERTIFICATE_EXPIRED'
-    }
-    # Excel itself must recognize a signed VBA project. This does not prove
-    # CA trust, revocation, publisher identity or signature cryptographic
-    # validity: those are separately reviewed in the actual Office UI.
+    $tool = Find-X86SignTool $SignToolX86
+    Require-X86OfficeSip
+    Assert-VerifiedOfficeVbaSignature $tool $localXlsm $expectedSigner
+    # Office recognition complements the independent SIP trust/timestamp verification.
     # Never enable macros or run unattended VBE automation in this check.
     $office = $null
     $signedBook = $null
@@ -370,28 +415,40 @@ try {
             }
         }
     }
+    if ((Get-SignatureFileSha256 $packageFile) -cne $actualHash) {
+        throw 'ARCHIVE_CHANGED_DURING_SIGNATURE_VERIFICATION'
+    }
     $evidence = [ordered]@{
-        schema = 'furusato-signed-distribution-local/v1'
+        schema = 'furusato-signed-distribution-local/v2'
         archive_sha256 = $actualHash
-        reader_exe_sha256 = (Get-FileHash -LiteralPath $localExe -Algorithm SHA256).Hash.ToLowerInvariant()
-        authenticode = 'VALID_TRUSTED_EXPECTED_SIGNER'
-        certificate_thumbprint_verified = $true
-        macro_workbook_signature = 'CONTAINER_DETECTED_CRYPTOGRAPHIC_VALIDITY_NOT_VERIFIED'
+        signed_workbook_sha256 = Get-SignatureFileSha256 $localXlsm
+        signed_vba_project_sha256 = Get-SignatureFileSha256 $localVba
+        reader_exe_sha256 = Get-SignatureFileSha256 $localExe
+        reader_authenticode = $readerState
+        vba_certificate_thumbprint_verified = $true
+        macro_workbook_signature = 'OFFICE_SIP_CRYPTOGRAPHICALLY_VERIFIED'
         office_vba_signed_property = 'OFFICE_RECOGNIZED_SIGNED_PROJECT'
-        macro_signature_office_validation = 'REQUIRED_BEFORE_RELEASE'
+        timestamp_verified = $true
         exact_release_members = 'THREE_EXPECTED_FILES_ONLY'
-        manual_publisher_approval = 'REQUIRED'
-        release_decision = 'HOLD'
+        signature_gate = 'PASS'
     }
     $target = [IO.Path]::GetFullPath($EvidencePath)
     $parent = [IO.Path]::GetDirectoryName($target)
     if (-not (Test-Path -LiteralPath $parent -PathType Container)) {
         [void][IO.Directory]::CreateDirectory($parent)
     }
-    [IO.File]::WriteAllText($target,
-        ($evidence | ConvertTo-Json -Depth 3),
-        (New-Object System.Text.UTF8Encoding($false)))
-    Write-Host 'SIGNATURE_AND_ARCHIVE_HASH_VERIFIED_MANUAL_RELEASE_APPROVAL_REQUIRED'
+    $output = [IO.File]::Open($target, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write)
+    try {
+        $bytes = [Text.Encoding]::UTF8.GetBytes(($evidence | ConvertTo-Json -Depth 3) + "`n")
+        $output.Write($bytes, 0, $bytes.Length)
+    } finally {
+        $output.Dispose()
+    }
+    Write-Host 'EXCEL_SIGNED_ARCHIVE_SIGNATURE_GATE_PASS'
+} catch {
+    $code = $_.Exception.Message
+    if ($code -cnotmatch '^[A-Z0-9_]+$') { $code = 'LOCAL_SIGNATURE_VERIFICATION_FAILED' }
+    throw $code
 } finally {
     $zip.Dispose()
     Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
