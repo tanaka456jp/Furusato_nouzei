@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 from io import BytesIO
 from openpyxl import Workbook
+from zipfile import ZipFile, ZIP_STORED
 from release_candidate_branding import verify_workbook_labels, verify_release_readme
 from make_excel_release_readme import render
 from assemble_excel_candidate_local import assemble
@@ -19,6 +20,11 @@ def make_xlsm(title=None):
     out=BytesIO()
     wb.save(out)
     wb.close()
+    # Real signed macro-enabled books exceed 100 KiB. Preserve the product
+    # minimum-size safety gate; pad only this invented in-memory OOXML test.
+    with ZipFile(out, "a") as zipped:
+        zipped.writestr("synthetic/randomlike-padding.bin",
+                        bytes(range(256)) * 480, compress_type=ZIP_STORED)
     return out.getvalue()
 
 class ReleaseCandidateBranding(unittest.TestCase):
