@@ -21,6 +21,27 @@ REQUIRED = (
 
 # Evidence reviewers must have a role appropriate to the specific acceptance gate.
 # These are metadata checks only; a claimed role is not identity verification.
+def parse_evidence_json(raw):
+    """Fail closed on conflicting or non-JSON private review evidence.
+
+    Python's default json.loads silently keeps the last duplicate key and
+    accepts NaN/Infinity. Neither is safe for release acceptance records.
+    """
+    def unique_members(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("DUPLICATE_RELEASE_EVIDENCE_JSON_KEY")
+            result[key] = value
+        return result
+
+    def reject_nonfinite(token):
+        raise ValueError("NONFINITE_RELEASE_EVIDENCE_JSON")
+
+    return json.loads(raw, object_pairs_hook=unique_members,
+                      parse_constant=reject_nonfinite)
+
+
 REVIEWER_ROLES = {
     "ci_exact_commit": ("qa_operator", "release_operator"),
     "salary_only_independent_withholding_reconciliation": ("tax_professional", "external_reviewer"),
@@ -95,7 +116,7 @@ def main():
     p.add_argument("--manifest", type=Path)
     p.add_argument("--output", type=Path)
     args = p.parse_args()
-    source = json.loads(args.manifest.read_text(encoding="utf-8-sig")) if args.manifest else None
+    source = parse_evidence_json(args.manifest.read_text(encoding="utf-8-sig")) if args.manifest else None
     result = evaluate(args.head, source)
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)

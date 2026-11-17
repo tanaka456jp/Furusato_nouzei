@@ -105,6 +105,19 @@ class LocalEvidenceIntakeTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "PUBLIC_REPO_PATH_REFUSED"):
             create_local_manifest(ROOT / "forbidden_public_manifest.json", HEAD)
 
+    def test_duplicate_nested_manifest_json_is_never_recorded(self):
+        duplicate = ('{"schema":"' + SCHEMA + '","head_sha":"' + HEAD +
+                     '","checks":{"ci_exact_commit":{"status":"REVIEWED",'
+                     '"status":"APPROVED"}}}')
+        self.manifest.write_text(duplicate, encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "INVALID_PRIVATE_MANIFEST"):
+            check_local_manifest(self.manifest, HEAD)
+        with self.assertRaisesRegex(ValueError, "INVALID_PRIVATE_MANIFEST"):
+            record_local_evidence(
+                self.manifest, "mortgage_filing_independent_tax_difference",
+                self.sample, "tax_professional", explicitly_reviewed=True)
+        self.assertEqual(self.manifest.read_text(encoding="utf-8"), duplicate)
+
     def test_stale_or_extra_manifest_fields_refused(self):
         data = json.loads(self.manifest.read_text(encoding="utf-8"))
         data["taxpayer_name"] = "NEVER_STORE_PRIVATE_NAMES"

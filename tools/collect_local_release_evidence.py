@@ -13,7 +13,7 @@ import re
 import tempfile
 from pathlib import Path
 
-from release_readiness import REQUIRED, REVIEWER_ROLES, SCHEMA, evaluate
+from release_readiness import REQUIRED, REVIEWER_ROLES, SCHEMA, evaluate, parse_evidence_json
 
 ROOT = Path(__file__).resolve().parents[1]
 HEAD_RE = re.compile(r"[0-9a-f]{40}\Z")
@@ -51,8 +51,8 @@ def _read_manifest(path):
     if not path.is_file() or not 0 < path.stat().st_size <= MAX_MANIFEST_BYTES:
         raise ValueError("MANIFEST_MISSING_OR_OVERSIZED")
     try:
-        manifest = json.loads(path.read_text(encoding="utf-8-sig"))
-    except (UnicodeError, json.JSONDecodeError):
+        manifest = parse_evidence_json(path.read_text(encoding="utf-8-sig"))
+    except (UnicodeError, ValueError):
         raise ValueError("INVALID_PRIVATE_MANIFEST") from None
     if not isinstance(manifest, dict):
         raise ValueError("INVALID_PRIVATE_MANIFEST")

@@ -7,7 +7,7 @@ import shutil
 from pathlib import Path
 
 from verify_excel_release_candidate import verify
-from release_readiness import PRODUCT_SCOPE
+from release_readiness import PRODUCT_SCOPE, parse_evidence_json
 
 PRINT_SCHEMA = "furusato-physical-paper-manual/v1"
 PRINT_FIELDS = {
@@ -30,7 +30,7 @@ def read_private(path):
     path = Path(path)
     if not path.is_file() or not 0 < path.stat().st_size <= 512000:
         raise ValueError("INVALID_LOCAL_REVIEW_EVIDENCE")
-    return json.loads(path.read_text(encoding="utf-8-sig"))
+    return parse_evidence_json(path.read_text(encoding="utf-8-sig"))
 
 def check_paper(record, archive_sha, workbook_sha):
     if not isinstance(record, dict) or set(record) != PRINT_FIELDS:

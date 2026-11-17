@@ -1,6 +1,6 @@
 """Release checks must never approve solely from synthetic CI or metadata."""
 import unittest
-from release_readiness import REQUIRED, SCHEMA, PRODUCT_SCOPE, REVIEWER_ROLES, evaluate
+from release_readiness import REQUIRED, SCHEMA, PRODUCT_SCOPE, REVIEWER_ROLES, evaluate, parse_evidence_json
 
 HEAD = "a" * 40
 
@@ -219,6 +219,22 @@ class ReleaseReadinessTest(unittest.TestCase):
         self.assertIn("ExpectedDisplayedLimitYen", docs)
         self.assertIn("ExpectedTaxYear", docs)
         self.assertIn("PRINT-ONE-PAGE", docs)
+
+    def test_evidence_json_duplicate_and_nonfinite_values_are_rejected(self):
+        examples = (
+            '{"head_sha":"a","head_sha":"b"}',
+            '{"checks":{"ci_exact_commit":{"status":"REVIEWED","status":"APPROVED"}}}',
+            '{"checks":{"ci_exact_commit":{},"ci_exact_commit":{}}}',
+            '{"amount":NaN}',
+            '{"amount":Infinity}',
+            '{"amount":-Infinity}',
+        )
+        for sample in examples:
+            with self.subTest(sample=sample):
+                with self.assertRaisesRegex(ValueError, "RELEASE_EVIDENCE_JSON"):
+                    parse_evidence_json(sample)
+        self.assertEqual(parse_evidence_json('{"checks":{},"other":123}'),
+                         {"checks": {}, "other": 123})
 
     def test_no_evidence_always_hold(self):
         report = evaluate(HEAD)

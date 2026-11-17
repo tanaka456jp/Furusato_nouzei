@@ -9,7 +9,7 @@ from zipfile import BadZipFile, ZipFile
 
 from record_ci_acceptance import JOBS
 from release_candidate_branding import verify_workbook_labels, verify_release_readme
-from release_readiness import PRODUCT_SCOPE, REQUIRED, SCHEMA, evaluate
+from release_readiness import PRODUCT_SCOPE, REQUIRED, SCHEMA, evaluate, parse_evidence_json
 
 HEAD_RE = re.compile(r"[0-9a-f]{40}\Z")
 HASH_RE = re.compile(r"[0-9a-f]{64}\Z")
@@ -164,7 +164,7 @@ def main():
         def read(path):
             _require(path.is_file() and 0 < path.stat().st_size <= 512_000,
                      "INVALID_EVIDENCE_FILE_SIZE")
-            return json.loads(path.read_text(encoding="utf-8-sig"))
+            return parse_evidence_json(path.read_text(encoding="utf-8-sig"))
         report = verify(a.head, a.run_id, a.version, a.archive,
                         a.expected_archive_sha256, read(a.ci_receipt),
                         read(a.manifest), read(a.signature_evidence),

@@ -3,7 +3,7 @@ import hashlib
 import tempfile
 import unittest
 from pathlib import Path
-from prepare_official_excel_release import PRINT_SCHEMA, PRINT_FIELDS, check_paper, stage
+from prepare_official_excel_release import PRINT_SCHEMA, PRINT_FIELDS, check_paper, stage, read_private
 
 def make_paper():
     return {
@@ -51,6 +51,17 @@ class OfficialStagingTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "FIELDS_INVALID"):
             check_paper(dict(make_paper(), taxpayer_name="PRIVATE"),
                         "a" * 64, "b" * 64)
+
+    def test_private_staging_evidence_rejects_conflicting_json_keys(self):
+        with tempfile.TemporaryDirectory() as d:
+            source = Path(d) / "private-review.json"
+            source.write_text('{"release_decision":"HOLD","release_decision":"PASS"}',
+                              encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "DUPLICATE_RELEASE_EVIDENCE_JSON_KEY"):
+                read_private(source)
+            source.write_text('{"tax_year":NaN}', encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "NONFINITE_RELEASE_EVIDENCE_JSON"):
+                read_private(source)
 
     def test_staging_is_exact_and_cannot_publish(self):
         with tempfile.TemporaryDirectory() as d:
