@@ -1,6 +1,7 @@
 """Release candidate workbook/README product identity negative contracts."""
 import re
 import tempfile
+import warnings
 import unittest
 from pathlib import Path
 from io import BytesIO
@@ -44,6 +45,35 @@ class ReleaseCandidateBranding(unittest.TestCase):
             verify_release_readme(render(VER,HEAD).replace(VER.encode(),b"v4.18.2"),VER,HEAD)
         with self.assertRaises(ValueError):
             verify_release_readme(render(VER,HEAD)+b"NOT FOR PUBLIC DISTRIBUTION",VER,HEAD)
+
+    def test_ambiguous_workbook_versions_and_readme_versions_fail_closed(self):
+        # A valid version appended to a stale title must not make it releasable.
+        for title in (
+            "ふるさと納税 寄附限度額試算    "+VER+" / v4.18.34",
+            "ふるさと納税 寄附限度額試算    v4.18.34 / "+VER,
+        ):
+            with self.subTest(title=title), self.assertRaisesRegex(
+                    ValueError, "BRANDING_INVALID"):
+                verify_workbook_labels(make_xlsm(title),VER)
+        misleading = render(VER,HEAD).replace(
+            "ソースHEAD：".encode("utf-8"),
+            "参考 v4.18.34\\nソースHEAD：".encode("utf-8"))
+        with self.assertRaisesRegex(ValueError, "VERSION_OR_SCOPE_INVALID"):
+            verify_release_readme(misleading,VER,HEAD)
+
+    def test_ambiguous_or_traversal_ooxml_members_fail_closed(self):
+        # ZIP may present a different workbook.xml to Office than to openpyxl.
+        for member in ("xl/workbook.xml", "XL/WORKBOOK.XML",
+                       "xl/../xl/evil.xml", "xl\\evil.xml"):
+            with self.subTest(member=member):
+                packet = BytesIO(make_xlsm())
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", UserWarning)
+                    with ZipFile(packet, "a", compression=ZIP_STORED) as out:
+                        out.writestr(member, b"<altered/>")
+                with self.assertRaisesRegex(
+                        ValueError, "UNSAFE_RELEASE_XLSM_INTERNAL_PACKAGE"):
+                    verify_workbook_labels(packet.getvalue(),VER)
 
     def test_source_head_is_bound_to_release_candidate_readme(self):
         with self.assertRaisesRegex(ValueError, "RELEASE_README_HEAD_MISMATCH"):

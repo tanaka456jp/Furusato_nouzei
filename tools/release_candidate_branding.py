@@ -19,7 +19,16 @@ def verify_workbook_labels(workbook_bytes, version):
     try:
         with ZipFile(io.BytesIO(workbook_bytes)) as contents:
             parts = contents.infolist()
+            names = [p.filename for p in parts]
+            # Office and Python must not interpret two conflicting OOXML parts
+            # (or traversal aliases) differently during final candidate review.
             if (len(parts) > 5000 or
+                len({name.casefold() for name in names}) != len(names) or
+                any(not name or name.startswith(("/", "\\")) or
+                    "\\" in name or ":" in name or
+                    any(segment in ("", ".", "..")
+                        for segment in name.rstrip("/").split("/"))
+                    for name in names) or
                 any(p.file_size > 110000000 for p in parts) or
                 sum(p.file_size for p in parts) > 200000000 or
                 contents.testzip() is not None):
@@ -32,9 +41,7 @@ def verify_workbook_labels(workbook_bytes, version):
             home = book["操作画面"]["A1"].value
             mortgage = book["住宅確申寄附検算"]["A1"].value
             if (not isinstance(home, str) or not isinstance(mortgage, str)
-                    or not home.startswith("ふるさと納税 寄附限度額試算")
-                    or not re.search(r"v[0-9]+\.[0-9]+\.[0-9]+", home)
-                    or home.count(version) != 1
+                    or home != "ふるさと納税 寄附限度額試算    " + version
                     or not mortgage.startswith("確定申告・住宅ローン控除併用")
                     or any(marker in item for item in (home, mortgage)
                            for marker in BLOCKED)):
@@ -60,6 +67,7 @@ def verify_release_readme(readme, version, head_sha):
     if source.count("ソースHEAD：") != 1 or not source.endswith("ソースHEAD：" + head_sha + "\n"):
         raise ValueError("RELEASE_README_HEAD_MISMATCH")
     if (not source.startswith("# ふるさと納税 寄附限度額試算 " + version + "\n")
+            or re.findall(r"v[0-9]+\.[0-9]+\.[0-9]+", source) != [version]
             or not all(year in source for year in ("2025", "2026"))
             or not all(word in source for word in ("署名", "税額"))
             or "v4.18.2" in source
