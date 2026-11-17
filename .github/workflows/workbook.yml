@@ -47,6 +47,7 @@ jobs:
           python tools/test_release_display_matrix.py
           python tools/test_release_readiness.py
           python tools/test_excel_release_candidate.py
+          python tools/test_prepare_official_excel_release.py
           python tools/test_signed_release_negative.py
           python tools/test_distribution_integrity.py
           python tools/test_package_ready_to_use_review.py
