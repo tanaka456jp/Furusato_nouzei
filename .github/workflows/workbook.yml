@@ -629,7 +629,8 @@ jobs:
   # Create a user-testable ReadyToUse review bundle from EXACTLY the two
   # separately accepted artifacts of THIS Actions run. This is NOT a release.
   ready_to_use_review:
-    needs: [excel, document_reader]
+    # Do not create a review ZIP if static or Windows compatibility failed.
+    needs: [static, windows_compat, excel, document_reader]
     runs-on: windows-2022
     timeout-minutes: 10
     permissions:

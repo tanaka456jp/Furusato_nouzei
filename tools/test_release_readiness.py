@@ -13,6 +13,19 @@ class ReleaseReadinessTest(unittest.TestCase):
         self.assertIn("github.event.pull_request.head.sha || github.sha", workflow)
         self.assertNotIn('--head "${GITHUB_SHA}"', workflow)
 
+    def test_review_bundle_needs_all_quality_gates_to_succeed(self):
+        from pathlib import Path
+        workflow = (Path(__file__).resolve().parents[1] /
+                    ".github/workflows/workbook.yml").read_text(encoding="utf-8")
+        self.assertEqual(workflow.count("  ready_to_use_review:"), 1)
+        section = workflow.split("  ready_to_use_review:", 1)[1]
+        self.assertIn("needs: [static, windows_compat, excel, document_reader]",
+                      section)
+        self.assertNotIn("needs: [excel, document_reader]", section)
+        self.assertNotIn("if: always()", section)
+        self.assertIn("SYNTHETIC_CI_REVIEW_ONLY", section)
+        self.assertIn("release_decision -ne 'HOLD'", section)
+
     def test_display_mode_observed_separately_from_dpi_virtualized_bounds(self):
         from pathlib import Path
         src = (Path(__file__).resolve().parents[1] /
