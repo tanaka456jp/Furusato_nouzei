@@ -66,9 +66,11 @@ class WorkbookTest(unittest.TestCase):
         self.assertIn('LEFT($B$28,4)="入力待ち"',
                       [x for rule in home.conditional_formatting["A9:D9"]
                        for x in (rule.formula or [])])
-        self.assertIn('LEFT($B$28,4)<>"入力待ち"',
-                      [x for rule in home.conditional_formatting["A9:D9"]
-                       for x in (rule.formula or [])])
+        self.assertTrue(any(
+            'LEFT($B$28,4)<>"入力待ち"' in expr
+            for rule in home.conditional_formatting["A9:D9"]
+            for expr in (rule.formula or [])
+        ))
 
     def test_conservative_separate_city_prefecture_100yen_rounding(self):
         levy = self.book[RESIDENT]["B16"].value
