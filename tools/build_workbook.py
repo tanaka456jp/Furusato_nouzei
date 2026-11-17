@@ -768,7 +768,10 @@ def build(source, output):
                  'IF(AND(D4=2026,B12<2200000),'
                  'IF(B12<741000,0,IF(B12<2191000,B12-740000,'
                  'IF(B12<2193000,1451000,IF(B12<2196000,1453000,1456000)))),'
-                 'MAX(0,B12-IF(D4=2025,650000,740000))),'
+                 # Under the 2025 statutory Fifth Table, gross below 651,000 yen
+                  # has ZERO salary income. Gross-650,000 incorrectly
+                  # returns 1..999 yen for the 650,001..650,999 band.
+                  'IF(AND(D4=2025,B12<651000),0,MAX(0,B12-IF(D4=2025,650000,740000)))),'
                  'ROUNDDOWN(B12/4000,0)*4000*'
                  'IF(B12<=3600000,0.7,0.8)-IF(B12<=3600000,80000,440000)),'
                  f'{ref(INPUT,"B34")})-'

@@ -653,6 +653,14 @@ class WorkbookTest(unittest.TestCase):
         self.assertIn("IF(B12<2193000,1451000", home["B13"].value)
         self.assertIn("IF(B12<2196000,1453000,1456000)", home["B13"].value)
         self.assertIn("MAX(0,B12-IF(D4=2025,650000,740000))", home["B13"].value)
+        # Production defect found by PC① real-Excel boundary QA:
+        # 650,999 gross in 2025 was incorrectly treated as 999 income.
+        # A fixture-only fix is insufficient: demand the generated formula.
+        self.assertIn(
+            "IF(AND(D4=2025,B12<651000),0,"
+            "MAX(0,B12-IF(D4=2025,650000,740000)))",
+            home["B13"].value,
+        )
         self.assertIn("'例外・分離課税'!B13", home["B13"].value)
         self.assertEqual(home["B14"].value,
                          '=IF(D25<>"",IF(ISNUMBER(D25),D25,""),B31)')
