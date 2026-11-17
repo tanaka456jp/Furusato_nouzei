@@ -17,6 +17,7 @@ class ReleaseReadinessTest(unittest.TestCase):
         from pathlib import Path
         workflow = (Path(__file__).resolve().parents[1] /
                     ".github/workflows/workbook.yml").read_text(encoding="utf-8")
+        self.assertIn("  excel:\n    # Run expensive PC Excel COM only after lightweight safety gates have passed.\n    needs: [static, windows_compat, document_reader]", workflow)
         self.assertEqual(workflow.count("  ready_to_use_review:"), 1)
         section = workflow.split("  ready_to_use_review:", 1)[1]
         self.assertIn("needs: [static, windows_compat, excel, document_reader]",

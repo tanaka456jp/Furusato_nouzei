@@ -349,6 +349,8 @@ jobs:
 
   # Explicit opt-in: never execute arbitrary fork PR code on a self-hosted runner.
   excel:
+    # Run expensive PC Excel COM only after lightweight safety gates have passed.
+    needs: [static, windows_compat, document_reader]
     if: >-
       (github.event_name == 'pull_request' &&
        github.event.pull_request.head.repo.full_name == github.repository &&

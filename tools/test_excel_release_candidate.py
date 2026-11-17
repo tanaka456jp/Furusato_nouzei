@@ -78,10 +78,11 @@ class ExcelPrepublicationTests(unittest.TestCase):
     def test_mismatched_or_tampered_candidate_refused(self):
         with self.assertRaisesRegex(ValueError, "SHA256_MISMATCH"):
             self.run_check(expected_hash="0" * 63 + "1")
+        accepted_hash = sha256(self.archive)
         with self.archive.open("ab") as out:
             out.write(b"tamper")
         with self.assertRaisesRegex(ValueError, "SHA256_MISMATCH"):
-            self.run_check()
+            self.run_check(expected_hash=accepted_hash)
 
     def test_review_source_cannot_be_forged(self):
         for change in ({"head_sha": "b" * 40}, {"run_id": RUN + 1},
