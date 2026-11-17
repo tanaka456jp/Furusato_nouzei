@@ -6,6 +6,7 @@ unsigned VBA is rejected before any Authenticode approval.
 """
 import hashlib
 import io
+import os
 import subprocess
 import tempfile
 import unittest
@@ -55,7 +56,8 @@ def _candidate(folder, include_vba, include_signature, relationship="absent"):
 def _run_probe(folder, package):
     checksum = hashlib.sha256(package.read_bytes()).hexdigest()
     cmd = [
-        "pwsh", "-NoProfile", "-NonInteractive", "-File", str(SCRIPT),
+        ("powershell.exe" if os.name == "nt" else "pwsh"),
+        "-NoProfile", "-NonInteractive", "-File", str(SCRIPT),
         "-Package", str(package),
         "-ExpectedPackageSha256", checksum,
         "-ExpectedSignerThumbprint", "A" * 40,
