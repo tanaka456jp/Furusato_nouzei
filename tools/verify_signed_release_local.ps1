@@ -88,6 +88,61 @@ try {
         } finally {
             $vbaStream.Dispose()
         }
+        # Check that the VBA project is actually referenced by the workbook.
+        # Unattached ZIP parts cannot establish any Excel macro trust.
+        $wbXml = @($xlsmZip.Entries | Where-Object { $_.FullName -ceq 'xl/workbook.xml' })
+        $wbRels = @($xlsmZip.Entries | Where-Object {
+            $_.FullName -ceq 'xl/_rels/workbook.xml.rels'
+        })
+        if ($wbXml.Count -ne 1 -or $wbXml[0].Length -le 10 -or
+            $wbRels.Count -ne 1 -or $wbRels[0].Length -lt 50 -or
+            $wbRels[0].Length -gt 131072) {
+            throw 'VBA_PROJECT_WORKBOOK_RELATIONSHIP_MISSING'
+        }
+        $wbStream = $wbRels[0].Open()
+        $wbReader = $null
+        try {
+            $wbSettings = New-Object System.Xml.XmlReaderSettings
+            $wbSettings.DtdProcessing = [System.Xml.DtdProcessing]::Prohibit
+            $wbSettings.XmlResolver = $null
+            $wbSettings.MaxCharactersInDocument = 131072
+            $wbReader = [System.Xml.XmlReader]::Create($wbStream,$wbSettings)
+            $wbDocument = New-Object System.Xml.XmlDocument
+            $wbDocument.XmlResolver = $null
+            $wbDocument.Load($wbReader)
+        } finally {
+            if ($null -ne $wbReader) { $wbReader.Dispose() }
+            $wbStream.Dispose()
+        }
+        $wbNs = 'http://schemas.openxmlformats.org/package/2006/relationships'
+        if ($wbDocument.DocumentElement.LocalName -cne 'Relationships' -or
+            $wbDocument.DocumentElement.NamespaceURI -cne $wbNs) {
+            throw 'INVALID_VBA_PROJECT_WORKBOOK_RELATIONSHIPS_XML'
+        }
+        $requiredWbType = 'http://schemas.microsoft.com/office/2006/relationships/vbaProject'
+        $vbaLinkCount = 0
+        foreach ($node in $wbDocument.DocumentElement.ChildNodes) {
+            if ($node.NodeType -ne [System.Xml.XmlNodeType]::Element) { continue }
+            if ($node.LocalName -cne 'Relationship' -or
+                $node.NamespaceURI -cne $wbNs) {
+                throw 'INVALID_VBA_PROJECT_WORKBOOK_RELATIONSHIPS_XML'
+            }
+            $target = [string]$node.GetAttribute('Target')
+            $type = [string]$node.GetAttribute('Type')
+            $vbaTarget = ($target -ceq 'vbaProject.bin' -or
+                          $target -ceq '/xl/vbaProject.bin')
+            if ($type -cne $requiredWbType -and -not $vbaTarget) { continue }
+            if ([string]$node.GetAttribute('TargetMode') -cne '') {
+                throw 'VBA_PROJECT_WORKBOOK_EXTERNAL_RELATIONSHIP'
+            }
+            if ($type -cne $requiredWbType -or -not $vbaTarget) {
+                throw 'INVALID_VBA_PROJECT_WORKBOOK_RELATIONSHIP'
+            }
+            $vbaLinkCount++
+        }
+        if ($vbaLinkCount -ne 1) {
+            throw 'VBA_PROJECT_WORKBOOK_RELATIONSHIP_MISSING_OR_DUPLICATE'
+        }
         $signatureParts = @($xlsmZip.Entries | Where-Object {
             $_.FullName -cmatch '^xl/vbaProjectSignature(?:Agile|V3)?\.bin$'
         })
@@ -118,7 +173,7 @@ try {
         }
         $relTypes = @{
             'vbaProjectSignature.bin' = 'http://schemas.microsoft.com/office/2006/relationships/vbaProjectSignature'
-            'vbaProjectSignatureAgile.bin' = 'http://schemas.microsoft.com/office/2014/relationships/vbaProjectSignatureAgile'
+            'vbaProjectSignatureAgile.bin' = 'http://schemas.microsoft.com/office/2006/relationships/vbaProjectSignatureAgile'
             'vbaProjectSignatureV3.bin' = 'http://schemas.microsoft.com/office/2020/07/relationships/vbaProjectSignatureV3'
         }
         $relsStream = $relsEntry[0].Open()

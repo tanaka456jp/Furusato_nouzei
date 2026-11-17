@@ -85,3 +85,10 @@ Run #43825689764 の実画面証拠ZIPをダウンロードして確認した結
 ローカル署名配布検査では、VBAプロジェクトと署名パーツの関連付けに加え、XLSMの `[Content_Types].xml` が示すVBA・署名の内容タイプも一致必須としました。欠落・誤った型・重複宣言・XML外部エンティティ・内部ZIPの同名エントリは拒否します。構造検査は暗号学的なVBA署名の真正性検証ではありません。Office/VBEでの署名確認と人手承認を別途必須とし、正式配布HOLDを維持します。
 
 一次資料：[Microsoft VBA Project Signature](https://learn.microsoft.com/en-us/openspecs/office_file_formats/ms-xlsb/8fbb98c8-bf03-429e-b6e8-ae024539b5b9)、[Agile Signature](https://learn.microsoft.com/en-us/openspecs/office_file_formats/ms-xlsb/301bfe6b-5acc-4223-81e6-4ee2cc3fc09b)、ECMA-376 OPC。
+
+
+### VBAプロジェクトのExcelブック参照・Agile署名URIの検証（2026-11-17）
+
+ローカル署名配布ガードで、`xl/_rels/workbook.xml.rels` のWorkbook→VBA Project参照も検査し、別の署名パーツを付けただけの未接続VBAを排除します。外部参照・欠落・重複・誤った参照先・XML外部エンティティを拒否する合成テストを追加しました。さらにMicrosoft公式仕様に合わせてAgile VBA署名Relationship Typeの `office/2014` 誤記を `office/2006` に修正しました。これは構造検査であり暗号学的な署名検証・Office実機確認を代替しません。正式配布はHOLDです。
+
+一次資料：Microsoft Learn [VBA Project](https://learn.microsoft.com/en-us/openspecs/office_file_formats/ms-xlsb/0b351d0c-0f5a-498d-bd44-e88dbd298b6c)・[Agile Signature](https://learn.microsoft.com/en-us/openspecs/office_file_formats/ms-xlsb/301bfe6b-5acc-4223-81e6-4ee2cc3fc09b)。

@@ -17,7 +17,8 @@ SCRIPT = Path(__file__).with_name("verify_signed_release_local.ps1")
 
 
 def _candidate(folder, include_vba, include_signature, relationship="absent",
-               valid_ole_header=True, embedded_marker=False, content_types="valid"):
+               valid_ole_header=True, embedded_marker=False, content_types="valid",
+               workbook_relationship="linked", signature_kind="legacy"):
     workbook = io.BytesIO()
     with zipfile.ZipFile(workbook, "w", compression=zipfile.ZIP_STORED) as out:
         if include_vba:
@@ -25,17 +26,44 @@ def _candidate(folder, include_vba, include_signature, relationship="absent",
             header = bytes.fromhex("D0CF11E0A1B11AE1") if valid_ole_header else b"NOT_OLE!"
             marker = ("\x05" + "DigitalSignature").encode("utf-16-le") if embedded_marker else b""
             out.writestr("xl/vbaProject.bin", header + bytes(2040) + marker)
+        sig_name = ("vbaProjectSignatureAgile.bin"
+                    if signature_kind == "agile" else "vbaProjectSignature.bin")
         if include_signature:
-            out.writestr("xl/vbaProjectSignature.bin", bytes(256))
+            out.writestr("xl/" + sig_name, bytes(256))
+        out.writestr("xl/workbook.xml",
+                     '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"/>')
+        if workbook_relationship != "absent":
+            wb_type = (
+                "http://schemas.microsoft.com/office/2006/relationships/vbaProject"
+                if workbook_relationship != "wrong-type" else
+                "http://schemas.microsoft.com/office/2006/relationships/other"
+            )
+            wb_target = "not-vba.bin" if workbook_relationship == "wrong-target" else "vbaProject.bin"
+            wb_mode = ' TargetMode="External"' if workbook_relationship == "external" else ""
+            wb_rels = (
+                '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                '<Relationship Id="rId1" Type="' + wb_type +
+                '" Target="' + wb_target + '"' + wb_mode + "/></Relationships>"
+            )
+            if workbook_relationship == "duplicate":
+                wb_rels = wb_rels.replace(
+                    "</Relationships>",
+                    '<Relationship Id="rId2" Type="' + wb_type +
+                    '" Target="vbaProject.bin"/></Relationships>')
+            if workbook_relationship == "xml-entity":
+                wb_rels = '<!DOCTYPE Relationships [<!ENTITY x SYSTEM "file:///etc/passwd">]>' + wb_rels
+            out.writestr("xl/_rels/workbook.xml.rels", wb_rels)
         if relationship != "absent":
             relation_type = (
-                "http://schemas.microsoft.com/office/2006/relationships/vbaProjectSignature"
+                ("http://schemas.microsoft.com/office/2006/relationships/vbaProjectSignatureAgile"
+                 if signature_kind == "agile" else
+                 "http://schemas.microsoft.com/office/2006/relationships/vbaProjectSignature")
                 if relationship != "wrong-type" else
                 "http://schemas.microsoft.com/office/2006/relationships/other")
             target_mode = ' TargetMode="External"' if relationship == "external" else ""
             target = (
                 "missingSignature.bin" if relationship == "wrong-target"
-                else "vbaProjectSignature.bin"
+                else sig_name
             )
             rels = (
                 '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
@@ -56,8 +84,10 @@ def _candidate(folder, include_vba, include_signature, relationship="absent",
                 ct_entries.append('<Override PartName="/xl/vbaProject.bin" ContentType="application/vnd.ms-office.vbaProject"/>')
             if include_signature and content_types != "missing-signature":
                 ct = ("application/octet-stream" if content_types == "wrong-signature"
-                      else "application/vnd.ms-office.vbaProjectSignature")
-                sig_override = '<Override PartName="/xl/vbaProjectSignature.bin" ContentType="' + ct + '"/>'
+                      else ("application/vnd.ms-office.vbaProjectSignatureAgile"
+                            if signature_kind == "agile" else
+                            "application/vnd.ms-office.vbaProjectSignature"))
+                sig_override = '<Override PartName="/xl/' + sig_name + '" ContentType="' + ct + '"/>'
                 ct_entries.append(sig_override)
                 if content_types == "duplicate-signature":
                     ct_entries.append(sig_override)
@@ -93,15 +123,63 @@ def _run_probe(folder, package):
 
 class LocalSignedReleaseNegativeAcceptance(unittest.TestCase):
     def _assert_refused(self, *, vba, signature, expected, relationship="absent",
-                        valid_ole_header=True, embedded_marker=False, content_types="valid"):
+                        valid_ole_header=True, embedded_marker=False, content_types="valid",
+                        workbook_relationship="linked", signature_kind="legacy"):
         with tempfile.TemporaryDirectory(prefix="furusato_fake_release_") as root:
             folder = Path(root)
             package = _candidate(folder, vba, signature, relationship,
                                  valid_ole_header=valid_ole_header,
-                                 embedded_marker=embedded_marker, content_types=content_types)
+                                 embedded_marker=embedded_marker, content_types=content_types,
+                                 workbook_relationship=workbook_relationship,
+                                 signature_kind=signature_kind)
             rc, output = _run_probe(folder, package)
             self.assertNotEqual(rc, 0, "Unsafe package was accepted")
             self.assertIn(expected, output)
+            self.assertFalse((folder / "must_not_be_created.json").exists())
+
+    def test_workbook_vba_project_links_fail_closed(self):
+        scenarios = {
+            "absent": "VBA_PROJECT_WORKBOOK_RELATIONSHIP_MISSING",
+            "wrong-type": "INVALID_VBA_PROJECT_WORKBOOK_RELATIONSHIP",
+            "wrong-target": "INVALID_VBA_PROJECT_WORKBOOK_RELATIONSHIP",
+            "external": "VBA_PROJECT_WORKBOOK_EXTERNAL_RELATIONSHIP",
+            "duplicate": "VBA_PROJECT_WORKBOOK_RELATIONSHIP_MISSING_OR_DUPLICATE",
+        }
+        for scenario, expected in scenarios.items():
+            with self.subTest(workbook_relationship=scenario):
+                self._assert_refused(
+                    vba=True, signature=True, relationship="linked",
+                    workbook_relationship=scenario, expected=expected)
+
+    def test_xxe_workbook_relationship_is_refused(self):
+        with tempfile.TemporaryDirectory(prefix="furusato_fake_release_") as root:
+            folder = Path(root)
+            package = _candidate(folder, True, True, "linked",
+                                 workbook_relationship="xml-entity")
+            rc, output = _run_probe(folder, package)
+            self.assertNotEqual(rc, 0)
+            self.assertFalse((folder / "must_not_be_created.json").exists())
+            self.assertNotIn(
+                "SIGNATURE_AND_ARCHIVE_HASH_VERIFIED_MANUAL_RELEASE_APPROVAL_REQUIRED",
+                output)
+
+    def test_official_agile_signature_link_reaches_unsigned_exe_gate(self):
+        # Official Microsoft Agile relationship uses the office/2006 URI.
+        with tempfile.TemporaryDirectory(prefix="furusato_fake_release_") as root:
+            folder = Path(root)
+            package = _candidate(folder, True, True, "linked",
+                                 signature_kind="agile")
+            rc, output = _run_probe(folder, package)
+            self.assertNotEqual(rc, 0)
+            if os.name == "nt":
+                self.assertIn("READER_EXE_AUTHENTICODE_NOT_TRUSTED", output)
+            for unexpected in (
+                "VBA_SIGNATURE_PART_NOT_ATTACHED_TO_PROJECT",
+                "VBA_SIGNATURE_CONTENT_TYPE_MISMATCH",
+                "INVALID_VBA_SIGNATURE_RELATIONSHIP",
+                "VBA_PROJECT_WORKBOOK_RELATIONSHIP_MISSING",
+            ):
+                self.assertNotIn(unexpected, output)
             self.assertFalse((folder / "must_not_be_created.json").exists())
 
     def test_no_macro_project_is_refused_before_exe_check(self):
