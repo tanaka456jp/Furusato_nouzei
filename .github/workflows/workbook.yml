@@ -51,6 +51,7 @@ jobs:
           python tools/test_release_candidate_branding.py
           python tools/test_prepare_official_excel_release.py
           python tools/test_signed_release_negative.py
+          python tools/test_excel_vba_signer.py
           python tools/test_distribution_integrity.py
           python tools/test_package_ready_to_use_review.py
           python tools/release_readiness.py --head "${{ github.event.pull_request.head.sha || github.sha }}" --output release_readiness_hold.json
@@ -172,6 +173,16 @@ jobs:
           if ($errors.Count -gt 0) {
             throw ('Excel/GAS parity script parser errors: '+($errors | Out-String))
           }
+      - name: Parse local Excel VBA signer and verify fail-closed safeguards
+        shell: powershell
+        run: |
+          $tokens = $null; $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path .\tools\sign_excel_vba_local.ps1).Path,
+            [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { throw ($errors | Out-String) }
+          python tools/test_excel_vba_signer.py
+          if ($LASTEXITCODE -ne 0) { throw 'Local VBA signer contract failed' }
       - name: Parse desktop evidence collector in native Windows PowerShell 5.1
         shell: powershell
         run: |
