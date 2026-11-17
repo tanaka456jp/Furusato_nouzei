@@ -32,6 +32,34 @@ def digest(path):
     return h.hexdigest()
 
 
+def _render_review_readme(guide, head_sha):
+    """Write a conspicuous review-only README, not a misleading release guide."""
+    original = Path(guide).read_text(encoding="utf-8-sig")
+    # Current guide also documents the previous official v4.18.2 release.
+    # Correct statements referring to THIS ZIP; preserve historical instructions.
+    original = original.replace(
+        "# ふるさと納税 寄附限度額試算 v4.18.2 正式版（対応範囲限定）",
+        "# ふるさと納税 寄附限度額試算：開発検証用ガイド（正式配布HOLD）",
+    ).replace(
+        "本パッケージはv4.18.2正式版です。",
+        "本検証ZIPは正式版ではありません。現行正式版v4.18.2とは別の開発用成果物です。",
+    )
+    notice = (
+        "# 次期版 ReadyToUse 実機検証用 — 正式配布HOLD\\n\\n"
+        f"対象開発コミット：{head_sha}\\n\\n"
+        "このZIPは検証専用です。現行正式版v4.18.2でも、署名済みの販売製品でもありません。\\n"
+        "同梱EXEのコード署名・VBA署名の真正性は未検証です。\\n"
+        "本番の税務判断に用いず、隔離された検証環境で確認してください。\\n"
+        "Windows/Officeのセキュリティ設定を一括解除しないでください。\\n"
+        "セットアップは不要です。別フォルダへ展開し、組織のポリシーが許す\\n"
+        "Windows Excel 365環境でFurusato_nouzei.xlsmを開いてください。\\n"
+        "原票にない扶養・控除・自治体情報が不明なら確定的な寄附上限を出しません。\\n\\n"
+        "---\\n\\n"
+        "以下は既存のユーザーガイドを検証版向けに表示修正した参考資料です。\\n\\n"
+    )
+    return (notice.replace("\\\\n", "\\n") + original).encode("utf-8")
+
+
 def package_review(book, reader, acceptance, guide, target, *, head_sha):
     paths = [Path(x) for x in (book, reader, acceptance, guide)]
     target = Path(target)
@@ -49,6 +77,9 @@ def package_review(book, reader, acceptance, guide, target, *, head_sha):
         raise ValueError("INVALID_READER_EXE_SIZE")
     if paths[3].stat().st_size > 1024 * 1024:
         raise ValueError("OVERSIZED_USER_GUIDE")
+    review_readme = _render_review_readme(paths[3], head_sha)
+    if len(review_readme) > 1024 * 1024:
+        raise ValueError("OVERSIZED_REVIEW_README")
     report = json.loads(paths[2].read_text(encoding="utf-8-sig"))
     if not isinstance(report, dict) or report.get("status") != "PASS":
         raise ValueError("EXCEL_ACCEPTANCE_NOT_PASSED")
@@ -63,11 +94,11 @@ def package_review(book, reader, acceptance, guide, target, *, head_sha):
     sources = {
         "Furusato_nouzei.xlsm": paths[0],
         "FurusatoDocumentReader.exe": paths[1],
-        "README.txt": paths[3],
     }
     with ZipFile(target, "x", ZIP_DEFLATED) as zipped:
         for name, source in sources.items():
             zipped.write(source, name)
+        zipped.writestr("README.txt", review_readme)
         zipped.writestr("NOT_FOR_PUBLIC_RELEASE.txt", MARKER)
     with ZipFile(target) as zipped:
         if set(zipped.namelist()) != EXPECTED_NAMES or zipped.testzip() is not None:
@@ -79,6 +110,8 @@ def package_review(book, reader, acceptance, guide, target, *, head_sha):
                     extracted.update(chunk)
             if extracted.hexdigest() != digest(source):
                 raise ValueError("REVIEW_ZIP_MEMBER_SHA256_MISMATCH")
+        if zipped.read("README.txt") != review_readme:
+            raise ValueError("REVIEW_README_MISMATCH")
     return {
         "schema": SCHEMA,
         "head_sha": head_sha,
@@ -87,6 +120,7 @@ def package_review(book, reader, acceptance, guide, target, *, head_sha):
         "ready_to_use_review_sha256": digest(target),
         "accepted_workbook_sha256": workbook_sha,
         "reader_sha256": digest(paths[1]),
+        "review_readme_sha256": hashlib.sha256(review_readme).hexdigest(),
         "signing_state": "NOT_VERIFIED",
         "note": "Review only. Physical printer, legal tax cases, live GAS, signatures and release approval are not satisfied.",
     }

@@ -92,3 +92,8 @@ Run #43825689764 の実画面証拠ZIPをダウンロードして確認した結
 ローカル署名配布ガードで、`xl/_rels/workbook.xml.rels` のWorkbook→VBA Project参照も検査し、別の署名パーツを付けただけの未接続VBAを排除します。外部参照・欠落・重複・誤った参照先・XML外部エンティティを拒否する合成テストを追加しました。さらにMicrosoft公式仕様に合わせてAgile VBA署名Relationship Typeの `office/2014` 誤記を `office/2006` に修正しました。これは構造検査であり暗号学的な署名検証・Office実機確認を代替しません。正式配布はHOLDです。
 
 一次資料：Microsoft Learn [VBA Project](https://learn.microsoft.com/en-us/openspecs/office_file_formats/ms-xlsb/0b351d0c-0f5a-498d-bd44-e88dbd298b6c)・[Agile Signature](https://learn.microsoft.com/en-us/openspecs/office_file_formats/ms-xlsb/301bfe6b-5acc-4223-81e6-4ee2cc3fc09b)。
+
+
+### ReadyToUse検証ZIPのREADME誤認防止（2026-11-17）
+
+CI #44000373135は5ジョブすべてSUCCESS（Excel COM、VBAUpdaterの実書戻し、合成41ケースのExcel/GAS一致を含む）。配布検証ZIPのXLSM/EXEハッシュも同一Runの証拠と一致。しかし検証ZIP内READMEの冒頭と本文に「v4.18.2正式版」の旧案内が残っていた。検証ZIP生成処理で先頭に開発HEAD・**正式配布HOLD**・署名未検証の警告を付け、旧案内がこのZIP自体を正式版と誤認させる文言を検証ZIP内でのみ修正する。Git管理の原本ガイドと正式v4.18.2は変更しない。追加の匿名回帰テストでヘッダー、HEAD、警告、原本不変更、README SHAを照合。再度、同一HEADで5ジョブ受入が必要。

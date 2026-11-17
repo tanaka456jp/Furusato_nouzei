@@ -42,8 +42,28 @@ class ReadyToUseReviewTests(unittest.TestCase):
             self.assertEqual(archive.read("Furusato_nouzei.xlsm"),self.book.read_bytes())
             self.assertIn(b"NOT FOR PUBLIC DISTRIBUTION",
                           archive.read("NOT_FOR_PUBLIC_RELEASE.txt"))
+            readme = archive.read("README.txt").decode("utf-8")
+            self.assertTrue(readme.startswith("# 次期版 ReadyToUse 実機検証用"))
+            self.assertIn(HEAD, readme)
+            self.assertIn("正式配布HOLD", readme)
+            self.assertIn("Excel 365", readme)
+            self.assertNotIn("本パッケージはv4.18.2正式版です。", readme)
+            self.assertEqual(report["review_readme_sha256"],
+                             hashlib.sha256(archive.read("README.txt")).hexdigest())
         with self.assertRaisesRegex(ValueError,"REFUSE_TO_OVERWRITE_REVIEW_ZIP"):
             self.build()
+
+    def test_previous_official_release_copy_is_corrected_only_in_review_zip(self):
+        content = ("# ふるさと納税 寄附限度額試算 v4.18.2 正式版（対応範囲限定）\\n"
+                   "本パッケージはv4.18.2正式版です。\\n")
+        self.guide.write_text(content, encoding="utf-8")
+        self.build()
+        with ZipFile(self.out) as archive:
+            readme = archive.read("README.txt").decode("utf-8")
+        self.assertIn("本検証ZIPは正式版ではありません", readme)
+        self.assertNotIn("本パッケージはv4.18.2正式版です", readme)
+        # Do not mutate the canonical current-version user guide.
+        self.assertEqual(self.guide.read_text(encoding="utf-8"), content)
 
     def test_forged_or_stale_acceptance_rejected(self):
         self.book.write_bytes(self.book.read_bytes() + b"modified")
