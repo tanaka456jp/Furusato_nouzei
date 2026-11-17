@@ -12,6 +12,9 @@ param(
     [string]$SignToolX86 = '',
     [string]$TimestampUrl = '',
     [string]$EvidencePath = '',
+    [Parameter(Mandatory=$true)]
+    [ValidatePattern('^[0-9a-fA-F]{64}$')]
+    [string]$ExpectedSourceSha256,
     [switch]$Execute,
     [switch]$AllowUntrustedTestCertificate
 )
@@ -85,6 +88,29 @@ function Require-VbaWorkbook([string]$path) {
         $parts = @($archive.Entries | Where-Object { $_.FullName -ceq 'xl/vbaProject.bin' })
         if ($parts.Count -ne 1 -or $parts[0].Length -lt 256) {
             throw 'XLSM_MISSING_UNIQUE_VBA_PROJECT'
+        }
+        $existingSignature = @($archive.Entries | Where-Object {
+            $_.FullName -cmatch '^xl/vbaProjectSignature(?:Agile|V3)?\.bin$'
+        })
+        if ($existingSignature.Count -gt 0) {
+            throw 'SOURCE_WORKBOOK_ALREADY_HAS_VBA_SIGNATURE'
+        }
+    } finally {
+        $archive.Dispose()
+    }
+}
+function Get-VbaProjectSha256([string]$path) {
+    $archive = [IO.Compression.ZipFile]::OpenRead($path)
+    try {
+        $parts = @($archive.Entries | Where-Object { $_.FullName -ceq 'xl/vbaProject.bin' })
+        if ($parts.Count -ne 1) { throw 'SIGNED_WORKBOOK_VBA_PROJECT_NOT_UNIQUE' }
+        $stream = $parts[0].Open()
+        $hasher = [Security.Cryptography.SHA256]::Create()
+        try {
+            return ([BitConverter]::ToString($hasher.ComputeHash($stream))).Replace('-','').ToLowerInvariant()
+        } finally {
+            $hasher.Dispose()
+            $stream.Dispose()
         }
     } finally {
         $archive.Dispose()
@@ -170,6 +196,11 @@ try {
         }
     }
     Require-VbaWorkbook $source
+    $sourceSha = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($sourceSha -cne $ExpectedSourceSha256.ToLowerInvariant()) {
+        throw 'SOURCE_WORKBOOK_SHA256_NOT_ACCEPTED'
+    }
+    $originalVbaSha = Get-VbaProjectSha256 $source
     $tool = Find-X86SignTool
     $thumb = $CertificateThumbprint.ToUpperInvariant()
     $cert = Require-CodeSigningCertificate $thumb
@@ -188,13 +219,21 @@ try {
     }
     Assert-OfficeRecognizesSignature $destination
     $signedSha = (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash.ToLowerInvariant()
-    $sourceSha = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($signedSha -eq $sourceSha) { throw 'SIGNING_DID_NOT_CHANGE_WORKBOOK_BYTES' }
+    $signedVbaSha = Get-VbaProjectSha256 $destination
+    if ($signedVbaSha -cne $originalVbaSha) {
+        throw 'SIGNED_VBA_PROJECT_DIFFERS_FROM_ACCEPTED_INPUT'
+    }
+    if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant() -cne $sourceSha) {
+        throw 'ACCEPTED_SOURCE_WORKBOOK_CHANGED_DURING_SIGNING'
+    }
     if ($EvidencePath) {
         $record = [ordered]@{
             schema = 'furusato-local-vba-signing/v1'
             source_workbook_sha256 = $sourceSha
             signed_workbook_sha256 = $signedSha
+            accepted_vba_project_sha256 = $originalVbaSha
+            signed_vba_project_sha256 = $signedVbaSha
             signing_certificate_eku = 'CODE_SIGNING'
             certificate_thumbprint_matched = $true
             office_vba_signed_property = 'OFFICE_RECOGNIZED_SIGNED_PROJECT'

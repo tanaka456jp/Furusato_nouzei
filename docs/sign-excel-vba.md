@@ -24,7 +24,7 @@ Microsoft：[Excel VBA署名の公式手順](https://support.microsoft.com/ja-jp
 
 ## 署名前チェックと実行
 
-署名前にソースブックのExcel/VBA更新・全テストを完了します。署名後にVBAを書き換えると
+署名前にソースブックのExcel/VBA更新・全テストを完了し、受入済みXLSMの**SHA-256を独立に記録**します。署名後にVBAを書き換えると
 署名は無効になります。ソースファイルは上書きせず、別ファイルに署名します。
 
 以下はPC①のPowerShellで実行する例です。証明書のサムプリント、入力・出力パスは
@@ -35,10 +35,10 @@ PC①で実際に用意した値に置き換えます。「#」の部分を含�
        Select-Object Thumbprint, NotAfter
 
 事前検査のみ（-Executeなし）：
-    .\tools\sign_excel_vba_local.ps1 -SourceWorkbook "C:\Furusato\accepted\Furusato_nouzei.xlsm" -OutputWorkbook "C:\Furusato\private\Furusato_nouzei_signed.xlsm" -CertificateThumbprint "実在する40桁のSHA1サムプリント" -TimestampUrl "https://timestamp.digicert.com"
+    .\tools\sign_excel_vba_local.ps1 -SourceWorkbook "C:\Furusato\accepted\Furusato_nouzei.xlsm" -OutputWorkbook "C:\Furusato\private\Furusato_nouzei_signed.xlsm" -CertificateThumbprint "実在する40桁のSHA1サムプリント" -ExpectedSourceSha256 "受入済みXLSMの64桁SHA-256" -TimestampUrl "https://timestamp.digicert.com"
 
 実際に署名する（-Executeを追加）：
-    .\tools\sign_excel_vba_local.ps1 -SourceWorkbook "C:\Furusato\accepted\Furusato_nouzei.xlsm" -OutputWorkbook "C:\Furusato\private\Furusato_nouzei_signed.xlsm" -CertificateThumbprint "実在する40桁のSHA1サムプリント" -TimestampUrl "https://timestamp.digicert.com" -EvidencePath "C:\Furusato\private\vba_signing_local.json" -Execute
+    .\tools\sign_excel_vba_local.ps1 -SourceWorkbook "C:\Furusato\accepted\Furusato_nouzei.xlsm" -OutputWorkbook "C:\Furusato\private\Furusato_nouzei_signed.xlsm" -CertificateThumbprint "実在する40桁のSHA1サムプリント" -ExpectedSourceSha256 "受入済みXLSMの64桁SHA-256" -TimestampUrl "https://timestamp.digicert.com" -EvidencePath "C:\Furusato\private\vba_signing_local.json" -Execute
 
 -SignToolX86 の省略時はWindows SDKの最新のx86版を検索します。
 秘密鍵やPFXをGitHub、Actions、Artifacts、公開ログに保存しないこと。
@@ -48,7 +48,7 @@ PC①で実際に用意した値に置き換えます。「#」の部分を含�
 SignToolによる署名・検証後、マクロ実行を無効にしたExcelで開き直し
 Workbook.VBASignedがTrueであることを確認できた場合のみ署名成功とします。
 入力ブックを上書きせず、出力先が既に存在すれば拒否します。
-失敗後の半端な署名出力は削除します。ローカル証拠は署名後のSHA256などだけを記録します。
+失敗後の半端な署名出力は削除します。受入済みXLSMのSHA-256が一致しない場合や、既に署名されている原本は拒否します。署名前後で `xl/vbaProject.bin` のSHA-256が変わらないことも必須とします。ローカル証拠には署名後のSHA-256などだけを記録します。
 
 ローカルテストで自己署名証明書を使う場合は
 -AllowUntrustedTestCertificate を明示し、出力名を _TEST_ONLY.xlsm で終える必要があります。

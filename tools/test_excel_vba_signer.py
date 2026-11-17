@@ -1,9 +1,11 @@
 """Fail-closed local Excel VBA signer contract; public CI never signs or owns keys."""
 from pathlib import Path
+import hashlib
 import os
 import subprocess
 import tempfile
 import unittest
+import zipfile
 
 SCRIPT = Path(__file__).with_name("sign_excel_vba_local.ps1")
 
@@ -14,6 +16,11 @@ class ExcelVbaSignerTest(unittest.TestCase):
         for required in (
             "[switch]$Execute",
             "SIGNING_IN_CI_FORBIDDEN_USE_PRIVATE_LOCAL_MACHINE",
+            "ExpectedSourceSha256",
+            "SOURCE_WORKBOOK_SHA256_NOT_ACCEPTED",
+            "SOURCE_WORKBOOK_ALREADY_HAS_VBA_SIGNATURE",
+            "SIGNED_VBA_PROJECT_DIFFERS_FROM_ACCEPTED_INPUT",
+            "ACCEPTED_SOURCE_WORKBOOK_CHANGED_DURING_SIGNING",
             "SIGNING_MUST_NOT_MODIFY_ORIGINAL_WORKBOOK",
             "REFUSE_TO_OVERWRITE_SIGNED_OUTPUT",
             "XLSM_MISSING_UNIQUE_VBA_PROJECT",
@@ -53,7 +60,7 @@ class ExcelVbaSignerTest(unittest.TestCase):
                 "powershell.exe", "-NoProfile", "-NonInteractive", "-File",
                 str(SCRIPT), "-SourceWorkbook", str(Path(root, "missing.xlsm")),
                 "-OutputWorkbook", str(out), "-CertificateThumbprint", "a" * 40,
-                "-Execute",
+                "-ExpectedSourceSha256", "a" * 64, "-Execute",
             ]
             environment = {**os.environ, "CI": "true", "GITHUB_ACTIONS": "true"}
             result = subprocess.run(args, capture_output=True, text=True,
@@ -64,6 +71,50 @@ class ExcelVbaSignerTest(unittest.TestCase):
             self.assertFalse(out.exists())
 
     @unittest.skipUnless(os.name == "nt", "Native Windows PowerShell required")
+    def test_wrong_ci_sha_is_refused_before_certificate_access(self):
+        with tempfile.TemporaryDirectory() as root:
+            xlsm = Path(root, "synthetic.xlsm")
+            with zipfile.ZipFile(xlsm, "w") as archive:
+                archive.writestr("xl/vbaProject.bin", b"V" * 512)
+            destination = Path(root, "not_signed.xlsm")
+            args = [
+                "powershell.exe", "-NoProfile", "-NonInteractive", "-File",
+                str(SCRIPT), "-SourceWorkbook", str(xlsm),
+                "-OutputWorkbook", str(destination),
+                "-CertificateThumbprint", "a" * 40,
+                "-ExpectedSourceSha256", "a" * 64,
+            ]
+            result = subprocess.run(args, capture_output=True, text=True,
+                                    timeout=25, check=False)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("SOURCE_WORKBOOK_SHA256_NOT_ACCEPTED",
+                          result.stdout + result.stderr)
+            self.assertFalse(destination.exists())
+
+    @unittest.skipUnless(os.name == "nt", "Native Windows PowerShell required")
+    def test_already_signed_source_is_refused_before_certificate_access(self):
+        with tempfile.TemporaryDirectory() as root:
+            xlsm = Path(root, "synthetic_signed.xlsm")
+            with zipfile.ZipFile(xlsm, "w") as archive:
+                archive.writestr("xl/vbaProject.bin", b"V" * 512)
+                archive.writestr("xl/vbaProjectSignature.bin", b"synthetic")
+            sha = hashlib.sha256(xlsm.read_bytes()).hexdigest()
+            destination = Path(root, "not_signed.xlsm")
+            args = [
+                "powershell.exe", "-NoProfile", "-NonInteractive", "-File",
+                str(SCRIPT), "-SourceWorkbook", str(xlsm),
+                "-OutputWorkbook", str(destination),
+                "-CertificateThumbprint", "a" * 40,
+                "-ExpectedSourceSha256", sha,
+            ]
+            result = subprocess.run(args, capture_output=True, text=True,
+                                    timeout=25, check=False)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("SOURCE_WORKBOOK_ALREADY_HAS_VBA_SIGNATURE",
+                          result.stdout + result.stderr)
+            self.assertFalse(destination.exists())
+
+    @unittest.skipUnless(os.name == "nt", "Native Windows PowerShell required")
     def test_missing_input_preflight_does_not_create_output(self):
         with tempfile.TemporaryDirectory() as root:
             out = Path(root, "refused.xlsm")
@@ -71,6 +122,7 @@ class ExcelVbaSignerTest(unittest.TestCase):
                 "powershell.exe", "-NoProfile", "-NonInteractive", "-File",
                 str(SCRIPT), "-SourceWorkbook", str(Path(root, "missing.xlsm")),
                 "-OutputWorkbook", str(out), "-CertificateThumbprint", "a" * 40,
+                "-ExpectedSourceSha256", "a" * 64,
             ]
             environment = {**os.environ, "CI": "true"}
             result = subprocess.run(args, capture_output=True, text=True,
