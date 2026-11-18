@@ -23,7 +23,7 @@ ADVANCED = "例外・分離課税"
 SPLIT_ALLOC = "分離課税寄附控除"
 MORTGAGE_RETURN = "住宅確申寄附検算"
 RELATIVES = "特定親族明細"
-RELATIVE_LAST_ROW = 33  # 30 separately attested relatives; first three use home D14:D16
+RELATIVE_LAST_ROW = 8  # 5 attested relatives; first three use home D14:D16
 
 
 
@@ -544,7 +544,7 @@ def build(source, output):
                           "E": 18, "F": 18, "G": 25, "H": 43}.items():
         relatives.column_dimensions[column].width = width
     relatives.merge_cells("A1:H1")
-    relatives["A1"] = "特定扶養親族・特定親族特別控除｜個別計算（最大30人）"
+    relatives["A1"] = "特定扶養親族・特定親族特別控除｜個別計算（最大5人）"
     relatives["A1"].font = Font(name="Yu Gothic", size=13, bold=True, color="FFFFFF")
     relatives["A1"].fill = PatternFill("solid", fgColor="163A56")
     relatives.row_dimensions[1].height = 27
@@ -659,7 +659,7 @@ def build(source, output):
     relatives.page_setup.orientation = "landscape"
     # B3 and C3 are occupied by source-import/review form controls; never
     # merge A3:D3, or Excel buttons would be overlaid/obscured.
-    home["A3"] = "特定扶養・特定親族 明細（30人）"
+    home["A3"] = "特定扶養・特定親族 明細（5人）"
     home["A3"].hyperlink = Hyperlink(ref="A3", location="'特定親族明細'!A1")
     home["A3"].style = "Hyperlink"
     home["A3"].alignment = Alignment(vertical="center")
@@ -671,8 +671,8 @@ def build(source, output):
         original[f"H{eng_row}"] = "=" + ref(RELATIVES, f"F{rel_row}")
     # The old engine totals F28:F37 and H28:H37 cover persons 1..3.
     # Append only persons 4..30; no duplicate deductions.
-    original["F38"] = f"=SUM(F28:F37)+SUM({ref(RELATIVES,'E7:E33')})"
-    original["H38"] = f"=SUM(H28:H37)+SUM({ref(RELATIVES,'F7:F33')})"
+    original["F38"] = f"=SUM(F28:F37)+SUM({ref(RELATIVES,'E7:E8')})"
+    original["H38"] = f"=SUM(H28:H37)+SUM({ref(RELATIVES,'F7:F8')})"
 
     bar(home, 32, "住宅ローン控除（通常処理・源泉徴収票から転記）")
     field("B33", "住宅ローン控除の所得税適用額")
@@ -834,7 +834,7 @@ def build(source, output):
                 # statutory dependents for the under-23 salary adjustment.
                 # Only individually confirmed regular special dependents
                 # or the separately declared under-16 count force B25=あり.
-                f'AND(B25="なし",OR(COUNTIF({ref(RELATIVES,"G4:G33")},'
+                f'AND(B25="なし",OR(COUNTIF({ref(RELATIVES,"G4:G8")},'
                 '"特定扶養親族")>0,N(D23)>0))',
                 f'OR(AND(NOT(ISNUMBER({ref(ADVANCED,"B16")})),B17<>{ref(ENGINE,"F24")}),'
                 f'AND(NOT(ISNUMBER({ref(ADVANCED,"B17")})),B18<>{ref(ENGINE,"F25")}))',
@@ -846,7 +846,7 @@ def build(source, output):
     spouse_threshold = f'IF({ref("設定・税率","B4")}=2025,580000,620000)'
     eligible_family_count = (
         '(SUM(D11:D13,D23)+'
-        f'COUNTIF({ref(RELATIVES,"G4:G33")},"特定扶養親族")+'
+        f'COUNTIF({ref(RELATIVES,"G4:G8")},"特定扶養親族")+'
         + '+'.join(
             f'IF(AND(ISNUMBER({cell}),{cell}<={spouse_threshold}),1,0)'
             for cell in ("D17", "D18")
@@ -1190,8 +1190,8 @@ def build(source, output):
         (f'AND(N({ref(ADVANCED,"B24")})>0,{ref(ADVANCED,"B33")}<>"なし")',
          "警告：特例・繰越損失を伴う分離課税は個別照合が必要です"),
         (f'N({ref(ADVANCED,"B38")})>30',
-         "警告：特定親族が30人を超えています。個別確認可能人数を超えるため試算を停止します"),
-        (f'COUNTIF({ref(RELATIVES,"G4:G33")},"要確認")>0',
+         "警告：特定親族が5人を超えています。個別確認可能人数を超えるため試算を停止します"),
+        (f'COUNTIF({ref(RELATIVES,"G4:G8")},"要確認")>0',
          "警告：特定扶養親族・特定親族特別控除の年齢・所得・適用要件を個別確認してください"),
         (f'AND({same_source_year},ISNUMBER({ref(ADVANCED,"B14")}),ISNUMBER(B31),'
          f'ABS({ref(ADVANCED,"B14")}-B31)>1,'
