@@ -171,8 +171,8 @@ class WorkbookTest(unittest.TestCase):
             self.assertIn(f"'特定親族明細'!{addr}",fingerprint)
         for r in ("D14","D15","D16"):
             self.assertIn(f"'操作画面'!{r}",fingerprint)
-        self.assertIn("SUM(E4:E8)",rel["E35"].value)
-        self.assertIn("SUM(F4:F8)",rel["F35"].value)
+        self.assertIn("SUM(E4:E8)",rel["E10"].value)
+        self.assertIn("SUM(F4:F8)",rel["F10"].value)
         for address in ("B7","B8","C7","C8"):
             self.assertTrue(any(address in str(rule.sqref)
                                 for rule in rel.data_validations.dataValidation))
@@ -258,7 +258,7 @@ class WorkbookTest(unittest.TestCase):
         excel_qa = (ROOT / "tools" / "verify_excel.ps1").read_text(encoding="utf-8-sig")
         self.assertIn("relative-sheet-manual-stale-result-pass", excel_qa)
         self.assertIn("relative-fifth-case-persistence-pass", excel_qa)
-        self.assertIn("Saved case keeps thirtieth-relative income", excel_qa)
+        self.assertIn("Saved case keeps fifth-relative income", excel_qa)
 
     def test_pdf_visual_acceptance_has_a_static_contract(self):
         workflow = (ROOT / ".github/workflows/workbook.yml").read_text(encoding="utf-8")
@@ -347,7 +347,7 @@ class WorkbookTest(unittest.TestCase):
 
     def test_single_visible_home(self):
         self.assertEqual(self.book.active.title, HOME)
-        self.assertEqual([s.title for s in self.book if s.sheet_state == "visible"], [HOME, "特定親族明細"])
+        self.assertEqual([s.title for s in self.book if s.sheet_state == "visible"], [HOME, "特定親族明細", "一括計算一覧"])
         self.assertEqual(self.book[DETAIL].sheet_state, "veryHidden")
         self.assertEqual(self.book[HOME]["C4"].alignment.indent, 2)
         self.assertIn("課税自治体", self.book[HOME]["A42"].value)
