@@ -184,6 +184,12 @@ End Sub
     Add-WorkbookButton $sheet 'B3' '源泉票を取込' 'ImportWithholding'
     Add-WorkbookButton $sheet 'C3' '読取内容の確認' 'ReviewWithholding'
     Add-WorkbookButton $sheet 'D3' '複数人一覧' 'ImportWithholdingBatch'
+    $batch = $workbook.Worksheets.Item('一括計算一覧')
+    try {
+        Add-WorkbookButton $batch 'B4' '一覧消去' 'ClearBatchOverviewWithConfirm'
+    } finally {
+        [void][Runtime.InteropServices.Marshal]::ReleaseComObject($batch)
+    }
     $details = $workbook.Worksheets.Item('計算根拠')
     try {
         Add-WorkbookButton $details 'A17' 'メイン画面に戻る' 'ReturnHome'

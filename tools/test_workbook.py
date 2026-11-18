@@ -148,6 +148,11 @@ class WorkbookTest(unittest.TestCase):
         self.assertIn(" --batch-bridge", vb)
         self.assertIn('BindButton "操作画面", "btnImportWithholdingBatch"', vb)
         self.assertIn("Add-WorkbookButton $sheet 'D3' '複数人一覧'", setup)
+        self.assertIn("Add-WorkbookButton $batch 'B4' '一覧消去'", setup)
+        self.assertIn('Public Sub ClearBatchOverview()', vb)
+        self.assertIn('Private Function BatchOverviewHasRecords()', vb)
+        self.assertIn('If BatchOverviewHasRecords() Then', vb)
+        self.assertIn('BindButton "一括計算一覧", "btnClearBatchOverviewWithConfirm"', vb)
         # The bulk command never copies one person's values into the
         # single-case input B12/B15/B16 nor alters calculation formulas.
         bulk = vb.split("Public Sub ImportWithholdingBatch()", 1)[1].split(

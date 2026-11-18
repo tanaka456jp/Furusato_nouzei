@@ -157,6 +157,16 @@ try {
     if ($badAccepted) { throw 'Batch HOLD row with a limit was improperly accepted' }
     Assert-Value $batchSheet.Range('H6').Value2 55000 'Previous list survives failed batch'
     Assert-Value $batchSheet.Range('A10').Value2 5 'No rows lost on bad batch'
+    # Client case files must never contain unrelated bulk salary rows.
+    $leakTarget = Join-Path $dir 'must-not-leak-other-taxpayers.xlsm'
+    Assert-Value ([bool]($excel.Run('TaxLawUpdater.TrySaveCaseToFileForTest', $leakTarget))) $false 'Case save refuses a nonempty bulk list'
+    if (Test-Path -LiteralPath $leakTarget) {
+        throw 'Unrelated taxpayers were copied into a single-case file'
+    }
+    [void]($excel.Run('TaxLawUpdater.ClearBatchOverview'))
+    Assert-Value ([string]$batchSheet.Range('A6').Value2) '' 'Bulk wipe clears old salary rows'
+    Assert-Value ([string]$batchSheet.Range('A10').Value2) '' 'Bulk wipe clears final row'
+    Assert-Value ([string]$homeSheet.Range('B12').Value2) '' 'Bulk wipe leaves single-case inputs unaffected'
     QA-Stage 'batch-salary-only-five-list-pass'
     # Synthetic live Excel COM regression: the source total is audit-only;
     # the user-typed override persists across unrelated source edits; clearing

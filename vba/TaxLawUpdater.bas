@@ -313,6 +313,7 @@ Public Sub BindButtons()
     BindButton "操作画面", "btnImportWithholding", "ImportWithholding"
     BindButton "操作画面", "btnReviewWithholding", "ReviewWithholding"
     BindButton "操作画面", "btnImportWithholdingBatch", "ImportWithholdingBatch"
+    BindButton "一括計算一覧", "btnClearBatchOverviewWithConfirm", "ClearBatchOverviewWithConfirm"
     BindButton "例外・分離課税", "btnReturnFromAdvanced", "ReturnFromAdvanced"
     BindButton "計算根拠", "btnReturnHome", "ReturnHome"
     BindButton "計算根拠", "btnPrintDetails", "PrintDetails"
@@ -323,6 +324,28 @@ End Sub
 ' Distinct salary-only bulk workflow.  One source PDF page becomes ONE
 ' overview row, never the current single-taxpayer model.  Advanced income,
 ' split taxation, housing and ambiguous statutory conditions remain HOLD.
+' Bulk list contains figures from unrelated taxpayers; never leak it into a
+' single-taxpayer case. SaveCaseToFile refuses while this overview is populated.
+' NewCase discards it only with the user's explicit existing confirmation.
+Private Function BatchOverviewHasRecords() As Boolean
+    BatchOverviewHasRecords = _
+        (Application.WorksheetFunction.CountA( _
+            ThisWorkbook.Worksheets("一括計算一覧").Range("A6:A105")) > 0)
+End Function
+
+Public Sub ClearBatchOverview()
+    ThisWorkbook.Worksheets("一括計算一覧").Range("A6:J105").ClearContents
+End Sub
+
+Public Sub ClearBatchOverviewWithConfirm()
+    If Not BatchOverviewHasRecords() Then Exit Sub
+    If MsgBox("複数人一覧の読取結果をすべて消去しますか？", _
+              vbQuestion + vbYesNo + vbDefaultButton2, _
+              "複数人一覧の消去") <> vbYes Then Exit Sub
+    ClearBatchOverview
+    MsgBox "複数人一覧を消去しました。", vbInformation, "複数人一覧"
+End Sub
+
 Public Sub ImportWithholdingBatch()
     Dim selected As Variant, fso As Object, shell As Object
     Dim reader As String, temporary As String, command As String
@@ -1192,8 +1215,9 @@ Private Sub ResetSeparateInputs(ByVal home As Worksheet)
 End Sub
 
 Public Sub NewCase()
-    If MsgBox("現在の入力を消去しますか？保存が必要な場合は先に案件保存してください。", _
+    If MsgBox("現在の入力と複数人一覧を消去しますか？必要な内容は先に保存してください。", _
               vbQuestion + vbYesNo + vbDefaultButton2, "新規入力") <> vbYes Then Exit Sub
+    ClearBatchOverview
     MaskUnverifiedResults
     ResetSeparateInputs ThisWorkbook.Worksheets("操作画面")
     ResetRelativeInputs
@@ -1227,6 +1251,10 @@ Public Function SaveCaseToFile(ByVal destination As String) As Boolean
     Dim fso As Object, folder As String, temporary As String
     Dim i As Long, problem As String, errorCode As Long
     On Error GoTo Failed
+    If BatchOverviewHasRecords() Then
+        Err.Raise vbObjectError + 361, , _
+            "複数人一覧の給与情報が個別案件に混入するため、保存を停止しました。先に「一覧消去」を実行してください。"
+    End If
     Set fso = CreateObject("Scripting.FileSystemObject")
     If Len(Trim$(destination)) = 0 Or LCase$(Right$(destination, 5)) <> ".xlsm" Then
         Err.Raise vbObjectError + 108, , ".xlsmの拡張子で保存してください。"
