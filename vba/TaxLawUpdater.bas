@@ -394,6 +394,18 @@ Failed:
     Resume CleanUp
 End Sub
 
+' Test-only safe failure probe; Excel COM must not display a modal
+' VBA run-time-error dialogue when a malformed batch file is rejected.
+' Production still calls the strict loader and its user-facing error handler.
+Public Function TryLoadBatchFromTsvForTest(ByVal tsvPath As String) As Boolean
+    On Error GoTo Rejected
+    TryLoadBatchFromTsvForTest = (LoadBatchFromTsv(tsvPath) > 0)
+    Exit Function
+Rejected:
+    Err.Clear
+    TryLoadBatchFromTsvForTest = False
+End Function
+
 Private Function BatchReasonLabel(ByVal code As String) As String
     Select Case code
         Case "SALARY_ONLY_HYPOTHESIS"

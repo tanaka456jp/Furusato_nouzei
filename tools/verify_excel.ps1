@@ -149,11 +149,11 @@ try {
     $invalidPath = Join-Path $dir 'synthetic-batch-invalid.tsv'
     [IO.File]::WriteAllLines($invalidPath, [string[]]$invalidLines,
                               [Text.Encoding]::ASCII)
-    $badAccepted = $false
-    try {
-        [void]($excel.Run('TaxLawUpdater.LoadBatchFromTsv', $invalidPath))
-        $badAccepted = $true
-    } catch { }
+    # Never call the throwing loader directly from Excel COM for a
+    # deliberately malformed file: it may display a modal VBA error dialog
+    # that permanently blocks the unattended self-hosted runner.
+    $badAccepted = [bool]($excel.Run(
+        'TaxLawUpdater.TryLoadBatchFromTsvForTest', $invalidPath))
     if ($badAccepted) { throw 'Batch HOLD row with a limit was improperly accepted' }
     Assert-Value $batchSheet.Range('H6').Value2 55000 'Previous list survives failed batch'
     Assert-Value $batchSheet.Range('A10').Value2 5 'No rows lost on bad batch'
