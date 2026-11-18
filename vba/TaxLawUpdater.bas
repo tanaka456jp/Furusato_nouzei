@@ -696,7 +696,7 @@ Private Sub ValidateSpecialRelativeSource(ByVal home As Worksheet, _
     If hasSourceCount Then
         If Not IsNumeric(sourceCountRaw) Then _
             Err.Raise vbObjectError + 244, , "特定親族の人数（G72）が数値ではありません。"
-        If CDbl(sourceCountRaw) < 0# Or CDbl(sourceCountRaw) > 30# Or _
+        If CDbl(sourceCountRaw) < 0# Or CDbl(sourceCountRaw) > 5# Or _
            CDbl(sourceCountRaw) <> Fix(CDbl(sourceCountRaw)) Then _
             Err.Raise vbObjectError + 251, , "特定親族の人数（G72）が入力上限または整数条件に合致しません。"
         sourceCount = CLng(sourceCountRaw)
@@ -718,7 +718,7 @@ Private Sub ValidateSpecialRelativeSource(ByVal home As Worksheet, _
     If sourceCount > 0 And Not hasSourceAmount Then _
         Err.Raise vbObjectError + 245, , "特定親族特別控除額（G74）を確認してください。"
 
-    For row = 4 To 33
+    For row = 4 To 8
         category = CStr(relatives.Cells(row, "G").Value2)
         If category = "要確認" Then _
             Err.Raise vbObjectError + 253, , "特定親族の年齢・各人所得・要件に未確認があります。"
@@ -964,8 +964,8 @@ End Function
 Private Sub ResetRelativeInputs()
     Dim rel As Worksheet
     Set rel = ThisWorkbook.Worksheets("特定親族明細")
-    rel.Range("B4:B33,C7:C33").ClearContents
-    rel.Range("D4:D33").Value2 = "未確認"
+    rel.Range("B4:B8,C7:C8").ClearContents
+    rel.Range("D4:D8").Value2 = "未確認"
 End Sub
 
 Private Function HasSeparateInputs(ByVal screen As Worksheet) As Boolean
