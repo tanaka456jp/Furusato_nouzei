@@ -11,6 +11,12 @@ SCRIPT = Path(__file__).with_name("sign_reader_exe_local.ps1")
 class ReaderSignerTest(unittest.TestCase):
     def test_fail_closed_signer_contract(self):
         text = SCRIPT.read_text(encoding="utf-8-sig")
+        common = SCRIPT.with_name("office_vba_signature_common.ps1").read_text(
+            encoding="utf-8-sig")
+        self.assertIn("Find-X86SignTool $SignToolPath", text)
+        self.assertIn("X86_SIGNTOOL_MICROSOFT_SIGNATURE_REQUIRED", common)
+        self.assertIn("Get-LocalAuthenticodeSignature $candidate", common)
+        self.assertNotIn("function Find-SignTool(", text)
         for requirement in (
             "READER_SIGNING_IN_CI_FORBIDDEN", "READER_SOURCE_SHA256_NOT_ACCEPTED",
             "READER_SIGNING_SOURCE_OVERWRITE_FORBIDDEN",
@@ -81,6 +87,32 @@ class ReaderSignerTest(unittest.TestCase):
                     self.assertNotEqual(result.returncode, 0)
                     self.assertIn(reason, result.stdout + result.stderr)
                     self.assertFalse(target.exists())
+
+    @unittest.skipUnless(os.name == "nt", "Native Windows PowerShell required")
+    def test_fake_unsigned_signtool_is_refused_before_private_key_execution(self):
+        # Test only the existing Microsoft-signed SDK tool resolver. Never
+        # call an untrusted binary and never access a certificate/private key.
+        with tempfile.TemporaryDirectory() as tmp:
+            sdk = Path(tmp, "fake-sdk", "x86")
+            sdk.mkdir(parents=True)
+            impostor = sdk / "signtool.exe"
+            pe = bytearray(2048)
+            pe[:2] = b"MZ"
+            pe[0x3C:0x40] = struct.pack("<I", 0x80)
+            pe[0x80:0x86] = b"PE\x00\x00" + struct.pack("<H", 0x14c)
+            impostor.write_bytes(pe)
+            common = SCRIPT.with_name("office_vba_signature_common.ps1")
+            escaped_common = str(common).replace("'", "''")
+            escaped_impostor = str(impostor).replace("'", "''")
+            command = (". '" + escaped_common + "'; " +
+                       "Find-X86SignTool '" + escaped_impostor + "'")
+            result = subprocess.run(["powershell.exe", "-NoProfile",
+                                     "-NonInteractive", "-Command", command],
+                                    capture_output=True, text=True,
+                                    timeout=30, check=False)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("X86_SIGNTOOL_MICROSOFT_SIGNATURE_REQUIRED",
+                          result.stdout + result.stderr)
 
 if __name__=="__main__":
     unittest.main(verbosity=2)

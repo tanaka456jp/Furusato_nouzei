@@ -33,3 +33,5 @@ python tools/publish_excel_release.py --run-id <RUN_ID> --head <HEAD_SHA> --outp
 現状の `publish_excel_release.py` はGitHub Actionsの受入候補を検証できるだけで、署名後の別ZIPを暗号学的に同定し、非公開の税務・実画面・実印刷・発行者承認と結び付けて公開する経路がありません。したがって **`--publish` は、署名状態や承認フラグを手動で全部合格に書き換えても必ず `PUBLICATION_HOLD:SIGNED_FINAL_PACKAGE_ROUTE_NOT_IMPLEMENTED` で拒否**します。これはGitHub APIによるタグ・Release作成より前に実行します。ステージング用 `prepare_official_excel_release.py` も従来どおり `HOLD` です。
 
 正式公開を可能にするには、独立した署名済みアーカイブと配布ハッシュの実体検証・承認者認証・発行対象の固定・非公開証拠の最終監査を実装してテストし、上記ロックを意図的に解除する別の開発・受入工程が必要です。現時点ではタグ `v4.18.36` を発行しません。
+
+EXE署名に使用するSignToolも、VBA署名と共通のWindows SDK x86版・Microsoft署名の確認を必須とします。署名用ソフト自身の真正性を検証できない場合は署名を実行せずHOLDです。

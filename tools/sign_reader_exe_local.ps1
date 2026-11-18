@@ -16,6 +16,7 @@ param(
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'office_vba_signature_common.ps1')
 
 function FileSha([string]$path) {
     return (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -72,25 +73,6 @@ function Get-TrustedSigner([string]$thumb) {
     } finally { $chain.Reset() }
     return $cert
 }
-function Find-SignTool([string]$explicit) {
-    if ($explicit) {
-        $tool=(Resolve-Path -LiteralPath $explicit -ErrorAction Stop).Path
-        if ([IO.Path]::GetFileName($tool) -ine 'signtool.exe') {
-            throw 'READER_SIGNTOOL_NAME_INVALID'
-        }
-        return $tool
-    }
-    $base=[Environment]::GetFolderPath('ProgramFilesX86')
-    $kits=Join-Path $base 'Windows Kits\10\bin'
-    if (-not (Test-Path -LiteralPath $kits -PathType Container)) {
-        throw 'READER_WINDOWS_SDK_NOT_INSTALLED'
-    }
-    $tools=@(Get-ChildItem -LiteralPath $kits -Filter signtool.exe -File -Recurse |
-        Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
-        Sort-Object FullName -Descending)
-    if ($tools.Count -eq 0) { throw 'READER_WINDOWS_SDK_NOT_INSTALLED' }
-    return $tools[0].FullName
-}
 $created=$false
 $evidenceCreated=$false
 $target=$null
@@ -141,7 +123,9 @@ try {
     }
     $thumb=$CertificateThumbprint.ToUpperInvariant()
     $cert=Get-TrustedSigner $thumb
-    $tool=Find-SignTool $SignToolPath
+    # Share the validated Windows SDK Microsoft-signed x86 SignTool with
+    # the Office VBA signing route; it can sign EXE files too.
+    $tool=Find-X86SignTool $SignToolPath
     if (-not $Execute) {
         Write-Host 'READER_SIGNER_PREFLIGHT_OK_NOT_EXECUTED'
         return
