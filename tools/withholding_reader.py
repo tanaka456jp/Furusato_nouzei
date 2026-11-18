@@ -61,8 +61,46 @@ def reject_duplicate_json_members(pairs):
     return result
 
 
-def detect_year(text):
+def _year_candidates_by_geometry(words):
+    """Read the L01 income-year header when embedded PDF text order is scrambled.
+
+    Some government-style PDFs store amounts before headings, so the text
+    stream contains an isolated "7", then "令和", then "L01 年分".  Geometry
+    identifies their *printed* relationship.  Never use other Reiwa dates
+    (housing occupancy, retirement, etc.) as the income year.
+    """
+    if not words:
+        return set()
+
+    def same_row(left, right, tolerance=12):
+        return abs((left[1] + left[3] - right[1] - right[3]) / 2) <= tolerance
+
+    found = set()
+    # This is the top-left title field on the NTA source form, not G-code
+    # amounts or a year elsewhere in the document.
+    for label in words:
+        if label[4] != "L01" or not (0 <= label[0] <= 250 and 0 <= label[1] <= 120):
+            continue
+        for era in words:
+            if (era[4] != "令和" or not label[2] < era[0] < label[2] + 75
+                    or not same_row(label, era)):
+                continue
+            for digit in words:
+                if (not re.fullmatch(r"[0-9０-９]{1,2}", digit[4])
+                        or not era[2] < digit[0] < era[2] + 75
+                        or not same_row(era, digit)):
+                    continue
+                if any(tail[4] == "年分"
+                       and digit[2] < tail[0] < digit[2] + 75
+                       and same_row(digit, tail) for tail in words):
+                    found.add(2018 + int(digit[4].translate(DIGITS)))
+    return found
+
+
+def detect_year(text, words=None):
+    """Accept only one consistent source income year across text and layout."""
     found = {2018 + int(x.translate(DIGITS)) for x in YEAR.findall(text)}
+    found.update(_year_candidates_by_geometry(words))
     return next(iter(found)) if len(found) == 1 else None
 
 
@@ -350,7 +388,7 @@ def finish(year,fields,mode,warnings=None):
         enough=False;warnings.append("MULTIPAGE_SELECTED_PAGE_REVIEW")
     if "MULTIPAGE" in mode:
         enough=False;warnings.append("MULTIPAGE_REQUIRES_REVIEW")
-    if any(x.startswith(("AMBIGUOUS_","CONFLICT_","INVALID_STRUCTURED_","INVALID_LABELLED_","UNSUPPORTED_")) for x in warnings):
+    if any(x.startswith(("AMBIGUOUS_","CONFLICT_","INVALID_STRUCTURED_","INVALID_LABELLED_","UNSUPPORTED_","BLANK_")) for x in warnings):
         enough=False
     if type(year) is not int or year not in (2025,2026):
         warnings.append("YEAR_NOT_APPROVED")
@@ -399,6 +437,17 @@ def extract(path,page_number=None):
     if not vals:
         vals,label_flags=extract_labelled(text,with_flags=True)
         flags.extend(label_flags)
+    # A visibly blank G26 box is distinct from a missing/garbled PDF field.
+    # Transfer a provisional zero only from a native-text page whose G26
+    # coordinate anchor exists.  Force source verification; never mark READY.
+    if (mode in {"PDF_TEXT", "PDF_PAGE_SELECTED"}
+            and "social_insurance" not in vals
+            and {"salary_gross", "income_tax_withheld"}.issubset(vals)
+            and any(w[4] == "G26" for w in words)
+            and not any(f in {"AMBIGUOUS_social_insurance",
+                              "CONFLICT_social_insurance"} for f in flags)):
+        vals["social_insurance"] = 0
+        flags.append("BLANK_SOCIAL_INSURANCE_REQUIRES_REVIEW")
     # Occupancy year is an anchored field, not the document income year.
     # Never override a disagreeing structured value.
     occupancy=extract_occupancy_year(text)
@@ -407,7 +456,7 @@ def extract(path,page_number=None):
         vals.pop("mortgage_occupancy_year",None)
     elif occupancy:
         vals.update(occupancy)
-    return finish(detect_year(text),vals,mode,flags)
+    return finish(detect_year(text, words),vals,mode,flags)
 
 
 def write_bridge(result,output):
