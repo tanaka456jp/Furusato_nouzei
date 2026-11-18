@@ -628,26 +628,45 @@ try {
     $errorText = [string]($excel.Run('TaxLawUpdater.SpecialRelativeSourceCheckForTest'))
     if ($errorText -notlike '*未確認*') { throw 'Unconfirmed fifth relative bypassed the source audit' }
     $relativeSheet.Range('D8').Value2 = '要件確認済'
-    # Person 5 must be included in both statutory totals and G72/G74,
-    # not silently omitted by a hard-coded three-person or five-person loop.
+    # Person 5 is already one of the four special-relatives (row8).
+    # Increasing that person's income-based deduction changes G74 but NOT G72.
     $relativeSheet.Range('B8').Value2 = 21.0
     $relativeSheet.Range('C8').Value2 = 850000.0
     $relativeSheet.Range('D8').Value2 = '要件確認済'
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value $relativeSheet.Range('E8').Value2 630000 'Fifth relative income-tax amount'
     Assert-Value $relativeSheet.Range('F8').Value2 450000 'Fifth relative resident-tax amount'
-    Assert-Value $relativeSheet.Range('E10').Value2 2620000 'Fifth relative included in national total'
-    Assert-Value $relativeSheet.Range('F10').Value2 2100000 'Fifth relative included in municipal total'
+    Assert-Value $relativeSheet.Range('E10').Value2 2590000 'Revised fifth relative included in national total'
+    Assert-Value $relativeSheet.Range('F10').Value2 2070000 'Revised fifth relative included in municipal total'
     $errorText = [string]($excel.Run('TaxLawUpdater.SpecialRelativeSourceCheckForTest'))
-    if ($errorText -notlike '*人数分*') { throw 'Fifth relative was omitted from G72 count review' }
+    if ($errorText -notlike '*G74*') { throw 'Changed fifth relative G74 deduction was not detected' }
+    $sourceAudit.Range('B39').Value2 = 1960000.0
+    Assert-Value ([string]($excel.Run('TaxLawUpdater.SpecialRelativeSourceCheckForTest'))) 'OK' 'Four special relatives with updated fifth amount'
+
+    # Convert the previously regular first relative to a special relative.
+    # Now ALL five are special: the real G72 count must be five.
+    $homeSheet.Range('D14').Value2 = 900000.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value ([string]$relativeSheet.Range('G4').Value2) '特定親族特別控除' 'First relative converted to special'
+    Assert-Value $relativeSheet.Range('E10').Value2 2570000 'Five special-relative national total'
+    Assert-Value $relativeSheet.Range('F10').Value2 2070000 'Five special-relative municipal total'
+    $errorText = [string]($excel.Run('TaxLawUpdater.SpecialRelativeSourceCheckForTest'))
+    if ($errorText -notlike '*人数分*') { throw 'Fifth special relative was omitted from G72 count review' }
     $sourceAudit.Range('B38').Value2 = 5.0
-    $sourceAudit.Range('B39').Value2 = 1990000.0
-    Assert-Value ([string]($excel.Run('TaxLawUpdater.SpecialRelativeSourceCheckForTest'))) 'OK' 'Five special relatives including row8'
-    $relativeSheet.Range('B8,C8').ClearContents()
-    $relativeSheet.Range('D8').Value2 = '未確認'
+    $sourceAudit.Range('B39').Value2 = 2570000.0
+    Assert-Value ([string]($excel.Run('TaxLawUpdater.SpecialRelativeSourceCheckForTest'))) 'OK' 'Five truly special relatives and exact G74'
+
+    # Restore the original five-person scenario for subsequent snapshot tests.
+    $homeSheet.Range('D14').Value2 = 500000.0
+    $relativeSheet.Range('B8').Value2 = 20.0
+    $relativeSheet.Range('C8').Value2 = 1230000.0
+    $relativeSheet.Range('D8').Value2 = '要件確認済'
     $sourceAudit.Range('B38').Value2 = 4.0
     $sourceAudit.Range('B39').Value2 = 1360000.0
-    Assert-Value ([string]($excel.Run('TaxLawUpdater.SpecialRelativeSourceCheckForTest'))) 'OK' 'Restored G72/G74 after row8 cleanup'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $relativeSheet.Range('E10').Value2 1990000 'Restored five-person original national deduction'
+    Assert-Value $relativeSheet.Range('F10').Value2 1650000 'Restored five-person original municipal deduction'
+    Assert-Value ([string]($excel.Run('TaxLawUpdater.SpecialRelativeSourceCheckForTest'))) 'OK' 'Restored original G72/G74 count and amount'
     QA-Stage 'special-relative-source-g72-g74-person-by-person-pass'
     $sourceAudit.Range('B14').Value2 = 3660000.0
     $sourceAudit.Range('B20').Value2 = 'VERIFIED_AFTER_CORRECTION'
