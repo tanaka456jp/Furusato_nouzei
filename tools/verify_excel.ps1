@@ -487,7 +487,11 @@ try {
     # confirmation. A later input edit MUST revoke that exact attestation,
     # even if the review status itself remains VERIFIED_AFTER_CORRECTION.
     $fingerprint = [string]$sourceAudit.Range('B42').Value2
-    if ($fingerprint -notmatch '^[0-9]+:' -or $fingerprint.Split('|').Count -lt 165) {
+    # The snapshot contains 56 home fields + 26 advanced fields + 1
+    # approved tax-year field + 12 fields for the FIVE relatives.
+    # It used to include 30 relatives: the legacy 165-segment check is
+    # no longer correct and must not reject a valid five-relative case.
+    if ($fingerprint -notmatch '^[0-9]+:' -or $fingerprint.Split('|').Count -ne 95) {
         throw 'Source review snapshot missing length-prefixed fields'
     }
     $sourceAudit.Range('B41').Value2 = $fingerprint
