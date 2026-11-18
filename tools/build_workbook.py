@@ -230,7 +230,7 @@ def build(source, output):
         home.add_data_validation(validation)
         validation.add(home[cell])
 
-    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.18.35")
+    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.18.36")
     bar(extra, 1, "追加所得・分離課税（所得年内で事前試算）")
     extra.row_dimensions[2].height = 24  # Room for the return button.
     extra.merge_cells("A3:D3")

@@ -14,7 +14,7 @@ from verify_excel_release_candidate import verify, sha256
 
 HEAD = "a" * 40
 RUN = 44043000554
-VERSION = "v4.18.35"
+VERSION = "v4.18.36"
 
 
 def digest(data):
@@ -171,7 +171,7 @@ class ExcelPrepublicationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "INVALID_NEXT_RELEASE_VERSION"):
             self.run_check(version="v4.18.2")
         for title in ("ふるさと納税 寄附限度額試算    v4.18.34",
-                      "ふるさと納税 寄附限度額試算    v4.18.35 検証版"):
+                      "ふるさと納税 寄附限度額試算    v4.18.36 検証版"):
             with self.subTest(title=title):
                 with ZipFile(self.archive, "w") as z:
                     z.writestr("Furusato_nouzei.xlsm", workbook_bytes(title))

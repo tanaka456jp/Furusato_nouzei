@@ -131,7 +131,7 @@ def main():
 AUTOMATED_SCHEMA = "furusato-excel-release-readiness/v5"
 REPOSITORY = "tanaka456jp/Furusato_nouzei"
 BRANCH = "fix/excel-2026-salary-nta-20261107"
-VERSION = "v4.18.35"
+VERSION = "v4.18.36"
 RELEASE_PR = 5
 RELEASE_JOBS = ("static", "windows_compat", "document_reader", "excel", "ready_to_use_review")
 PC1 = "PC1-Furusato-Excel"

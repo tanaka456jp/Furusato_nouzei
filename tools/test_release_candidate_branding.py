@@ -12,7 +12,7 @@ from make_excel_release_readme import render
 from assemble_excel_candidate_local import assemble
 
 HEAD="a"*40
-VER="v4.18.35"
+VER="v4.18.36"
 
 def make_xlsm(title=None):
     wb=Workbook()
@@ -35,7 +35,7 @@ class ReleaseCandidateBranding(unittest.TestCase):
         verify_release_readme(render(VER,HEAD),VER,HEAD)
 
     def test_old_and_review_labels_rejected(self):
-        for text in ("ふるさと納税 寄附限度額試算    v4.18.34",
+        for text in ("ふるさと納税 寄附限度額試算    v4.18.35",
                      "ふるさと納税 寄附限度額試算    "+VER+" 検証版"):
             with self.subTest(text=text),self.assertRaisesRegex(ValueError,"BRANDING_INVALID"):
                 verify_workbook_labels(make_xlsm(text),VER)
@@ -49,15 +49,15 @@ class ReleaseCandidateBranding(unittest.TestCase):
     def test_ambiguous_workbook_versions_and_readme_versions_fail_closed(self):
         # A valid version appended to a stale title must not make it releasable.
         for title in (
-            "ふるさと納税 寄附限度額試算    "+VER+" / v4.18.34",
-            "ふるさと納税 寄附限度額試算    v4.18.34 / "+VER,
+            "ふるさと納税 寄附限度額試算    "+VER+" / v4.18.35",
+            "ふるさと納税 寄附限度額試算    v4.18.35 / "+VER,
         ):
             with self.subTest(title=title), self.assertRaisesRegex(
                     ValueError, "BRANDING_INVALID"):
                 verify_workbook_labels(make_xlsm(title),VER)
         misleading = render(VER,HEAD).replace(
             "ソースHEAD：".encode("utf-8"),
-            "参考 v4.18.34\\nソースHEAD：".encode("utf-8"))
+            "参考 v4.18.35\\nソースHEAD：".encode("utf-8"))
         with self.assertRaisesRegex(ValueError, "VERSION_OR_SCOPE_INVALID"):
             verify_release_readme(misleading,VER,HEAD)
 
@@ -84,7 +84,7 @@ class ReleaseCandidateBranding(unittest.TestCase):
     def test_release_instructions_match_candidate_version(self):
         # Commands in operator guides must match the current XLSM/README branding.
         docs = Path(__file__).resolve().parents[1] / "docs"
-        for name in ("release-acceptance-one-pass.md", "release-finalization.md"):
+        for name in ("excel-v41836-release.md",):
             with self.subTest(document=name):
                 content = (docs / name).read_text(encoding="utf-8")
                 versions = re.findall(r"--version\s+(v\d+\.\d+\.\d+)", content)
