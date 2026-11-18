@@ -437,6 +437,15 @@ class WithholdingTest(unittest.TestCase):
         self.assertEqual(low_result["STATUS"], "PROVISIONAL")
         self.assertEqual(low_result["REFERENCE_LIMIT"], 0)
         self.assertEqual(low_result["REASON"], "INCOME_LEVY_EXEMPT_SALARY_ONLY")
+        low_with_blank_social = evaluate_page(4, {**low,
+            "warnings": low["warnings"] + [
+                "BLANK_SOCIAL_INSURANCE_REQUIRES_REVIEW"]})
+        self.assertEqual(low_with_blank_social["STATUS"], "PROVISIONAL")
+        self.assertEqual(low_with_blank_social["REFERENCE_LIMIT"], 0)
+        nonexempt_blank = evaluate_page(5, {**life,
+            "warnings": life["warnings"] + [
+                "BLANK_SOCIAL_INSURANCE_REQUIRES_REVIEW"]})
+        self.assertEqual(nonexempt_blank["STATUS"], "HOLD")
 
     def test_batch_pdf_pages_are_independent_and_errors_are_isolated(self):
         with TemporaryDirectory() as folder:
