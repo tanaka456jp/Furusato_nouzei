@@ -176,7 +176,7 @@ try {
         }
         $file=[IO.File]::Open($evidence,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write)
         try {
-            $bytes=[Text.Encoding]::UTF8.GetBytes(($record | ConvertTo-Json -Depth 3)+"\n")
+            $bytes=[Text.Encoding]::UTF8.GetBytes(($record | ConvertTo-Json -Depth 3)+[Environment]::NewLine)
             $file.Write($bytes,0,$bytes.Length)
         } finally { $file.Dispose() }
     }
