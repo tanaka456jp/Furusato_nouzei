@@ -365,9 +365,9 @@ class WithholdingTest(unittest.TestCase):
             content = path.read_text(encoding="ascii")
             rows = content.splitlines()
             self.assertEqual(len(rows), 6)
-            self.assertEqual(rows[0].split("\\t"), list(COLUMNS))
-            self.assertTrue(rows[1].startswith("1\\t2025\\t5000000"))
-            self.assertEqual(rows[2].split("\\t")[7], "")
+            self.assertEqual(rows[0].split("\t"), list(COLUMNS))
+            self.assertTrue(rows[1].startswith("1\t2025\t5000000"))
+            self.assertEqual(rows[2].split("\t")[7], "")
             self.assertNotIn("private_name", content)
 
     def test_batch_pdf_pages_are_independent_and_errors_are_isolated(self):
