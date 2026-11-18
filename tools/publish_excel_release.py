@@ -151,6 +151,12 @@ def require_publication_clearance(report):
 
 
 def publish(out, report):
+    # Public CI artifacts can verify *unsigned* candidate integrity, but cannot
+    # establish the bytes or authority of an independently signed final package.
+    # None of the below publication code may run until a separate authenticated
+    # signed-asset + private human-approval route is implemented and tested.
+    # This unconditional gate cannot be bypassed with forged JSON status flags.
+    require(False, "PUBLICATION_HOLD:SIGNED_FINAL_PACKAGE_ROUTE_NOT_IMPLEMENTED")
     # Must execute BEFORE any GitHub API call or a draft/tag can be created.
     require_publication_clearance(report)
     head = report["head_sha"]
@@ -203,7 +209,7 @@ def main():
     parser.add_argument("--run-id", required=True, type=int)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--publish", action="store_true",
-                        help="Publish only after exact-HEAD CI, package and draft checks")
+                        help="Reserved; always HOLD until signed-final independent approval route exists")
     a = parser.parse_args()
     try:
         report = pull_verified_candidate(a.run_id, a.head, a.output.resolve())

@@ -210,5 +210,33 @@ class ReleaseAutomationTest(unittest.TestCase):
                       publication_blockers(independently_reviewed))
 
 
+    def test_even_forged_all_positive_flags_cannot_publish_ci_candidate(self):
+        # CI candidate ZIP was generated with an unsigned EXE. Independent
+        # metadata string edits cannot transform it into an accepted signed ZIP.
+        forged = {
+            "release_decision": "READY",
+            "head_sha": HEAD,
+            "signing_state": "SIGNED",
+            "reader_authenticode": "VALID_TRUSTED_EXPECTED_SIGNER",
+            "unverified_display_modes": [],
+            "physical_printer_tested": True,
+            "tax_evidence_scope": "INDEPENDENT_2025_2026_REVIEW_APPROVED",
+            "manual_final_approval": "PRIVATE_EXPLICIT_APPROVAL",
+        }
+        self.assertEqual(publication_blockers(forged), [])
+        with tempfile.TemporaryDirectory() as temp, \
+             patch("publish_excel_release.approved_head") as approved, \
+             patch("publish_excel_release.release_for_version") as get_release, \
+             patch("publish_excel_release.api") as api, \
+             patch("publish_excel_release.gh") as gh:
+            with self.assertRaisesRegex(ValueError,
+                                        "PUBLICATION_HOLD:SIGNED_FINAL_PACKAGE_ROUTE_NOT_IMPLEMENTED"):
+                publish(Path(temp), forged)
+            approved.assert_not_called()
+            get_release.assert_not_called()
+            api.assert_not_called()
+            gh.assert_not_called()
+            self.assertEqual(list(Path(temp).iterdir()), [])
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

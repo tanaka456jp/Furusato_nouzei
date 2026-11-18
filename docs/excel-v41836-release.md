@@ -27,3 +27,9 @@ python tools/publish_excel_release.py --run-id <RUN_ID> --head <HEAD_SHA> --outp
 詳細は[税務照合範囲](excel-v41836-tax-scope.md)をご確認ください。
 
 読取EXEの署名手順は[ローカルEXEのAuthenticode署名](sign-reader-exe.md)をご確認ください。署名には手動の明示的な実行が必要で、CIの署名禁止を解除しません。署名済みEXEだけを手作業で検証用ZIPに差し替えて公開することはできません。
+
+## 公開操作の追加安全ロック（署名済み最終ZIPの独立受入経路が未完成）
+
+現状の `publish_excel_release.py` はGitHub Actionsの受入候補を検証できるだけで、署名後の別ZIPを暗号学的に同定し、非公開の税務・実画面・実印刷・発行者承認と結び付けて公開する経路がありません。したがって **`--publish` は、署名状態や承認フラグを手動で全部合格に書き換えても必ず `PUBLICATION_HOLD:SIGNED_FINAL_PACKAGE_ROUTE_NOT_IMPLEMENTED` で拒否**します。これはGitHub APIによるタグ・Release作成より前に実行します。ステージング用 `prepare_official_excel_release.py` も従来どおり `HOLD` です。
+
+正式公開を可能にするには、独立した署名済みアーカイブと配布ハッシュの実体検証・承認者認証・発行対象の固定・非公開証拠の最終監査を実装してテストし、上記ロックを意図的に解除する別の開発・受入工程が必要です。現時点ではタグ `v4.18.36` を発行しません。
