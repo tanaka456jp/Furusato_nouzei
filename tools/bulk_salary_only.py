@@ -11,8 +11,10 @@ from pathlib import Path
 
 from audit_salary_donation_limit import (
     BASIC, independent_nta_fifth_table_salary_income, independent_salary_ceiling,
+    resident_income_levy_exemption_limit,
 )
 from audit_withholding_reconciliation import reconcile
+from audit_insurance_deductions import _insurance_category, _new
 
 COLUMNS = (
     "PAGE", "YEAR", "SALARY_GROSS", "SALARY_INCOME", "TOTAL_DEDUCTIONS",
@@ -28,14 +30,36 @@ ALLOWED_SOURCE_WARNINGS = {
     "MULTIPAGE_SELECTED_PAGE_REVIEW", "INCOMPLETE_OR_UNVERIFIED",
 }
 COMPLEX_FIELDS = {
-    "life_new", "life_old", "medical_care", "annuity_new", "annuity_old",
-    "earthquake_paid", "life_deduction_reference",
-    "earthquake_deduction_reference", "mortgage_credit",
+    "earthquake_paid", "earthquake_deduction_reference", "mortgage_credit",
     "mortgage_possible_credit", "mortgage_claim_count",
     "mortgage_occupancy_year", "spouse_income_reference",
     "special_relative_count", "special_relative_deduction_reference",
-    "under16_count", "income_adjustment",
+    "income_adjustment",
 }
+
+
+def _life_deductions(fields: dict) -> tuple[int, int]:
+    """Compute insurance relief from the five *paid premium* boxes.
+
+    Earthquake cases remain outside batch mode, since the slip alone does
+    not distinguish old-long-term contracts and paid premiums.
+    The national result must reconcile to G27 before resident use.
+    """
+    amounts = [fields.get(key, 0) for key in
+               ("life_new", "life_old", "medical_care", "annuity_new",
+                "annuity_old")]
+    if any(type(x) is not int or not 0 <= x <= 10**9 for x in amounts):
+        raise ValueError("INVALID_LIFE_PREMIUM")
+    life_new, life_old, care, annuity_new, annuity_old = amounts
+    results = []
+    for resident in (False, True):
+        total = (
+            _insurance_category(life_new, life_old, resident=resident)
+            + _new(care, resident=resident)
+            + _insurance_category(annuity_new, annuity_old, resident=resident)
+        )
+        results.append(min(total, 70_000 if resident else 120_000))
+    return results[0], results[1]
 
 
 def evaluate_page(page: int, evidence: dict) -> dict:
@@ -83,24 +107,46 @@ def evaluate_page(page: int, evidence: dict) -> dict:
         row["REASON"] = "SALARY_REFERENCE_NOT_RECONCILED"
         return row
     basic = next((v for limit, v in BASIC[year] if salary_income <= limit), 0)
+    try:
+        national_life, resident_life = _life_deductions(fields)
+    except ValueError:
+        row["REASON"] = "LIFE_PREMIUM_SINGLE_ONLY"
+        return row
+    if fields.get("life_deduction_reference", 0) != national_life:
+        row["REASON"] = "LIFE_DEDUCTION_NOT_RECONCILED"
+        return row
     if (fields["basic_reference"] != basic or
-            fields["deductions_reference"] != fields["social_insurance"] + basic):
+            fields["deductions_reference"] != (
+                fields["social_insurance"] + basic + national_life)):
         row["REASON"] = "NATIONAL_DEDUCTIONS_SINGLE_ONLY"
         return row
     if reconcile(year, fields)["source_tax"] != "MATCH":
         row["REASON"] = "SOURCE_TAX_NOT_RECONCILED"
         return row
-    # The income-levy exemption depends on dependents who might not reduce
-    # national income tax (notably under-16 children). Treat all cases
-    # within the possible five-person exemption band as ambiguous.
-    if salary_income <= 35_0000 * 6 + 42_0000:
+    under16 = fields.get("under16_count")
+    if under16 is not None and (type(under16) is not int or
+                                not 0 <= under16 <= 30):
+        row["REASON"] = "UNDER16_REVIEW_REQUIRED"
+        return row
+    # A salary income <=450k is universally below the ordinary income-levy
+    # exemption. Higher income may be exempt depending on under-16 children;
+    # do not fabricate zero children if the PDF omitted the count entirely.
+    if salary_income <= 450_000 or (
+            under16 is not None and salary_income <=
+            resident_income_levy_exemption_limit(under16)):
+        row["REFERENCE_LIMIT"] = 0
+        row["STATUS"] = "PROVISIONAL"
+        row["REASON"] = "INCOME_LEVY_EXEMPT_SALARY_ONLY"
+        return row
+    if under16 is None and salary_income <= 2_520_000:
         row["REASON"] = "FAMILY_EXEMPTION_MAY_APPLY"
         return row
     try:
         values = [
             independent_salary_ceiling(
                 year=year, salary_income=salary_income,
-                resident_deductions=fields["social_insurance"] + 430_000,
+                resident_deductions=(
+                    fields["social_insurance"] + 430_000 + resident_life),
                 personal_difference=50_000, municipality=place,
             )["thousand_yen_reference"]
             for place in ("standard", "designated")
