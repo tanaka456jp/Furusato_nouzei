@@ -371,6 +371,41 @@ Failed:
     Resume CleanUp
 End Sub
 
+Private Function BatchReasonLabel(ByVal code As String) As String
+    Select Case code
+        Case "SALARY_ONLY_HYPOTHESIS"
+            BatchReasonLabel = "給与所得のみ・他所得等なしを仮定"
+        Case "YEAR_UNREADABLE"
+            BatchReasonLabel = "源泉徴収票の所得年を確認"
+        Case "REQUIRED_FIELDS_MISSING"
+            BatchReasonLabel = "給与・控除など必須数値を原票確認"
+        Case "SOURCE_WARNINGS_MISSING", "SOURCE_REVIEW_REQUIRED"
+            BatchReasonLabel = "源泉票の読取結果を個別確認"
+        Case "COMPLEX_DEDUCTIONS_SINGLE_ONLY"
+            BatchReasonLabel = "扶養・保険料・住宅控除等は単独精緻計算"
+        Case "HIGH_INCOME_SINGLE_ONLY"
+            BatchReasonLabel = "高額給与の特例は単独計算"
+        Case "SALARY_REFERENCE_NOT_RECONCILED"
+            BatchReasonLabel = "給与所得の法定計算との不一致"
+        Case "NATIONAL_DEDUCTIONS_SINGLE_ONLY"
+            BatchReasonLabel = "所得控除の内訳は単独計算で確認"
+        Case "SOURCE_TAX_NOT_RECONCILED"
+            BatchReasonLabel = "源泉税額との整合性が未確認"
+        Case "FAMILY_EXEMPTION_MAY_APPLY"
+            BatchReasonLabel = "扶養人数による住民税非課税を個別確認"
+        Case "RESIDENT_TAX_SINGLE_ONLY"
+            BatchReasonLabel = "住民税の課税条件を個別確認"
+        Case "MUNICIPALITY_UNCERTAIN"
+            BatchReasonLabel = "自治体区分により試算額が異なります"
+        Case "UNSUPPORTED_OR_UNVERIFIED"
+            BatchReasonLabel = "一括計算の対応条件外"
+        Case "PAGE_READ_ERROR"
+            BatchReasonLabel = "該当ページを読み取れません"
+        Case Else
+            Err.Raise vbObjectError + 360, , "一覧の理由コードが未承認です。"
+    End Select
+End Function
+
 Private Function ParseBatchNumber(ByVal source As String, _
                                   ByVal allowEmpty As Boolean) As Variant
     If source = "" And allowEmpty Then
@@ -451,7 +486,7 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
                                           col > 1 And status = "HOLD")
         Next col
         record(9) = IIf(status = "HOLD", "HOLD／要確認", "参考額（仮）")
-        record(10) = CStr(pieces(9))
+        record(10) = BatchReasonLabel(CStr(pieces(9)))
         rows.Add record
     Loop
     inputFile.Close
