@@ -323,6 +323,24 @@ class WithholdingTest(unittest.TestCase):
                     self.assertNotIn("BLANK_SOCIAL_INSURANCE_REQUIRES_REVIEW",
                                      result["warnings"])
 
+            # Invoke the real local CLI on an anonymous native PDF: one
+            # human-readable Excel row per source page, never 5 merged people.
+            batch = Path(folder) / "five-source-rows.tsv"
+            subprocess.run([sys.executable,
+                            str(Path(__file__).parent / "withholding_reader.py"),
+                            "--input", str(source),
+                            "--output", str(batch), "--batch-bridge"],
+                           check=True, capture_output=True, text=True)
+            records = batch.read_text(encoding="ascii").splitlines()
+            self.assertEqual(len(records), 6)
+            self.assertEqual(records[0].split("\t"), list(COLUMNS))
+            for number in range(1, 6):
+                values = records[number].split("\t")
+                self.assertEqual(values[0], str(number))
+                self.assertEqual(values[1], "2025")
+                self.assertEqual(values[2], str(5_000_000 + (number - 1) * 100_000))
+                self.assertIn(values[8], ("HOLD", "PROVISIONAL"))
+
     def test_batch_salary_only_provisional_and_complex_hold(self):
         # No names, no addresses, no outside income: five independent rows.
         simple = {
