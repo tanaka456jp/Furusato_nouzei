@@ -127,6 +127,8 @@ class WorkbookTest(unittest.TestCase):
         self.assertIn("精緻計算は操作画面", batch["A2"].value)
         self.assertIn("HOLD", batch["A3"].value)
         self.assertEqual(batch["A4"].hyperlink.location, "'操作画面'!A1")
+        self.assertGreaterEqual(batch.row_dimensions[4].height, 30)
+        self.assertGreaterEqual(batch.column_dimensions["B"].width, 18)
         self.assertEqual(batch["D4"].value, "=COUNT(A6:A105)")
         self.assertEqual(batch["F4"].value, '=COUNTIF(I6:I105,"参考額（仮）")')
         self.assertEqual(batch["H4"].value, '=COUNTIF(I6:I105,"HOLD／要確認")')
