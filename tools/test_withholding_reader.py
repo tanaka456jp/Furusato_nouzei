@@ -8,6 +8,7 @@ import unittest
 from unittest.mock import patch
 from withholding_reader import CODE_MAP,detect_year,extract_codes,extract_labelled,extract_occupancy_year,extract,finish,write_bridge,pdf_page_count
 from audit_withholding_reconciliation import progressive_income_tax, reconcile
+from bulk_salary_only import evaluate_page, write_batch_bridge, all_page_rows, COLUMNS
 
 
 def pdf_fixture_library():
@@ -321,6 +322,69 @@ class WithholdingTest(unittest.TestCase):
                     self.assertEqual(result["fields"]["social_insurance"], 1_000_000)
                     self.assertNotIn("BLANK_SOCIAL_INSURANCE_REQUIRES_REVIEW",
                                      result["warnings"])
+
+    def test_batch_salary_only_provisional_and_complex_hold(self):
+        # No names, no addresses, no outside income: five independent rows.
+        simple = {
+            "schema": "furusato-withholding-extract/v1",
+            "year": 2025, "format": "PDF_PAGE_SELECTED",
+            "status": "REQUIRES_REVIEW",
+            "warnings": ["MULTIPAGE_SELECTED_PAGE_REVIEW",
+                         "INCOMPLETE_OR_UNVERIFIED"],
+            "fields": {
+                "salary_gross": 5_000_000,
+                "salary_reference": 3_560_000,
+                "deductions_reference": 1_680_000,
+                "income_tax_withheld": 95_900,
+                "social_insurance": 1_000_000,
+                "basic_reference": 680_000,
+            },
+        }
+        first = evaluate_page(1, simple)
+        self.assertEqual(first["STATUS"], "PROVISIONAL")
+        self.assertIsInstance(first["REFERENCE_LIMIT"], int)
+        self.assertGreater(first["REFERENCE_LIMIT"], 0)
+        self.assertEqual(first["REASON"], "SALARY_ONLY_HYPOTHESIS")
+        housing = evaluate_page(2, {**simple,
+            "fields": {**simple["fields"], "mortgage_credit": 50_000}})
+        self.assertEqual(housing["STATUS"], "HOLD")
+        self.assertEqual(housing["REFERENCE_LIMIT"], "")
+        self.assertEqual(housing["REASON"], "COMPLEX_DEDUCTIONS_SINGLE_ONLY")
+        family = evaluate_page(3, {**simple,
+            "fields": {**simple["fields"], "under16_count": 1}})
+        self.assertEqual(family["STATUS"], "HOLD")
+        wrong_tax = evaluate_page(4, {**simple,
+            "fields": {**simple["fields"], "income_tax_withheld": 0}})
+        self.assertEqual(wrong_tax["REASON"], "SOURCE_TAX_NOT_RECONCILED")
+        bad_year = evaluate_page(5, {**simple, "year": None})
+        self.assertEqual(bad_year["STATUS"], "HOLD")
+        self.assertEqual(bad_year["REASON"], "YEAR_UNREADABLE")
+        with TemporaryDirectory() as folder:
+            path = Path(folder) / "private-safe-numeric-only.tsv"
+            write_batch_bridge([first, housing, family, wrong_tax, bad_year], path)
+            content = path.read_text(encoding="ascii")
+            rows = content.splitlines()
+            self.assertEqual(len(rows), 6)
+            self.assertEqual(rows[0].split("\\t"), list(COLUMNS))
+            self.assertTrue(rows[1].startswith("1\\t2025\\t5000000"))
+            self.assertEqual(rows[2].split("\\t")[7], "")
+            self.assertNotIn("private_name", content)
+
+    def test_batch_pdf_pages_are_independent_and_errors_are_isolated(self):
+        with TemporaryDirectory() as folder:
+            pdf = Path(folder) / "anonymous.pdf"
+            pdf.write_bytes(b"synthetic disposable; PDF functions mocked")
+            base = {"year": 2025, "fields": {}, "warnings": []}
+            with patch("withholding_reader.pdf_page_count", return_value=5):
+                with patch("withholding_reader.extract",
+                           side_effect=[base, base, RuntimeError("PRIVATE SOURCE"),
+                                        base, base]):
+                    rows = all_page_rows(pdf)
+            self.assertEqual(len(rows), 5)
+            self.assertEqual([r["PAGE"] for r in rows], [1, 2, 3, 4, 5])
+            self.assertEqual(rows[2]["STATUS"], "HOLD")
+            self.assertEqual(rows[2]["REASON"], "PAGE_READ_ERROR")
+            self.assertNotIn("PRIVATE", str(rows))
 
     def test_layered_pdf_mortgage_occupancy_n01_date_geometry(self):
         # The housing date must come from the N01 row, not the L01 title.
