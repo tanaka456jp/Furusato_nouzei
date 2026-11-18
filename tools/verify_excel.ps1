@@ -685,6 +685,7 @@ try {
     # enforce age/eligibility and respect the different 2025/2026 thresholds.
     $relativeSheet.Range('C8').Value2 = 600000.0
     $relativeSheet.Range('B8').Value2 = 20.0
+    $relativeSheet.Range('D8').Value2 = '未確認'
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value ([string]$relativeSheet.Range('G8').Value2) '要確認' 'Unconfirmed fifth relative is held'
     Assert-Value ([string]$homeSheet.Range('B8').Value2) '' 'Unconfirmed fifth relative masks donation limit'
