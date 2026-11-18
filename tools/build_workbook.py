@@ -1365,7 +1365,7 @@ def build(source, output):
     detail["B23"].font = Font(name="Yu Gothic", bold=True, color="9C4100")
     detail.print_area = "A1:D23"
     for sheet in book:
-        sheet.sheet_state = "visible" if sheet in (home, relatives) else "veryHidden"
+        sheet.sheet_state = "visible" if sheet in (home, relatives, batch) else "veryHidden"
         sheet.sheet_view.tabSelected = sheet == home
     book.active = 0
     # Retain a complete first-open calculation while allowing Excel to use
