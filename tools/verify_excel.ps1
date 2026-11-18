@@ -512,8 +512,8 @@ try {
         Assert-Value $relativeSheet.Cells.Item($row,6).Value2 $p.Levy ('Resident-tax relative ' + $row)
         Assert-Value ([string]$relativeSheet.Cells.Item($row,7).Value2) $p.Category ('Income-year classification ' + $row)
     }
-    Assert-Value $relativeSheet.Range('E35').Value2 1990000 'Five-person income-tax deduction total'
-    Assert-Value $relativeSheet.Range('F35').Value2 1650000 'Five-person resident-tax deduction total'
+    Assert-Value $relativeSheet.Range('E10').Value2 1990000 'Five-person income-tax deduction total'
+    Assert-Value $relativeSheet.Range('F10').Value2 1650000 'Five-person resident-tax deduction total'
     Assert-Value $engineSheet.Range('F38').Value2 1990000 'Engine includes each relative exactly once'
     Assert-Value $engineSheet.Range('H38').Value2 1650000 'Engine resident deductions do not repeat'
     Assert-Value $homeSheet.Range('B31').Value2 3660000 'Five-person overall income-tax deductions'
@@ -521,8 +521,8 @@ try {
     Assert-Value $homeSheet.Range('B28').Value2 '正常' 'All relatives individually reviewed'
     # A G72/G74 source count describes the four SPECIAL relatives only,
     # not the separate 500,000-yen regular special dependent.
-    Assert-Value $relativeSheet.Range('E36').Value2 4 'Four special-relatives rather than five relatives total'
-    Assert-Value $relativeSheet.Range('E37').Value2 1360000 'Four-special-relative G74 income-tax total'
+    Assert-Value $relativeSheet.Range('E11').Value2 4 'Four special-relatives rather than five relatives total'
+    Assert-Value $relativeSheet.Range('E12').Value2 1360000 'Four-special-relative G74 income-tax total'
     $sourceAudit.Range('B38').Value2 = 4.0
     $sourceAudit.Range('B39').Value2 = 1360000.0
     # Exercise the *real VBA* source reconciler rather than copying the
@@ -555,9 +555,9 @@ try {
     $sourceAudit.Range('B38').Value2 = 5.0
     $errorText = [string]($excel.Run('TaxLawUpdater.SpecialRelativeSourceCheckForTest'))
     if ($errorText -notlike '*人数分*') { throw 'Five asserted G72 but only four confirmed relatives were accepted' }
-    $sourceAudit.Range('B38').Value2 = 31.0
+    $sourceAudit.Range('B38').Value2 = 6.0
     $errorText = [string]($excel.Run('TaxLawUpdater.SpecialRelativeSourceCheckForTest'))
-    if ($errorText -notlike '*上限*') { throw 'G72 count 31 was accepted' }
+    if ($errorText -notlike '*上限*') { throw 'G72 count 6 was accepted' }
     $sourceAudit.Range('B38').Value2 = 4.5
     $errorText = [string]($excel.Run('TaxLawUpdater.SpecialRelativeSourceCheckForTest'))
     if ($errorText -notlike '*整数*') { throw 'Fractional G72 count was accepted' }
@@ -566,7 +566,7 @@ try {
     $errorText = [string]($excel.Run('TaxLawUpdater.SpecialRelativeSourceCheckForTest'))
     if ($errorText -notlike '*未確認*') { throw 'Unconfirmed fifth relative bypassed the source audit' }
     $relativeSheet.Range('D8').Value2 = '要件確認済'
-    # Person 30 must be included in both statutory totals and G72/G74,
+    # Person 5 must be included in both statutory totals and G72/G74,
     # not silently omitted by a hard-coded three-person or five-person loop.
     $relativeSheet.Range('B8').Value2 = 21.0
     $relativeSheet.Range('C8').Value2 = 850000.0
@@ -574,14 +574,14 @@ try {
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value $relativeSheet.Range('E8').Value2 630000 'Fifth relative income-tax amount'
     Assert-Value $relativeSheet.Range('F8').Value2 450000 'Fifth relative resident-tax amount'
-    Assert-Value $relativeSheet.Range('E35').Value2 2620000 'Fifth relative included in national total'
-    Assert-Value $relativeSheet.Range('F35').Value2 2100000 'Fifth relative included in municipal total'
+    Assert-Value $relativeSheet.Range('E10').Value2 2620000 'Fifth relative included in national total'
+    Assert-Value $relativeSheet.Range('F10').Value2 2100000 'Fifth relative included in municipal total'
     $errorText = [string]($excel.Run('TaxLawUpdater.SpecialRelativeSourceCheckForTest'))
     if ($errorText -notlike '*人数分*') { throw 'Fifth relative was omitted from G72 count review' }
     $sourceAudit.Range('B38').Value2 = 5.0
     $sourceAudit.Range('B39').Value2 = 1990000.0
     Assert-Value ([string]($excel.Run('TaxLawUpdater.SpecialRelativeSourceCheckForTest'))) 'OK' 'Five special relatives including row8'
-    $relativeSheet.Range('B8,C33').ClearContents()
+    $relativeSheet.Range('B8,C8').ClearContents()
     $relativeSheet.Range('D8').Value2 = '未確認'
     $sourceAudit.Range('B38').Value2 = 4.0
     $sourceAudit.Range('B39').Value2 = 1360000.0
@@ -1964,7 +1964,7 @@ try {
     Assert-Value $relativeSheet.Range('E8').Value2 610000 'Fifth-relative tax deduction after auto recalc'
     Assert-Value $relativeSheet.Range('F8').Value2 450000 'Fifth-relative municipal deduction after auto recalc'
     Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Fifth-relative confirmation restores eligibility'
-    $relativeSheet.Range('B8,C33').ClearContents()
+    $relativeSheet.Range('B8,C8').ClearContents()
     $relativeSheet.Range('D8').Value2 = '未確認'
     $homeSheet.Range('D24').Value2 = $previousRelativeReturnMode
     $excel.Run('TaxLawUpdater.RecalculateCase')
@@ -2054,7 +2054,7 @@ try {
         throw 'Temporary PDF remained after success or rejected overwrite'
     }
 
-    # Save the case with a real eligible person in the 30th slot.  Check
+    # Save the case with a real eligible person in the fifth slot.  Check
     # that age, income, eligibility, calculated deductions, and the overall
     # donation result survive SaveCopyAs and reopen. The test is isolated.
     QA-Stage 'relative-fifth-case-persistence-start'
@@ -2069,7 +2069,7 @@ try {
     Assert-Value $relativeSheet.Range('F8').Value2 450000 'Fifth saved-relative resident deduction'
     Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Case is eligible with fifth relative'
     $expectedSavedDonation = [double]$homeSheet.Range('B8').Value2
-    if ($expectedSavedDonation -le 0) { throw 'Thirty-person case has no valid donation estimate' }
+    if ($expectedSavedDonation -le 0) { throw 'Five-person case has no valid donation estimate' }
     # Save a separate case file, verify its content, and reject accidental overwrite.
     $casePath = Join-Path $dir 'case_preservation.xlsm'
     QA-Stage 'case-save-start'
@@ -2116,9 +2116,9 @@ try {
         $savedCase.Close($false)
     }
 
-    # The saved copy retains the confirmed 30th relative, while the
+    # The saved copy retains the confirmed fifth relative, while the
     # isolated main QA copy returns to the original salary-only baseline.
-    $relativeSheet.Range('B8,C33').ClearContents()
+    $relativeSheet.Range('B8,C8').ClearContents()
     $relativeSheet.Range('D8').Value2 = '未確認'
     $homeSheet.Range('D24').Value2 = $previousCaseReturnMode
     $excel.Run('TaxLawUpdater.RecalculateCase')
