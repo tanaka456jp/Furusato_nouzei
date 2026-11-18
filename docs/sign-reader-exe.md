@@ -6,11 +6,11 @@
 2. 受入済みEXEのSHA-256を独立確認します。入力EXEと異なる**リポジトリ外の非公開フォルダー**に出力します。既存出力の上書きは拒否します。
 3. まず次の**事前検査のみ**を実行します（署名は実行されません）。
 
-\`\`\`powershell
+```powershell
 .\tools\sign_reader_exe_local.ps1 -SourceExe "C:\Furusato\accepted\FurusatoDocumentReader.exe" -OutputExe "C:\Furusato\private\FurusatoDocumentReader_signed.exe" -ExpectedSourceSha256 "<受入済みEXEの実際の64桁SHA-256>" -CertificateThumbprint "<実在する40桁の署名証明書Thumbprint>" -TimestampUrl "https://timestamp.digicert.com"
-\`\`\`
+```
 
-4. 人手で証明書・配布契約・署名者を確認した場合のみ、同じ引数に \`-Execute -EvidencePath "C:\Furusato\private\reader_signing.json"\` を追加します。GitHub Actions等のCIでの実行は拒否します。
+4. 人手で証明書・配布契約・署名者を確認した場合のみ、同じ引数に `-Execute -EvidencePath "C:\Furusato\private\reader_signing.json"` を追加します。GitHub Actions等のCIでの実行は拒否します。
 5. 実行時は原本を保持したコピーにSHA-256/RFC3161で署名し、SignTool verify（/pa /all /tw）とWindows Authenticodeの署名者・タイムスタンプを検査します。失敗時に作成されたEXEは削除します。新しいEXEハッシュとローカルのみの証拠JSONを記録します。
 
 ## 完了しても正式公開ではない
