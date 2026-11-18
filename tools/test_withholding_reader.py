@@ -241,6 +241,65 @@ class WithholdingTest(unittest.TestCase):
         self.assertEqual(detect_year("令和 7 年分"),2025)
         self.assertIsNone(detect_year("令和 7 年分 令和 8 年分"))
 
+    def test_layered_pdf_income_year_uses_l01_geometry_not_text_order(self):
+        # NTA-style embedded PDF layers can put the year digit before
+        # the Reiwa era and the L01 label in extracted text. All synthetic.
+        header = [
+            (77, 51, 85, 56, "L01"),
+            (94, 47, 118, 59, "令和"),
+            (141, 47, 152, 59, "7"),
+            (169, 48, 193, 60, "年分"),
+        ]
+        self.assertIsNone(detect_year("7\\n令和\\nL01 年分"))
+        self.assertEqual(detect_year("7\\n令和\\nL01 年分", header), 2025)
+        self.assertIsNone(detect_year("令和 8 年分", header))
+        self.assertIsNone(detect_year("令和 7 年分 令和 8 年分", header))
+        # The source's housing occupancy year must not be used.
+        elsewhere = [(94, 47, 118, 59, "令和"),
+                     (141, 47, 152, 59, "7"),
+                     (169, 48, 193, 60, "年分")]
+        self.assertIsNone(detect_year("7\\n令和", elsewhere))
+        new_year = [(x0, y0, x1, y1, "8" if token == "7" else token)
+                    for x0, y0, x1, y1, token in header]
+        self.assertEqual(detect_year("8\\n令和\\nL01 年分", new_year), 2026)
+
+    def test_layered_pdf_blank_social_insurance_is_provisional(self):
+        # A genuinely empty G26 box must not block transcription entirely
+        # or be silently approved as a confirmed zero.
+        words = [
+            (77, 51, 85, 56, "L01"), (94, 47, 118, 59, "令和"),
+            (141, 47, 152, 59, "7"), (169, 48, 193, 60, "年分"),
+            (104, 218, 115, 223, "G04"), (178, 215, 233, 226, "5,000,000"),
+            (452, 218, 463, 223, "G08"), (533, 215, 538, 224, "0"),
+            (138, 308, 149, 314, "G26"),
+        ]
+        with TemporaryDirectory() as folder:
+            source = Path(folder) / "synthetic-only.pdf"
+            source.write_bytes(b"SYNTHETIC FIXTURE; DOCUMENT CONTENT MOCKED")
+            with patch("withholding_reader.document_content",
+                       return_value=("7\\n令和\\nL01 年分", words, "PDF_TEXT")):
+                record = extract(source)
+            self.assertEqual(record["year"], 2025)
+            self.assertEqual(record["fields"]["social_insurance"], 0)
+            self.assertEqual(record["fields"]["salary_gross"], 5_000_000)
+            self.assertEqual(record["status"], "REQUIRES_REVIEW")
+            self.assertIn("BLANK_SOCIAL_INSURANCE_REQUIRES_REVIEW",
+                          record["warnings"])
+            bridge = Path(folder) / "result.tsv"
+            write_bridge(record, bridge)
+            self.assertIn("YEAR\\t2025", bridge.read_text(encoding="utf-8"))
+            self.assertIn("social_insurance\\t0", bridge.read_text(encoding="utf-8"))
+            # A separately printed amount keeps the existing READY behavior.
+            with patch("withholding_reader.document_content",
+                       return_value=("7\\n令和\\nL01 年分",
+                                     words + [(215, 305, 260, 314, "1,000,000")],
+                                     "PDF_TEXT")):
+                explicit = extract(source)
+            self.assertEqual(explicit["fields"]["social_insurance"], 1_000_000)
+            self.assertNotIn("BLANK_SOCIAL_INSURANCE_REQUIRES_REVIEW",
+                             explicit["warnings"])
+            self.assertEqual(explicit["status"], "READY_FOR_EXCEL_CROSSCHECK")
+
     def test_g_codes_with_nearby_amounts(self):
         words=[
             (104,218,115,223,"G04"),(178,215,233,226,"5,000,000"),
