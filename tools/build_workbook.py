@@ -23,6 +23,7 @@ ADVANCED = "例外・分離課税"
 SPLIT_ALLOC = "分離課税寄附控除"
 MORTGAGE_RETURN = "住宅確申寄附検算"
 RELATIVES = "特定親族明細"
+BATCH = "一括計算一覧"
 RELATIVE_LAST_ROW = 8  # 5 attested relatives; first three use home D14:D16
 
 
@@ -61,6 +62,7 @@ def build(source, output):
     del book[HOME]
     home = book.create_sheet(HOME, 0)
     relatives = book.create_sheet(RELATIVES, 1)
+    batch = book.create_sheet(BATCH, 2)
     detail = book.create_sheet(DETAIL)
     extra = book.create_sheet(ADVANCED)
     split = book.create_sheet(SPLIT_ALLOC)
@@ -535,6 +537,58 @@ def build(source, output):
             FormulaRule(formula=['ISNUMBER($D$25)'],
                 fill=PatternFill("solid", fgColor="FFF0C2"),
                 font=Font(name="Yu Gothic", bold=True, color="9C4100")))
+    # Read-only multi-page overview: this view never changes the current
+    # taxpayer's single-case inputs or the precise donation calculation.
+    # One PDF page = one table row; uncertain family, residence or additional
+    # income conditions remain HOLD rather than producing a false tax limit.
+    batch.sheet_view.showGridLines = False
+    batch.sheet_view.zoomScale = 85
+    for col, width in {"A": 9, "B": 11, "C": 19, "D": 19,
+                       "E": 19, "F": 18, "G": 19, "H": 19,
+                       "I": 15, "J": 36}.items():
+        batch.column_dimensions[col].width = width
+    for line, note_text, height in (
+        (1, "源泉徴収票｜複数人一括計算一覧（給与所得のみ・参考額）", 29),
+        (2, "源泉徴収票の給与所得だけを想定。その他の所得・申告分離課税は対象外。精緻計算は操作画面で1人ずつ行ってください。", 34),
+        (3, "HOLDは限度額を表示しません。参考額も確定金額ではありません。源泉票にない家族・自治体・控除等の条件を確認してください。", 34),
+    ):
+        batch.merge_cells(start_row=line, start_column=1, end_row=line, end_column=10)
+        cell = batch.cell(row=line, column=1, value=note_text)
+        cell.alignment = Alignment(wrap_text=True, vertical="center")
+        batch.row_dimensions[line].height = height
+    batch["A1"].font = Font(name="Yu Gothic", size=14, bold=True, color="FFFFFF")
+    batch["A1"].fill = PatternFill("solid", fgColor="163A56")
+    batch["A4"] = "操作画面に戻る"
+    batch["A4"].hyperlink = Hyperlink(ref="A4", location="'操作画面'!A1")
+    batch["A4"].style = "Hyperlink"
+    for col, caption in enumerate((
+        "ページ", "所得年", "支払金額（円）", "給与所得（円）",
+        "所得控除合計（円）", "源泉徴収税額（円）", "社会保険料（円）",
+        "上限額参考（円）", "判定", "要確認理由（コード）",
+    ), 1):
+        cell = batch.cell(row=5, column=col, value=caption)
+        cell.fill = PatternFill("solid", fgColor="163A56")
+        cell.font = Font(name="Yu Gothic", bold=True, color="FFFFFF")
+        cell.alignment = Alignment(wrap_text=True, vertical="center")
+    batch.row_dimensions[5].height = 32
+    batch.freeze_panes = "C6"
+    batch.auto_filter.ref = "A5:J105"
+    batch.sheet_properties.pageSetUpPr.fitToPage = True
+    batch.page_setup.fitToWidth = 1
+    batch.page_setup.fitToHeight = 0
+    batch.page_setup.orientation = "landscape"
+    batch.page_setup.paperSize = batch.PAPERSIZE_A3
+    batch.print_options.gridLines = False
+    for row in range(6, 106):
+        batch.row_dimensions[row].height = 21
+        for col in range(1, 11):
+            cell = batch.cell(row=row, column=col)
+            cell.protection = Protection(locked=True)
+            if col in (3, 4, 5, 6, 7, 8):
+                cell.number_format = "#,##0;[Red](#,##0);-"
+            if row % 2 == 0:
+                cell.fill = PatternFill("solid", fgColor="F4F8FB")
+
     # Separate every special-age relative's income and legal eligibility.
     # The first three retain the existing home input cells; remaining relatives
     # are entered on this visible sheet.  No unconfirmed person gets an amount.
