@@ -118,6 +118,41 @@ class WorkbookTest(unittest.TestCase):
         self.assertEqual(self.book[ENGINE]["F24"].value,
                          self.baseline[ENGINE]["F24"].value)
 
+    def test_multi_person_salary_only_overview_is_isolated(self):
+        batch = self.book["一括計算一覧"]
+        home = self.book[HOME]
+        self.assertEqual(batch.sheet_state, "visible")
+        self.assertIn("給与所得のみ", batch["A1"].value)
+        self.assertIn("その他の所得", batch["A2"].value)
+        self.assertIn("精緻計算は操作画面", batch["A2"].value)
+        self.assertIn("HOLD", batch["A3"].value)
+        self.assertEqual(batch["A4"].hyperlink.location, "'操作画面'!A1")
+        self.assertEqual(batch["A5"].value, "ページ")
+        self.assertEqual(batch["H5"].value, "上限額参考（円）")
+        self.assertEqual(batch["I5"].value, "判定")
+        self.assertEqual(batch["J5"].value, "要確認理由（コード）")
+        self.assertEqual(batch.freeze_panes, "C6")
+        self.assertEqual(batch.auto_filter.ref, "A5:J105")
+        for row in (6, 9, 105):
+            self.assertIsNone(batch[f"H{row}"].value)
+        vb = (ROOT / "vba/TaxLawUpdater.bas").read_text(encoding="utf-8-sig")
+        setup = (ROOT / "tools/setup.ps1").read_text(encoding="utf-8-sig")
+        self.assertIn('Public Sub ImportWithholdingBatch()', vb)
+        self.assertIn('Public Function LoadBatchFromTsv(', vb)
+        self.assertIn('"一括計算一覧"', vb)
+        self.assertIn('If status = "HOLD" And Len(CStr(pieces(7))) > 0 Then', vb)
+        self.assertIn('target.Range("A6:J105").ClearContents', vb)
+        self.assertIn(" --batch-bridge", vb)
+        self.assertIn('BindButton "操作画面", "btnImportWithholdingBatch"', vb)
+        self.assertIn("Add-WorkbookButton $sheet 'D3' '複数人一覧'", setup)
+        # The bulk command never copies one person's values into the
+        # single-case input B12/B15/B16 nor alters calculation formulas.
+        bulk = vb.split("Public Sub ImportWithholdingBatch()", 1)[1].split(
+            "' Import only allowlisted numeric fields", 1)[0]
+        self.assertNotIn('home.Range("B12")', bulk)
+        self.assertNotIn('home.Range("B15")', bulk)
+        self.assertNotIn('home.Range("B16")', bulk)
+
     def test_five_relative_individual_tax_and_resident_wiring(self):
         rel = self.book["特定親族明細"]
         home = self.book[HOME]
