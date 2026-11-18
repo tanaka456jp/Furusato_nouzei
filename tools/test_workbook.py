@@ -173,7 +173,7 @@ class WorkbookTest(unittest.TestCase):
             self.assertIn(f"'操作画面'!{r}",fingerprint)
         self.assertIn("SUM(E4:E8)",rel["E35"].value)
         self.assertIn("SUM(F4:F8)",rel["F35"].value)
-        for address in ("B7","B16","B17","C7"):
+        for address in ("B7","B8","C7","C8"):
             self.assertTrue(any(address in str(rule.sqref)
                                 for rule in rel.data_validations.dataValidation))
 
@@ -257,7 +257,7 @@ class WorkbookTest(unittest.TestCase):
         self.assertIn('Sh Is Me.Worksheets("特定親族明細")', setup)
         excel_qa = (ROOT / "tools" / "verify_excel.ps1").read_text(encoding="utf-8-sig")
         self.assertIn("relative-sheet-manual-stale-result-pass", excel_qa)
-        self.assertIn("relative-thirtieth-case-persistence-pass", excel_qa)
+        self.assertIn("relative-fifth-case-persistence-pass", excel_qa)
         self.assertIn("Saved case keeps thirtieth-relative income", excel_qa)
 
     def test_pdf_visual_acceptance_has_a_static_contract(self):
