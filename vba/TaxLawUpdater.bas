@@ -376,7 +376,9 @@ Public Sub ImportWithholding()
                 "PDFに " & CStr(pageCount) & " ページあります。" & vbCrLf & _
                 "取り込む納税者のページ番号を入力してください（1～" & _
                 CStr(pageCount) & "）。" & vbCrLf & _
-                "ほかのページの金額は合算せず、選択した1ページだけ仮転記します。", _
+                "このExcelは1納税者1案件です。" & vbCrLf & _
+                "ほかのページの金額は合算しません。各人の案件を保存後、" & _
+                "別ページを新しい案件へ取り込んでください。", _
                 "源泉徴収票のページ選択", Type:=1)
             If VarType(pageChoice) = vbBoolean Then GoTo CleanUp
             If Not IsNumeric(pageChoice) Then _
@@ -417,7 +419,10 @@ Public Sub ImportWithholding()
     If status <> "READY_FOR_EXCEL_CROSSCHECK" And status <> "REQUIRES_REVIEW" Then
         Err.Raise vbObjectError + 207, , "読取状態が不正です。"
     End If
-    If Not IsNumeric(fields("YEAR")) Then Err.Raise vbObjectError + 208, , "所得年を認識できません。"
+    If Not IsNumeric(fields("YEAR")) Then _
+        Err.Raise vbObjectError + 208, , _
+            "所得年を認識できません。源泉徴収票上部の「令和○年分」を確認してください。" & vbCrLf & _
+            "印字があってもPDFの文字レイヤーが特殊な場合、読取不能となることがあります。"
     year = CLng(fields("YEAR"))
     ' CLng can silently round 2025.6 to 2026. A bridge year must be
     ' exactly the decimal integer string approved by the local reader.
