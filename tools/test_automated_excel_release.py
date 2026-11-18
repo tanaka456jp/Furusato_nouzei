@@ -5,7 +5,10 @@ from pathlib import Path
 from unittest.mock import patch
 from zipfile import ZipFile, ZipInfo
 
-from publish_excel_release import inspect_draft_assets, publish, release_body
+from publish_excel_release import (
+    inspect_draft_assets, publish, release_body, publication_blockers,
+    require_publication_clearance,
+)
 from record_ci_acceptance import digest_file
 from release_readiness import (
     BRANCH, PC1, RELEASE_JOBS, RELEASE_ZIP, REPOSITORY, VERSION,
@@ -153,7 +156,7 @@ class ReleaseAutomationTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "ASSET_SHA256_MISMATCH"):
                 inspect_draft_assets(draft, folder, {"head_sha": HEAD})
 
-    def test_resume_verified_windows_draft_at_existing_exact_tag(self):
+    def test_unsigned_exact_run_cannot_resume_or_publish_existing_draft(self):
         with tempfile.TemporaryDirectory() as temp:
             folder = Path(temp)
             for name in (RELEASE_ZIP, "SHA256SUMS.txt", "THIRD_PARTY_NOTICES.txt"):
@@ -168,13 +171,43 @@ class ReleaseAutomationTest(unittest.TestCase):
             }
             tag = {"ref": f"refs/tags/{VERSION}", "object": {"type": "commit", "sha": HEAD}}
             published = {**draft, "draft": False, "prerelease": False, "html_url": "https://example.test/release"}
-            with patch("publish_excel_release.approved_head"), \
-                 patch("publish_excel_release.release_for_version", return_value=draft), \
-                 patch("publish_excel_release.api", side_effect=[[tag], [tag], published, tag]) as api:
-                self.assertEqual(publish(folder, report), published["html_url"])
-                self.assertEqual([call.args[0] for call in api.call_args_list], [
-                    f"git/matching-refs/tags/{VERSION}", f"git/matching-refs/tags/{VERSION}",
-                    "releases/1", f"git/ref/tags/{VERSION}"])
+            with patch("publish_excel_release.approved_head") as approved, \
+                 patch("publish_excel_release.release_for_version") as get_release, \
+                 patch("publish_excel_release.api") as api, \
+                 patch("publish_excel_release.gh") as gh:
+                with self.assertRaisesRegex(ValueError, "PUBLICATION_HOLD"):
+                    publish(folder, report)
+                approved.assert_not_called()
+                get_release.assert_not_called()
+                api.assert_not_called()
+                gh.assert_not_called()
+
+    def test_no_ci_result_can_replace_independent_release_approval(self):
+        report = {
+            "release_decision": "HOLD",
+            "signing_state": "UNSIGNED",
+            "reader_authenticode": "UNSIGNED",
+            "unverified_display_modes": ["1920x1080@100", "1366x768@150"],
+            "physical_printer_tested": False,
+            "tax_evidence_scope": "SYNTHETIC_2025_2026",
+        }
+        blockers = publication_blockers(report)
+        self.assertEqual(len(blockers), 6)
+        self.assertIn("EXPLICIT_FINAL_RELEASE_APPROVAL_MISSING", blockers)
+        with self.assertRaisesRegex(ValueError, "PUBLICATION_HOLD"):
+            require_publication_clearance(report)
+
+        independently_reviewed = dict(
+            report, signing_state="SIGNED",
+            reader_authenticode="VALID_TRUSTED_EXPECTED_SIGNER",
+            unverified_display_modes=[], physical_printer_tested=True,
+            tax_evidence_scope="INDEPENDENT_2025_2026_REVIEW_APPROVED",
+            manual_final_approval="PRIVATE_EXPLICIT_APPROVAL",
+        )
+        self.assertEqual(publication_blockers(independently_reviewed), [])
+        independently_reviewed["manual_final_approval"] = "CI_SUCCESS"
+        self.assertIn("EXPLICIT_FINAL_RELEASE_APPROVAL_MISSING",
+                      publication_blockers(independently_reviewed))
 
 
 if __name__ == "__main__":

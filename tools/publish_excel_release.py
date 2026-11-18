@@ -70,7 +70,7 @@ def pull_verified_candidate(run_id, head, out):
     require(notice.is_file() and 0 < notice.stat().st_size <= NOTICE_LIMIT
             and report.get("third_party_notices_sha256") == digest_file(notice),
             "GITHUB_CANDIDATE_THIRD_PARTY_NOTICES_MISMATCH")
-    report.update(release_decision="READY", required_jobs=success,
+    report.update(release_decision="HOLD", candidate_verified=True, required_jobs=success,
                   github_run_url=f"https://github.com/{REPOSITORY}/actions/runs/{run_id}",
                   github_artifact_id=matches[0]["id"])
     (out / SUMS).write_text(
@@ -99,7 +99,7 @@ def inspect_draft_assets(draft, out, report):
 def release_body(report):
     return (
         f"# Furusato_nouzei Excel {VERSION}\n\n"
-        f"- Excel VBA署名 {report['signing_state']}。同梱EXEのAuthenticodeはUNSIGNED。\n"
+        f"- Excel VBA署名 {report['signing_state']}。同梱EXEのAuthenticodeは{report.get('reader_authenticode', 'UNVERIFIED')}。\n"
         "- 所得年2025年・2026年。対応条件とマクロの扱いは同梱READMEに記載。\n"
         "- PC① Windows Excel 365で、1920×1080・125%と合成A4 PDFを検証。\n"
         f"- SHA-256 `{report['archive_sha256']}`\n"
@@ -121,7 +121,38 @@ def verify_tag(tag, head):
             and tag["object"].get("sha") == head, "RELEASE_TAG_SHA_MISMATCH")
 
 
+def publication_blockers(report):
+    """Mandatory *independent* publication gates, not inferred from CI success.
+
+    The current exact-run candidate is intentionally UNSIGNED, scoped to one
+    display mode and synthetic tax cases. A dry-run may verify its integrity,
+    but must never silently authorize a public release. An independently
+    reviewed final-approval route is required in a later development cycle.
+    """
+    blockers = []
+    if report.get("signing_state") != "SIGNED":
+        blockers.append("VBA_TRUSTED_SIGNATURE_NOT_VERIFIED")
+    if report.get("reader_authenticode") != "VALID_TRUSTED_EXPECTED_SIGNER":
+        blockers.append("READER_AUTHENTICODE_NOT_VERIFIED")
+    if report.get("unverified_display_modes") != []:
+        blockers.append("DISPLAY_MODES_NOT_FULLY_VERIFIED")
+    if report.get("physical_printer_tested") is not True:
+        blockers.append("PHYSICAL_PAPER_NOT_VERIFIED")
+    if report.get("tax_evidence_scope") != "INDEPENDENT_2025_2026_REVIEW_APPROVED":
+        blockers.append("INDEPENDENT_TAX_REVIEW_NOT_APPROVED")
+    if report.get("manual_final_approval") != "PRIVATE_EXPLICIT_APPROVAL":
+        blockers.append("EXPLICIT_FINAL_RELEASE_APPROVAL_MISSING")
+    return blockers
+
+
+def require_publication_clearance(report):
+    blockers = publication_blockers(report)
+    require(not blockers, "PUBLICATION_HOLD:" + ",".join(blockers))
+
+
 def publish(out, report):
+    # Must execute BEFORE any GitHub API call or a draft/tag can be created.
+    require_publication_clearance(report)
     head = report["head_sha"]
     approved_head(head)
     refs = api(f"git/matching-refs/tags/{VERSION}")
@@ -179,7 +210,8 @@ def main():
         if a.publish:
             print("PUBLISHED", publish(a.output.resolve(), report), report["archive_sha256"])
         else:
-            print("RELEASE_READY", report["archive_sha256"])
+            print("CANDIDATE_VERIFIED_PUBLICATION_HOLD",
+                  ",".join(publication_blockers(report)), report["archive_sha256"])
     except (OSError, ValueError, TypeError, KeyError) as error:
         print("RELEASE_VERIFICATION_HOLD",
               str(error) if isinstance(error, ValueError) else type(error).__name__)
