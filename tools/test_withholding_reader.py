@@ -369,8 +369,12 @@ class WithholdingTest(unittest.TestCase):
         self.assertEqual(housing["REFERENCE_LIMIT"], "")
         self.assertEqual(housing["REASON"], "COMPLEX_DEDUCTIONS_SINGLE_ONLY")
         family = evaluate_page(3, {**simple,
-            "fields": {**simple["fields"], "under16_count": 1}})
+            "fields": {**simple["fields"], "special_relative_count": 1}})
         self.assertEqual(family["STATUS"], "HOLD")
+        child = evaluate_page(3, {**simple,
+            "fields": {**simple["fields"], "under16_count": 1}})
+        self.assertEqual(child["STATUS"], "PROVISIONAL")
+        self.assertEqual(child["REFERENCE_LIMIT"], first["REFERENCE_LIMIT"])
         wrong_tax = evaluate_page(4, {**simple,
             "fields": {**simple["fields"], "income_tax_withheld": 0}})
         self.assertEqual(wrong_tax["REASON"], "SOURCE_TAX_NOT_RECONCILED")
@@ -387,6 +391,52 @@ class WithholdingTest(unittest.TestCase):
             self.assertTrue(rows[1].startswith("1\t2025\t5000000"))
             self.assertEqual(rows[2].split("\t")[7], "")
             self.assertNotIn("private_name", content)
+
+    def test_batch_2025_source_life_premiums_and_low_income_zero(self):
+        # Anonymous figures mirroring two supported salary-only shapes.
+        life = {
+            "year": 2025,
+            "warnings": ["MULTIPAGE_SELECTED_PAGE_REVIEW",
+                         "INCOMPLETE_OR_UNVERIFIED"],
+            "fields": {
+                "salary_gross": 8_800_000,
+                "salary_reference": 6_850_000,
+                "deductions_reference": 2_831_190,
+                "income_tax_withheld": 383_900,
+                "social_insurance": 2_183_340,
+                "basic_reference": 580_000,
+                "life_new": 181_991,
+                "medical_care": 35_700,
+                "life_deduction_reference": 67_850,
+            },
+        }
+        ordinary = evaluate_page(1, life)
+        self.assertEqual(ordinary["STATUS"], "PROVISIONAL")
+        self.assertGreater(ordinary["REFERENCE_LIMIT"], 0)
+        self.assertEqual(ordinary["REASON"], "SALARY_ONLY_HYPOTHESIS")
+        mismatch = evaluate_page(2, {**life,
+            "fields": {**life["fields"],
+                       "life_deduction_reference": 67_851}})
+        self.assertEqual(mismatch["STATUS"], "HOLD")
+        self.assertEqual(mismatch["REASON"], "LIFE_DEDUCTION_NOT_RECONCILED")
+        low = {
+            "year": 2025, "warnings": life["warnings"],
+            "fields": {
+                "salary_gross": 960_000,
+                "salary_reference": 310_000,
+                "deductions_reference": 1_012_828,
+                "income_tax_withheld": 0,
+                "social_insurance": 0,
+                "basic_reference": 950_000,
+                "life_new": 178_343,
+                "medical_care": 25_656,
+                "life_deduction_reference": 62_828,
+            },
+        }
+        low_result = evaluate_page(3, low)
+        self.assertEqual(low_result["STATUS"], "PROVISIONAL")
+        self.assertEqual(low_result["REFERENCE_LIMIT"], 0)
+        self.assertEqual(low_result["REASON"], "INCOME_LEVY_EXEMPT_SALARY_ONLY")
 
     def test_batch_pdf_pages_are_independent_and_errors_are_isolated(self):
         with TemporaryDirectory() as folder:
