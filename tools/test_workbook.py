@@ -118,26 +118,26 @@ class WorkbookTest(unittest.TestCase):
         self.assertEqual(self.book[ENGINE]["F24"].value,
                          self.baseline[ENGINE]["F24"].value)
 
-    def test_thirty_relative_individual_tax_and_resident_wiring(self):
+    def test_five_relative_individual_tax_and_resident_wiring(self):
         rel = self.book["特定親族明細"]
         home = self.book[HOME]
         engine = self.book[ENGINE]
         self.assertEqual(rel.sheet_state, "visible")
-        self.assertEqual(rel["A33"].value, 30)
+        self.assertEqual(rel["A8"].value, 5)
         self.assertEqual(home["A3"].hyperlink.location, "'特定親族明細'!A1")
         self.assertEqual(rel["D4"].value, "未確認")
-        self.assertEqual(rel["D33"].value, "未確認")
+        self.assertEqual(rel["D8"].value, "未確認")
         for person in range(3):
             row = person + 4
             self.assertIn(f"'操作画面'!D{row+10}",rel[f"C{row}"].value)
             self.assertTrue(rel[f"C{row}"].protection.locked)
             self.assertEqual(engine[f"F{row+28}"].value,f"='特定親族明細'!E{row}")
             self.assertEqual(engine[f"H{row+28}"].value,f"='特定親族明細'!F{row}")
-        self.assertIn("'特定親族明細'!E7:E33",engine["F38"].value)
-        self.assertIn("'特定親族明細'!F7:F33",engine["H38"].value)
+        self.assertIn("'特定親族明細'!E7:E8",engine["F38"].value)
+        self.assertIn("'特定親族明細'!F7:F8",engine["H38"].value)
         self.assertEqual(engine["J38"].value,"=F38-H38")
         self.assertIn("'ふるさと納税限度額計算'!F38",home["B31"].value)
-        self.assertIn("特定親族明細'!G4:G33",home["B28"].value)
+        self.assertIn("特定親族明細'!G4:G8",home["B28"].value)
         self.assertIn('B25="なし",OR(COUNTIF(',home["B28"].value)
         self.assertIn('"特定扶養親族")>0,N(D23)>0',home["B28"].value)
         # Neither family income-levy nor protected-status exemption can be
@@ -150,7 +150,7 @@ class WorkbookTest(unittest.TestCase):
         self.assertNotIn("B13<=IF(",verdict)
         self.assertNotIn("B13<=1350000",verdict)
         self.assertNotIn('AND(COUNT(D14:D16,D23)>0',home["B28"].value)
-        for row in (4, 5, 6, 7, 8, 33):
+        for row in (4, 5, 6, 7, 8):
             category = rel[f"G{row}"].value
             self.assertIn("2025,580000,620000",category)
             self.assertIn('要件確認済',category)
@@ -165,14 +165,14 @@ class WorkbookTest(unittest.TestCase):
         self.assertTrue(fingerprint.startswith("=LEN("), "Snapshots must length-prefix every input")
         self.assertLess(len(fingerprint), 8192, "Excel formula length must remain supported")
         self.assertIn(')&":"&', fingerprint)
-        self.assertIn("LEN('特定親族明細'!D33)", fingerprint)
+        self.assertIn("LEN('特定親族明細'!D8)", fingerprint)
         self.assertNotIn("TEXTJOIN(", fingerprint)
-        for addr in ("B4","D4","B33","C33","D33"):
+        for addr in ("B4","D4","B8","C8","D8"):
             self.assertIn(f"'特定親族明細'!{addr}",fingerprint)
         for r in ("D14","D15","D16"):
             self.assertIn(f"'操作画面'!{r}",fingerprint)
-        self.assertIn("SUM(E4:E33)",rel["E35"].value)
-        self.assertIn("SUM(F4:F33)",rel["F35"].value)
+        self.assertIn("SUM(E4:E8)",rel["E35"].value)
+        self.assertIn("SUM(F4:F8)",rel["F35"].value)
         for address in ("B7","B16","B17","C7"):
             self.assertTrue(any(address in str(rule.sqref)
                                 for rule in rel.data_validations.dataValidation))
@@ -180,11 +180,11 @@ class WorkbookTest(unittest.TestCase):
     def test_relative_import_and_review_are_case_specific(self):
         vb=(ROOT/"vba/TaxLawUpdater.bas").read_text(encoding="utf-8-sig")
         self.assertIn('Private Sub ResetRelativeInputs()',vb)
-        self.assertIn('rel.Range("B4:B33,C7:C33").ClearContents',vb)
-        self.assertIn('rel.Range("D4:D33").Value2 = "未確認"',vb)
+        self.assertIn('rel.Range("B4:B8,C7:C8").ClearContents',vb)
+        self.assertIn('rel.Range("D4:D8").Value2 = "未確認"',vb)
         self.assertEqual(vb.count("    ResetRelativeInputs"),2)
         self.assertIn('ValidateSpecialRelativeSource home, extra, relatives',vb)
-        self.assertIn('For row = 4 To 33',vb)
+        self.assertIn('For row = 4 To 8',vb)
         self.assertIn('If category = "要確認" Then',vb)
         self.assertIn('If actualCount <> sourceCount Then',vb)
         self.assertIn('If actualAmount <> sourceAmount Then',vb)
