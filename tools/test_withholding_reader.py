@@ -287,6 +287,10 @@ class WithholdingTest(unittest.TestCase):
                     page.insert_text((138, 310), "G26", fontsize=7)
                     if index != 3:
                         page.insert_text((215, 310), "1,000,000", fontsize=12)
+                    # Native text must exceed the reader's 40-char threshold.
+                    page.insert_text((40, 500),
+                                     "SYNTHETIC FIVE PAGE SOURCE ANONYMOUS NO PERSONAL DATA",
+                                     fontsize=10)
                 document.save(source)
             # Verify a real PDF parser takes the geometry fallback path.
             import pypdfium2
