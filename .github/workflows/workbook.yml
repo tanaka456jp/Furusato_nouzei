@@ -55,6 +55,7 @@ jobs:
           python tools/test_prepare_official_excel_release.py
           python tools/test_signed_release_negative.py
           python tools/test_excel_vba_signer.py
+          python tools/test_reader_exe_signer.py
           python tools/test_distribution_integrity.py
           python tools/test_package_ready_to_use_review.py
           python tools/test_automated_excel_release.py
@@ -182,6 +183,16 @@ jobs:
           if ($errors.Count -gt 0) { throw ($errors | Out-String) }
           python tools/test_excel_vba_signer.py
           if ($LASTEXITCODE -ne 0) { throw 'Local VBA signer contract failed' }
+      - name: Parse local EXE signer and enforce CI signing prohibition
+        shell: powershell
+        run: |
+          $tokens=$null; $errors=$null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path .\tools\sign_reader_exe_local.ps1).Path,
+            [ref]$tokens,[ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { throw ($errors | Out-String) }
+          python tools/test_reader_exe_signer.py
+          if ($LASTEXITCODE -ne 0) { throw 'Local EXE signer guard failed' }
       - name: Parse desktop evidence collector in native Windows PowerShell 5.1
         shell: powershell
         run: |
