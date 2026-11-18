@@ -375,6 +375,12 @@ Private Function BatchReasonLabel(ByVal code As String) As String
     Select Case code
         Case "SALARY_ONLY_HYPOTHESIS"
             BatchReasonLabel = "給与所得のみ・他所得等なしを仮定"
+        Case "INCOME_LEVY_EXEMPT_SALARY_ONLY"
+            BatchReasonLabel = "給与所得のみなら住民税所得割非課税（参考0円）"
+        Case "LIFE_PREMIUM_SINGLE_ONLY", "LIFE_DEDUCTION_NOT_RECONCILED"
+            BatchReasonLabel = "生命保険料の控除内訳を単独計算で確認"
+        Case "UNDER16_REVIEW_REQUIRED"
+            BatchReasonLabel = "16歳未満の扶養人数を確認"
         Case "YEAR_UNREADABLE"
             BatchReasonLabel = "源泉徴収票の所得年を確認"
         Case "REQUIRED_FIELDS_MISSING"
