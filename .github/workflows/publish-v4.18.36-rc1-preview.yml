@@ -1,0 +1,179 @@
+# Explicitly requested unsigned public preview. Separate from official release.
+# Release artifact bytes are pinned to the previously completed, exact-HEAD
+# five-job CI run. v4.18.35 and v4.18.36 official tags remain unchanged.
+name: Publish v4.18.36 rc1 UNSIGNED preview
+on:
+  push:
+    branches: [release-preview/v4.18.36-rc.1]
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: furusato-v41836-rc1-public-preview
+  cancel-in-progress: false
+
+jobs:
+  publish-preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_HEAD: 3cdf8c19d1a9081b1715b2f807c8d580e750a509
+      CI_RUN: "44417565959"
+      CI_ARTIFACT: Furusato_ReadyToUse_CANDIDATE_44417565959-1
+      TAG: v4.18.36-rc.1
+      REPO: tanaka456jp/Furusato_nouzei
+      SHA_ZIP: 9d9f8eb48fda66eea77db8bb636d09b6b66e93b5441998707b839830f1d84358
+      SHA_NOTICES: 5e04ebb36cf3fa084f45c7abfa83da63a3ef229900a6edd89521ede448631b72
+      SHA_MANIFEST: 04829408277ce03eef128e2acd2bd1ebad0d4d6921ca1a1057a0ab58b7e86cbd
+    steps:
+      - name: Verify exact-run five-job acceptance and no existing preview tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api "repos/$REPO/actions/runs/$CI_RUN" > /tmp/run.json
+          gh api "repos/$REPO/actions/runs/$CI_RUN/attempts/1/jobs?per_page=100" > /tmp/jobs.json
+          gh api "repos/$REPO/pulls/5" > /tmp/pr.json
+          python - <<'PY'
+          import json, os
+          run = json.load(open('/tmp/run.json'))
+          jobs = json.load(open('/tmp/jobs.json'))['jobs']
+          pr = json.load(open('/tmp/pr.json'))
+          head = os.environ['SOURCE_HEAD']
+          names = {'static','windows_compat','document_reader','excel','ready_to_use_review'}
+          assert run['id'] == int(os.environ['CI_RUN'])
+          assert run['head_sha'] == head and run['run_attempt'] == 1
+          assert run['status'] == 'completed' and run['conclusion'] == 'success'
+          assert run['event'] == 'pull_request'
+          assert run['path'] == '.github/workflows/workbook.yml'
+          assert pr['number'] == 5 and pr['head']['sha'] == head
+          assert pr['state'] == 'open' and pr['draft'] is True
+          assert len(jobs) == 5 and {j['name'] for j in jobs} == names
+          assert all(j['conclusion'] == 'success' and j['head_sha'] == head and
+                     j['run_attempt'] == 1 for j in jobs)
+          excel = next(j for j in jobs if j['name'] == 'excel')
+          assert excel['runner_name'] == 'PC1-Furusato-Excel'
+          print('EXACT_HEAD_FIVE_JOBS_PASS')
+          PY
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            echo 'PREVIEW_RELEASE_ALREADY_EXISTS'
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags "https://github.com/$REPO.git" "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo 'PREVIEW_TAG_ALREADY_EXISTS'
+            exit 1
+          fi
+      - name: Retrieve immutable accepted-run preview candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: Furusato_ReadyToUse_CANDIDATE_44417565959-1
+          run-id: 44417565959
+          github-token: ${{ github.token }}
+          repository: tanaka456jp/Furusato_nouzei
+          path: candidate
+      - name: Verify exact ZIP, notices, manifest, unsigned scope and generate sums
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os, pathlib, hashlib, json, zipfile, io
+          folder = pathlib.Path('candidate')
+          archive = folder/'Furusato_nouzei_v4.18.36_ReadyToUse.zip'
+          notice = folder/'THIRD_PARTY_NOTICES.txt'
+          manifest_file = folder/'candidate.json'
+          assert {p.name for p in folder.iterdir()} == {archive.name, notice.name, manifest_file.name}
+          sha = lambda b: hashlib.sha256(b).hexdigest()
+          expected = {
+              archive.name: os.environ['SHA_ZIP'],
+              notice.name: os.environ['SHA_NOTICES'],
+              manifest_file.name: os.environ['SHA_MANIFEST'],
+          }
+          for name, digest in expected.items():
+              assert sha((folder/name).read_bytes()) == digest, 'MISMATCH_' + name
+          m = json.loads(manifest_file.read_text(encoding='utf-8'))
+          assert m['head_sha'] == os.environ['SOURCE_HEAD']
+          assert m['run_id'] == int(os.environ['CI_RUN']) and m['run_attempt'] == 1
+          assert m['version'] == 'v4.18.36'
+          assert m['archive_sha256'] == expected[archive.name]
+          assert m['third_party_notices_sha256'] == expected[notice.name]
+          assert m['signing_state'] == 'UNSIGNED' and m['reader_authenticode'] == 'UNSIGNED'
+          assert m['signing_evidence']['signing_state'] == 'UNSIGNED'
+          assert m['unverified_display_modes'] == ['1920x1080@100','1366x768@150']
+          assert m['physical_printer_tested'] is False
+          assert m['tax_evidence_scope'] == 'SYNTHETIC_2025_2026'
+          assert m['release_decision'] == 'AWAITING_LIVE_GITHUB_VERIFICATION'
+          assert m['prerequisite_jobs'] == {
+              'static':'success', 'windows_compat':'success',
+              'document_reader':'success', 'excel':'success'}
+          with zipfile.ZipFile(archive) as z:
+              assert z.testzip() is None
+              assert set(z.namelist()) == {'Furusato_nouzei.xlsm','FurusatoDocumentReader.exe','README.txt'}
+              for path,key in [('Furusato_nouzei.xlsm','workbook_sha256'),
+                               ('FurusatoDocumentReader.exe','reader_sha256'),
+                               ('README.txt','readme_sha256')]:
+                  assert sha(z.read(path)) == m[key], path
+              text = z.read('README.txt').decode('utf-8-sig')
+              assert 'UNSIGNED' in text and 'v4.18.36' in text
+              assert os.environ['SOURCE_HEAD'] in text
+              assert '1920×1080・100%' in text and '実紙は試験していません' in text
+          (folder/'SHA256SUMS.txt').write_text(
+              ''.join(f'{expected[name]}  {name}\n' for name in sorted(expected)),
+              encoding='ascii')
+          print('PINNED_PREVIEW_HASHES_AND_UNSIGNED_WARNINGS_PASS')
+          PY
+      - name: Prepare explicit preview-only release notes
+        shell: bash
+        run: |
+          cat > candidate/PREVIEW_RELEASE_NOTES.md <<'EOF'
+          # Furusato_nouzei Excel v4.18.36 — 未署名プレリリース（RC1）
+
+          **試用・検証用のプレリリースです。正式配布・税務上の正確性の最終承認ではありません。**
+
+          ユーザーの明示的な現状公開依頼により、全5ジョブSUCCESSの既存候補を原本ハッシュ固定で公開します。
+
+          - Excel VBA: **UNSIGNED**。PDF読取EXE: **UNSIGNED**。Windows/Officeのセキュリティ設定により実行できないことがあります。組織のセキュリティポリシーを解除しないでください。
+          - PC① Excel 365実機検証：**1920×1080・125%のみ**。1920×1080・100%、1366×768・150%は未検証。
+          - 物理プリンターからの実印刷は**未検証**（合成A4 PDF検証のみ）。
+          - 2025年分・2026年分の一部給与所得ケースについて自動/独立合成テストは実施。**独立税務監査・最終発行者承認は未完了**です。
+          - OCR・源泉徴収票の転記、自治体、住宅ローン控除等に未確認事項があるときはHOLDに従い、寄附限度額を確定値として使用しないでください。
+          - 商用・実顧客案件での無検証運用や、控除上限額の保証を目的とする配布物ではありません。
+          - 配布ZIPのSHA-256は必ず同梱のSHA256SUMS.txtで照合してください。第三者ライセンス情報はTHIRD_PARTY_NOTICES.txtを参照してください。
+
+          **原本CI：** https://github.com/tanaka456jp/Furusato_nouzei/actions/runs/44417565959
+
+          **原本HEAD：** 3cdf8c19d1a9081b1715b2f807c8d580e750a509
+
+          このRC1は既存の正式版v4.18.35を置き換えません。将来の正式v4.18.36も別途受入・署名・承認が必要です。
+          EOF
+      - name: Publish exactly one immutable public prerelease (never publish as stable)
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" \
+            candidate/Furusato_nouzei_v4.18.36_ReadyToUse.zip \
+            candidate/THIRD_PARTY_NOTICES.txt \
+            candidate/SHA256SUMS.txt \
+            candidate/candidate.json \
+            --repo "$REPO" \
+            --target "$SOURCE_HEAD" \
+            --prerelease \
+            --title "Furusato_nouzei v4.18.36 RC1（未署名・検証用）" \
+            --notes-file candidate/PREVIEW_RELEASE_NOTES.md
+      - name: Verify published prerelease and immutable asset digests
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api "repos/$REPO/releases/tags/$TAG" > /tmp/public-release.json
+          python - <<'PY'
+          import json, hashlib, pathlib, os
+          release=json.load(open('/tmp/public-release.json'))
+          assert release['tag_name'] == os.environ['TAG']
+          assert release['prerelease'] is True and release['draft'] is False
+          expected={p.name:'sha256:'+hashlib.sha256(p.read_bytes()).hexdigest()
+                    for p in pathlib.Path('candidate').iterdir()
+                    if p.name in ('Furusato_nouzei_v4.18.36_ReadyToUse.zip',
+                                  'THIRD_PARTY_NOTICES.txt','SHA256SUMS.txt','candidate.json')}
+          assets=release['assets']
+          assert {x['name']:x['digest'] for x in assets} == expected
+          print('PREVIEW_RELEASE_PUBLISHED_VERIFIED',release['html_url'])
+          PY
