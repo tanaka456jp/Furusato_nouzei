@@ -543,7 +543,9 @@ def build(source, output):
     # income conditions remain HOLD rather than producing a false tax limit.
     batch.sheet_view.showGridLines = False
     batch.sheet_view.zoomScale = 85
-    for col, width in {"A": 9, "B": 11, "C": 19, "D": 19,
+    # B4 contains the Japanese "一覧消去" command. Width 11 clipped its
+    # real Excel button caption at 1920x1080/125%; preserve visible margins.
+    for col, width in {"A": 9, "B": 19, "C": 19, "D": 19,
                        "E": 19, "F": 18, "G": 19, "H": 19,
                        "I": 15, "J": 36}.items():
         batch.column_dimensions[col].width = width
