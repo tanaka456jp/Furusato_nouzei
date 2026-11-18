@@ -91,7 +91,11 @@ def evaluate_page(page: int, evidence: dict) -> dict:
     if evidence.get("warnings") is None or not isinstance(evidence["warnings"], list):
         row["REASON"] = "SOURCE_WARNINGS_MISSING"
         return row
-    if set(evidence["warnings"]) - ALLOWED_SOURCE_WARNINGS:
+    extra_warnings = set(evidence["warnings"]) - ALLOWED_SOURCE_WARNINGS
+    # Only a physically blank social-insurance box may be relaxed for a
+    # salary income below the universal ¥450k income-levy exemption.
+    if extra_warnings and extra_warnings != {
+            "BLANK_SOCIAL_INSURANCE_REQUIRES_REVIEW"}:
         row["REASON"] = "SOURCE_REVIEW_REQUIRED"
         return row
     if any(k in fields and (type(fields[k]) is not int or fields[k] != 0)
@@ -105,6 +109,14 @@ def evaluate_page(page: int, evidence: dict) -> dict:
         return row
     if salary_income != independent_nta_fifth_table_salary_income(year, salary_gross):
         row["REASON"] = "SALARY_REFERENCE_NOT_RECONCILED"
+        return row
+    if extra_warnings:
+        if salary_income <= 450_000 and fields["income_tax_withheld"] == 0:
+            row["REFERENCE_LIMIT"] = 0
+            row["STATUS"] = "PROVISIONAL"
+            row["REASON"] = "INCOME_LEVY_EXEMPT_SALARY_ONLY"
+            return row
+        row["REASON"] = "SOURCE_REVIEW_REQUIRED"
         return row
     basic = next((v for limit, v in BASIC[year] if salary_income <= limit), 0)
     try:
