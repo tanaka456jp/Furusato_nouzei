@@ -417,6 +417,8 @@ def build(source, output):
     home.row_dimensions[3].height = 28
     field("B4", "計算対象の所得年", "2026", ("2025", "2026"))
     home["C4"], home["D4"] = "適用中の所得年", "=" + ref("設定・税率", "B4")
+    # Excel displays B4's validation arrow over the start of the adjacent cell.
+    home["C4"].alignment = Alignment(horizontal="left", vertical="center", indent=2)
     home["C5"], home["D5"] = "住民税課税年度", "=" + ref(RESIDENT, "B5")
     note(home, 6, '="税制版 "&B29&" ｜ "&B30')
     home["B29"] = "2026-11-05-bundled"

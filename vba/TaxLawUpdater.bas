@@ -963,9 +963,16 @@ Private Sub ResetRelativeInputs()
     rel.Range("D4:D33").Value2 = "未確認"
 End Sub
 
+Private Function HasSeparateInputs(ByVal screen As Worksheet) As Boolean
+    ' Keep case reset and print routing compatible with existing project copies.
+    Select Case CStr(screen.Range("A42").Value2)
+        Case "詳細設定 | 申告分離課税（検証版）", "詳細設定 | 課税自治体・申告分離課税（条件限定）"
+            HasSeparateInputs = True
+    End Select
+End Function
+
 Private Sub ResetSeparateInputs(ByVal home As Worksheet)
-    ' Only templates with this detail section own these ranges.
-    If CStr(home.Range("A42").Value2) <> "詳細設定 | 申告分離課税（検証版）" Then Exit Sub
+    If Not HasSeparateInputs(home) Then Exit Sub
     ' The 2022 eligibility attestation is case-specific; an imported PDF
     ' or NewCase must not inherit it from a previous taxpayer.
     home.Range("D35").Value2 = "未確認"
@@ -1109,7 +1116,7 @@ Public Sub ReturnHome()
 End Sub
 
 Private Function SeparateMode(ByVal screen As Worksheet) As Boolean
-    SeparateMode = (CStr(screen.Range("A42").Value2) = "詳細設定 | 申告分離課税（検証版）" And _
+    SeparateMode = (HasSeparateInputs(screen) And _
                     CStr(screen.Range("B44").Value2) = "申告分離")
 End Function
 

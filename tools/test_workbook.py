@@ -349,6 +349,9 @@ class WorkbookTest(unittest.TestCase):
         self.assertEqual(self.book.active.title, HOME)
         self.assertEqual([s.title for s in self.book if s.sheet_state == "visible"], [HOME, "特定親族明細"])
         self.assertEqual(self.book[DETAIL].sheet_state, "veryHidden")
+        self.assertEqual(self.book[HOME]["C4"].alignment.indent, 2)
+        self.assertIn("課税自治体", self.book[HOME]["A42"].value)
+        self.assertIn("条件限定", self.book[HOME]["A42"].value)
         with ZipFile(self.target) as archive:
             self.assertIsNone(archive.testzip())
             self.assertFalse(any(n.startswith(("xl/externalLinks/", "xl/vbaProject")) for n in archive.namelist()))

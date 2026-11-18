@@ -2,9 +2,10 @@ import copy
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 from zipfile import ZipFile, ZipInfo
 
-from publish_excel_release import inspect_draft_assets
+from publish_excel_release import inspect_draft_assets, publish, release_body
 from record_ci_acceptance import digest_file
 from release_readiness import (
     BRANCH, PC1, RELEASE_JOBS, RELEASE_ZIP, REPOSITORY, VERSION,
@@ -151,6 +152,29 @@ class ReleaseAutomationTest(unittest.TestCase):
             draft["assets"][0]["digest"] = "sha256:" + "f" * 64
             with self.assertRaisesRegex(ValueError, "ASSET_SHA256_MISMATCH"):
                 inspect_draft_assets(draft, folder, {"head_sha": HEAD})
+
+    def test_resume_verified_windows_draft_at_existing_exact_tag(self):
+        with tempfile.TemporaryDirectory() as temp:
+            folder = Path(temp)
+            for name in (RELEASE_ZIP, "SHA256SUMS.txt", "THIRD_PARTY_NOTICES.txt"):
+                (folder / name).write_bytes(b"synthetic")
+            report = {"head_sha": HEAD, "signing_state": "UNSIGNED", "archive_sha256": BOOK,
+                      "github_run_url": "https://example.test/run"}
+            draft = {
+                "id": 1, "tag_name": VERSION, "draft": True, "target_commitish": HEAD,
+                "body": release_body(report).replace("\n", "\r\n"),
+                "assets": [{"name": item.name, "state": "uploaded", "size": item.stat().st_size,
+                            "digest": "sha256:" + digest_file(item)} for item in folder.iterdir()],
+            }
+            tag = {"ref": f"refs/tags/{VERSION}", "object": {"type": "commit", "sha": HEAD}}
+            published = {**draft, "draft": False, "prerelease": False, "html_url": "https://example.test/release"}
+            with patch("publish_excel_release.approved_head"), \
+                 patch("publish_excel_release.release_for_version", return_value=draft), \
+                 patch("publish_excel_release.api", side_effect=[[tag], [tag], published, tag]) as api:
+                self.assertEqual(publish(folder, report), published["html_url"])
+                self.assertEqual([call.args[0] for call in api.call_args_list], [
+                    f"git/matching-refs/tags/{VERSION}", f"git/matching-refs/tags/{VERSION}",
+                    "releases/1", f"git/ref/tags/{VERSION}"])
 
 
 if __name__ == "__main__":

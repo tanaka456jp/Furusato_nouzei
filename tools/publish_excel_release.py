@@ -130,17 +130,19 @@ def publish(out, report):
     if current is None:
         require(not refs, "GITHUB_RELEASE_TAG_ALREADY_EXISTS")
         notes = out / "release-notes.md"
-        notes.write_text(body, encoding="utf-8")
+        notes.write_bytes(body.encode("utf-8"))
         gh("release", "create", VERSION, out / RELEASE_ZIP, out / SUMS, out / NOTICE_NAME,
            "--repo", REPOSITORY, "--draft", "--target", head,
            "--title", f"Furusato_nouzei Excel {VERSION}", "--notes-file", notes)
         current = release_for_version()
         require(current is not None, "GITHUB_RELEASE_DRAFT_MISSING")
-    require((current.get("body") or "").strip() == body.strip(),
+    stored_body = (current.get("body") or "").replace("\r\n", "\n")
+    require(stored_body.strip() == body.strip(),
             "GITHUB_RELEASE_NOTES_DIFFER_FROM_ACCEPTED_CANDIDATE")
     if current.get("draft") is True:
         expected = inspect_draft_assets(current, out, report)
         approved_head(head)
+        refs = api(f"git/matching-refs/tags/{VERSION}")
         if refs:
             require(len(refs) == 1, "GITHUB_RELEASE_TAG_NOT_UNIQUE")
             verify_tag(refs[0], head)

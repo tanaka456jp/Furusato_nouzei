@@ -20,7 +20,7 @@ def add_separate_tax(book, home, field, bar, note, progressive):
     """Leave salary inputs in place and add a separate, explicitly enabled case."""
     model = book.create_sheet(MODEL)
     buckets = SPEC["buckets"]
-    bar(home, 42, "詳細設定 | 申告分離課税（検証版）")
+    bar(home, 42, "詳細設定 | 課税自治体・申告分離課税（条件限定）")
     note(home, 43, "総所得金額は給与所得控除後等の所得です。分離所得は所得控除前・経費差引後で入力。源泉分離・申告不要・NISAは加えません。金額は円、該当なしは0です。")
     field("B44", "計算する案件", "給与・通常", ("給与・通常", "申告分離"))
     field("D44", "申告方式", "確定申告", ("確定申告", "ワンストップ"))
