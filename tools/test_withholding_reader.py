@@ -287,8 +287,8 @@ class WithholdingTest(unittest.TestCase):
                           record["warnings"])
             bridge = Path(folder) / "result.tsv"
             write_bridge(record, bridge)
-            self.assertIn("YEAR\\t2025", bridge.read_text(encoding="utf-8"))
-            self.assertIn("social_insurance\\t0", bridge.read_text(encoding="utf-8"))
+            self.assertIn("YEAR\t2025", bridge.read_text(encoding="utf-8"))
+            self.assertIn("social_insurance\t0", bridge.read_text(encoding="utf-8"))
             # A separately printed amount keeps the existing READY behavior.
             with patch("withholding_reader.document_content",
                        return_value=("7\\n令和\\nL01 年分",
