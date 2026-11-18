@@ -130,7 +130,7 @@ class WorkbookTest(unittest.TestCase):
         self.assertEqual(batch["A5"].value, "ページ")
         self.assertEqual(batch["H5"].value, "上限額参考（円）")
         self.assertEqual(batch["I5"].value, "判定")
-        self.assertEqual(batch["J5"].value, "要確認理由（コード）")
+        self.assertEqual(batch["J5"].value, "判定理由（詳細）")
         self.assertEqual(batch.freeze_panes, "C6")
         self.assertEqual(batch.auto_filter.ref, "A5:J105")
         for row in (6, 9, 105):
