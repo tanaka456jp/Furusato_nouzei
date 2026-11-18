@@ -560,6 +560,9 @@ def build(source, output):
         batch.row_dimensions[line].height = height
     batch["A1"].font = Font(name="Yu Gothic", size=14, bold=True, color="FFFFFF")
     batch["A1"].fill = PatternFill("solid", fgColor="163A56")
+    # Excel Form buttons need more than the default 15pt row height;
+    # the Japanese clear-list caption was vertically clipped at 125% DPI.
+    batch.row_dimensions[4].height = 34
     batch["A4"] = "操作画面に戻る"
     batch["A4"].hyperlink = Hyperlink(ref="A4", location="'操作画面'!A1")
     batch["A4"].style = "Hyperlink"
