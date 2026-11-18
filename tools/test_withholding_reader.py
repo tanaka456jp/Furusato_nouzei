@@ -263,6 +263,26 @@ class WithholdingTest(unittest.TestCase):
                     for x0, y0, x1, y1, token in header]
         self.assertEqual(detect_year("8\\n令和\\nL01 年分", new_year), 2026)
 
+    def test_layered_pdf_mortgage_occupancy_n01_date_geometry(self):
+        # The housing date must come from the N01 row, not the L01 title.
+        house = [
+            (226, 420, 239, 426, "1回目"),
+            (242, 420, 253, 426, "N01"),
+            (256, 419, 274, 428, "令和"),
+            (288, 419, 297, 428, "6"),
+            (308, 419, 322, 428, "12"),
+            (330, 419, 343, 428, "22"),
+        ]
+        self.assertEqual(
+            extract_occupancy_year("6\\n令和\\nN01", house),
+            {"mortgage_occupancy_year": 2024},
+        )
+        self.assertEqual(extract_occupancy_year("6\\n令和", house[2:]), {})
+        # Never choose an arbitrary winner from contradictory evidence.
+        self.assertEqual(
+            extract_occupancy_year("1回目 N01 令和 5", house), {},
+        )
+
     def test_layered_pdf_blank_social_insurance_is_provisional(self):
         # A genuinely empty G26 box must not block transcription entirely
         # or be silently approved as a confirmed zero.
