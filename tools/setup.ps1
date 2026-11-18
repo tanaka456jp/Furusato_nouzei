@@ -183,6 +183,7 @@ End Sub
     Add-WorkbookButton $sheet 'B5' '追加・分離' 'ShowAdvanced'
     Add-WorkbookButton $sheet 'B3' '源泉票を取込' 'ImportWithholding'
     Add-WorkbookButton $sheet 'C3' '読取内容の確認' 'ReviewWithholding'
+    Add-WorkbookButton $sheet 'D3' '複数人一覧' 'ImportWithholdingBatch'
     $details = $workbook.Worksheets.Item('計算根拠')
     try {
         Add-WorkbookButton $details 'A17' 'メイン画面に戻る' 'ReturnHome'
