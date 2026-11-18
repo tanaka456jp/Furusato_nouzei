@@ -110,6 +110,54 @@ try {
     Assert-Value ([string]$homeSheet.Range('A9').Value2) '入力待ち：支払金額・源泉徴収税額・社会保険料等を入力してください' 'Visible guidance instead of red error'
     Assert-Value $detail.Visible 2 'Calculation details start hidden'
     QA-Stage 'initial-regressions-pass'
+    # Bulk mode is independent from single-case inputs.  Exercise the real
+    # VBA TSV loader with fabricated five-person rows, not private PDFs.
+    QA-Stage 'batch-salary-only-five-list-start'
+    $batchHead = @('PAGE','YEAR','SALARY_GROSS','SALARY_INCOME',
+                   'TOTAL_DEDUCTIONS','SOURCE_TAX','SOCIAL_INSURANCE',
+                   'REFERENCE_LIMIT','STATUS','REASON') -join "`t"
+    $batchLines = @($batchHead)
+    for ($person=1; $person -le 5; $person++) {
+        $limit = if ($person -eq 1) { '55000' } else { '' }
+        $verdict = if ($person -eq 1) { 'PROVISIONAL' } else { 'HOLD' }
+        $reason = if ($person -eq 1) { 'SALARY_ONLY_HYPOTHESIS' } else {
+            'COMPLEX_DEDUCTIONS_SINGLE_ONLY'
+        }
+        $batchLines += (@($person,2025,(5000000 + $person*100000),
+                         3560000,1680000,95900,1000000,$limit,
+                         $verdict,$reason) -join "`t")
+    }
+    $batchPath = Join-Path $dir 'synthetic-five-batch.tsv'
+    [IO.File]::WriteAllLines($batchPath, [string[]]$batchLines,
+                              [Text.Encoding]::ASCII)
+    Assert-Value ([int]($excel.Run('TaxLawUpdater.LoadBatchFromTsv', $batchPath))) 5 'Five-page numeric TSV loaded'
+    $batchSheet = $book.Worksheets.Item('一括計算一覧')
+    Assert-Value $batchSheet.Range('A6').Value2 1 'First selected PDF page'
+    Assert-Value $batchSheet.Range('A10').Value2 5 'Fifth selected PDF page'
+    Assert-Value $batchSheet.Range('C6').Value2 5100000 'First source remains separate'
+    Assert-Value $batchSheet.Range('C10').Value2 5500000 'Fifth source remains separate'
+    Assert-Value $batchSheet.Range('H6').Value2 55000 'Provisional first row'
+    Assert-Value ([string]$batchSheet.Range('H7').Value2) '' 'HOLD has no reference limit'
+    Assert-Value ([string]$batchSheet.Range('I7').Value2) 'HOLD／要確認' 'HOLD status visible'
+    Assert-Value ([string]$homeSheet.Range('B12').Value2) '' 'Bulk leaves single-case salary unchanged'
+    Assert-Value ([string]$homeSheet.Range('B15').Value2) '' 'Bulk leaves single-case withholding unchanged'
+    Assert-Value ([string]$homeSheet.Range('B16').Value2) '' 'Bulk leaves single-case social insurance unchanged'
+    # An unsafe HOLD row with a nonblank reference must fail without
+    # destroying the previously generated five-page list.
+    $invalidLines = @($batchLines)
+    $invalidLines[2] = $invalidLines[2].Replace("`t`tHOLD`t", "`t12345`tHOLD`t")
+    $invalidPath = Join-Path $dir 'synthetic-batch-invalid.tsv'
+    [IO.File]::WriteAllLines($invalidPath, [string[]]$invalidLines,
+                              [Text.Encoding]::ASCII)
+    $badAccepted = $false
+    try {
+        [void]($excel.Run('TaxLawUpdater.LoadBatchFromTsv', $invalidPath))
+        $badAccepted = $true
+    } catch { }
+    if ($badAccepted) { throw 'Batch HOLD row with a limit was improperly accepted' }
+    Assert-Value $batchSheet.Range('H6').Value2 55000 'Previous list survives failed batch'
+    Assert-Value $batchSheet.Range('A10').Value2 5 'No rows lost on bad batch'
+    QA-Stage 'batch-salary-only-five-list-pass'
     # Synthetic live Excel COM regression: the source total is audit-only;
     # the user-typed override persists across unrelated source edits; clearing
     # the override restores computed deductions. No customer data is used.
