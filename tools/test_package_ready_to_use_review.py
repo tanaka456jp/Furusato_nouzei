@@ -73,6 +73,7 @@ class ReadyToUseReviewTests(unittest.TestCase):
         with ZipFile(self.out) as archive:
             readme = archive.read("README.txt").decode("utf-8")
         self.assertIn("本検証ZIPは正式版ではありません", readme)
+        self.assertNotIn("現行正式版v4.18.2", readme)
         self.assertNotIn("本パッケージはv4.18.2正式版です", readme)
         # Do not mutate the canonical current-version user guide.
         self.assertEqual(self.guide.read_text(encoding="utf-8"), content)

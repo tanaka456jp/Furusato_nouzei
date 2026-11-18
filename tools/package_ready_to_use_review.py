@@ -386,19 +386,19 @@ def digest(path):
 def _render_review_readme(guide, head_sha):
     """Write a conspicuous review-only README, not a misleading release guide."""
     original = Path(guide).read_text(encoding="utf-8-sig")
-    # Current guide also documents the previous official v4.18.2 release.
+    # A copied guide may contain legacy v4.18.2 marketing; never present it as current.
     # Correct statements referring to THIS ZIP; preserve historical instructions.
     original = original.replace(
         "# ふるさと納税 寄附限度額試算 v4.18.2 正式版（対応範囲限定）",
         "# ふるさと納税 寄附限度額試算：開発検証用ガイド（正式配布HOLD）",
     ).replace(
         "本パッケージはv4.18.2正式版です。",
-        "本検証ZIPは正式版ではありません。現行正式版v4.18.2とは別の開発用成果物です。",
+        "本検証ZIPは正式版ではありません。公開済みの正式Releaseとは別の開発用成果物です。",
     )
     notice = (
         "# 次期版 ReadyToUse 実機検証用 — 正式配布HOLD\\n\\n"
         f"対象開発コミット：{head_sha}\\n\\n"
-        "このZIPは検証専用です。現行正式版v4.18.2でも、署名済みの販売製品でもありません。\\n"
+        "このZIPは検証専用です。公開済みの正式Releaseでも、署名済みの販売製品でもありません。\\n"
         "同梱EXEのコード署名・VBA署名の真正性は未検証です。\\n"
         "本番の税務判断に用いず、隔離された検証環境で確認してください。\\n"
         "Windows/Officeのセキュリティ設定を一括解除しないでください。\\n"
