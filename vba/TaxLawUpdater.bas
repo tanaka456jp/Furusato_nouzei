@@ -312,12 +312,172 @@ Public Sub BindButtons()
     BindButton "操作画面", "btnShowAdvanced", "ShowAdvanced"
     BindButton "操作画面", "btnImportWithholding", "ImportWithholding"
     BindButton "操作画面", "btnReviewWithholding", "ReviewWithholding"
+    BindButton "操作画面", "btnImportWithholdingBatch", "ImportWithholdingBatch"
     BindButton "例外・分離課税", "btnReturnFromAdvanced", "ReturnFromAdvanced"
     BindButton "計算根拠", "btnReturnHome", "ReturnHome"
     BindButton "計算根拠", "btnPrintDetails", "PrintDetails"
     BindButton "計算根拠", "btnExportDetails", "ExportDetails"
 End Sub
 
+
+' Distinct salary-only bulk workflow.  One source PDF page becomes ONE
+' overview row, never the current single-taxpayer model.  Advanced income,
+' split taxation, housing and ambiguous statutory conditions remain HOLD.
+Public Sub ImportWithholdingBatch()
+    Dim selected As Variant, fso As Object, shell As Object
+    Dim reader As String, temporary As String, command As String
+    Dim exitCode As Long, records As Long, problem As String
+    On Error GoTo Failed
+    selected = Application.GetOpenFilename( _
+        "PDF (*.pdf),*.pdf", 1, "複数人の源泉徴収票PDFを選択")
+    If VarType(selected) = vbBoolean Then Exit Sub
+    If ThisWorkbook.ReadOnly Or Len(ThisWorkbook.Path) = 0 Then
+        Err.Raise vbObjectError + 341, , _
+            "書き込み可能なローカルのExcelブックを開いてください。"
+    End If
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    reader = fso.BuildPath(ThisWorkbook.Path, "FurusatoDocumentReader.exe")
+    If Not fso.FileExists(reader) Then
+        Err.Raise vbObjectError + 342, , _
+            "読取EXEがありません。修正版配布ZIPを完全に展開してください。"
+    End If
+    temporary = fso.BuildPath(fso.GetSpecialFolder(2), fso.GetTempName & ".tsv")
+    command = Chr$(34) & reader & Chr$(34) & _
+              " --input " & Chr$(34) & CStr(selected) & Chr$(34) & _
+              " --output " & Chr$(34) & temporary & Chr$(34) & _
+              " --batch-bridge"
+    Set shell = CreateObject("WScript.Shell")
+    exitCode = shell.Run(command, 0, True)
+    If exitCode <> 0 Or Not fso.FileExists(temporary) Then
+        Err.Raise vbObjectError + 343, , _
+            "複数ページPDFの一括読取に失敗しました。元の入力は変更していません。"
+    End If
+    records = LoadBatchFromTsv(temporary)
+    MsgBox CStr(records) & "ページの給与所得限定・参考一覧を作成しました。" & _
+           vbCrLf & "限度額が保留の行は、単独計算で詳細確認してください。" & _
+           vbCrLf & "現在の単独案件の数値は変更していません。", _
+           vbInformation, "複数人一覧"
+CleanUp:
+    On Error Resume Next
+    If Not fso Is Nothing Then
+        If Len(temporary) > 0 Then
+            If fso.FileExists(temporary) Then fso.DeleteFile temporary, True
+        End If
+    End If
+    Exit Sub
+Failed:
+    problem = Err.Description
+    MsgBox problem, vbExclamation, "複数人一覧の取込"
+    Resume CleanUp
+End Sub
+
+Private Function ParseBatchNumber(ByVal source As String, _
+                                  ByVal allowEmpty As Boolean) As Variant
+    If source = "" And allowEmpty Then
+        ParseBatchNumber = Empty
+        Exit Function
+    End If
+    If Len(source) = 0 Or Len(source) > 13 Or source Like "*[!0-9]*" Then
+        Err.Raise vbObjectError + 344, , "一括一覧の金額が不正です。"
+    End If
+    If CDbl(source) > 1000000000000# Then
+        Err.Raise vbObjectError + 345, , "一括一覧の金額が上限を超えています。"
+    End If
+    ParseBatchNumber = CDbl(source)
+End Function
+
+' Public only for isolated PC Excel tests with fabricated TSV; production
+' invokes it after the offline reader exits successfully.  All input lines
+' are validated BEFORE the first worksheet mutation, and a worksheet-level
+' rollback preserves the previous list if a subsequent Excel write fails.
+Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
+    Dim fso As Object, inputFile As Object, target As Worksheet
+    Dim rows As Collection, pieces As Variant, record As Variant
+    Dim line As String, requiredHeader As String, status As String
+    Dim page As Long, col As Long, index As Long, oldData As Variant
+    Dim changed As Boolean, problem As String
+    On Error GoTo Failed
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    If Not fso.FileExists(tsvPath) Then
+        Err.Raise vbObjectError + 346, , "一覧データがありません。"
+    End If
+    If fso.GetFile(tsvPath).Size > 128000 Then
+        Err.Raise vbObjectError + 347, , "一覧データが上限を超えています。"
+    End If
+    requiredHeader = Join(Array("PAGE", "YEAR", "SALARY_GROSS", _
+        "SALARY_INCOME", "TOTAL_DEDUCTIONS", "SOURCE_TAX", _
+        "SOCIAL_INSURANCE", "REFERENCE_LIMIT", "STATUS", "REASON"), vbTab)
+    Set inputFile = fso.OpenTextFile(tsvPath, 1, False, 0)
+    If inputFile.AtEndOfStream Then Err.Raise vbObjectError + 348, , "一覧データが空です。"
+    If inputFile.ReadLine <> requiredHeader Then
+        Err.Raise vbObjectError + 349, , "一覧データの形式が承認済みのものではありません。"
+    End If
+    Set rows = New Collection
+    Do Until inputFile.AtEndOfStream
+        line = inputFile.ReadLine
+        pieces = Split(line, vbTab)
+        If UBound(pieces) <> 9 Then
+            Err.Raise vbObjectError + 350, , "一括一覧の列数が不正です。"
+        End If
+        If rows.Count >= 100 Then
+            Err.Raise vbObjectError + 351, , "一括一覧は100ページ以内です。"
+        End If
+        page = CLng(ParseBatchNumber(CStr(pieces(0)), False))
+        If page <> rows.Count + 1 Then
+            Err.Raise vbObjectError + 352, , "ページ番号が不連続です。"
+        End If
+        If pieces(1) <> "" And pieces(1) <> "2025" And pieces(1) <> "2026" Then
+            Err.Raise vbObjectError + 353, , "一覧の所得年が不正です。"
+        End If
+        status = CStr(pieces(8))
+        If status <> "HOLD" And status <> "PROVISIONAL" Then
+            Err.Raise vbObjectError + 354, , "一覧の検証状態が不正です。"
+        End If
+        If status = "HOLD" And Len(CStr(pieces(7))) > 0 Then
+            Err.Raise vbObjectError + 355, , "保留行に限度額が含まれています。"
+        End If
+        If status = "PROVISIONAL" And _
+           (Len(CStr(pieces(7))) = 0 Or pieces(1) = "") Then
+            Err.Raise vbObjectError + 356, , "参考額の根拠がありません。"
+        End If
+        If Len(CStr(pieces(9))) = 0 Or _
+            Len(CStr(pieces(9))) > 64 Or _
+            CStr(pieces(9)) Like "*[!A-Z_]*" Then
+            Err.Raise vbObjectError + 357, , "一覧の理由コードが不正です。"
+        End If
+        ReDim record(1 To 10)
+        For col = 1 To 8
+            record(col) = ParseBatchNumber(CStr(pieces(col - 1)), _
+                                          col > 1 And status = "HOLD")
+        Next col
+        record(9) = IIf(status = "HOLD", "HOLD／要確認", "参考額（仮）")
+        record(10) = CStr(pieces(9))
+        rows.Add record
+    Loop
+    inputFile.Close
+    Set inputFile = Nothing
+    If rows.Count < 1 Then Err.Raise vbObjectError + 358, , "ページがありません。"
+    Set target = ThisWorkbook.Worksheets("一括計算一覧")
+    oldData = target.Range("A6:J105").Value2
+    changed = True
+    target.Range("A6:J105").ClearContents
+    For index = 1 To rows.Count
+        record = rows.Item(index)
+        For col = 1 To 10
+            target.Cells(index + 5, col).Value2 = record(col)
+        Next col
+    Next index
+    target.Activate
+    LoadBatchFromTsv = rows.Count
+    Exit Function
+Failed:
+    problem = Err.Description
+    On Error Resume Next
+    If Not inputFile Is Nothing Then inputFile.Close
+    If changed Then target.Range("A6:J105").Value2 = oldData
+    On Error GoTo 0
+    Err.Raise vbObjectError + 359, "TaxLawUpdater.LoadBatchFromTsv", problem
+End Function
 
 ' Import only allowlisted numeric fields from a local, explicitly selected file.
 ' Do not put names, addresses, tax IDs, or raw document text into the workbook.
