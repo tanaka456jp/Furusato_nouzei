@@ -568,24 +568,24 @@ try {
     $relativeSheet.Range('D8').Value2 = '要件確認済'
     # Person 30 must be included in both statutory totals and G72/G74,
     # not silently omitted by a hard-coded three-person or five-person loop.
-    $relativeSheet.Range('B33').Value2 = 21.0
-    $relativeSheet.Range('C33').Value2 = 850000.0
-    $relativeSheet.Range('D33').Value2 = '要件確認済'
+    $relativeSheet.Range('B8').Value2 = 21.0
+    $relativeSheet.Range('C8').Value2 = 850000.0
+    $relativeSheet.Range('D8').Value2 = '要件確認済'
     $excel.Run('TaxLawUpdater.RecalculateCase')
-    Assert-Value $relativeSheet.Range('E33').Value2 630000 'Thirtieth relative income-tax amount'
-    Assert-Value $relativeSheet.Range('F33').Value2 450000 'Thirtieth relative resident-tax amount'
-    Assert-Value $relativeSheet.Range('E35').Value2 2620000 'Thirtieth relative included in national total'
-    Assert-Value $relativeSheet.Range('F35').Value2 2100000 'Thirtieth relative included in municipal total'
+    Assert-Value $relativeSheet.Range('E8').Value2 630000 'Fifth relative income-tax amount'
+    Assert-Value $relativeSheet.Range('F8').Value2 450000 'Fifth relative resident-tax amount'
+    Assert-Value $relativeSheet.Range('E35').Value2 2620000 'Fifth relative included in national total'
+    Assert-Value $relativeSheet.Range('F35').Value2 2100000 'Fifth relative included in municipal total'
     $errorText = [string]($excel.Run('TaxLawUpdater.SpecialRelativeSourceCheckForTest'))
-    if ($errorText -notlike '*人数分*') { throw 'Thirtieth relative was omitted from G72 count review' }
+    if ($errorText -notlike '*人数分*') { throw 'Fifth relative was omitted from G72 count review' }
     $sourceAudit.Range('B38').Value2 = 5.0
     $sourceAudit.Range('B39').Value2 = 1990000.0
-    Assert-Value ([string]($excel.Run('TaxLawUpdater.SpecialRelativeSourceCheckForTest'))) 'OK' 'Five special relatives including row33'
-    $relativeSheet.Range('B33,C33').ClearContents()
-    $relativeSheet.Range('D33').Value2 = '未確認'
+    Assert-Value ([string]($excel.Run('TaxLawUpdater.SpecialRelativeSourceCheckForTest'))) 'OK' 'Five special relatives including row8'
+    $relativeSheet.Range('B8,C33').ClearContents()
+    $relativeSheet.Range('D8').Value2 = '未確認'
     $sourceAudit.Range('B38').Value2 = 4.0
     $sourceAudit.Range('B39').Value2 = 1360000.0
-    Assert-Value ([string]($excel.Run('TaxLawUpdater.SpecialRelativeSourceCheckForTest'))) 'OK' 'Restored G72/G74 after row33 cleanup'
+    Assert-Value ([string]($excel.Run('TaxLawUpdater.SpecialRelativeSourceCheckForTest'))) 'OK' 'Restored G72/G74 after row8 cleanup'
     QA-Stage 'special-relative-source-g72-g74-person-by-person-pass'
     $sourceAudit.Range('B14').Value2 = 3660000.0
     $sourceAudit.Range('B20').Value2 = 'VERIFIED_AFTER_CORRECTION'
@@ -633,8 +633,8 @@ try {
     $homeSheet.Range('B11').Value2 = 2026.0
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value ([string]$relativeSheet.Range('G9').Value2) '特定扶養親族' '2026 income limit'
-    $relativeSheet.Range('B4:B33,C7:C33').ClearContents()
-    $relativeSheet.Range('D4:D33').Value2 = '未確認'
+    $relativeSheet.Range('B4:B8,C7:C8').ClearContents()
+    $relativeSheet.Range('D4:D8').Value2 = '未確認'
     $homeSheet.Range('D14:D16').ClearContents()
     $homeSheet.Range('B12').ClearContents()
     $homeSheet.Range('B15').ClearContents()
@@ -1479,8 +1479,8 @@ try {
         $homeSheet.Range('B34').Value2 = 300000.0
         $homeSheet.Range('B35').Value2 = 2024.0
         $homeSheet.Range('B36').Value2 = 1.0
-        $relativeSheet.Range('B4:B33,C7:C33').ClearContents()
-        $relativeSheet.Range('D4:D33').Value2 = '未確認'
+        $relativeSheet.Range('B4:B8,C7:C8').ClearContents()
+        $relativeSheet.Range('D4:D8').Value2 = '未確認'
         $sourceAudit.Range('B14,B20,B38:B39,B41').ClearContents()
         if ([bool]$case.Spouse) {
             $homeSheet.Range('D17').Value2 = 0.0
@@ -1520,8 +1520,8 @@ try {
     }
     # Restore the ordinary no-family synthetic workbook state for subsequent
     # safety checks, without persisting any modified values to the ZIP.
-    $relativeSheet.Range('B4:B33,C7:C33').ClearContents()
-    $relativeSheet.Range('D4:D33').Value2 = '未確認'
+    $relativeSheet.Range('B4:B8,C7:C8').ClearContents()
+    $relativeSheet.Range('D4:D8').Value2 = '未確認'
     $homeSheet.Range('D11:D23,D25').ClearContents()
     $homeSheet.Range('D22').Value2 = '該当なし'
     $homeSheet.Range('D24').Value2 = 'ワンストップ'
@@ -1555,8 +1555,8 @@ try {
     $homeSheet.Range('D24').Value2 = '確定申告'
     $homeSheet.Range('B25').Value2 = 'なし'
     $homeSheet.Range('D35').Value2 = '未確認'
-    $relativeSheet.Range('B4:B33,C7:C33').ClearContents()
-    $relativeSheet.Range('D4:D33').Value2 = '未確認'
+    $relativeSheet.Range('B4:B8,C7:C8').ClearContents()
+    $relativeSheet.Range('D4:D8').Value2 = '未確認'
     $sourceAudit.Range('B14,B20,B38:B39,B41').ClearContents()
     $homeSheet.Range('B33').Value2 = 100000.0
     $homeSheet.Range('B34').Value2 = 100000.0
@@ -1646,8 +1646,8 @@ try {
             $homeSheet.Range('D22').Value2 = '該当なし'
             $homeSheet.Range('D24').Value2 = 'ワンストップ'
             $homeSheet.Range('B33:B36').ClearContents()
-            $relativeSheet.Range('B4:B33,C7:C33').ClearContents()
-            $relativeSheet.Range('D4:D33').Value2 = '未確認'
+            $relativeSheet.Range('B4:B8,C7:C8').ClearContents()
+            $relativeSheet.Range('D4:D8').Value2 = '未確認'
             if ($kind -eq 'relative_special') {
                 $homeSheet.Range('D14').Value2 = 900000.0
                 $relativeSheet.Range('B4').Value2 = 20.0
@@ -1674,8 +1674,8 @@ try {
             }
         }
     }
-    $relativeSheet.Range('B4:B33,C7:C33').ClearContents()
-    $relativeSheet.Range('D4:D33').Value2 = '未確認'
+    $relativeSheet.Range('B4:B8,C7:C8').ClearContents()
+    $relativeSheet.Range('D4:D8').Value2 = '未確認'
     $homeSheet.Range('D11:D23,D25').ClearContents()
     $homeSheet.Range('B25').Value2 = 'なし'
     QA-Stage 'family-income-levy-exemption-excel-pass'
@@ -1705,8 +1705,8 @@ try {
             $homeSheet.Range('D24').Value2 = 'ワンストップ'
             $homeSheet.Range('B33:B36').ClearContents()
             $homeSheet.Range('D17').Value2 = [double]$amount
-            $relativeSheet.Range('B4:B33,C7:C33').ClearContents()
-            $relativeSheet.Range('D4:D33').Value2 = '未確認'
+            $relativeSheet.Range('B4:B8,C7:C8').ClearContents()
+            $relativeSheet.Range('D4:D8').Value2 = '未確認'
             $excel.Run('TaxLawUpdater.RecalculateCase')
             $label = 'Spouse income exemption ' + $case.Year + '/' + $amount
             Assert-Value $homeSheet.Range('B13').Value2 1000000 ($label + ' salary basis')
@@ -1727,8 +1727,8 @@ try {
             }
         }
     }
-    $relativeSheet.Range('B4:B33,C7:C33').ClearContents()
-    $relativeSheet.Range('D4:D33').Value2 = '未確認'
+    $relativeSheet.Range('B4:B8,C7:C8').ClearContents()
+    $relativeSheet.Range('D4:D8').Value2 = '未確認'
     $homeSheet.Range('D11:D23,D25').ClearContents()
     QA-Stage 'spouse-income-exemption-boundary-pass'
     # Income-levy exemption uses total income, including ordinary pension,
@@ -1934,17 +1934,17 @@ try {
     try {
         $excel.EnableEvents = $true
         $excel.Calculation = -4135 # xlCalculationManual
-        $relativeSheet.Range('B33').Value2 = 21.0
+        $relativeSheet.Range('B8').Value2 = 21.0
         if ([string]$homeSheet.Range('B8').Text -ne '') {
             throw 'Editing the relative age left a stale donation limit visible'
         }
         if ([string]$homeSheet.Range('A9').Text -notlike '*計算未完了*') {
             throw 'Relative age edit did not issue a stale-result warning'
         }
-        $relativeSheet.Range('C33').Value2 = 900000.0
-        $relativeSheet.Range('D33').Value2 = '要件確認済'
+        $relativeSheet.Range('C8').Value2 = 900000.0
+        $relativeSheet.Range('D8').Value2 = '要件確認済'
         if ([string]$homeSheet.Range('B8').Text -ne '') {
-            throw 'Editing thirtieth-relative income/status exposed an old result'
+            throw 'Editing fifth-relative income/status exposed an old result'
         }
         if ([string]$homeSheet.Range('B26').Text -eq '計算可能') {
             throw 'Eligibility was shown as valid under manual calculation after editing relatives'
@@ -1961,11 +1961,11 @@ try {
         $excel.Run('TaxLawUpdater.RecalculateCase')
         $excel.EnableEvents = $false
     }
-    Assert-Value $relativeSheet.Range('E33').Value2 610000 'Thirtieth-relative tax deduction after auto recalc'
-    Assert-Value $relativeSheet.Range('F33').Value2 450000 'Thirtieth-relative municipal deduction after auto recalc'
-    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Thirtieth-relative confirmation restores eligibility'
-    $relativeSheet.Range('B33,C33').ClearContents()
-    $relativeSheet.Range('D33').Value2 = '未確認'
+    Assert-Value $relativeSheet.Range('E8').Value2 610000 'Fifth-relative tax deduction after auto recalc'
+    Assert-Value $relativeSheet.Range('F8').Value2 450000 'Fifth-relative municipal deduction after auto recalc'
+    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Fifth-relative confirmation restores eligibility'
+    $relativeSheet.Range('B8,C33').ClearContents()
+    $relativeSheet.Range('D8').Value2 = '未確認'
     $homeSheet.Range('D24').Value2 = $previousRelativeReturnMode
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value $homeSheet.Range('B8').Value2 109000 'Normal result restored after clearing test relative'
@@ -2057,17 +2057,17 @@ try {
     # Save the case with a real eligible person in the 30th slot.  Check
     # that age, income, eligibility, calculated deductions, and the overall
     # donation result survive SaveCopyAs and reopen. The test is isolated.
-    QA-Stage 'relative-thirtieth-case-persistence-start'
+    QA-Stage 'relative-fifth-case-persistence-start'
     $previousCaseReturnMode = [string]$homeSheet.Range('D24').Value2
     $homeSheet.Range('D24').Value2 = 'ワンストップ'
-    $relativeSheet.Range('B33').Value2 = 21.0
-    $relativeSheet.Range('C33').Value2 = 900000.0
-    $relativeSheet.Range('D33').Value2 = '要件確認済'
+    $relativeSheet.Range('B8').Value2 = 21.0
+    $relativeSheet.Range('C8').Value2 = 900000.0
+    $relativeSheet.Range('D8').Value2 = '要件確認済'
     $excel.Run('TaxLawUpdater.RecalculateCase')
-    Assert-Value $relativeSheet.Range('G33').Value2 '特定親族特別控除' 'Thirtieth saved-relative classification'
-    Assert-Value $relativeSheet.Range('E33').Value2 610000 'Thirtieth saved-relative national deduction'
-    Assert-Value $relativeSheet.Range('F33').Value2 450000 'Thirtieth saved-relative resident deduction'
-    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Case is eligible with thirtieth relative'
+    Assert-Value $relativeSheet.Range('G8').Value2 '特定親族特別控除' 'Fifth saved-relative classification'
+    Assert-Value $relativeSheet.Range('E8').Value2 610000 'Fifth saved-relative national deduction'
+    Assert-Value $relativeSheet.Range('F8').Value2 450000 'Fifth saved-relative resident deduction'
+    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Case is eligible with fifth relative'
     $expectedSavedDonation = [double]$homeSheet.Range('B8').Value2
     if ($expectedSavedDonation -le 0) { throw 'Thirty-person case has no valid donation estimate' }
     # Save a separate case file, verify its content, and reject accidental overwrite.
@@ -2103,13 +2103,13 @@ try {
     }
     try {
         Assert-Value $savedCase.Worksheets.Item('操作画面').Range('B12').Value2 7000000 'Separate case preserves salary'
-        Assert-Value $savedCase.Worksheets.Item('操作画面').Range('B8').Value2 $expectedSavedDonation 'Saved case preserves thirtieth-relative donation estimate'
+        Assert-Value $savedCase.Worksheets.Item('操作画面').Range('B8').Value2 $expectedSavedDonation 'Saved case preserves fifth-relative donation estimate'
         $savedRelative = $savedCase.Worksheets.Item('特定親族明細')
-        Assert-Value $savedRelative.Range('B33').Value2 21 'Saved case keeps thirtieth-relative age'
-        Assert-Value $savedRelative.Range('C33').Value2 900000 'Saved case keeps thirtieth-relative income'
-        Assert-Value $savedRelative.Range('D33').Value2 '要件確認済' 'Saved case keeps thirtieth-relative eligibility'
-        Assert-Value $savedRelative.Range('E33').Value2 610000 'Saved case recalculates thirtieth-relative national amount'
-        Assert-Value $savedRelative.Range('F33').Value2 450000 'Saved case recalculates thirtieth-relative municipal amount'
+        Assert-Value $savedRelative.Range('B8').Value2 21 'Saved case keeps fifth-relative age'
+        Assert-Value $savedRelative.Range('C8').Value2 900000 'Saved case keeps fifth-relative income'
+        Assert-Value $savedRelative.Range('D8').Value2 '要件確認済' 'Saved case keeps fifth-relative eligibility'
+        Assert-Value $savedRelative.Range('E8').Value2 610000 'Saved case recalculates fifth-relative national amount'
+        Assert-Value $savedRelative.Range('F8').Value2 450000 'Saved case recalculates fifth-relative municipal amount'
         Assert-MacroAction ([string]$savedCase.Worksheets.Item('操作画面').Buttons().Item('btnTaxLawUpdate').OnAction) 'case_preservation.xlsm!TaxLawUpdater.TaxLawUpdate' 'Copied case macro ownership'
         Assert-MacroAction ([string]$savedCase.Worksheets.Item('計算根拠').Buttons().Item('btnExportDetails').OnAction) 'case_preservation.xlsm!TaxLawUpdater.ExportDetails' 'Copied case PDF macro ownership'
     } finally {
@@ -2118,12 +2118,12 @@ try {
 
     # The saved copy retains the confirmed 30th relative, while the
     # isolated main QA copy returns to the original salary-only baseline.
-    $relativeSheet.Range('B33,C33').ClearContents()
-    $relativeSheet.Range('D33').Value2 = '未確認'
+    $relativeSheet.Range('B8,C33').ClearContents()
+    $relativeSheet.Range('D8').Value2 = '未確認'
     $homeSheet.Range('D24').Value2 = $previousCaseReturnMode
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value $homeSheet.Range('B8').Value2 109000 'Main QA copy restored after relative case-save'
-    QA-Stage 'relative-thirtieth-case-persistence-pass'
+    QA-Stage 'relative-fifth-case-persistence-pass'
     # Reopen the QA copy after a successful case save.
     if ([string]$homeSheet.Range('B26').Formula -notlike '*B28*') {
         throw 'Automatic eligibility formula was lost during save/reopen'
