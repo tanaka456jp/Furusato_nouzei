@@ -561,6 +561,15 @@ def build(source, output):
     batch["A4"] = "操作画面に戻る"
     batch["A4"].hyperlink = Hyperlink(ref="A4", location="'操作画面'!A1")
     batch["A4"].style = "Hyperlink"
+    batch["C4"] = "読取人数"
+    batch["D4"] = '=COUNT(A6:A105)'
+    batch["E4"] = "参考額あり"
+    batch["F4"] = '=COUNTIF(I6:I105,"参考額（仮）")'
+    batch["G4"] = "HOLD"
+    batch["H4"] = '=COUNTIF(I6:I105,"HOLD／要確認")'
+    for cell in ("D4", "F4", "H4"):
+        batch[cell].font = Font(name="Yu Gothic", size=11, bold=True,
+                                color="163A56")
     for col, caption in enumerate((
         "ページ", "所得年", "支払金額（円）", "給与所得（円）",
         "所得控除合計（円）", "源泉徴収税額（円）", "社会保険料（円）",
