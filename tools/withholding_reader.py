@@ -399,7 +399,7 @@ def finish(year,fields,mode,warnings=None):
         warnings.append("SPECIAL_RELATIVE_REQUIRES_INCOME_DETAILS")
         if special_deduction and not special_count:
             warnings.append("SPECIAL_RELATIVE_COUNT_MISSING")
-        if special_count>30:
+        if special_count>5:
             warnings.append("SPECIAL_RELATIVE_COUNT_EXCEEDS_UI")
     # G43 does not establish a spouse's age or statutory eligibility.
     if "spouse_income_reference" in fields:
