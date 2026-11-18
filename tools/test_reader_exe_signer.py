@@ -1,6 +1,8 @@
 """Contract tests: only local operator can sign the accepted offline reader EXE."""
+import hashlib
 import os
 from pathlib import Path
+import struct
 import subprocess
 import tempfile
 import unittest
@@ -20,6 +22,7 @@ class ReaderSignerTest(unittest.TestCase):
             "Get-AuthenticodeSignature", "/fd SHA256 /tr $TimestampUrl /td SHA256",
             "verify /pa /all /tw", "READER_EXE_SIGNED_LOCALLY_RELEASE_STILL_HOLD",
             "release_approved=$false", "[IO.File]::Copy($source,$target,$false)",
+            "$evidenceCreated=$true", "Remove-Item -LiteralPath $evidence -Force",
         ):
             with self.subTest(requirement=requirement):
                 self.assertIn(requirement, text)
@@ -43,5 +46,41 @@ class ReaderSignerTest(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("READER_SIGNING_IN_CI_FORBIDDEN", result.stdout+result.stderr)
             self.assertFalse(dest.exists())
+
+    @unittest.skipUnless(os.name == "nt", "Native Windows PowerShell required")
+    def test_invalid_pe_and_source_digest_rejected_without_certificate(self):
+        # Deliberately synthetic byte fixtures; no executable customer file
+        # and no certificate/private-key use. Probe the real PowerShell code.
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp, "synthetic.exe")
+            target = Path(tmp, "signed-not-created.exe")
+            cases = []
+            malformed_offset = bytearray(2048)
+            malformed_offset[:2] = b"MZ"
+            cases.append((malformed_offset, None, "READER_EXE_PE_OFFSET_INVALID"))
+            malformed_signature = bytearray(2048)
+            malformed_signature[:2] = b"MZ"
+            malformed_signature[0x3C:0x40] = struct.pack("<I", 0x80)
+            cases.append((malformed_signature, None, "READER_EXE_PE_SIGNATURE_INVALID"))
+            valid_minimal = bytearray(malformed_signature)
+            valid_minimal[0x80:0x84] = b"PE\x00\x00"
+            # Wrong accepted digest must fail BEFORE any certificate access.
+            cases.append((valid_minimal, "a" * 64, "READER_SOURCE_SHA256_NOT_ACCEPTED"))
+            for contents, override, reason in cases:
+                with self.subTest(reason=reason):
+                    source.write_bytes(contents)
+                    source_hash = override or hashlib.sha256(contents).hexdigest()
+                    result = subprocess.run([
+                        "powershell.exe", "-NoProfile", "-NonInteractive", "-File", str(SCRIPT),
+                        "-SourceExe", str(source),
+                        "-OutputExe", str(target),
+                        "-ExpectedSourceSha256", source_hash,
+                        "-CertificateThumbprint", "b" * 40,
+                        "-TimestampUrl", "https://timestamp.example.invalid",
+                    ], capture_output=True, text=True, check=False, timeout=25)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn(reason, result.stdout + result.stderr)
+                    self.assertFalse(target.exists())
+
 if __name__=="__main__":
     unittest.main(verbosity=2)

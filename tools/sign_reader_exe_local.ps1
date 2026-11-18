@@ -92,6 +92,7 @@ function Find-SignTool([string]$explicit) {
     return $tools[0].FullName
 }
 $created=$false
+$evidenceCreated=$false
 $target=$null
 try {
     # This is a manual operator task, not an Actions signing path.
@@ -175,6 +176,7 @@ try {
             release_approved=$false
         }
         $file=[IO.File]::Open($evidence,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write)
+        $evidenceCreated=$true
         try {
             $bytes=[Text.Encoding]::UTF8.GetBytes(($record | ConvertTo-Json -Depth 3)+[Environment]::NewLine)
             $file.Write($bytes,0,$bytes.Length)
@@ -184,6 +186,10 @@ try {
 } catch {
     if ($created -and $target -and (Test-Path -LiteralPath $target)) {
         Remove-Item -LiteralPath $target -Force -ErrorAction SilentlyContinue
+    }
+    if ($evidenceCreated -and $EvidencePath -and
+        (Test-Path -LiteralPath $evidence)) {
+        Remove-Item -LiteralPath $evidence -Force -ErrorAction SilentlyContinue
     }
     $code=$_.Exception.Message
     if ($code -cnotmatch '^[A-Z0-9_]+$') { $code='READER_LOCAL_SIGNING_FAILED' }
