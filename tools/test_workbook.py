@@ -171,6 +171,8 @@ class WorkbookTest(unittest.TestCase):
         engine = self.book[ENGINE]
         self.assertEqual(rel.sheet_state, "visible")
         self.assertEqual(rel["A8"].value, 5)
+        self.assertEqual(rel["A15"].hyperlink.ref, "A15")
+        self.assertIsNone(rel["G9"].value)
         self.assertEqual(home["A3"].hyperlink.location, "'特定親族明細'!A1")
         self.assertEqual(rel["D4"].value, "未確認")
         self.assertEqual(rel["D8"].value, "未確認")

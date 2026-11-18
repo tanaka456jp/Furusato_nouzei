@@ -712,7 +712,7 @@ def build(source, output):
     relatives["D13"] = "未確認人数"
     relatives["E13"] = f'=COUNTIF(G4:G{RELATIVE_LAST_ROW},"要確認")'
     relatives["A15"] = "操作画面に戻る"
-    relatives["A15"].hyperlink = Hyperlink(ref="A40", location="'操作画面'!A1")
+    relatives["A15"].hyperlink = Hyperlink(ref="A15", location="'操作画面'!A1")
     relatives["A15"].style = "Hyperlink"
     relatives.print_area = "A1:H15"
     relatives.sheet_properties.pageSetUpPr.fitToPage = True

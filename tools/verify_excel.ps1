@@ -662,39 +662,42 @@ try {
     $sourceAudit.Range('B14,B20,B38:B39,B41').ClearContents()
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Clearing verified source returns to independent calculations'
-    # A sixth relative cannot silently become eligible without age/identity review.
-    $relativeSheet.Range('C9').Value2 = 600000.0
-    $relativeSheet.Range('B9').Value2 = 20.0
+    # All five permitted slots are exercised.  This fifth slot must
+    # enforce age/eligibility and respect the different 2025/2026 thresholds.
+    $relativeSheet.Range('C8').Value2 = 600000.0
+    $relativeSheet.Range('B8').Value2 = 20.0
     $excel.Run('TaxLawUpdater.RecalculateCase')
-    Assert-Value ([string]$relativeSheet.Range('G9').Value2) '要確認' 'Unconfirmed sixth relative is held'
-    Assert-Value ([string]$homeSheet.Range('B8').Value2) '' 'Unconfirmed relative masks donation limit'
-    $relativeSheet.Range('D9').Value2 = '要件確認済'
+    Assert-Value ([string]$relativeSheet.Range('G8').Value2) '要確認' 'Unconfirmed fifth relative is held'
+    Assert-Value ([string]$homeSheet.Range('B8').Value2) '' 'Unconfirmed fifth relative masks donation limit'
+    $relativeSheet.Range('D8').Value2 = '要件確認済'
     $excel.Run('TaxLawUpdater.RecalculateCase')
-    Assert-Value $relativeSheet.Range('E9').Value2 630000 'Sixth person individually calculated'
-    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Sixth person review clears HOLD'
-    $relativeSheet.Range('B9').Value2 = 23.0
+    Assert-Value $relativeSheet.Range('E8').Value2 630000 'Fifth person individually calculated'
+    Assert-Value $homeSheet.Range('B28').Value2 '正常' 'Fifth person review clears HOLD'
+    $relativeSheet.Range('B8').Value2 = 23.0
     $excel.Run('TaxLawUpdater.RecalculateCase')
-    Assert-Value ([string]$relativeSheet.Range('G9').Value2) '要確認' 'Non-eligible age cannot be confirmed'
+    Assert-Value ([string]$relativeSheet.Range('G8').Value2) '要確認' 'Non-eligible age cannot be confirmed'
     Assert-Value ([string]$homeSheet.Range('B8').Value2) '' 'Out-of-range age masks donation limit'
-    $relativeSheet.Range('D9').Value2 = '対象外'
+    $relativeSheet.Range('D8').Value2 = '対象外'
     $excel.Run('TaxLawUpdater.RecalculateCase')
-    Assert-Value $relativeSheet.Range('E9').Value2 0 'Explicitly excluded relative adds zero'
-    # A 600,000-yen income is special-relative in 2025 but special-dependent
-    # in 2026. Both tax amounts are the same at this boundary, not the label.
-    $relativeSheet.Range('B9').Value2 = 20.0
-    $relativeSheet.Range('D9').Value2 = '要件確認済'
+    Assert-Value $relativeSheet.Range('E8').Value2 0 'Explicitly excluded relative adds zero'
+    # 600,000-yen income is special-relative in 2025 but dependent in 2026.
+    $relativeSheet.Range('B8').Value2 = 20.0
+    $relativeSheet.Range('D8').Value2 = '要件確認済'
     $settings.Range('B4').Value2 = 2025.0
     $homeSheet.Range('B4').Value2 = 2025.0
     $homeSheet.Range('B11').Value2 = 2025.0
     $excel.Run('TaxLawUpdater.RecalculateCase')
-    Assert-Value ([string]$relativeSheet.Range('G9').Value2) '特定親族特別控除' '2025 income limit'
-    Assert-Value $relativeSheet.Range('E9').Value2 630000 '2025 independent income-tax boundary'
-    Assert-Value $relativeSheet.Range('F9').Value2 450000 '2025 independent resident-tax boundary'
+    Assert-Value ([string]$relativeSheet.Range('G8').Value2) '特定親族特別控除' '2025 income limit'
+    Assert-Value $relativeSheet.Range('E8').Value2 630000 '2025 independent income-tax boundary'
+    Assert-Value $relativeSheet.Range('F8').Value2 450000 '2025 independent resident-tax boundary'
     $settings.Range('B4').Value2 = 2026.0
     $homeSheet.Range('B4').Value2 = 2026.0
     $homeSheet.Range('B11').Value2 = 2026.0
     $excel.Run('TaxLawUpdater.RecalculateCase')
-    Assert-Value ([string]$relativeSheet.Range('G9').Value2) '特定扶養親族' '2026 income limit'
+    Assert-Value ([string]$relativeSheet.Range('G8').Value2) '特定扶養親族' '2026 income limit'
+    # The sixth row is not a permitted editable relative and must have no
+    # classification/formula; only rows 4-8 belong to this model.
+    Assert-Value ([string]$relativeSheet.Range('G9').Formula) '' 'Sixth relative cannot be calculated'
     $relativeSheet.Range('B4:B8,C7:C8').ClearContents()
     $relativeSheet.Range('D4:D8').Value2 = '未確認'
     $homeSheet.Range('D14:D16').ClearContents()
