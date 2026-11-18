@@ -693,19 +693,19 @@ def build(source, output):
             cell.fill = PatternFill("solid", fgColor="EAF3EA")
             cell.protection = Protection(locked=True)
         relatives.row_dimensions[row].height = 22
-    relatives["D35"] = "控除額合計"
-    relatives["E35"] = f"=SUM(E4:E{RELATIVE_LAST_ROW})"
-    relatives["F35"] = f"=SUM(F4:F{RELATIVE_LAST_ROW})"
-    relatives["D36"] = "特定親族特別控除人数"
-    relatives["E36"] = f'=COUNTIF(G4:G{RELATIVE_LAST_ROW},"特定親族特別控除")'
-    relatives["D37"] = "特定親族特別控除（所得税）"
-    relatives["E37"] = f'=SUMIF(G4:G{RELATIVE_LAST_ROW},"特定親族特別控除",E4:E{RELATIVE_LAST_ROW})'
-    relatives["D38"] = "未確認人数"
-    relatives["E38"] = f'=COUNTIF(G4:G{RELATIVE_LAST_ROW},"要確認")'
-    relatives["A40"] = "操作画面に戻る"
-    relatives["A40"].hyperlink = Hyperlink(ref="A40", location="'操作画面'!A1")
-    relatives["A40"].style = "Hyperlink"
-    relatives.print_area = f"A1:H{RELATIVE_LAST_ROW}"
+    relatives["D10"] = "控除額合計"
+    relatives["E10"] = f"=SUM(E4:E{RELATIVE_LAST_ROW})"
+    relatives["F10"] = f"=SUM(F4:F{RELATIVE_LAST_ROW})"
+    relatives["D11"] = "特定親族特別控除人数"
+    relatives["E11"] = f'=COUNTIF(G4:G{RELATIVE_LAST_ROW},"特定親族特別控除")'
+    relatives["D12"] = "特定親族特別控除（所得税）"
+    relatives["E12"] = f'=SUMIF(G4:G{RELATIVE_LAST_ROW},"特定親族特別控除",E4:E{RELATIVE_LAST_ROW})'
+    relatives["D13"] = "未確認人数"
+    relatives["E13"] = f'=COUNTIF(G4:G{RELATIVE_LAST_ROW},"要確認")'
+    relatives["A15"] = "操作画面に戻る"
+    relatives["A15"].hyperlink = Hyperlink(ref="A40", location="'操作画面'!A1")
+    relatives["A15"].style = "Hyperlink"
+    relatives.print_area = "A1:H15"
     relatives.sheet_properties.pageSetUpPr.fitToPage = True
     relatives.page_setup.fitToWidth = 1
     relatives.page_setup.fitToHeight = 2
