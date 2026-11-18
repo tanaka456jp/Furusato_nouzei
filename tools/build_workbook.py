@@ -564,7 +564,7 @@ def build(source, output):
     for col, caption in enumerate((
         "ページ", "所得年", "支払金額（円）", "給与所得（円）",
         "所得控除合計（円）", "源泉徴収税額（円）", "社会保険料（円）",
-        "上限額参考（円）", "判定", "要確認理由（コード）",
+        "上限額参考（円）", "判定", "判定理由（詳細）",
     ), 1):
         cell = batch.cell(row=5, column=col, value=caption)
         cell.fill = PatternFill("solid", fgColor="163A56")
