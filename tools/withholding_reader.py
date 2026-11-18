@@ -104,14 +104,42 @@ def detect_year(text, words=None):
     return next(iter(found)) if len(found) == 1 else None
 
 
-def extract_occupancy_year(text):
-    """Read first housing occupancy year only when the N01/Reiwa anchor is clear.
+def extract_occupancy_year(text, words=None):
+    """Read the N01 housing-occupancy year even with reordered PDF layers.
 
-    The Gregorian document income year (L01) must never be mistaken for
-    the occupancy year, and multiple housing applications need review.
+    The fallback requires Reiwa/year/month/day printed beside N01, never
+    the L01 document income year. Conflicting text/layout years are rejected.
     """
     matches = re.findall(r"1回目\s*N01\s*令和\s*([0-9０-９]{1,2})", text)
     years = {2018 + int(x.translate(DIGITS)) for x in matches}
+    words = words or []
+
+    def same_row(a, b):
+        return abs((a[1] + a[3] - b[1] - b[3]) / 2) <= 12
+
+    for label in words:
+        if label[4] != "N01":
+            continue
+        for era in words:
+            if (era[4] != "令和" or not label[2] < era[0] < label[2] + 35
+                    or not same_row(label, era)):
+                continue
+            for year in words:
+                if (not re.fullmatch(r"[0-9０-９]{1,2}", year[4])
+                        or not era[2] < year[0] < era[2] + 35
+                        or not same_row(era, year)):
+                    continue
+                months = [w for w in words if re.fullmatch(r"[0-9０-９]{1,2}", w[4])
+                          and year[2] < w[0] < year[2] + 35
+                          and same_row(year, w)
+                          and 1 <= int(w[4].translate(DIGITS)) <= 12]
+                for month in months:
+                    if any(re.fullmatch(r"[0-9０-９]{1,2}", day[4])
+                           and month[2] < day[0] < month[2] + 35
+                           and same_row(month, day)
+                           and 1 <= int(day[4].translate(DIGITS)) <= 31
+                           for day in words):
+                        years.add(2018 + int(year[4].translate(DIGITS)))
     if len(years) == 1:
         return {"mortgage_occupancy_year": years.pop()}
     return {}
@@ -450,7 +478,7 @@ def extract(path,page_number=None):
         flags.append("BLANK_SOCIAL_INSURANCE_REQUIRES_REVIEW")
     # Occupancy year is an anchored field, not the document income year.
     # Never override a disagreeing structured value.
-    occupancy=extract_occupancy_year(text)
+    occupancy=extract_occupancy_year(text, words)
     if occupancy and "mortgage_occupancy_year" in vals and vals["mortgage_occupancy_year"]!=occupancy["mortgage_occupancy_year"]:
         flags.append("CONFLICT_mortgage_occupancy_year")
         vals.pop("mortgage_occupancy_year",None)
