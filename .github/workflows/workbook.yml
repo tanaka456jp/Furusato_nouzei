@@ -317,6 +317,23 @@ jobs:
             if (-not ((Get-Content -LiteralPath $singleBridge -Raw -Encoding Ascii) -match 'salary_gross\s+7000000')) {
               throw 'Selected-page bridge did not use the second synthetic slip'
             }
+            # Also run the *frozen EXE* in multi-person list mode.
+            # The synthetic PDF lacks salary reference amounts, so both
+            # rows MUST be HOLD instead of an invented donation limit.
+            $batchBridge = Join-Path $temp 'anonymous-two-person-list.tsv'
+            & .\dist\FurusatoDocumentReader.exe --input $multiPdf --output $batchBridge --batch-bridge
+            if ($LASTEXITCODE -ne 0) { throw 'Packaged reader multi-person bridge failed' }
+            $rows = @(Get-Content -LiteralPath $batchBridge -Encoding Ascii)
+            if ($rows.Count -ne 3) { throw 'Packaged reader did not emit exactly two salary-only list rows' }
+            $first = $rows[1].Split([char]9)
+            $second = $rows[2].Split([char]9)
+            if ($first.Count -ne 10 -or $second.Count -ne 10 -or
+                $first[0] -ne '1' -or $second[0] -ne '2' -or
+                $first[2] -ne '5000000' -or $second[2] -ne '7000000' -or
+                $first[7] -ne '' -or $second[7] -ne '' -or
+                $first[8] -ne 'HOLD' -or $second[8] -ne 'HOLD') {
+              throw 'Packaged bulk mode merged taxpayers or approved incomplete source'
+            }
           } finally {
             Remove-Item -LiteralPath $temp -Recurse -Force
           }
