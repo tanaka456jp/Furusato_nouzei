@@ -95,7 +95,7 @@ class ReadyToUseReviewTests(unittest.TestCase):
 
 
 class ReadyToUseDistributionTests(unittest.TestCase):
-    VERSION = "v4.18.35"
+    VERSION = "v4.18.36"
 
     def setUp(self):
         scratch = tempfile.TemporaryDirectory()

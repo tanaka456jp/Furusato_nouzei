@@ -129,7 +129,7 @@ https://learn.microsoft.com/ja-jp/deployoffice/security/internet-macros-blocked
 この結果は対応条件内の試算です。OCR 仮転記は必ず原票と照合し、確定税額や自己負担額の保証として使用しないでください。
 同梱 EXE はオフラインで文字情報のある源泉徴収票 PDF を読取ります。画像 PDF・写真の OCR に必要な Tesseract と日本語辞書、および HEIC デコーダーは同梱していません。対応する資料の再取得または手入力をお試しください。
 算定の対応条件と一次資料はこちらです。
-{docs}/excel-v41835-tax-scope.md
+{docs}/excel-v41836-tax-scope.md
 同梱ソフトウェアのライセンスは、同じ GitHub Release に掲載する THIRD_PARTY_NOTICES.txt を参照してください。
 実機で確認した表示条件は Excel 365 の 1920×1080・125% です。1920×1080・100% と 1366×768・150% は未確認です。印刷の検査は Excel から生成した PDF で行い、実紙は試験していません。
 VBAUpdater で保守する場合は案件・配布原本を保全し、コピーで差分と再オープンを確認してから利用してください。VBA 更新により署名が失効する場合があります。
