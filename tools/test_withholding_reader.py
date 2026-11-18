@@ -263,6 +263,61 @@ class WithholdingTest(unittest.TestCase):
                     for x0, y0, x1, y1, token in header]
         self.assertEqual(detect_year("8\\n令和\\nL01 年分", new_year), 2026)
 
+    def test_five_page_native_pdf_year_and_case_isolation(self):
+        """End-to-end PDFium test: five anonymous pages with scrambled headers."""
+        fitz = pdf_fixture_library()
+        with TemporaryDirectory() as folder:
+            source = Path(folder) / "five-anonymous-slips.pdf"
+            with fitz.open() as document:
+                for index in range(5):
+                    page = document.new_page(width=595, height=842)
+                    # Same visual L01 pattern as a withholding form, but
+                    # deliberately stagger the year glyph vertically so the
+                    # PDF text layer does NOT contain "令和 7 年分".
+                    page.insert_text((141, 50), "7", fontsize=12)
+                    page.insert_text((93, 60), "令和", fontname="japan", fontsize=12)
+                    page.insert_text((77, 58), "L01", fontsize=7)
+                    page.insert_text((169, 60), "年分", fontname="japan", fontsize=12)
+                    page.insert_text((104, 220), "G04", fontsize=7)
+                    page.insert_text((178, 220),
+                                     format(5_000_000 + index * 100_000, ","),
+                                     fontsize=12)
+                    page.insert_text((452, 220), "G08", fontsize=7)
+                    page.insert_text((533, 220), "0", fontsize=12)
+                    page.insert_text((138, 310), "G26", fontsize=7)
+                    if index != 3:
+                        page.insert_text((215, 310), "1,000,000", fontsize=12)
+                document.save(source)
+            # Verify a real PDF parser takes the geometry fallback path.
+            import pypdfium2
+            with pypdfium2.PdfDocument(source) as pdf:
+                self.assertEqual(len(pdf), 5)
+                for index in range(5):
+                    text_page = pdf[index].get_textpage()
+                    try:
+                        self.assertIsNone(detect_year(text_page.get_text_bounded()))
+                    finally:
+                        text_page.close()
+
+            self.assertEqual(pdf_page_count(source), 5)
+            self.assertIsNone(extract(source)["year"])
+            for number in range(1, 6):
+                result = extract(source, page_number=number)
+                self.assertEqual(result["year"], 2025)
+                self.assertEqual(result["fields"]["salary_gross"],
+                                 5_000_000 + (number - 1) * 100_000)
+                self.assertEqual(result["fields"]["income_tax_withheld"], 0)
+                self.assertEqual(result["status"], "REQUIRES_REVIEW")
+                self.assertIn("MULTIPAGE_SELECTED_PAGE_REVIEW", result["warnings"])
+                if number == 4:
+                    self.assertEqual(result["fields"]["social_insurance"], 0)
+                    self.assertIn("BLANK_SOCIAL_INSURANCE_REQUIRES_REVIEW",
+                                  result["warnings"])
+                else:
+                    self.assertEqual(result["fields"]["social_insurance"], 1_000_000)
+                    self.assertNotIn("BLANK_SOCIAL_INSURANCE_REQUIRES_REVIEW",
+                                     result["warnings"])
+
     def test_layered_pdf_mortgage_occupancy_n01_date_geometry(self):
         # The housing date must come from the N01 row, not the L01 title.
         house = [
