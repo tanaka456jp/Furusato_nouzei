@@ -36,6 +36,7 @@ for token in (
     "'MEASURED'",
     "'UNVERIFIED'",
     "1920x1080@100", "1920x1080@125", "1366x768@150",
+    "ImportWithholdingBatch", "ClearBatchOverviewWithConfirm",
     "book.Close($false)", "excel.Quit()",
 ):
     assert token in ps, f"Missing display safety invariant: {token}"

@@ -39,16 +39,19 @@ function Measure-Commands($book, [double]$pixelsPerPoint) {
         @{ Sheet = 1; Cell = 'B5'; Macro = 'ShowAdvanced' },
         @{ Sheet = 1; Cell = 'B3'; Macro = 'ImportWithholding' },
         @{ Sheet = 1; Cell = 'C3'; Macro = 'ReviewWithholding' },
+        @{ Sheet = 1; Cell = 'D3'; Macro = 'ImportWithholdingBatch' },
         @{ Sheet = 2; Cell = 'A17'; Macro = 'ReturnHome' },
         @{ Sheet = 2; Cell = 'B17'; Macro = 'PrintDetails' },
         @{ Sheet = 2; Cell = 'C17'; Macro = 'ExportDetails' },
-        @{ Sheet = 3; Cell = 'B2'; Macro = 'ReturnFromAdvanced' }
+        @{ Sheet = 3; Cell = 'B2'; Macro = 'ReturnFromAdvanced' },
+        @{ Sheet = 4; Cell = 'B4'; Macro = 'ClearBatchOverviewWithConfirm' }
     )
     $sheets = @($book.Worksheets.Item(1), $book.Worksheets.Item('計算根拠'),
-        $book.Worksheets.Item('例外・分離課税'))
+        $book.Worksheets.Item('例外・分離課税'),
+        $book.Worksheets.Item('一括計算一覧'))
     if ($sheets[0].Name -cne '操作画面' -or
-        $sheets[0].Buttons().Count -ne 8 -or $sheets[1].Buttons().Count -ne 3 -or
-        $sheets[2].Buttons().Count -ne 1) {
+        $sheets[0].Buttons().Count -ne 9 -or $sheets[1].Buttons().Count -ne 3 -or
+        $sheets[2].Buttons().Count -ne 1 -or $sheets[3].Buttons().Count -ne 1) {
         throw 'UNEXPECTED_WORKSHEET_COMMAND_COUNT'
     }
     $surface = [Drawing.Bitmap]::new(1,1)

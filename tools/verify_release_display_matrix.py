@@ -18,8 +18,9 @@ COMMANDS = {
     "TaxLawUpdate": "A5", "NewCase": "A7", "SaveCase": "B7",
     "ShowDetails": "C7", "RecalculateCase": "D7", "ShowAdvanced": "B5",
     "ImportWithholding": "B3", "ReviewWithholding": "C3",
+    "ImportWithholdingBatch": "D3",
     "ReturnHome": "A17", "PrintDetails": "B17", "ExportDetails": "C17",
-    "ReturnFromAdvanced": "B2",
+    "ReturnFromAdvanced": "B2", "ClearBatchOverviewWithConfirm": "B4",
 }
 VIEWPORTS = ((1, 12, "B4"), (12, 24, "B12"), (24, 39, "D33"), (42, 51, "D51"))
 CHECKS = [
