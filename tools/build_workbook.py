@@ -230,6 +230,7 @@ def build(source, output):
 
     bar(home, 1, "ふるさと納税 寄附限度額試算    v4.18.35")
     bar(extra, 1, "追加所得・分離課税（所得年内で事前試算）")
+    extra.row_dimensions[2].height = 24  # Room for the return button.
     extra.merge_cells("A3:D3")
     extra["A3"] = "翌年度の住民税通知書は参照せず、所得年内の収入・経費・控除と法定税率表から計算します。"
     extra["A3"].alignment = Alignment(wrap_text=True)

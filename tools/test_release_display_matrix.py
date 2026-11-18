@@ -83,7 +83,7 @@ class DisplayMatrixContract(unittest.TestCase):
 
     def test_all_modes_and_target_specific_report(self):
         result = inspect_display_matrix(self.folders, SHA, HEAD)
-        self.assertEqual(result["image_count"], 9)
+        self.assertEqual(result["image_count"], len(EXPECTED_IMAGES) * len(MODES))
         self.assertEqual(result["verified_modes"], list(MODES))
         self.assertEqual(result["unverified_modes"], [])
         self.assertEqual(result["checks"], CHECKS)
@@ -111,11 +111,11 @@ class DisplayMatrixContract(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "DPI_MODE_CONTRADICTION"):
             inspect_display_matrix(self.folders, SHA, HEAD)
         value["display_observation"]["excel_window_dpi"] = 96
-        value["worksheet_readback"][0]["last_row"] = 11
+        value["worksheet_readback"][0]["last_row"] = VIEWPORTS[0][1]
         file.write_text(json.dumps(value))
         with self.assertRaisesRegex(ValueError, "WORKSHEET_VIEW_CLIPPED"):
             inspect_display_matrix(self.folders, SHA, HEAD)
-        value["worksheet_readback"][0]["last_row"] = 12
+        value["worksheet_readback"][0]["last_row"] = VIEWPORTS[0][1] + 1
         value["commands"][0]["spare_pixels"] = [5, 4]
         file.write_text(json.dumps(value))
         with self.assertRaisesRegex(ValueError, "COMMAND_CAPTION_NOT_READABLE"):

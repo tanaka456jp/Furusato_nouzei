@@ -72,6 +72,26 @@ if ($thumb -or $timestamp -or $approvedHead -or $env:FURUSATO_SIGNTOOL_X86) {
         Write-Host 'EXCEL_RELEASE_SIGNING_STATE=SIGNED'
         return
     }
+} else {
+    # Check presence only. Neither certificate details nor private keys are exported.
+    $store = [Security.Cryptography.X509Certificates.X509Store]::new('My', 'CurrentUser')
+    try {
+        $store.Open([Security.Cryptography.X509Certificates.OpenFlags]::ReadOnly -bor
+                    [Security.Cryptography.X509Certificates.OpenFlags]::OpenExistingOnly)
+        $eligible = @($store.Certificates | Where-Object {
+            $cert = $_
+            $cert.HasPrivateKey -and $cert.NotBefore -le [DateTime]::Now -and
+            $cert.NotAfter -gt [DateTime]::Now -and
+            @($cert.Extensions | Where-Object {
+                $_ -is [Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension] -and
+                @($_.EnhancedKeyUsages | Where-Object { $_.Value -ceq '1.3.6.1.5.5.7.3.3' }).Count -gt 0
+            }).Count -gt 0
+        })
+        if ($eligible.Count -gt 0) { throw 'EXISTING_SIGNING_IDENTITY_REQUIRES_CONFIGURATION' }
+    } finally {
+        $store.Close()
+    }
+    $availability = 'CODE_SIGNING_CERTIFICATE_NOT_FOUND_IN_CURRENT_USER_MY'
 }
 
 # The UNSIGNED route is explicit, with an unchanged accepted workbook and no signed output.

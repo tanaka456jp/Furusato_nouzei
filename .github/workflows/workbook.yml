@@ -131,14 +131,14 @@ jobs:
       - name: Upload XLSX opening diagnostics (not production)
         uses: actions/upload-artifact@v4
         with:
-          name: Furusato_nouzei_ExcelOpen_PROBES
+          name: Furusato_nouzei_ExcelOpen_PROBES_${{ github.run_id }}-${{ github.run_attempt }}
           path: Excel_open_probes/
           if-no-files-found: error
           retention-days: 7
       - name: Upload reproducible review ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: Furusato_nouzei_v4_REVIEW
+          name: Furusato_nouzei_v4_REVIEW_${{ github.run_id }}-${{ github.run_attempt }}
           path: Furusato_nouzei_v4_REVIEW.zip
           if-no-files-found: error
           retention-days: 14
@@ -265,12 +265,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Offline parser contract failed' }
           python -m PyInstaller --onefile --clean --noconfirm --name FurusatoDocumentReader --collect-all pypdfium2_raw --collect-all pypdfium2 --exclude-module fitz --exclude-module pymupdf --exclude-module pillow_heif tools/withholding_reader.py
           if ($LASTEXITCODE -ne 0) { throw 'Reader executable build failed' }
-          $toc = Get-Content -LiteralPath build/FurusatoDocumentReader/Analysis-00.toc -Raw
-          Write-Host ('Reader TOC pdfium DLL present: ' + [bool]($toc -match 'pdfium[.]dll'))
-          Write-Host ('Reader TOC forbidden-module match: ' + [bool]($toc -match '(?im)[''\"](fitz|pymupdf|pillow_heif)([.\\/]|[''\"])'))
-          if ($toc -notmatch 'pdfium[.]dll' -or $toc -match '(?im)[''"](fitz|pymupdf|pillow_heif)([.\/]|[''"])') {
-            throw 'Reader binary dependency verification failed'
-          }
+          python tools/verify_reader_runtime.py dist/FurusatoDocumentReader.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Reader binary dependency verification failed' }
           $temp = Join-Path $env:RUNNER_TEMP ('furusato_reader_' + [guid]::NewGuid().ToString('N'))
           New-Item -ItemType Directory -Path $temp | Out-Null
           try {
@@ -355,7 +351,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Furusato_DISTRIBUTION_INTEGRITY_HOLD_${{ github.run_id }}
+          name: Furusato_DISTRIBUTION_INTEGRITY_HOLD_${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             distribution_integrity_hold.json
             distribution_signature_hold.json
@@ -364,7 +360,7 @@ jobs:
       - name: Upload Python-free Windows review ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: Furusato_nouzei_Windows_REVIEW_${{ github.run_id }}
+          name: Furusato_nouzei_Windows_REVIEW_${{ github.run_id }}-${{ github.run_attempt }}
           path: Furusato_nouzei_Windows_REVIEW.zip
           if-no-files-found: error
           retention-days: 14
@@ -394,7 +390,7 @@ jobs:
       - name: Upload standalone local PDF reader
         uses: actions/upload-artifact@v4
         with:
-          name: Furusato_DocumentReader_Windows_EXE_${{ github.run_id }}
+          name: Furusato_DocumentReader_Windows_EXE_${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             dist/FurusatoDocumentReader.exe
             reader_build.json
@@ -533,7 +529,7 @@ jobs:
           if ($result.schema -cne 'furusato-display-review/v2' -or $result.status -cne 'MEASURED') {
             throw ('PC Excel worksheet capture failed: ' + [string]$result.failure_category)
           }
-          if (@($result.screenshots).Count -ne 3) { throw 'All three worksheet regions must be captured' }
+          if (@($result.screenshots).Count -ne 4) { throw 'All four worksheet regions must be captured' }
           foreach ($image in @($result.screenshots)) {
             if (-not (Test-Path -LiteralPath (Join-Path $folder $image.file) -PathType Leaf)) {
               throw 'Display evidence names a missing worksheet region'
@@ -551,7 +547,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Furusato_nouzei_DISPLAY_REVIEW_${{ github.run_id }}
+          name: Furusato_nouzei_DISPLAY_REVIEW_${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/display_review/
           if-no-files-found: ignore
           retention-days: 7
@@ -575,7 +571,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Furusato_nouzei_PDF_LAYOUT_REVIEW_${{ github.run_id }}
+          name: Furusato_nouzei_PDF_LAYOUT_REVIEW_${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/pdf_layout_evidence/
           if-no-files-found: ignore
           retention-days: 7
@@ -678,7 +674,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: Furusato_nouzei_Excel_XLSM_REVIEW_${{ github.run_id }}
+          name: Furusato_nouzei_Excel_XLSM_REVIEW_${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/review/Furusato_nouzei.xlsm
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/excel_acceptance.json
@@ -751,11 +747,11 @@ jobs:
       - run: python -m pip install --disable-pip-version-check openpyxl==3.1.5
       - uses: actions/download-artifact@v4
         with:
-          name: Furusato_nouzei_Excel_XLSM_REVIEW_${{ github.run_id }}
+          name: Furusato_nouzei_Excel_XLSM_REVIEW_${{ github.run_id }}-${{ github.run_attempt }}
           path: _review_excel
       - uses: actions/download-artifact@v4
         with:
-          name: Furusato_DocumentReader_Windows_EXE_${{ github.run_id }}
+          name: Furusato_DocumentReader_Windows_EXE_${{ github.run_id }}-${{ github.run_attempt }}
           path: _review_reader
       - name: Bind accepted XLSM and reader from this exact run into review ZIP
         shell: powershell
@@ -788,7 +784,7 @@ jobs:
       - name: Upload review-only ReadyToUse ZIP and anonymous SHA evidence
         uses: actions/upload-artifact@v4
         with:
-          name: Furusato_ReadyToUse_REVIEW_HOLD_${{ github.run_id }}
+          name: Furusato_ReadyToUse_REVIEW_HOLD_${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             Furusato_nouzei_ReadyToUse_REVIEW_HOLD.zip
             ready_to_use_review_hold.json
@@ -799,13 +795,13 @@ jobs:
         if: github.event.pull_request.number == 5
         uses: actions/download-artifact@v4
         with:
-          name: Furusato_nouzei_DISPLAY_REVIEW_${{ github.run_id }}
+          name: Furusato_nouzei_DISPLAY_REVIEW_${{ github.run_id }}-${{ github.run_attempt }}
           path: _release_display
       - name: Download PC1 Excel PDF export acceptance
         if: github.event.pull_request.number == 5
         uses: actions/download-artifact@v4
         with:
-          name: Furusato_nouzei_PDF_LAYOUT_REVIEW_${{ github.run_id }}
+          name: Furusato_nouzei_PDF_LAYOUT_REVIEW_${{ github.run_id }}-${{ github.run_attempt }}
           path: _release_pdf
       - name: Assemble and verify scoped Excel release candidate
         if: github.event.pull_request.number == 5

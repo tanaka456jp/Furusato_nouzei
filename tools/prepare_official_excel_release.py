@@ -183,6 +183,13 @@ def build_automated_candidate(head, run_id, run_attempt, jobs, book, reader, exc
     require(runner.get("run_id") == run_id and runner.get("run_attempt") == run_attempt,
             "EXCEL_RUNNER_WRONG_RUN_ATTEMPT")
     scope = validate_runner(head, book_sha, *reports)
+    if scope["signing_state"] == "SIGNED":
+        before = read_evidence(excel_dir / "excel_before_signing.json")
+        require(before.get("schema") == "furusato-excel-acceptance/v1"
+                and before.get("status") == "PASS"
+                and isinstance(before.get("workbook_sha256"), str)
+                and before["workbook_sha256"].lower() == scope["source_workbook_sha256"],
+                "PRE_SIGNING_EXCEL_ACCEPTANCE_INCOMPLETE")
     require(not output.exists(), "CANDIDATE_OUTPUT_ALREADY_EXISTS")
     output.mkdir(parents=True)
     archive = output / RELEASE_ZIP

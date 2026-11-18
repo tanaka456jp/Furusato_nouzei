@@ -96,45 +96,67 @@ def inspect_draft_assets(draft, out, report):
     return expected
 
 
-def publish(out, report):
-    head = report["head_sha"]
-    approved_head(head)
-    require(not api(f"git/matching-refs/tags/{VERSION}"), "GITHUB_RELEASE_TAG_ALREADY_EXISTS")
-    releases = api("releases?per_page=100", "--paginate", "--slurp")
-    require(not any(release.get("tag_name") == VERSION for page in releases for release in page),
-            "GITHUB_RELEASE_ALREADY_EXISTS")
-    notes = out / "release-notes.md"
-    notes.write_text(
+def release_body(report):
+    return (
         f"# Furusato_nouzei Excel {VERSION}\n\n"
         f"- Excel VBA署名 {report['signing_state']}。同梱EXEのAuthenticodeはUNSIGNED。\n"
         "- 所得年2025年・2026年。対応条件とマクロの扱いは同梱READMEに記載。\n"
         "- PC① Windows Excel 365で、1920×1080・125%と合成A4 PDFを検証。\n"
         f"- SHA-256 `{report['archive_sha256']}`\n"
-        f"- ソースコミット `{head}`\n"
-        f"- [GitHub Actionsの実機受入]({report['github_run_url']})\n",
-        encoding="utf-8",
+        f"- ソースコミット `{report['head_sha']}`\n"
+        f"- [GitHub Actionsの実機受入]({report['github_run_url']})\n"
     )
-    gh("release", "create", VERSION, out / RELEASE_ZIP, out / SUMS, out / NOTICE_NAME, "--repo", REPOSITORY,
-       "--draft", "--target", head, "--title", f"Furusato_nouzei Excel {VERSION}",
-       "--notes-file", notes)
-    drafts = api("releases?per_page=100", "--paginate", "--slurp")
-    matching = [release for page in drafts for release in page if release.get("tag_name") == VERSION]
-    require(len(matching) == 1, "GITHUB_RELEASE_DRAFT_NOT_UNIQUE")
-    draft = matching[0]
-    expected = inspect_draft_assets(draft, out, report)
+
+
+def release_for_version():
+    pages = api("releases?per_page=100", "--paginate", "--slurp")
+    matching = [release for page in pages for release in page if release.get("tag_name") == VERSION]
+    require(len(matching) <= 1, "GITHUB_RELEASE_NOT_UNIQUE")
+    return matching[0] if matching else None
+
+
+def verify_tag(tag, head):
+    require(tag.get("ref") == f"refs/tags/{VERSION}"
+            and tag.get("object", {}).get("type") == "commit"
+            and tag["object"].get("sha") == head, "RELEASE_TAG_SHA_MISMATCH")
+
+
+def publish(out, report):
+    head = report["head_sha"]
     approved_head(head)
-    ref = api("git/refs", "--method", "POST", "-f", f"ref=refs/tags/{VERSION}",
-              "-f", f"sha={head}")
-    require(ref.get("ref") == f"refs/tags/{VERSION}" and
-            ref.get("object", {}).get("type") == "commit" and
-            ref["object"].get("sha") == head, "NEW_RELEASE_TAG_SHA_MISMATCH")
-    published = api(f"releases/{draft['id']}", "--method", "PATCH",
-                    "-F", "draft=false", "-f", "make_latest=true")
+    refs = api(f"git/matching-refs/tags/{VERSION}")
+    current = release_for_version()
+    body = release_body(report)
+    if current is None:
+        require(not refs, "GITHUB_RELEASE_TAG_ALREADY_EXISTS")
+        notes = out / "release-notes.md"
+        notes.write_text(body, encoding="utf-8")
+        gh("release", "create", VERSION, out / RELEASE_ZIP, out / SUMS, out / NOTICE_NAME,
+           "--repo", REPOSITORY, "--draft", "--target", head,
+           "--title", f"Furusato_nouzei Excel {VERSION}", "--notes-file", notes)
+        current = release_for_version()
+        require(current is not None, "GITHUB_RELEASE_DRAFT_MISSING")
+    require((current.get("body") or "").strip() == body.strip(),
+            "GITHUB_RELEASE_NOTES_DIFFER_FROM_ACCEPTED_CANDIDATE")
+    if current.get("draft") is True:
+        expected = inspect_draft_assets(current, out, report)
+        approved_head(head)
+        if refs:
+            require(len(refs) == 1, "GITHUB_RELEASE_TAG_NOT_UNIQUE")
+            verify_tag(refs[0], head)
+        else:
+            ref = api("git/refs", "--method", "POST", "-f", f"ref=refs/tags/{VERSION}",
+                      "-f", f"sha={head}")
+            verify_tag(ref, head)
+        approved_head(head)
+        published = api(f"releases/{current['id']}", "--method", "PATCH",
+                        "-F", "draft=false", "-f", "make_latest=true")
+    else:
+        expected = {name: digest_file(out / name) for name in (RELEASE_ZIP, SUMS, NOTICE_NAME)}
+        published = current
     require(published.get("draft") is False and published.get("prerelease") is False
             and published.get("tag_name") == VERSION, "GITHUB_RELEASE_PUBLISH_STATE_UNVERIFIED")
-    tag = api(f"git/ref/tags/{VERSION}")
-    require(tag.get("object", {}).get("type") == "commit"
-            and tag["object"].get("sha") == head, "PUBLISHED_RELEASE_TAG_SHA_MISMATCH")
+    verify_tag(api(f"git/ref/tags/{VERSION}"), head)
     require(len(published.get("assets", [])) == len(expected) and
             {asset.get("name"): asset.get("digest") for asset in published["assets"]} ==
             {name: "sha256:" + value for name, value in expected.items()},

@@ -33,7 +33,7 @@ def runner_records():
          "workbook_sha256": BOOK},
         compile_report.copy(), compile_report.copy(),
         {"schema": "furusato-excel-display-acceptance/v2", "source_head": HEAD,
-         "workbook_sha256": BOOK, "status": "PASS", "image_count": 3,
+         "workbook_sha256": BOOK, "status": "PASS", "image_count": 4,
          "verified_modes": ["1920x1080@125"], "unverified_modes": ["1920x1080@100", "1366x768@150"],
          "checks": ["command_bounds", "command_captions", "no_command_overlap", "focus_and_scroll",
                     "visible_content_bounds", "rendered_worksheet"]},
@@ -56,13 +56,13 @@ def runner_records():
 class ReleaseAutomationTest(unittest.TestCase):
     def test_live_all_five_jobs_and_no_wrong_sha_or_pc(self):
         run = {
-            "id": RUN_ID, "head_sha": HEAD, "head_branch": BRANCH, "event": "pull_request",
+            "id": RUN_ID, "run_attempt": 1, "head_sha": HEAD, "head_branch": BRANCH, "event": "pull_request",
             "path": ".github/workflows/workbook.yml", "status": "completed", "conclusion": "success",
             "repository": {"full_name": REPOSITORY}, "head_repository": {"full_name": REPOSITORY},
             "pull_requests": [{"number": 5, "head": {"sha": HEAD}}],
         }
         jobs = [
-            {"name": name, "run_id": RUN_ID, "head_sha": HEAD, "conclusion": "success"}
+            {"name": name, "run_id": RUN_ID, "run_attempt": 1, "head_sha": HEAD, "conclusion": "success"}
             for name in RELEASE_JOBS
         ]
         excel = next(job for job in jobs if job["name"] == "excel")

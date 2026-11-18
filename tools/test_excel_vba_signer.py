@@ -173,7 +173,7 @@ class ExcelVbaSignerTest(unittest.TestCase):
             self.assertIn("STATE=UNSIGNED", result.stdout)
             self.assertEqual(json.loads(evidence.read_text(encoding="utf-8")), {
                 "schema": "furusato-local-vba-signing/v2", "head_sha": "a" * 40,
-                "signing_state": "UNSIGNED", "availability": "SIGNING_NOT_CONFIGURED",
+                "signing_state": "UNSIGNED", "availability": "CODE_SIGNING_CERTIFICATE_NOT_FOUND_IN_CURRENT_USER_MY",
                 "source_workbook_sha256": sha256, "signed_workbook_sha256": None,
             })
             self.assertFalse(out.exists())

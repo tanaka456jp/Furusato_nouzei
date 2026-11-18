@@ -41,11 +41,14 @@ function Measure-Commands($book, [double]$pixelsPerPoint) {
         @{ Sheet = 1; Cell = 'C3'; Macro = 'ReviewWithholding' },
         @{ Sheet = 2; Cell = 'A17'; Macro = 'ReturnHome' },
         @{ Sheet = 2; Cell = 'B17'; Macro = 'PrintDetails' },
-        @{ Sheet = 2; Cell = 'C17'; Macro = 'ExportDetails' }
+        @{ Sheet = 2; Cell = 'C17'; Macro = 'ExportDetails' },
+        @{ Sheet = 3; Cell = 'B2'; Macro = 'ReturnFromAdvanced' }
     )
-    $sheets = @($book.Worksheets.Item(1), $book.Worksheets.Item('計算根拠'))
+    $sheets = @($book.Worksheets.Item(1), $book.Worksheets.Item('計算根拠'),
+        $book.Worksheets.Item('例外・分離課税'))
     if ($sheets[0].Name -cne '操作画面' -or
-        $sheets[0].Buttons().Count -ne 8 -or $sheets[1].Buttons().Count -ne 3) {
+        $sheets[0].Buttons().Count -ne 8 -or $sheets[1].Buttons().Count -ne 3 -or
+        $sheets[2].Buttons().Count -ne 1) {
         throw 'UNEXPECTED_WORKSHEET_COMMAND_COUNT'
     }
     $surface = [Drawing.Bitmap]::new(1,1)
@@ -148,8 +151,8 @@ public static class FurusatoWindowCapture {
         -not [string]::Equals([string]$book.FullName,$source,[StringComparison]::OrdinalIgnoreCase)) {
         throw 'UNEXPECTED_EXCEL_WORKBOOK'
     }
-    $home = $book.Worksheets.Item(1)
-    $home.Activate()
+    $homeSheet = $book.Worksheets.Item(1)
+    $homeSheet.Activate()
     $excel.ActiveWindow.Zoom = 85
     $excel.WindowState = -4137 # xlMaximized for this Excel instance.
     Start-Sleep -Milliseconds 750
@@ -214,7 +217,7 @@ public static class FurusatoWindowCapture {
     }
     if ($null -eq $measured) { throw 'UNSUPPORTED_OR_UNMEASURED_DISPLAY_MODE' }
     $commands = @(Measure-Commands $book ($dpi * 0.85 / 72))
-    $link = $home.Range('A2').Hyperlinks.Item(1)
+    $link = $homeSheet.Range('A2').Hyperlinks.Item(1)
     if ([string]$link.Address -or [string]$link.SubAddress -cne "'操作画面'!A42") {
         throw 'UNEXPECTED_WORKSHEET_LINK_TARGET'
     }
@@ -223,8 +226,8 @@ public static class FurusatoWindowCapture {
         throw 'WORKSHEET_LINK_DID_NOT_NAVIGATE'
     }
     # On this runner a 180px crop left the ribbon and formula bar visible.
-    # Limit evidence to worksheet-only regions. Capture three scroll
-    # positions: upper controls, source inputs, and projection controls.
+    # Limit evidence to worksheet-only regions. Include the advanced
+    # municipality field that gates calculations when the rules differ.
     # No desktop-wide screenshots.
     $top = [Math]::Min(350,[int]($pxh - 300))
     $left = 20
@@ -234,11 +237,12 @@ public static class FurusatoWindowCapture {
         throw 'EXCEL_SHEET_REGION_TOO_SMALL'
     }
     foreach ($capture in @(
-        @{ row = 1; focus = 'B4'; last = 11; name = 'review_excel_window_sheet_only.png' },
-        @{ row = 12; focus = 'B12'; last = 30; name = 'review_excel_window_lower_section.png' },
-        @{ row = 31; focus = 'D33'; last = 39; name = 'review_excel_window_mortgage_and_projection.png' }
+        @{ row = 1; focus = 'B4'; last = 12; name = 'review_excel_window_sheet_only.png' },
+        @{ row = 12; focus = 'B12'; last = 24; name = 'review_excel_window_lower_section.png' },
+        @{ row = 24; focus = 'D33'; last = 39; name = 'review_excel_window_mortgage_and_projection.png' },
+        @{ row = 42; focus = 'D51'; last = 51; name = 'review_excel_window_municipality.png' }
     )) {
-        $home.Range($capture.focus).Select()
+        $homeSheet.Range($capture.focus).Select()
         if ([string]$excel.ActiveCell.Address($false,$false) -cne $capture.focus) {
             throw 'WORKSHEET_INPUT_NOT_FOCUSABLE'
         }
@@ -252,7 +256,8 @@ public static class FurusatoWindowCapture {
         # partially visible trailing rows or columns.
         if ($firstRow -ne [int]$capture.row -or $lastRow -le [int]$capture.last -or
             [int]$visible.Column -ne 1 -or [int]$visible.Columns.Count -lt 5) {
-            throw 'WORKSHEET_CONTENT_CLIPPED_BY_VIEWPORT'
+            throw ('WORKSHEET_CONTENT_CLIPPED_BY_VIEWPORT_AT_' + $capture.row +
+                '_OBSERVED_' + $firstRow + '_' + $lastRow)
         }
         $bitmap = New-Object System.Drawing.Bitmap($pxw,$pxh)
         $graphics = [Drawing.Graphics]::FromImage($bitmap)

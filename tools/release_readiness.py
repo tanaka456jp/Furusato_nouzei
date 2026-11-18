@@ -209,7 +209,7 @@ def validate_runner(head, book_sha, runner, functional, compile_original, compil
             and display.get("workbook_sha256") == book_sha
             and display.get("verified_modes") == VERIFIED_DISPLAY_MODES
             and display.get("unverified_modes") == UNVERIFIED_DISPLAY_MODES
-            and display.get("image_count") == 3
+            and display.get("image_count") == 4
             and set(display.get("checks", ())) == {
                 "command_bounds", "command_captions", "no_command_overlap",
                 "focus_and_scroll", "visible_content_bounds", "rendered_worksheet",
@@ -260,7 +260,9 @@ def validate_github(run, jobs, head, run_id):
                 for pr in run.get("pull_requests", [])), "GITHUB_RUN_NOT_FROM_PR5")
     require(len(jobs) == len(RELEASE_JOBS)
             and {job.get("name") for job in jobs} == set(RELEASE_JOBS)
+            and type(run.get("run_attempt")) is int
             and all(job.get("run_id") == run_id and job.get("head_sha") == head
+                    and job.get("run_attempt") == run["run_attempt"]
                     and job.get("conclusion") == "success" for job in jobs),
             "GITHUB_REQUIRED_FIVE_JOBS_NOT_SUCCESSFUL")
     excel = next(job for job in jobs if job["name"] == "excel")

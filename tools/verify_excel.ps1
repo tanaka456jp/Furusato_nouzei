@@ -866,7 +866,9 @@ try {
             # Separate assessed shares and pooled comparison come from
             # different formulas in the same real workbook.
             $homeSheet.Range('B16').Value2 = [double]$municipalCase.Social
-            $homeSheet.Range('B15').Value2 = $(if ($municipalCase.Social -eq 4723000) {0.0} elseif ($taxYear -eq 2025) {292700.0} else {284500.0})
+            $withholding = if ($municipalCase.Social -eq 4723000) { '0' }
+                elseif ($taxYear -eq 2025) { '292700' } else { '284500' }
+            $homeSheet.Range('B15').Formula = $withholding
             foreach ($jurisdiction in @(
                 @{Label='標準市町村'; Expected=$municipalCase.Standard},
                 @{Label='標準指定都市'; Expected=$municipalCase.Designated}
