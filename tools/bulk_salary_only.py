@@ -20,6 +20,14 @@ COLUMNS = (
     "PAGE", "YEAR", "SALARY_GROSS", "SALARY_INCOME", "TOTAL_DEDUCTIONS",
     "SOURCE_TAX", "SOCIAL_INSURANCE", "REFERENCE_LIMIT", "STATUS", "REASON",
 )
+# Backward-compatible report-aware bridge v2: existing v1 tests and loaders
+# continue to work. Only local numeric model traces are persisted in K:R.
+REPORT_COLUMNS = (
+    "R_SOURCE_YEAR", "R_SOURCE_BASIC", "R_RESIDENT_DEDUCTIONS",
+    "R_RESIDENT_TAXABLE", "R_RESIDENT_LEVY", "R_SPECIAL_RATIO_PPM",
+    "R_SPECIAL_CAP", "R_MODEL_LOCALITY",
+)
+ALLOWED_MODEL_LOCALITIES = ("STANDARD", "DESIGNATED", "UNCERTAIN")
 REQUIRED = (
     "salary_gross", "salary_reference", "deductions_reference",
     "income_tax_withheld", "social_insurance", "basic_reference",
@@ -195,11 +203,13 @@ def all_page_rows(path: Path, target_year=None) -> list[dict]:
             if target_year is not None:
                 reference = make_automatic_reference(result, target_year)
                 row["YEAR"] = target_year
+                row.update({name: "" for name in REPORT_COLUMNS})
                 if reference["status"] == "AUTO_REFERENCE":
                     row["SALARY_INCOME"] = reference["salary_income"]
                     row["REFERENCE_LIMIT"] = reference["limit"]
                     row["STATUS"] = "PROVISIONAL"
                     row["REASON"] = "AUTO_SOURCE_ASSUMPTION"
+                    row.update(reference["report_trace"])
                 else:
                     row["REFERENCE_LIMIT"] = ""
                     row["STATUS"] = "HOLD"
@@ -207,21 +217,52 @@ def all_page_rows(path: Path, target_year=None) -> list[dict]:
             rows.append(row)
         except Exception:
             # Do not write the exception, PDF text, name, amount, or filename.
-            rows.append({key: (page if key == "PAGE" else
-                                "HOLD" if key == "STATUS" else
-                                "PAGE_READ_ERROR" if key == "REASON" else "")
-                         for key in COLUMNS})
+            row = {key: (page if key == "PAGE" else
+                         "HOLD" if key == "STATUS" else
+                         "PAGE_READ_ERROR" if key == "REASON" else "")
+                   for key in COLUMNS}
+            if target_year is not None:
+                row.update({name: "" for name in REPORT_COLUMNS})
+            rows.append(row)
     return rows
 
 
 def write_batch_bridge(rows: list[dict], output: Path) -> None:
-    """Fixed TSV schema, ASCII-safe values; no names or arbitrary PDF text."""
+    """Fixed ASCII TSV v1/v2 schema; excludes identities, paths and source text.
+
+    v2 is emitted only if ALL page records carry an explicit report schema.
+    A partial/failed page gets blank report cells and a HOLD status.
+    """
+    if not rows or not isinstance(rows, list):
+        raise ValueError("EMPTY_BATCH_REPORT")
+    with_report = any("R_SOURCE_YEAR" in row for row in rows)
+    columns = COLUMNS + REPORT_COLUMNS if with_report else COLUMNS
+    if with_report and any(any(k not in row for k in REPORT_COLUMNS)
+                           for row in rows):
+        raise ValueError("PARTIAL_REPORT_SCHEMA")
     with Path(output).open("w", encoding="ascii", newline="") as handle:
         writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
-        writer.writerow(COLUMNS)
+        writer.writerow(columns)
         for idx, row in enumerate(rows, 1):
             if type(row.get("PAGE")) is not int or row["PAGE"] != idx:
                 raise ValueError("NON_CONTIGUOUS_SOURCE_PAGES")
-            if row.get("STATUS") not in ("HOLD", "PROVISIONAL"):
+            status = row.get("STATUS")
+            if status not in ("HOLD", "PROVISIONAL"):
                 raise ValueError("INVALID_BATCH_STATUS")
-            writer.writerow([row.get(key, "") for key in COLUMNS])
+            if status == "HOLD" and row.get("REFERENCE_LIMIT") not in ("", None):
+                raise ValueError("HOLD_WITH_REFERENCE_LIMIT")
+            if with_report:
+                trace = [row[k] for k in REPORT_COLUMNS]
+                if status == "HOLD":
+                    if any(value != "" for value in trace):
+                        raise ValueError("HOLD_WITH_REPORT_NUMBERS")
+                elif not all(type(value) is int for value in trace[:-1]):
+                    raise ValueError("INVALID_REPORT_NUMBERS")
+                elif trace[-1] not in ALLOWED_MODEL_LOCALITIES:
+                    raise ValueError("INVALID_REPORT_LOCALITY")
+                elif (trace[0] not in (2025, 2026)
+                      or any(value < 0 or value > 10**12 for value in trace[:-1])
+                      or trace[5] > 900000
+                      or trace[6] != trace[4] // 5):
+                    raise ValueError("INVALID_REPORT_TRACE")
+            writer.writerow([row.get(key, "") for key in columns])

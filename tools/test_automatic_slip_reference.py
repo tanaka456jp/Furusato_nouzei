@@ -47,6 +47,17 @@ class AutoReferenceTests(unittest.TestCase):
         self.assertEqual(special["status"], "AUTO_REFERENCE")
         self.assertIn("MUNICIPALITY_RATE_UNCERTAIN", special["reason"])
 
+    def test_numeric_trace_matches_the_same_selected_model(self):
+        result = make_automatic_reference(source(), 2026)
+        trace = result["report_trace"]
+        self.assertEqual(trace["R_SOURCE_YEAR"], 2025)
+        self.assertEqual(trace["R_SOURCE_BASIC"], 630000)
+        self.assertEqual(trace["R_SPECIAL_CAP"], trace["R_RESIDENT_LEVY"] // 5)
+        self.assertGreater(trace["R_RESIDENT_TAXABLE"], 0)
+        self.assertGreater(trace["R_SPECIAL_RATIO_PPM"], 0)
+        self.assertEqual(trace["R_MODEL_LOCALITY"], "UNCERTAIN")
+        self.assertNotIn("name", str(trace).lower())
+
     def test_unmodelled_housing_is_disclosed_not_claimed_exact(self):
         result = make_automatic_reference(
             source(mortgage_possible_credit=300_000), 2026)
@@ -98,6 +109,26 @@ class AutoReferenceTests(unittest.TestCase):
             rows = all_page_rows(Path("synthetic.pdf"), target_year=2026)
         self.assertEqual(rows[1]["STATUS"], "HOLD")
         self.assertEqual(rows[1]["REFERENCE_LIMIT"], "")
+
+    def test_v2_per_page_report_bridge_holds_unsafe_pages_without_details(self):
+        import csv
+        from bulk_salary_only import write_batch_bridge, REPORT_COLUMNS
+        valid = source()
+        invalid = {**source(), "warnings": ["INVALID_SALARY"]}
+        with patch("withholding_reader.pdf_page_count", return_value=2), \
+                patch("withholding_reader.extract", side_effect=[valid, invalid]):
+            rows = all_page_rows(Path("synthetic.pdf"), target_year=2026)
+        with TemporaryDirectory() as tmp:
+            out = Path(tmp) / "batch.tsv"
+            write_batch_bridge(rows, out)
+            with out.open(encoding="ascii", newline="") as f:
+                lines = list(csv.DictReader(f, delimiter="\t"))
+        self.assertEqual(len(lines), 2)
+        self.assertEqual(lines[0]["STATUS"], "PROVISIONAL")
+        self.assertEqual(lines[0]["R_SOURCE_YEAR"], "2025")
+        self.assertGreater(int(lines[0]["R_RESIDENT_LEVY"]), 0)
+        self.assertEqual(lines[1]["STATUS"], "HOLD")
+        self.assertTrue(all(lines[1][k] == "" for k in REPORT_COLUMNS))
 
     def test_local_json_cli_exports_auto_reference_and_no_identifier(self):
         with TemporaryDirectory() as tmp:

@@ -63,6 +63,8 @@ def make_automatic_reference(extracted, target_year):
     nonbasic = gross_deductions - source_basic
     if nonbasic < social:
         return hold("SOURCE_DEDUCTIONS_INCONSISTENT")
+    model = None
+    model_locality = "UNCERTAIN"
     try:
         # Even when estimating a future year, keep source income-adjustment
         # as an explicit hypothesis and do not claim it was re-verified.
@@ -86,18 +88,23 @@ def make_automatic_reference(extracted, target_year):
             category = hint.get("class")
             if category == "STANDARD":
                 places = ("standard",)
+                model_locality = "STANDARD"
             elif category == "DESIGNATED":
                 places = ("designated",)
+                model_locality = "DESIGNATED"
             else:
                 # Unknown / special ordinance: choose the smaller ordinary
                 # scenario only; the actual statute may differ materially.
                 places = ("standard", "designated")
-            estimates = [independent_salary_ceiling(
+            scenarios = [independent_salary_ceiling(
                 year=target_year, salary_income=projected_salary,
                 resident_deductions=resident_deductions,
                 personal_difference=50_000, municipality=place,
-            )["thousand_yen_reference"] for place in places]
-            amount = min(estimates)
+            ) for place in places]
+            # Keep the exact *chosen* model with the minimum reference.
+            # Never mix the rate from one municipality with the levy of another.
+            model = min(scenarios, key=lambda x: x["thousand_yen_reference"])
+            amount = model["thousand_yen_reference"]
     except (TypeError, ValueError, KeyError):
         return hold("MODEL_OUTSIDE_SCOPE")
     if type(amount) is not int or not 0 <= amount <= 10**9:
@@ -122,5 +129,24 @@ def make_automatic_reference(extracted, target_year):
                                          "special_relative_deduction_reference",
                                          "spouse_income_reference")):
         caveats.append("FAMILY_DETAILS_UNVERIFIED")
+    # Numeric-only, internally consistent calculation trace, no source text,
+    # taxpayer identity, source address, or local document path.
+    # Zero-income-levy cases have no marginal tax rate: zero explicitly.
+    ratio_ppm = (int(model["special_ratio"] * 1_000_000)
+                 if model is not None else 0)
+    trace = {
+        "R_SOURCE_YEAR": source_year,
+        "R_SOURCE_BASIC": source_basic,
+        "R_RESIDENT_DEDUCTIONS": resident_deductions,
+        "R_RESIDENT_TAXABLE": (model["resident_taxable_income"]
+                               if model is not None else 0),
+        "R_RESIDENT_LEVY": (model["resident_income_levy"]
+                           if model is not None else 0),
+        "R_SPECIAL_RATIO_PPM": ratio_ppm,
+        "R_SPECIAL_CAP": (int(model["special_20pct_cap"])
+                          if model is not None else 0),
+        "R_MODEL_LOCALITY": model_locality,
+    }
     return {"status": "AUTO_REFERENCE", "limit": amount, "target_year": target_year,
-            "salary_income": projected_salary, "reason": ";".join(caveats)}
+            "salary_income": projected_salary, "reason": ";".join(caveats),
+            "report_trace": trace}
