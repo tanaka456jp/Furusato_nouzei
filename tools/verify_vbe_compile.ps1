@@ -35,7 +35,49 @@ try {
         $command.Execute()
         $state = 'VBE_COMPILE_EXECUTED'
     }
-    if ($command.Enabled) { throw 'VBE_COMPILE_INCOMPLETE' }
+    if ($command.Enabled) {
+        # Report only source module and line coordinates (never source text,
+        # workbook values or customer identifiers). This makes a genuine VBE
+        # compile failure actionable from the isolated PC1 runner.
+        $moduleName = 'UNKNOWN'
+        $lineNo = 0; $colNo = 0; $endLine = 0; $endCol = 0
+        try {
+            $active = $excel.VBE.ActiveCodePane
+            if ($null -ne $active) {
+                $moduleName = [string]$active.CodeModule.Parent.Name
+                $active.GetSelection([ref]$lineNo,[ref]$colNo,
+                                     [ref]$endLine,[ref]$endCol)
+            }
+        } catch {
+            $moduleName = 'SELECTION_UNAVAILABLE'
+        }
+        if ($moduleName -notmatch '^[A-Za-z0-9_]{1,64}
+} finally {
+    if ($book) { $book.Close($false) }
+    if ($excel) { $excel.Quit() }
+    foreach ($object in @($command, $pane, $project, $book, $excel)) {
+        if ($null -ne $object) { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($object) }
+    }
+}
+if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant() -cne $hash) {
+    throw 'VBE_COMPILE_CHANGED_WORKBOOK'
+}
+$report = [ordered]@{
+    schema = 'furusato-vbe-compile/v1'
+    workbook_sha256 = $hash
+    status = $state
+    command_id = 578
+    command_enabled_after = $false
+}
+[IO.File]::WriteAllText($EvidencePath, ($report | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
+Write-Host ('VBE_COMPILE_RESULT=' + $state)
+) {
+            $moduleName = 'UNKNOWN'
+        }
+        Write-Host ('VBE_COMPILE_INCOMPLETE_SOURCE_MODULE=' + $moduleName)
+        Write-Host ('VBE_COMPILE_INCOMPLETE_SOURCE_LINE=' + [int]$lineNo)
+        throw 'VBE_COMPILE_INCOMPLETE'
+    }
 } finally {
     if ($book) { $book.Close($false) }
     if ($excel) { $excel.Quit() }
