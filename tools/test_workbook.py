@@ -704,7 +704,7 @@ class WorkbookTest(unittest.TestCase):
         self.assertIn("'操作画面'!D33",self.book[ADVANCED]["B42"].value)
         vb=(ROOT/"vba/TaxLawUpdater.bas").read_text(encoding="utf-8-sig")
         self.assertIn('home.Range("D33").Value2 = "未確認"',vb)
-        self.assertIn('.Range("B40,B43:B44").ClearContents',vb)
+        self.assertIn('.Range("B40,B43:B44,B45:B49").ClearContents',vb)
         self.assertIn("isProjection = (year = 2025 And CLng(home.Range",vb)
         self.assertNotIn('home.Range("B4").Value2 = year',vb)
         self.assertIn('If Not isProjection Then home.Range("B33")',vb)
