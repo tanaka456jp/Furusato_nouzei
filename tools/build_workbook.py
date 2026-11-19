@@ -402,6 +402,20 @@ def build(source, output):
         extra[cell].protection = Protection(locked=True)
         extra[cell].number_format = '#,##0'
     extra["B41"] = None
+    # Source-only automatic reference is deliberately independent of the
+    # reviewed donation ceiling. Never store full address or taxpayer name.
+    extra["A45"] = "原票だけからの自動参考額（未確定・円）"
+    extra["A46"] = "自動参考額の区分（仮定値）"
+    extra["A47"] = "自動参考額の対象所得年"
+    extra["A48"] = "未反映条件のコード（原票全文は格納禁止）"
+    extra["A49"] = "読取時の入力スナップショット（変更で失効）"
+    for coord in ("B45", "B46", "B47", "B48", "B49"):
+        extra[coord] = None
+        extra[coord].protection = Protection(locked=True)
+    extra["B45"].number_format = "#,##0"
+    extra["B49"].number_format = "@"
+    for row in range(45, 50):
+        extra.row_dimensions[row].hidden = True
     # A plain delimiter alone is ambiguous: "a|b" and "a","b" could
     # serialize to the same text even though the reviewed inputs changed.
     # Prefix EACH input with its length. LEN + & work in old desktop Excel
@@ -439,14 +453,36 @@ def build(source, output):
     for row in (5, 7, 8):
         home.row_dimensions[row].height = 25
     detail.row_dimensions[17].height = 26
-    home["A8"], home["C8"] = "寄附限度額の目安（円）", "調整控除後の所得割（円）"
+    home["A8"] = ('=IF(AND(B28<>"正常",'
+                  f'{ref(ADVANCED,"B46")}="AUTO_REFERENCE",'
+                  f'{ref(ADVANCED,"B49")}<>"",'
+                  f'{ref(ADVANCED,"B49")}={ref(ADVANCED,"B42")}),'
+                  '"自動参考額（未確定・円）","寄附限度額の目安（円）")')
+    home["C8"] = "調整控除後の所得割（円）"
+    # The source-only figure is a visibly labelled hypothetical estimate.
+    # Existing verified model, detailed report and print/export gates remain
+    # governed by B28="正常". Every edited input revokes the cached preview.
+    auto_ref_ok = (
+        f'AND({ref(ADVANCED,"B46")}="AUTO_REFERENCE",'
+        f'ISNUMBER({ref(ADVANCED,"B45")}),'
+        f'{ref(ADVANCED,"B47")}=B4,'
+        f'{ref(ADVANCED,"B49")}<>"",'
+        f'{ref(ADVANCED,"B49")}={ref(ADVANCED,"B42")},'
+        'COUNT(B12,B15,B16)=3)'
+    )
+    home["B8"] = (f'=IF(B28<>"正常",IF({auto_ref_ok},'
+                  f'{ref(ADVANCED,"B45")},""),{ref(RESIDENT,"B26")})')
+    home["D8"] = f'=IF(B28<>"正常","",{ref(RESIDENT,"B16")})'
     for cell, target in (("B8", "B26"), ("D8", "B16")):
-        home[cell] = f'=IF(B28<>"正常","",{ref(RESIDENT, target)})'
         home[cell].number_format = '#,##0'
         home[cell].alignment = Alignment(horizontal="right")
         home[cell].font = Font(name="Yu Gothic", bold=True, size=15, color="163A56")
-    note(home, 9, '=B28')
-    home.row_dimensions[9].height = 40
+    note(home, 9, '=IF(AND(B28<>"正常",'
+         f'{ref(ADVANCED,"B46")}="AUTO_REFERENCE",'
+         f'{ref(ADVANCED,"B49")}<>"",'
+         f'{ref(ADVANCED,"B49")}={ref(ADVANCED,"B42")}),'
+         '"【仮の参考額】源泉票記載の給与条件が継続・給与以外の所得なし・住宅控除等未調整。確定上限ではありません。"&CHAR(10)&B28,B28)')
+    home.row_dimensions[9].height = 58
     home.conditional_formatting.add(
         "A9:D9",
         FormulaRule(

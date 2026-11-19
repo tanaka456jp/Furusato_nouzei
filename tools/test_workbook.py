@@ -61,7 +61,10 @@ class WorkbookTest(unittest.TestCase):
         self.assertIn("COUNTA(B12,B15,B16)=COUNT(B12,B15,B16)", formula)
         self.assertIn("入力待ち：支払金額・源泉徴収税額・社会保険料等を入力してください",formula)
         self.assertIn("エラー：入力または計算式を確認してください",formula)
-        self.assertIn('IF(B28<>"正常",""',home["B8"].value)
+        self.assertIn('IF(B28<>"正常",IF(AND(',home["B8"].value)
+        self.assertIn('AUTO_REFERENCE',home["B8"].value)
+        self.assertIn('B49',home["B8"].value)
+        self.assertIn('自動参考額（未確定・円）',home["A8"].value)
         self.assertIn('IF(B28<>"正常",""',home["D8"].value)
         self.assertIn('LEFT($B$28,4)="入力待ち"',
                       [x for rule in home.conditional_formatting["A9:D9"]
@@ -603,6 +606,8 @@ class WorkbookTest(unittest.TestCase):
         self.assertIn("NOT(ISNUMBER(B34))", formula)
         self.assertIn("B34<B33", formula)
         self.assertIn('B28<>"正常"', self.book[HOME]["B8"].value)
+        self.assertIn('AUTO_REFERENCE', self.book[HOME]["B8"].value)
+        self.assertIn('B49', self.book[HOME]["B8"].value)
         self.assertIn('B28<>"正常"', self.book[HOME]["D8"].value)
 
     def test_split_donation_allocation_is_real_tax_difference(self):
