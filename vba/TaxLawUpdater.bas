@@ -973,8 +973,30 @@ Public Sub ImportWithholding()
         extra.Range("B32").Value2 = CStr(extra.Range("B32").Value2) & _
             ";SELECTED_PDF_PAGE_" & CStr(CLng(pageChoice)) & "_OF_" & CStr(pageCount)
     End If
+    If quick And CStr(fields("AUTO_STATUS")) = "AUTO_REFERENCE" Then
+        raw = CStr(fields("AUTO_LIMIT"))
+        If Len(raw) = 0 Or raw Like "*[!0-9]*" Then _
+            Err.Raise vbObjectError + 381, , "自動参考額が整数ではありません。"
+        If CDbl(raw) < 0 Or CDbl(raw) > 1000000000# Or _
+           CDbl(raw) <> Fix(CDbl(raw)) Then _
+            Err.Raise vbObjectError + 382, , "自動参考額の範囲外です。"
+        extra.Range("B45").Value2 = CDbl(raw)
+        extra.Range("B46").Value2 = "AUTO_REFERENCE"
+        extra.Range("B47").Value2 = currentYear
+        extra.Range("B48").Value2 = CStr(fields("AUTO_WARNINGS"))
+    End If
     Application.Calculate
-    If status = "REQUIRES_REVIEW" Then
+    If quick Then
+        If CStr(extra.Range("B46").Value2) = "AUTO_REFERENCE" Then
+            If Len(CStr(extra.Range("B42").Value2)) = 0 Then _
+                Err.Raise vbObjectError + 383, , "参照元の状態を固定できません。"
+            extra.Range("B49").Value2 = CStr(extra.Range("B42").Value2)
+        End If
+        Application.Calculate
+        RevealVerifiedResults
+        home.Activate
+        home.Range("A1").Select
+    ElseIf status = "REQUIRES_REVIEW" Then
         MsgBox "読み取れた金額を仮転記しました（未確定）。" & vbCrLf & _
                "空欄・不一致を源泉徴収票と照合した後「読取内容の確認」を押してください。" & vbCrLf & _
                "住宅ローン控除可能額は所得税適用額と別項目です。", vbExclamation
