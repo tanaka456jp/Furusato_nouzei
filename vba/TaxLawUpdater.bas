@@ -422,7 +422,7 @@ Private Function DecodeRecipientNameForBatch(ByVal encoded As String) As String
        Err.Raise vbObjectError + 402, , "受給者氏名符号が不正です。"
     For i = 1 To Len(encoded) Step 4
         cp = CLng("&H0" & Mid$(encoded, i, 4))
-        If Not ((cp >= &H3400 And cp <= &H9FFF) Or _
+        If Not ((cp >= 13312& And cp <= 40959&) Or _
                 (cp >= &H3040 And cp <= &H30FF) Or _
                 (cp >= &H41 And cp <= &H5A) Or _
                 (cp >= &H61 And cp <= &H7A) Or _

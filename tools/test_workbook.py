@@ -154,6 +154,9 @@ class WorkbookTest(unittest.TestCase):
         self.assertEqual(report["A3"].value, "受給者氏名（源泉票E03）")
         self.assertEqual(batch["K4"].value, "全員分PDF出力")
         self.assertIn("DecodeRecipientNameForBatch", (ROOT / "vba/TaxLawUpdater.bas").read_text(encoding="utf-8-sig"))
+        # VBA four-digit &H9FFF is signed 16-bit (-24577). Upper Kanji
+        # boundary must instead be an explicitly Long positive decimal.
+        self.assertIn("cp >= 13312& And cp <= 40959&", (ROOT / "vba/TaxLawUpdater.bas").read_text(encoding="utf-8-sig"))
         self.assertIn("BatchLastInnerErrorForTest", (ROOT / "vba/TaxLawUpdater.bas").read_text(encoding="utf-8-sig"))
         self.assertTrue(all(batch.column_dimensions[c].hidden for c in "LMNOPQRS"))
         self.assertEqual(batch.freeze_panes, "C6")
