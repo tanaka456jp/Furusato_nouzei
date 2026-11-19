@@ -29,6 +29,8 @@ class MunicipalityCandidateTests(unittest.TestCase):
             ("東京都港区架空町12", "港区", "STANDARD"),
             ("長野県北佐久郡軽井沢町架空地", "北佐久郡軽井沢町", "STANDARD"),
             ("京都府宇治市架空町12", "宇治市", "STANDARD"),
+            ("三重県四日市市架空町12", "四日市市", "STANDARD"),
+            ("広島県廿日市市架空町12", "廿日市市", "STANDARD"),
             ("愛知県名古屋市中区架空町12", "名古屋市", "SPECIAL"),
         ):
             with self.subTest(address=address[:6]):
@@ -99,6 +101,8 @@ class MunicipalityCandidateTests(unittest.TestCase):
                      "vbYesNo + vbQuestion + vbDefaultButton2"):
             self.assertIn(term, vba)
         self.assertIn('["F51"]  # municipality candidate', builder)
+        self.assertIn('Date < DateSerial(residenceYear, 1, 1)', vba)
+        self.assertIn('（将来のため見込み）', vba)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

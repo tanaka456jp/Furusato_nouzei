@@ -793,8 +793,11 @@ Public Sub ImportWithholding()
             If MsgBox("源泉徴収票の受給者住所からの候補：" & municipalityName & _
                 "（" & municipalitySelected & "）" & vbCrLf & _
                 "※支払者（勤務先）の住所ではありません。" & vbCrLf & vbCrLf & _
-                CStr(residenceYear) & "年1月1日の実際の住所地がこの自治体で、" & _
-                "標準の所得割税率を適用できると確認しましたか？" & vbCrLf & _
+                CStr(residenceYear) & "年1月1日の住所地" & _
+                IIf(Date < DateSerial(residenceYear, 1, 1), _
+                    "（将来のため見込み）", "（実績）") & _
+                "がこの自治体で、標準の所得割税率を適用できると確認しましたか？" & vbCrLf & _
+                "はいでも将来の転居・条例変更は別途再確認が必要です。" & vbCrLf & _
                 "いいえ：不明として計算を保留します。", _
                 vbYesNo + vbQuestion + vbDefaultButton2, "課税自治体の候補確認") <> vbYes Then
                 municipalitySelected = "条例差・不明"

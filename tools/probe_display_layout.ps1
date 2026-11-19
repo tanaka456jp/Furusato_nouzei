@@ -219,7 +219,25 @@ public static class FurusatoWindowCapture {
         throw 'IMPLAUSIBLE_EXCEL_WINDOW_DIMENSIONS'
     }
     if ($null -eq $measured) { throw 'UNSUPPORTED_OR_UNMEASURED_DISPLAY_MODE' }
-    $commands = @(Measure-Commands $book ($dpi * 0.85 / 72))
+    # Microsoft Excel Forms-control COM can momentarily return
+    # HRESULT 0x800A01A8 while rebuilding form-button references.
+    # Retry only that transient error on the SAME isolated workbook;
+    # all command bounds/captions/action checks remain mandatory.
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        try {
+            $commands = @(Measure-Commands $book ($dpi * 0.85 / 72))
+            if ($commands.Count -ne 14) {
+                throw 'DISPLAY_COMMAND_MEASUREMENT_INCOMPLETE'
+            }
+            break
+        } catch {
+            if ($attempt -eq 3 -or $_.Exception.Message -notmatch '0x800A01A8') {
+                throw
+            }
+            Start-Sleep -Milliseconds (500 * $attempt)
+            $homeSheet.Activate()
+        }
+    }
     $link = $homeSheet.Range('A2').Hyperlinks.Item(1)
     if ([string]$link.Address -or [string]$link.SubAddress -cne "'操作画面'!A42") {
         throw 'UNEXPECTED_WORKSHEET_LINK_TARGET'

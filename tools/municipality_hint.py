@@ -28,7 +28,7 @@ DESIGNATED_CITIES = frozenset({
 # standard 8% designated-city calculation.
 NONSTANDARD_CITIES = frozenset({"名古屋市"})
 CHARS = r"[一-龯々ヶぁ-んァ-ン]"
-CITY = re.compile(rf"({CHARS}{{1,16}}?市)")
+CITY = re.compile(rf"({CHARS}{{1,16}}?市)(?!市)")
 TOWN = re.compile(rf"((?:{CHARS}{{1,12}}郡)?{CHARS}{{1,12}}?[区町村])")
 
 
