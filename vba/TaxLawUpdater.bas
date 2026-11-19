@@ -753,6 +753,30 @@ Public Sub ImportWithholding()
         End Select
         municipalityName = DecodeMunicipalityHint(CStr(fields("MUNI_NAME_HEX")))
     End If
+    If quick Then
+        If Not fields.Exists("AUTO_STATUS") Then _
+            Err.Raise vbObjectError + 370, , "自動参考額の検証情報がありません。"
+        Select Case CStr(fields("AUTO_STATUS"))
+            Case "HOLD"
+                If fields.Exists("AUTO_LIMIT") Then _
+                    Err.Raise vbObjectError + 371, , "保留に金額は設定できません。"
+            Case "AUTO_REFERENCE"
+                If Not fields.Exists("AUTO_SCOPE") Or _
+                    Not fields.Exists("AUTO_LIMIT") Or _
+                    Not fields.Exists("AUTO_YEAR") Or _
+                    Not fields.Exists("AUTO_WARNINGS") Then _
+                    Err.Raise vbObjectError + 372, , "自動参考額の項目が不完全です。"
+                If CStr(fields("AUTO_SCOPE")) <> "UNVERIFIED_SOURCE_ONLY" Then _
+                    Err.Raise vbObjectError + 373, , "参考額は未確定である必要があります。"
+                If CStr(fields("AUTO_YEAR")) <> CStr(currentYear) Then _
+                    Err.Raise vbObjectError + 374, , "参考額の対象所得年が異なります。"
+                If Len(CStr(fields("AUTO_WARNINGS"))) > 230 Or _
+                    CStr(fields("AUTO_WARNINGS")) Like "*[!A-Z_0-9;]*" Then _
+                    Err.Raise vbObjectError + 376, , "参考額の注意コードが不正です。"
+            Case Else
+                Err.Raise vbObjectError + 380, , "自動参考額の区分が不正です。"
+        End Select
+    End If
     ' Preserve the selected calculation year. In a 2025-source/2026-target
     ' projection the prior document year must never overwrite target 2026.
     Set home = ThisWorkbook.Worksheets("操作画面")
@@ -766,7 +790,10 @@ Public Sub ImportWithholding()
     Next key
     For Each key In fields.Keys
         If key <> "STATUS" And key <> "YEAR" And key <> "WARNINGS" And _
-           key <> "MUNI_CLASS" And key <> "MUNI_NAME_HEX" Then
+           key <> "MUNI_CLASS" And key <> "MUNI_NAME_HEX" And _
+           key <> "AUTO_STATUS" And key <> "AUTO_SCOPE" And _
+           key <> "AUTO_LIMIT" And key <> "AUTO_YEAR" And _
+           key <> "AUTO_WARNINGS" Then
             raw = CStr(fields(key))
             If Len(raw) = 0 Or Not IsNumeric(raw) Then
                 Err.Raise vbObjectError + 211, , "取込金額が不正です。"
@@ -890,7 +917,10 @@ Public Sub ImportWithholding()
     home.Range("B11").Value2 = year
     For Each key In fields.Keys
         If key <> "STATUS" And key <> "YEAR" And key <> "WARNINGS" And _
-           key <> "MUNI_CLASS" And key <> "MUNI_NAME_HEX" Then
+           key <> "MUNI_CLASS" And key <> "MUNI_NAME_HEX" And _
+           key <> "AUTO_STATUS" And key <> "AUTO_SCOPE" And _
+           key <> "AUTO_LIMIT" And key <> "AUTO_YEAR" And _
+           key <> "AUTO_WARNINGS" Then
             value = CDbl(fields(key))
             Select Case CStr(key)
                 Case "salary_gross": home.Range("B12").Value2 = value
