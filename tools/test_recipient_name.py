@@ -20,8 +20,8 @@ class NameTests(unittest.TestCase):
         self.assertIsNone(from_e03([w for w in synthetic() if w[4]!="E03"]))
     def test_split_surname_and_given_name_native_text_gap(self):
         words = synthetic()
-        words[2] = (89,153,111,160,"山田")
-        words.insert(3,(122,153,144,160,"太郎"))
+        words[3] = (89,153,111,160,"山田")
+        words.insert(4,(122,153,144,160,"太郎"))
         self.assertEqual(from_e03(words),"山田 太郎")
 
     def test_formula_and_address_injection_rejected(self):
