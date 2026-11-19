@@ -1,5 +1,6 @@
 """Anonymous only: E03 name privacy and recipient binding regression."""
 import unittest
+from pathlib import Path
 from recipient_name import from_e03, encode, decode, validate_name, UNREADABLE
 
 def synthetic(name="山田 太郎", header=True, label=True):
@@ -36,6 +37,15 @@ class NameTests(unittest.TestCase):
         for s in ("000A","D800","0040","0061"*41,"ffff","0000"):
             with self.assertRaises(ValueError): decode(s)
         self.assertIsNone(decode(""))
+
+    def test_vba_updater_decimal_long_suffix_round_trip(self):
+        # PC1 VBE exported these numeric suffixes without '&', leaving a
+        # persistent semantic diff after VBAUpdater imports TaxLawUpdater.
+        source = (Path(__file__).resolve().parents[1] / "vba" /
+                  "TaxLawUpdater.bas").read_text(encoding="utf-8")
+        self.assertIn("cp >= 13312 And cp <= 40959", source)
+        self.assertNotIn("13312&", source)
+        self.assertNotIn("40959&", source)
 
 if __name__=="__main__":
     unittest.main(verbosity=2)
