@@ -35,6 +35,18 @@ class AutoReferenceTests(unittest.TestCase):
         self.assertIn("PRIOR_YEAR_CONDITIONS_CARRIED_FORWARD", result["reason"])
         self.assertIn("LOCAL_TAX_RESIDENCE_UNCONFIRMED", result["reason"])
 
+    def test_source_g01_candidate_is_used_only_as_local_tax_hypothesis(self):
+        original = source()
+        original["municipality_hint"] = {"name": "京都市", "class": "DESIGNATED"}
+        result = make_automatic_reference(original, 2026)
+        self.assertEqual(result["status"], "AUTO_REFERENCE")
+        self.assertIn("MUNICIPALITY_FROM_DOCUMENT_ASSUMED", result["reason"])
+        self.assertIn("LOCAL_TAX_RESIDENCE_UNCONFIRMED", result["reason"])
+        original["municipality_hint"] = {"name": "名古屋市", "class": "SPECIAL"}
+        special = make_automatic_reference(original, 2026)
+        self.assertEqual(special["status"], "AUTO_REFERENCE")
+        self.assertIn("MUNICIPALITY_RATE_UNCERTAIN", special["reason"])
+
     def test_unmodelled_housing_is_disclosed_not_claimed_exact(self):
         result = make_automatic_reference(
             source(mortgage_possible_credit=300_000), 2026)

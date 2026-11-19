@@ -80,12 +80,23 @@ def make_automatic_reference(extracted, target_year):
         elif resident_deductions >= projected_salary:
             amount = 0
         else:
+            # Use only the source recipient's G01 municipality *candidate*
+            # as a model assumption, never as January 1 residency proof.
+            hint = extracted.get("municipality_hint") or {}
+            category = hint.get("class")
+            if category == "STANDARD":
+                places = ("standard",)
+            elif category == "DESIGNATED":
+                places = ("designated",)
+            else:
+                # Unknown / special ordinance: choose the smaller ordinary
+                # scenario only; the actual statute may differ materially.
+                places = ("standard", "designated")
             estimates = [independent_salary_ceiling(
                 year=target_year, salary_income=projected_salary,
                 resident_deductions=resident_deductions,
                 personal_difference=50_000, municipality=place,
-            )["thousand_yen_reference"]
-                for place in ("standard", "designated")]
+            )["thousand_yen_reference"] for place in places]
             amount = min(estimates)
     except (TypeError, ValueError, KeyError):
         return hold("MODEL_OUTSIDE_SCOPE")
@@ -94,6 +105,11 @@ def make_automatic_reference(extracted, target_year):
     caveats = ["SALARY_ONLY_ASSUMED", "LOCAL_TAX_RESIDENCE_UNCONFIRMED",
                "NATIONAL_TO_LOCAL_DEDUCTIONS_ASSUMED",
                "NO_OTHER_CREDITS_ASSUMED"]
+    locality = (extracted.get("municipality_hint") or {}).get("class")
+    if locality in ("STANDARD", "DESIGNATED"):
+        caveats.append("MUNICIPALITY_FROM_DOCUMENT_ASSUMED")
+    else:
+        caveats.append("MUNICIPALITY_RATE_UNCERTAIN")
     if source_year != target_year:
         caveats.append("PRIOR_YEAR_CONDITIONS_CARRIED_FORWARD")
     if "BLANK_SOCIAL_INSURANCE_REQUIRES_REVIEW" in warnings:
