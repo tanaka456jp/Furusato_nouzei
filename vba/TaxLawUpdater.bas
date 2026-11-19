@@ -495,6 +495,7 @@ Public Function ExportAllBatchReferencePDFsToFolder( _
     Dim staging As String, outputFolder As String, candidate As String
     Dim rowNo As Long, page As Long, count As Long, serial As Long
     Dim pdfPath As String, stem As String, problem As String
+    Dim seenPages As Object, hadBlank As Boolean
     On Error GoTo Failed
     Set fso = CreateObject("Scripting.FileSystemObject")
     If Not fso.FolderExists(parentFolder) Then _
@@ -514,15 +515,30 @@ Public Function ExportAllBatchReferencePDFsToFolder( _
     If serial > 1000 Then Err.Raise vbObjectError + 395, , "出力先の確保に失敗しました。"
     ' Validate entire source first: no partially published report folders.
     count = 0
+    hadBlank = False
+    Set seenPages = CreateObject("Scripting.Dictionary")
     For rowNo = 6 To 105
-        If Len(CStr(batch.Cells(rowNo, 1).Value2)) <> 0 Then
+        If Len(CStr(batch.Cells(rowNo, 2).Value2)) <> 0 Then
+            If hadBlank Then Err.Raise vbObjectError + 396, , _
+                "一覧の途中に空行があります。再取込してください。"
             count = count + 1
-            If CDbl(batch.Cells(rowNo, 1).Value2) <> rowNo - 5 Then _
-                Err.Raise vbObjectError + 396, , "ページ番号が連続していません。"
-            If CStr(batch.Cells(rowNo, 9).Value2) = "参考額（仮）" And _
-               Len(CStr(batch.Cells(rowNo, 11).Value2)) = 0 Then _
+            If Not IsNumeric(batch.Cells(rowNo, 2).Value2) Then _
+                Err.Raise vbObjectError + 396, , "PDFページ番号が不正です。"
+            page = CLng(batch.Cells(rowNo, 2).Value2)
+            If page < 1 Or page > 100 Or _
+               CDbl(page) <> CDbl(batch.Cells(rowNo, 2).Value2) Then _
+                Err.Raise vbObjectError + 396, , "PDFページ番号が範囲外です。"
+            If seenPages.Exists(CStr(page)) Then _
+                Err.Raise vbObjectError + 396, , "同一ページ番号が重複しています。"
+            seenPages.Add CStr(page), True
+            If Len(CStr(batch.Cells(rowNo, 1).Value2)) = 0 Then _
+                Err.Raise vbObjectError + 396, , "氏名欄が空欄です。"
+            If CStr(batch.Cells(rowNo, 10).Value2) = "参考額（仮）" And _
+               Len(CStr(batch.Cells(rowNo, 12).Value2)) = 0 Then _
                 Err.Raise vbObjectError + 397, , _
                   "計算根拠がない旧一覧です。源泉票を再取込してください。"
+        Else
+            hadBlank = True
         End If
     Next rowNo
     If count < 1 Or count > 100 Then _
@@ -532,7 +548,7 @@ Public Function ExportAllBatchReferencePDFsToFolder( _
     For page = 1 To count
         PopulateBatchReferenceSheet page, batch, report
         pdfPath = fso.BuildPath(staging, _
-            "源泉票_ページ" & Format$(page, "000") & "_試算根拠_未確定.pdf")
+            "源泉票_ページ" & Format$(CLng(batch.Cells(page + 5, 2).Value2), "000") & "_試算根拠_未確定.pdf")
         report.ExportAsFixedFormat Type:=xlTypePDF, Filename:=pdfPath
         If Not fso.FileExists(pdfPath) Then _
             Err.Raise vbObjectError + 399, , "PDFの生成を確認できません。"
