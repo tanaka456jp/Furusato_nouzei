@@ -495,6 +495,12 @@ try {
     $sourceAudit.Range('B49').Value2 = [string]$sourceAudit.Range('B42').Value2
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value $homeSheet.Range('B8').Value2 100000 'Source-only number is immediately visible'
+    if ([string]$homeSheet.Range('A9').Value2 -notlike '*限度額未確定*') {
+        throw 'Source-only warning was lost after Excel calculation'
+    }
+    if ([string]$homeSheet.Range('A9').Formula -ne '=F9') {
+        throw 'Source-only warning formula was replaced by masking'
+    }
     if ([string]$homeSheet.Range('A8').Value2 -notlike '*自動参考額*') {
         throw 'Source-only amount is not clearly labelled as provisional'
     }

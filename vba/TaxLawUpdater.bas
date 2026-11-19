@@ -121,7 +121,8 @@ Public Sub RevealVerifiedResults()
             home.Range(CStr(address)).NumberFormat = OriginalResultFormat(CStr(address))
         End If
     Next address
-    home.Range("A9").Formula = "=B28"
+    ' Preserve the source-only caveat after showing masked results.
+    home.Range("A9").Formula = "=F9"
     mResultUnverified = False
     Application.EnableEvents = oldEvents
     mResultMaskBusy = False

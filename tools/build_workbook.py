@@ -454,15 +454,8 @@ def build(source, output):
     for row in (5, 7, 8):
         home.row_dimensions[row].height = 25
     detail.row_dimensions[17].height = 26
-    home["A8"] = ('=IF(AND(B28<>"正常",'
-                  f'{ref(ADVANCED,"B46")}="AUTO_REFERENCE",'
-                  f'{ref(ADVANCED,"B49")}<>"",'
-                  f'{ref(ADVANCED,"B49")}={ref(ADVANCED,"B42")}),'
-                  '"自動参考額（未確定・円）","寄附限度額の目安（円）")')
-    home["C8"] = "調整控除後の所得割（円）"
-    # The source-only figure is a visibly labelled hypothetical estimate.
-    # Existing verified model, detailed report and print/export gates remain
-    # governed by B28="正常". Every edited input revokes the cached preview.
+    # All three public surfaces use one eligibility predicate; unverified
+    # cached numbers, warnings and labels must expire at the same instant.
     auto_ref_ok = (
         f'AND({ref(ADVANCED,"B46")}="AUTO_REFERENCE",'
         f'ISNUMBER({ref(ADVANCED,"B45")}),'
@@ -472,6 +465,10 @@ def build(source, output):
         'COUNT(B12,B15,B16)=3,'
         'LEFT(B28,3)<>"エラー")'
     )
+    preview_visible = f'AND(B28<>"正常",{auto_ref_ok})'
+    home["A8"] = (f'=IF({preview_visible},'
+                  '"自動参考額（未確定・円）","寄附限度額の目安（円）")')
+    home["C8"] = "調整控除後の所得割（円）"
     home["B8"] = (f'=IF(B28<>"正常",IF({auto_ref_ok},'
                   f'{ref(ADVANCED,"B45")},""),{ref(RESIDENT,"B26")})')
     home["D8"] = f'=IF(B28<>"正常","",{ref(RESIDENT,"B16")})'
@@ -479,11 +476,12 @@ def build(source, output):
         home[cell].number_format = '#,##0'
         home[cell].alignment = Alignment(horizontal="right")
         home[cell].font = Font(name="Yu Gothic", bold=True, size=15, color="163A56")
-    note(home, 9, '=IF(AND(B28<>"正常",'
-         f'{ref(ADVANCED,"B46")}="AUTO_REFERENCE",'
-         f'{ref(ADVANCED,"B49")}<>"",'
-         f'{ref(ADVANCED,"B49")}={ref(ADVANCED,"B42")}),'
-         '"【仮の参考額】源泉票記載の給与条件が継続・給与以外の所得なし・住宅控除等未調整。確定上限ではありません。"&CHAR(10)&B28,B28)')
+    # Keep the caution in a locked helper in hidden column F: the existing
+    # VBA result-mask/reveal cycle must not erase the warning from row 9.
+    home["F9"] = (f'=IF({preview_visible},'
+                  '"【仮の参考額・限度額未確定】前年の給与・保険・扶養条件継続、給与以外の所得なし、住宅ローン控除等未調整。確定上限ではありません。"&CHAR(10)&B28,B28)')
+    home["F9"].protection = Protection(locked=True)
+    note(home, 9, "=F9")
     home.row_dimensions[9].height = 58
     home.conditional_formatting.add(
         "A9:D9",
