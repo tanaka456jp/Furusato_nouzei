@@ -334,7 +334,7 @@ End Sub
 Private Function BatchOverviewHasRecords() As Boolean
     BatchOverviewHasRecords = _
         (Application.WorksheetFunction.CountA( _
-            ThisWorkbook.Worksheets("一括計算一覧").Range("B6:B105")) > 0
+            ThisWorkbook.Worksheets("一括計算一覧").Range("B6:B105")) > 0)
 End Function
 
 Public Sub ClearBatchOverview()
