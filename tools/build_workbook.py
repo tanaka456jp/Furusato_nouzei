@@ -613,7 +613,7 @@ def build(source, output):
         batch[cell].font = Font(name="Yu Gothic", size=11, bold=True,
                                 color="163A56")
     for col, caption in enumerate((
-        "ページ", "所得年", "支払金額（円）", "給与所得（円）",
+        "ページ", "試算所得年", "支払金額（円）", "給与所得（円）",
         "所得控除合計（円）", "源泉徴収税額（円）", "社会保険料（円）",
         "上限額参考（円）", "判定", "判定理由（詳細）",
     ), 1):

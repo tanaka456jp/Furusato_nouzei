@@ -103,4 +103,4 @@ def make_automatic_reference(extracted, target_year):
                                          "spouse_income_reference")):
         caveats.append("FAMILY_DETAILS_UNVERIFIED")
     return {"status": "AUTO_REFERENCE", "limit": amount, "target_year": target_year,
-            "reason": ";".join(caveats)}
+            "salary_income": projected_salary, "reason": ";".join(caveats)}

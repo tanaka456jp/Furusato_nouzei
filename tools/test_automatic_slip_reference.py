@@ -20,6 +20,7 @@ class AutoReferenceTests(unittest.TestCase):
         result = make_automatic_reference(source(), 2026)
         self.assertEqual(result["status"], "AUTO_REFERENCE")
         self.assertEqual(result["target_year"], 2026)
+        self.assertIsInstance(result["salary_income"], int)
         self.assertIsInstance(result["limit"], int)
         self.assertGreater(result["limit"], 0)
         self.assertEqual(result["limit"] % 1000, 0)

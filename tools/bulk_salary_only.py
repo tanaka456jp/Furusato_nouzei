@@ -175,9 +175,12 @@ def evaluate_page(page: int, evidence: dict) -> dict:
     return row
 
 
-def all_page_rows(path: Path) -> list[dict]:
+def all_page_rows(path: Path, target_year=None) -> list[dict]:
     """Read all pages independently. One damaged page cannot mix taxpayers."""
     from withholding_reader import extract, pdf_page_count
+    from automatic_slip_reference import make_automatic_reference
+    if target_year is not None and target_year not in (2025, 2026):
+        raise ValueError("UNAPPROVED_BATCH_TARGET_YEAR")
     path = Path(path)
     if path.suffix.lower() != ".pdf":
         raise ValueError("BATCH_REQUIRES_PDF")
@@ -188,7 +191,20 @@ def all_page_rows(path: Path) -> list[dict]:
     for page in range(1, count + 1):
         try:
             result = extract(path, page_number=page)
-            rows.append(evaluate_page(page, result))
+            row = evaluate_page(page, result)
+            if target_year is not None:
+                reference = make_automatic_reference(result, target_year)
+                row["YEAR"] = target_year
+                if reference["status"] == "AUTO_REFERENCE":
+                    row["SALARY_INCOME"] = reference["salary_income"]
+                    row["REFERENCE_LIMIT"] = reference["limit"]
+                    row["STATUS"] = "PROVISIONAL"
+                    row["REASON"] = "AUTO_SOURCE_ASSUMPTION"
+                else:
+                    row["REFERENCE_LIMIT"] = ""
+                    row["STATUS"] = "HOLD"
+                    row["REASON"] = "AUTO_SOURCE_HOLD"
+            rows.append(row)
         except Exception:
             # Do not write the exception, PDF text, name, amount, or filename.
             rows.append({key: (page if key == "PAGE" else

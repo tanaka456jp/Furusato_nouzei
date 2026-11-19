@@ -539,16 +539,20 @@ if __name__=="__main__":
     ap.add_argument("--page-count",action="store_true",help="write count only; never inspect tax values")
     ap.add_argument("--batch-bridge", action="store_true",
                     help="write one numeric summary row per PDF page; no identifiers")
+    ap.add_argument("--batch-target-year",type=int,choices=(2025,2026),
+                    help="automatic provisional per-page target year")
     args=ap.parse_args()
     try:
         if args.batch_bridge:
             if args.page is not None or args.bridge is not None or args.page_count:
                 raise ValueError("Batch mode does not accept page or bridge")
             from bulk_salary_only import all_page_rows, write_batch_bridge
-            rows = all_page_rows(args.input)
+            rows = all_page_rows(args.input, target_year=args.batch_target_year)
             write_batch_bridge(rows, args.output)
             print("BATCH_ROWS_READY")
             sys.exit(0)
+        if args.batch_target_year is not None:
+            raise ValueError("--batch-target-year requires --batch-bridge")
         if args.page_count:
             if args.page is not None or args.bridge is not None:
                 raise ValueError("Page-count mode does not accept --page or --bridge")
