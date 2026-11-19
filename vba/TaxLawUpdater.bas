@@ -4,6 +4,8 @@ Option Explicit
 ' Only isolated tests use this nonmodal diagnostic state.
 Private mLastTestFailure As String
 Private mResultUnverified As Boolean
+' Numeric-only diagnostic for isolated PC1 tests. Never records name/text/paths.
+Private mBatchLastInnerError As Long
 ' Default source import is source-only, unverified, zero-confirmation preview.
 Private mManualImport As Boolean
 Private mResultMaskBusy As Boolean
@@ -612,6 +614,11 @@ End Function
 ' Test-only safe failure probe; Excel COM must not display a modal
 ' VBA run-time-error dialogue when a malformed batch file is rejected.
 ' Production still calls the strict loader and its user-facing error handler.
+' Isolated CI can retrieve only the numeric inner error (never its text).
+Public Function BatchLastInnerErrorForTest() As Long
+    BatchLastInnerErrorForTest = mBatchLastInnerError
+End Function
+
 Public Function TryLoadBatchFromTsvForTest(ByVal tsvPath As String) As Boolean
     On Error GoTo Rejected
     TryLoadBatchFromTsvForTest = (LoadBatchFromTsv(tsvPath) > 0)
@@ -693,6 +700,7 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
     Dim changed As Boolean, problem As String
     Dim header As String, reportHeader As String, withReport As Boolean
     Dim nameHeader As String, withName As Boolean
+    mBatchLastInnerError = 0
     On Error GoTo Failed
     Set fso = CreateObject("Scripting.FileSystemObject")
     If Not fso.FileExists(tsvPath) Then
@@ -801,6 +809,7 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
     Exit Function
 Failed:
     problem = Err.Description
+    mBatchLastInnerError = Err.Number
     On Error Resume Next
     If Not inputFile Is Nothing Then inputFile.Close
     If changed Then target.Range("A6:S105").Value2 = oldData

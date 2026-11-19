@@ -223,7 +223,13 @@ try {
     $v3Lines += ($v2Lines[1] + [char]9 + $firstHex)
     $v3Lines += ($v2Lines[2] + [char]9 + $secondHex)
     [IO.File]::WriteAllLines($v3Path, [string[]]$v3Lines,[Text.Encoding]::ASCII)
-    Assert-Value ([int]($excel.Run('TaxLawUpdater.LoadBatchFromTsv',$v3Path))) 2 'E03 name-bound v3 loaded'
+    # Probe via the non-modal VBA wrapper. If rejected, report only the
+    # numeric code, never source name, original PDF text or local path.
+    if (-not [bool]($excel.Run('TaxLawUpdater.TryLoadBatchFromTsvForTest',$v3Path))) {
+        $code = [long]($excel.Run('TaxLawUpdater.BatchLastInnerErrorForTest'))
+        throw ('E03_NAME_V3_REJECTED_CODE=' + $code)
+    }
+    QA-Stage 'batch-e03-person-v3-load-pass'
     Assert-Value ([string]$batchSheet.Range('A6').Value2) $firstName 'First E03 person at A6'
     Assert-Value ([string]$batchSheet.Range('A7').Value2) $secondName 'Second E03 person at A7'
     Assert-Value $batchSheet.Range('B6').Value2 1 'First identity has source page 1'
@@ -231,8 +237,12 @@ try {
     Assert-Value $batchSheet.Range('P6').Value2 415200 'Name and levy share a row'
     $v3Root = Join-Path $dir 'name-bound-pdf-qa-root'
     [IO.Directory]::CreateDirectory($v3Root) | Out-Null
-    Assert-Value ([int]($excel.Run('TaxLawUpdater.ExportAllBatchReferencePDFsToFolder',
-                                   $v3Root))) 2 'Each E03 identity has an individual PDF'
+    QA-Stage 'batch-e03-person-v3-pdf-start'
+    if (-not [bool]($excel.Run('TaxLawUpdater.TryExportAllBatchReferencePDFsForTest',
+                               $v3Root))) {
+        throw 'E03_NAME_V3_PDF_EXPORT_REJECTED'
+    }
+    QA-Stage 'batch-e03-person-v3-pdf-pass'
     $v3Pdfs = @(Get-ChildItem -LiteralPath $v3Root -File -Recurse -Filter '*.pdf')
     Assert-Value $v3Pdfs.Count 2 'Two source-page PDFs generated'
     Assert-Value ([string]$reportSheet.Range('B3').Value2) '' 'PDF cache has no remaining recipient name'
