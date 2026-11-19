@@ -555,6 +555,24 @@ Failed:
     Err.Raise vbObjectError + 359, "TaxLawUpdater.LoadBatchFromTsv", problem
 End Function
 
+
+' Strict Japanese municipality-only decoder; never write full addresses.
+Private Function DecodeMunicipalityHint(ByVal encoded As String) As String
+    Dim index As Long, point As Long
+    If Len(encoded) < 4 Or Len(encoded) > 64 Or _
+       Len(encoded) Mod 4 <> 0 Or encoded Like "*[!0-9A-F]*" Then
+        Err.Raise vbObjectError + 366, , "受給者住所の市区町村候補コードが不正です。"
+    End If
+    For index = 1 To Len(encoded) Step 4
+        point = CLng("&H" & Mid$(encoded, index, 4))
+        If Not ((point >= &H3040 And point <= &H30FF) Or _
+                (point >= &H3400 And point <= &H9FFF) Or point = &H3005) Then
+            Err.Raise vbObjectError + 367, , "市区町村候補に使用できない文字が含まれます。"
+        End If
+        DecodeMunicipalityHint = DecodeMunicipalityHint & ChrW$(point)
+    Next index
+End Function
+
 ' Import only allowlisted numeric fields from a local, explicitly selected file.
 ' Do not put names, addresses, tax IDs, or raw document text into the workbook.
 ' An immutable snapshot is saved before mutating a user's current input.
@@ -567,6 +585,8 @@ Public Sub ImportWithholding()
     Dim home As Worksheet, extra As Worksheet, code As Long, problem As String
     Dim taxpayerChoice As VbMsgBoxResult, newTaxpayer As Boolean, isProjection As Boolean
     Dim pageChoice As Variant, pageCount As Long, pageArg As String
+    Dim municipalityClass As String, municipalityName As String
+    Dim municipalitySelected As String, residenceYear As Long
     On Error GoTo Failed
     ' Select the PDF-only filter initially. Compound patterns hid PDFs.
     picked = Application.GetOpenFilename( _
@@ -666,6 +686,18 @@ Public Sub ImportWithholding()
         Err.Raise vbObjectError + 276, , "所得年の形式が整数ではありません。"
     End If
     If year <> 2025 And year <> 2026 Then Err.Raise vbObjectError + 209, , "未承認の年分です。"
+    If fields.Exists("MUNI_CLASS") <> fields.Exists("MUNI_NAME_HEX") Then
+        Err.Raise vbObjectError + 368, , "市区町村候補の項目が不完全です。"
+    End If
+    If fields.Exists("MUNI_CLASS") Then
+        municipalityClass = CStr(fields("MUNI_CLASS"))
+        Select Case municipalityClass
+            Case "STANDARD", "DESIGNATED", "SPECIAL"
+            Case Else
+                Err.Raise vbObjectError + 369, , "市区町村候補の区分が不正です。"
+        End Select
+        municipalityName = DecodeMunicipalityHint(CStr(fields("MUNI_NAME_HEX")))
+    End If
     ' Preserve the selected calculation year. In a 2025-source/2026-target
     ' projection the prior document year must never overwrite target 2026.
     Set home = ThisWorkbook.Worksheets("操作画面")
@@ -678,7 +710,8 @@ Public Sub ImportWithholding()
         End If
     Next key
     For Each key In fields.Keys
-        If key <> "STATUS" And key <> "YEAR" And key <> "WARNINGS" Then
+        If key <> "STATUS" And key <> "YEAR" And key <> "WARNINGS" And _
+           key <> "MUNI_CLASS" And key <> "MUNI_NAME_HEX" Then
             raw = CStr(fields(key))
             If Len(raw) = 0 Or Not IsNumeric(raw) Then
                 Err.Raise vbObjectError + 211, , "取込金額が不正です。"
@@ -742,6 +775,36 @@ Public Sub ImportWithholding()
                "対象年の見込額を再入力してください。元ブックはバックアップします。", _
                vbExclamation, "年分変更時の安全確認"
     End If
+    ' A withholding slip's creation-date address does not prove the
+    ' statutory January 1 domicile of the target resident-tax year.
+    municipalitySelected = "条例差・不明"
+    residenceYear = CLng(home.Range("B4").Value2) + 1
+    If Len(municipalityName) > 0 Then
+        Select Case municipalityClass
+            Case "STANDARD": municipalitySelected = "標準市町村"
+            Case "DESIGNATED": municipalitySelected = "標準指定都市"
+            Case "SPECIAL": municipalitySelected = "条例差・不明"
+        End Select
+        If municipalityClass = "SPECIAL" Then
+            MsgBox "源泉票の受給者住所から「" & municipalityName & "」を検出しました。" & vbCrLf & _
+                   "標準税率と異なる自治体のため試算を停止します。" & vbCrLf & _
+                   "個別の税率・条例を確認してください。", vbExclamation, "課税自治体の要確認"
+        Else
+            If MsgBox("源泉徴収票の受給者住所からの候補：" & municipalityName & _
+                "（" & municipalitySelected & "）" & vbCrLf & _
+                "※支払者（勤務先）の住所ではありません。" & vbCrLf & vbCrLf & _
+                CStr(residenceYear) & "年1月1日の実際の住所地がこの自治体で、" & _
+                "標準の所得割税率を適用できると確認しましたか？" & vbCrLf & _
+                "いいえ：不明として計算を保留します。", _
+                vbYesNo + vbQuestion + vbDefaultButton2, "課税自治体の候補確認") <> vbYes Then
+                municipalitySelected = "条例差・不明"
+            End If
+        End If
+    Else
+        MsgBox "受給者住所から市区町村を確実に判定できませんでした。" & vbCrLf & _
+            "課税年度1月1日の住所地・条例を確認し、詳細設定D51で選択してください。", _
+            vbExclamation, "課税自治体の要確認"
+    End If
     backup = UniqueBackupPath(ThisWorkbook)
     ThisWorkbook.SaveCopyAs backup
     If Not fso.FileExists(backup) Then Err.Raise vbObjectError + 214, , "更新前のバックアップを作成できません。"
@@ -750,6 +813,8 @@ Public Sub ImportWithholding()
     ResetSeparateInputs home
     ResetRelativeInputs
     PrepareAdditionalIncomeForImport extra, newTaxpayer
+    home.Range("D51").Value2 = municipalitySelected
+    home.Range("F51").Value2 = municipalityName ' municipality only; no street details
     home.Range("D33,B11:B12,B15:B16,B19:B25,B33:B36,D11:D23,D25").ClearContents
     ' Leave independent pension, business and other income entries untouched.
     extra.Range("B13:B20").ClearContents
@@ -766,7 +831,8 @@ Public Sub ImportWithholding()
     ' Changing B4 here would destroy 2025->2026 projection intent.
     home.Range("B11").Value2 = year
     For Each key In fields.Keys
-        If key <> "STATUS" And key <> "YEAR" And key <> "WARNINGS" Then
+        If key <> "STATUS" And key <> "YEAR" And key <> "WARNINGS" And _
+           key <> "MUNI_CLASS" And key <> "MUNI_NAME_HEX" Then
             value = CDbl(fields(key))
             Select Case CStr(key)
                 Case "salary_gross": home.Range("B12").Value2 = value
@@ -1223,6 +1289,7 @@ Private Sub ResetSeparateInputs(ByVal home As Worksheet)
     home.Range("D49").Value2 = "未確認"
     home.Range("D50").Value2 = 2026
     home.Range("D51").Value2 = "条例差・不明"
+    home.Range("F51").ClearContents
     If CStr(home.Range("A71").Value2) = "詳細設定 | 税額控除（該当なしは0）" Then home.Range("D72:D77").Value2 = 0
 End Sub
 
