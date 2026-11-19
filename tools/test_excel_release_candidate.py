@@ -39,7 +39,11 @@ class ExcelPrepublicationTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.archive = Path(self.tmp.name) / "synthetic-signed-candidate.zip"
         self.reader = b"synthetic-reader-byte-fixture" * 64
-        self.book_bytes = workbook_bytes()
+        self.project_bytes = bytes.fromhex("D0CF11E0A1B11AE1") + b"synthetic-not-signed" * 130
+        workbook = BytesIO(workbook_bytes())
+        with ZipFile(workbook, "a") as inner:
+            inner.writestr("xl/vbaProject.bin", self.project_bytes)
+        self.book_bytes = workbook.getvalue()
         self.readme = render(VERSION, HEAD)
         with ZipFile(self.archive, "w") as zipfile:
             zipfile.writestr("Furusato_nouzei.xlsm", self.book_bytes)
@@ -64,18 +68,18 @@ class ExcelPrepublicationTests(unittest.TestCase):
             "review_readme_sha256": "e" * 64,
         }
         self.signature = {
-            "schema": "furusato-signed-distribution-local/v1",
+            "schema": "furusato-signed-distribution-local/v2",
             "archive_sha256": sha256(self.archive),
+            "signed_workbook_sha256": digest(self.book_bytes),
+            "signed_vba_project_sha256": digest(self.project_bytes),
             "reader_exe_sha256": digest(self.reader),
-            "authenticode": "VALID_TRUSTED_EXPECTED_SIGNER",
-            "certificate_thumbprint_verified": True,
-            "macro_workbook_signature":
-                "CONTAINER_DETECTED_CRYPTOGRAPHIC_VALIDITY_NOT_VERIFIED",
+            "reader_authenticode": "VALID_TRUSTED_EXPECTED_SIGNER",
+            "vba_certificate_thumbprint_verified": True,
+            "macro_workbook_signature": "OFFICE_SIP_CRYPTOGRAPHICALLY_VERIFIED",
             "office_vba_signed_property": "OFFICE_RECOGNIZED_SIGNED_PROJECT",
-            "macro_signature_office_validation": "REQUIRED_BEFORE_RELEASE",
+            "timestamp_verified": True,
             "exact_release_members": "THREE_EXPECTED_FILES_ONLY",
-            "manual_publisher_approval": "REQUIRED",
-            "release_decision": "HOLD",
+            "signature_gate": "PASS",
         }
 
     def run_check(self, **overrides):
@@ -147,16 +151,48 @@ class ExcelPrepublicationTests(unittest.TestCase):
             self.run_check(manifest=manifest)
 
     def test_missing_trusted_signature_refused(self):
-        for field, value in (("authenticode", "NotSigned"),
+        for field, value in (("reader_authenticode", "NotSigned"),
                              ("archive_sha256", "f" * 64),
+                             ("signed_workbook_sha256", "f" * 64),
+                             ("signed_vba_project_sha256", "f" * 64),
                              ("reader_exe_sha256", "f" * 64),
-                             ("macro_signature_office_validation", "PASS"),
+                             ("macro_workbook_signature", "CONTAINER_DETECTED_CRYPTOGRAPHIC_VALIDITY_NOT_VERIFIED"),
                              ("office_vba_signed_property", "UNVERIFIED"),
-                             ("release_decision", "APPROVED")):
+                             ("timestamp_verified", False),
+                             ("signature_gate", "UNVERIFIED")):
             with self.subTest(field=field):
                 evidence = dict(self.signature, **{field: value})
                 with self.assertRaisesRegex(ValueError, "SIGNED_ARCHIVE"):
                     self.run_check(signature=evidence)
+
+    def test_legacy_or_extra_signature_claims_fail_closed(self):
+        for changes in (
+            {"schema": "furusato-signed-distribution-local/v1"},
+            {"signature_gate": "REVIEW_ONLY"},
+            {"vba_certificate_thumbprint_verified": False},
+            {"manual_publisher_approval": "APPROVED"},
+        ):
+            with self.subTest(changes=changes):
+                evidence = dict(self.signature, **changes)
+                with self.assertRaisesRegex(ValueError, "SIGNED_ARCHIVE_LOCAL_EVIDENCE_INVALID"):
+                    self.run_check(signature=evidence)
+
+    def test_signed_vba_binary_is_hash_bound_to_final_zip(self):
+        evidence = dict(self.signature, signed_vba_project_sha256="e" * 64)
+        with self.assertRaisesRegex(ValueError, "SIGNED_ARCHIVE_VBA_PROJECT_HASH_MISMATCH"):
+            self.run_check(signature=evidence)
+        workbook = BytesIO(workbook_bytes())
+        with ZipFile(workbook, "a") as inner:
+            inner.writestr("xl/vbaProject.bin", b"not-ole-project" * 300)
+        with ZipFile(self.archive, "w") as outer:
+            outer.writestr("Furusato_nouzei.xlsm", workbook.getvalue())
+            outer.writestr("FurusatoDocumentReader.exe", self.reader)
+            outer.writestr("README.txt", self.readme)
+        fake = dict(self.signature, archive_sha256=sha256(self.archive),
+                    signed_workbook_sha256=digest(workbook.getvalue()),
+                    signed_vba_project_sha256=digest(b"not-ole-project" * 300))
+        with self.assertRaisesRegex(ValueError, "SIGNED_ARCHIVE_VBA_PROJECT_NOT_OLE"):
+            self.run_check(signature=fake)
 
     def test_mismatched_readme_source_head_refused(self):
         with ZipFile(self.archive, "w") as z:
