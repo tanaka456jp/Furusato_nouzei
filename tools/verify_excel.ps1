@@ -522,7 +522,9 @@ try {
     Assert-Value ([string]$homeSheet.Range('B8').Value2) '' 'Editing preview value invalidates cached reference'
     $sourceAudit.Range('B45:B49').ClearContents()
     $homeSheet.Range('B4').NumberFormat = $previousYearFormat
-    $homeSheet.Range('B4').Value2 = $previousYearValue
+    # Excel/PowerShell COM setter can reject a Double assigned into
+    # the original text-valued year cell. Restore its canonical string.
+    $homeSheet.Range('B4').Value2 = [string]$previousYearValue
     $homeSheet.Range('D51').Value2 = '標準市町村'
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value ([string]$homeSheet.Range('B8').Value2) '' 'Removed preview never shows stale amount'
