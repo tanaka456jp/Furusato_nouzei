@@ -110,6 +110,38 @@ class AutoReferenceTests(unittest.TestCase):
         self.assertEqual(rows[1]["STATUS"], "HOLD")
         self.assertEqual(rows[1]["REFERENCE_LIMIT"], "")
 
+    def test_v3_name_hex_retains_exact_person_page_association(self):
+        import csv
+        from recipient_name import encode
+        from bulk_salary_only import write_batch_bridge, REPORT_COLUMNS
+        valid = source()
+        valid["recipient_name_hex"] = encode("山田 太郎")
+        other = {**source(), "warnings": ["INVALID_SALARY"],
+                 "recipient_name_hex": encode("佐藤 花子")}
+        with patch("withholding_reader.pdf_page_count", return_value=2), \
+                patch("withholding_reader.extract", side_effect=[valid, other]):
+            rows = all_page_rows(Path("synthetic.pdf"), target_year=2026)
+        self.assertEqual(rows[0]["PAGE"], 1)
+        self.assertEqual(rows[1]["PAGE"], 2)
+        self.assertNotEqual(rows[0]["RECIPIENT_NAME_HEX"],
+                            rows[1]["RECIPIENT_NAME_HEX"])
+        with TemporaryDirectory() as tmp:
+            target = Path(tmp) / "batch.tsv"
+            write_batch_bridge(rows, target)
+            text = target.read_text(encoding="ascii")
+            self.assertNotIn("山田", text)
+            self.assertNotIn("佐藤", text)
+            with target.open(encoding="ascii", newline="") as handle:
+                observed = list(csv.DictReader(handle, delimiter="\t"))
+        self.assertEqual(observed[0]["RECIPIENT_NAME_HEX"], encode("山田 太郎"))
+        self.assertEqual(observed[1]["RECIPIENT_NAME_HEX"], encode("佐藤 花子"))
+        self.assertEqual(observed[1]["STATUS"], "HOLD")
+        self.assertTrue(all(observed[1][key] == "" for key in REPORT_COLUMNS))
+        rows[1]["RECIPIENT_NAME_HEX"] = "003D00530055004D0028"
+        with TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError):
+                write_batch_bridge(rows, Path(tmp) / "invalid.tsv")
+
     def test_v2_per_page_report_bridge_holds_unsafe_pages_without_details(self):
         import csv
         from bulk_salary_only import write_batch_bridge, REPORT_COLUMNS

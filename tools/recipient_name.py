@@ -13,7 +13,7 @@ def validate_name(value):
     if not isinstance(value, str):
         return None
     value = re.sub(r"[ \u3000]+", " ", unicodedata.normalize("NFC", value)).strip()
-    if not 1 <= len(value) <= MAX_CHARS or value in (
+    if not 1 <= len(value) <= MAX_CHARS or value.startswith("-") or value in (
             "氏名", "支払を受ける者", "支払者", UNREADABLE):
         return None
     def allowed(ch):
