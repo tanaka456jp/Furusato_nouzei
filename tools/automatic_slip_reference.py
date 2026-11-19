@@ -14,7 +14,7 @@ from audit_salary_donation_limit import (
 REQUIRED = ("salary_gross", "salary_reference", "deductions_reference",
             "social_insurance", "income_tax_withheld")
 FATAL_WARNINGS = ("INVALID_", "CONFLICT_", "AMBIGUOUS_", "UNSUPPORTED_",
-                  "YEAR_NOT_APPROVED", "BLANK_SOCIAL_INSURANCE")
+                  "YEAR_NOT_APPROVED")
 
 
 def make_automatic_reference(extracted, target_year):
@@ -96,6 +96,10 @@ def make_automatic_reference(extracted, target_year):
                "NO_OTHER_CREDITS_ASSUMED"]
     if source_year != target_year:
         caveats.append("PRIOR_YEAR_CONDITIONS_CARRIED_FORWARD")
+    if "BLANK_SOCIAL_INSURANCE_REQUIRES_REVIEW" in warnings:
+        # Reader must have observed an explicitly blank native G26 box and
+        # inserted zero provisionally; never certify zero as the actual amount.
+        caveats.append("BLANK_SOCIAL_INSURANCE_ASSUMED_ZERO")
     if fields.get("mortgage_credit", 0) or fields.get("mortgage_possible_credit", 0):
         caveats.append("MORTGAGE_CREDIT_NOT_MODELLED")
     if any(fields.get(k, 0) for k in ("special_relative_count",

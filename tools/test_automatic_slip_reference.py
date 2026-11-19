@@ -53,6 +53,15 @@ class AutoReferenceTests(unittest.TestCase):
             self.assertEqual(report["status"], "HOLD", report)
             self.assertNotIn("limit", report)
 
+    def test_native_blank_g26_is_only_a_provisional_zero_hypothesis(self):
+        original = source(social_insurance=0, deductions_reference=630000)
+        original["warnings"] = ["BLANK_SOCIAL_INSURANCE_REQUIRES_REVIEW"]
+        proposed = make_automatic_reference(original, 2026)
+        self.assertEqual(proposed["status"], "AUTO_REFERENCE")
+        self.assertIn("BLANK_SOCIAL_INSURANCE_ASSUMED_ZERO", proposed["reason"])
+        original["fields"].pop("social_insurance")
+        self.assertEqual(make_automatic_reference(original, 2026)["status"], "HOLD")
+
     def test_non_salary_facts_are_assumptions_never_certifications(self):
         candidate = make_automatic_reference(source(), 2025)
         self.assertEqual(candidate["status"], "AUTO_REFERENCE")
