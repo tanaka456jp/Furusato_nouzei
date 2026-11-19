@@ -44,14 +44,15 @@ function Measure-Commands($book, [double]$pixelsPerPoint) {
         @{ Sheet = 2; Cell = 'B17'; Macro = 'PrintDetails' },
         @{ Sheet = 2; Cell = 'C17'; Macro = 'ExportDetails' },
         @{ Sheet = 3; Cell = 'B2'; Macro = 'ReturnFromAdvanced' },
-        @{ Sheet = 4; Cell = 'B4'; Macro = 'ClearBatchOverviewWithConfirm' }
+        @{ Sheet = 4; Cell = 'B4'; Macro = 'ClearBatchOverviewWithConfirm' },
+        @{ Sheet = 4; Cell = 'J4'; Macro = 'ExportAllBatchReferencePDFs' }
     )
     $sheets = @($book.Worksheets.Item(1), $book.Worksheets.Item('計算根拠'),
         $book.Worksheets.Item('例外・分離課税'),
         $book.Worksheets.Item('一括計算一覧'))
     if ($sheets[0].Name -cne '操作画面' -or
         $sheets[0].Buttons().Count -ne 9 -or $sheets[1].Buttons().Count -ne 3 -or
-        $sheets[2].Buttons().Count -ne 1 -or $sheets[3].Buttons().Count -ne 1) {
+        $sheets[2].Buttons().Count -ne 1 -or $sheets[3].Buttons().Count -ne 2) {
         throw 'UNEXPECTED_WORKSHEET_COMMAND_COUNT'
     }
     $surface = [Drawing.Bitmap]::new(1,1)
@@ -226,7 +227,7 @@ public static class FurusatoWindowCapture {
     for ($attempt = 1; $attempt -le 3; $attempt++) {
         try {
             $commands = @(Measure-Commands $book ($dpi * 0.85 / 72))
-            if ($commands.Count -ne 14) {
+            if ($commands.Count -ne 15) {
                 throw 'DISPLAY_COMMAND_MEASUREMENT_INCOMPLETE'
             }
             break
