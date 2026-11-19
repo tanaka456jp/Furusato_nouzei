@@ -216,12 +216,8 @@ try {
     QA-Stage 'batch-e03-person-identity-v3-start'
     $firstName = '山田 太郎'
     $secondName = '佐藤 花子'
-    $firstHex = -join ($firstName.ToCharArray() | ForEach-Object {
-        [int][char]$_ -as [int] | ForEach-Object { $_.ToString('X4') }
-    })
-    $secondHex = -join ($secondName.ToCharArray() | ForEach-Object {
-        [int][char]$_ -as [int] | ForEach-Object { $_.ToString('X4') }
-    })
+    $firstHex = '5C7175300020592A90CE'
+    $secondHex = '4F5085E4002082B15B50'
     $v3Path = Join-Path $dir 'synthetic-two-person-v3.tsv'
     $v3Lines = @($reportHeader + [char]9 + 'RECIPIENT_NAME_HEX')
     $v3Lines += ($v2Lines[1] + [char]9 + $firstHex)
@@ -237,7 +233,8 @@ try {
     [IO.Directory]::CreateDirectory($v3Root) | Out-Null
     Assert-Value ([int]($excel.Run('TaxLawUpdater.ExportAllBatchReferencePDFsToFolder',
                                    $v3Root))) 2 'Each E03 identity has an individual PDF'
-    Assert-Value @(Get-ChildItem -LiteralPath $v3Root -File -Recurse -Filter '*.pdf').Count 2 'Two source-page PDFs generated'
+    $v3Pdfs = @(Get-ChildItem -LiteralPath $v3Root -File -Recurse -Filter '*.pdf')
+    Assert-Value $v3Pdfs.Count 2 'Two source-page PDFs generated'
     Assert-Value ([string]$reportSheet.Range('B3').Value2) '' 'PDF cache has no remaining recipient name'
     $v3Invalid = @($v3Lines)
     $v3Invalid[1] = ($v2Lines[1] + [char]9 + '003D0043004D0044')
