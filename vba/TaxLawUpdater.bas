@@ -838,24 +838,28 @@ Public Sub ImportWithholding()
               "このPDFは一部項目が未確定です。読み取れた数値だけを仮転記します。" & vbCrLf & _
               "原票照合を完了するまで寄附限度額の確定表示は停止します。"
     End If
-    If MsgBox(caution, vbQuestion + vbYesNo + vbDefaultButton2) <> vbYes Then GoTo CleanUp
+    If Not quick Then
+        If MsgBox(caution, vbQuestion + vbYesNo + vbDefaultButton2) <> vbYes Then GoTo CleanUp
+    End If
     ' A source PDF has no trusted taxpayer identity in its ASCII-only bridge.
     ' Do not silently carry a former taxpayer's pension, business, capital
     ' gains or other additional income into a new taxpayer's calculation.
-    taxpayerChoice = MsgBox( _
-        "別の納税者の源泉徴収票を取り込みますか？" & vbCrLf & vbCrLf & _
-        "はい：別の納税者。年金・事業・雑所得・分離課税所得も初期化します。" & vbCrLf & _
-        "いいえ：同じ納税者の再取込。追加所得の入力は維持します。" & vbCrLf & _
-        "キャンセル：取込を中止します。" & vbCrLf & vbCrLf & _
-        "どちらの場合も扶養・親族情報は再確認が必要です。", _
-        vbQuestion + vbYesNoCancel + vbDefaultButton3, "納税者の切替確認")
-    If taxpayerChoice = vbCancel Then GoTo CleanUp
-    newTaxpayer = ImportMustResetAdditionalIncome(year, taxpayerChoice = vbYes)
-    If newTaxpayer And taxpayerChoice = vbNo Then
-        MsgBox "原票年・計算対象年または前回の取込年が異なるため、" & _
-               "年金・事業・雑所得・分離所得の旧入力を初期化します。" & vbCrLf & _
-               "対象年の見込額を再入力してください。元ブックはバックアップします。", _
-               vbExclamation, "年分変更時の安全確認"
+    If quick Then
+        ' Always start an isolated source-only case after an automatic backup;
+        ' never inherit old customers' pension, business or confirmation data.
+        newTaxpayer = True
+    Else
+        taxpayerChoice = MsgBox( _
+            "別の納税者の源泉徴収票を取り込みますか？" & vbCrLf & vbCrLf & _
+            "はい：別の納税者。年金・事業・雑所得・分離課税所得も初期化します。" & vbCrLf & _
+            "いいえ：同じ納税者の再取込。追加所得の入力は維持します。" & vbCrLf & _
+            "キャンセル：取込を中止します。", _
+            vbQuestion + vbYesNoCancel + vbDefaultButton3, "納税者の切替確認")
+        If taxpayerChoice = vbCancel Then GoTo CleanUp
+        newTaxpayer = ImportMustResetAdditionalIncome(year, taxpayerChoice = vbYes)
+        If newTaxpayer And taxpayerChoice = vbNo Then
+            MsgBox "所得年が異なるため、前年の追加所得を初期化します。", vbExclamation
+        End If
     End If
     ' A withholding slip's creation-date address does not prove the
     ' statutory January 1 domicile of the target resident-tax year.
@@ -867,7 +871,10 @@ Public Sub ImportWithholding()
             Case "DESIGNATED": municipalitySelected = "標準指定都市"
             Case "SPECIAL": municipalitySelected = "条例差・不明"
         End Select
-        If municipalityClass = "SPECIAL" Then
+        If quick Then
+            ' Candidate municipality is a hypothesis; no January 1 attestation.
+            municipalitySelected = "条例差・不明"
+        ElseIf municipalityClass = "SPECIAL" Then
             MsgBox "源泉票の受給者住所から「" & municipalityName & "」を検出しました。" & vbCrLf & _
                    "標準税率と異なる自治体のため試算を停止します。" & vbCrLf & _
                    "個別の税率・条例を確認してください。", vbExclamation, "課税自治体の要確認"
@@ -885,7 +892,7 @@ Public Sub ImportWithholding()
                 municipalitySelected = "条例差・不明"
             End If
         End If
-    Else
+    ElseIf Not quick Then
         MsgBox "受給者住所から市区町村を確実に判定できませんでした。" & vbCrLf & _
             "課税年度1月1日の住所地・条例を確認し、詳細設定D51で選択してください。", _
             vbExclamation, "課税自治体の要確認"
@@ -905,6 +912,7 @@ Public Sub ImportWithholding()
     extra.Range("B13:B20").ClearContents
     extra.Range("B38:B40").ClearContents
     extra.Range("B43:B44").ClearContents
+    extra.Range("B45:B49").ClearContents ' discard prior source-only estimate
     extra.Range("B41").ClearContents ' Replacing source invalidates any prior attestation.
     extra.Range("B32").ClearContents
     ' B4 and home B26 are calculated indicators: never overwrite formulas.
