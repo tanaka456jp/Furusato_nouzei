@@ -51,6 +51,7 @@ jobs:
           python tools/test_local_display_wrapper.py
           python tools/test_release_readiness.py
           python tools/test_excel_release_candidate.py
+          python tools/test_assemble_signed_release_local.py
           python tools/test_release_candidate_branding.py
           python tools/test_prepare_official_excel_release.py
           python tools/test_signed_release_negative.py
