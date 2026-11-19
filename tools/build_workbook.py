@@ -24,6 +24,7 @@ SPLIT_ALLOC = "分離課税寄附控除"
 MORTGAGE_RETURN = "住宅確申寄附検算"
 RELATIVES = "特定親族明細"
 BATCH = "一括計算一覧"
+AUTO_REPORT = "自動試算根拠"
 RELATIVE_LAST_ROW = 8  # 5 attested relatives; first three use home D14:D16
 
 
@@ -64,6 +65,7 @@ def build(source, output):
     relatives = book.create_sheet(RELATIVES, 1)
     batch = book.create_sheet(BATCH, 2)
     detail = book.create_sheet(DETAIL)
+    auto_report = book.create_sheet(AUTO_REPORT)
     extra = book.create_sheet(ADVANCED)
     split = book.create_sheet(SPLIT_ALLOC)
     mortgage_filing = book.create_sheet(MORTGAGE_RETURN)
@@ -586,6 +588,11 @@ def build(source, output):
                        "E": 19, "F": 18, "G": 19, "H": 19,
                        "I": 15, "J": 36}.items():
         batch.column_dimensions[col].width = width
+    # K:R hold only ASCII/number trace; no name, address or document path.
+    # The true source of the displayed figure is never overwritten by a
+    # per-person PDF export.
+    for letter in "KLMNOPQR":
+        batch.column_dimensions[letter].hidden = True
     for line, note_text, height in (
         (1, "源泉徴収票｜複数人一括計算一覧（給与所得のみ・参考額）", 29),
         (2, "源泉徴収票の給与所得だけを想定。その他の所得・申告分離課税は対象外。精緻計算は操作画面で1人ずつ行ってください。", 34),
@@ -609,6 +616,8 @@ def build(source, output):
     batch["F4"] = '=COUNTIF(I6:I105,"参考額（仮）")'
     batch["G4"] = "HOLD"
     batch["H4"] = '=COUNTIF(I6:I105,"HOLD／要確認")'
+    batch["J4"] = "全員分PDF出力"
+    batch["J4"].alignment = Alignment(horizontal="center", vertical="center")
     for cell in ("D4", "F4", "H4"):
         batch[cell].font = Font(name="Yu Gothic", size=11, bold=True,
                                 color="163A56")
@@ -632,13 +641,74 @@ def build(source, output):
     batch.print_options.gridLines = False
     for row in range(6, 106):
         batch.row_dimensions[row].height = 21
-        for col in range(1, 11):
+        for col in range(1, 19):
             cell = batch.cell(row=row, column=col)
             cell.protection = Protection(locked=True)
-            if col in (3, 4, 5, 6, 7, 8):
+            if col in (3, 4, 5, 6, 7, 8, 11, 12, 13, 14, 15, 16, 17):
                 cell.number_format = "#,##0;[Red](#,##0);-"
             if row % 2 == 0:
                 cell.fill = PatternFill("solid", fgColor="F4F8FB")
+
+
+    # Prepared per-person report sheet, populated only from the selected
+    # source PDF row. The official verified report is a DIFFERENT sheet and
+    # retains its prior ResultsAreCurrent gate.
+    auto_report.sheet_view.showGridLines = False
+    auto_report.sheet_view.zoomScale = 85
+    for col, width in {"A": 39, "B": 22, "C": 26, "D": 20}.items():
+        auto_report.column_dimensions[col].width = width
+    auto_report.sheet_properties.pageSetUpPr.fitToPage = True
+    auto_report.page_setup.fitToWidth = 1
+    auto_report.page_setup.fitToHeight = 1
+    auto_report.page_setup.orientation = "portrait"
+    auto_report.page_setup.paperSize = auto_report.PAPERSIZE_A4
+    auto_report.page_margins = PageMargins(
+        left=0.29, right=0.29, top=0.36, bottom=0.36,
+        header=0.15, footer=0.15)
+    auto_report.print_options.gridLines = False
+    auto_report.print_options.horizontalCentered = True
+    auto_report.print_area = "A1:D27"
+    bar(auto_report, 1, "源泉徴収票ごとの自動試算根拠｜未確定")
+    note(auto_report, 2, "検証用の推定参考額です。確定した寄附限度額ではありません。対象所得年の給与・控除が継続する等の仮定を含みます。")
+    labels = {
+        4: "元PDFのページ番号",
+        5: "試算する所得年",
+        6: "源泉票の所得年",
+        7: "支払金額（原票）",
+        8: "給与所得（対象年・推計）",
+        9: "所得控除合計（原票）",
+        10: "社会保険料等（原票）",
+        11: "源泉徴収税額（原票）",
+        12: "原票の国税基礎控除（推定）",
+        13: "住民税の所得控除（仮定）",
+        14: "住民税課税所得（仮定・千円未満切捨）",
+        15: "住民税所得割（調整控除後・仮定）",
+        16: "特例控除計算上の所得税率相当",
+        17: "ふるさと納税特例控除割合",
+        18: "特例控除上限（住民税所得割の20％）",
+        19: "ふるさと納税参考額（千円単位）",
+        20: "自治体税率モデル（仮定）",
+        21: "判定",
+        22: "選択した税率モデルの算式",
+        23: "特例控除額の計算式",
+    }
+    for row, label in labels.items():
+        auto_report[f"A{row}"] = label
+        auto_report[f"A{row}"].font = Font(name="Yu Gothic", size=9, color="163A56")
+        auto_report[f"B{row}"].font = Font(name="Yu Gothic", size=10, bold=row == 19)
+        auto_report[f"B{row}"].alignment = Alignment(horizontal="right", vertical="center")
+        auto_report[f"B{row}"].number_format = '#,##0;[Red](#,##0);-'
+        auto_report.row_dimensions[row].height = 21
+    for row in (16, 17):
+        auto_report[f"B{row}"].number_format = "0.000%"
+    for row in (20, 21, 22, 23):
+        auto_report.merge_cells(start_row=row, start_column=2, end_row=row, end_column=4)
+        auto_report[f"B{row}"].alignment = Alignment(wrap_text=True, vertical="center")
+        auto_report.row_dimensions[row].height = 30
+    note(auto_report, 24, "算式：MIN(2,000円＋住民税特例控除上限÷特例控除割合、給与所得×30%)を千円未満切捨。条件によっては本算式を適用できません。")
+    note(auto_report, 25, "給与以外の所得、各種税額控除・住宅ローン控除、扶養・保険料の差額、自治体条例の差異は未確認です。")
+    note(auto_report, 26, "前年の源泉票は翌年の所得や1月1日住所を保証しません。適用法令・所得控除の個別照合が必要です。")
+    note(auto_report, 27, "このレポートは匿名のPDFページ番号による試算です。氏名・住所は転記せず、確定版レポートとは区別します。")
 
     # Separate every special-age relative's income and legal eligibility.
     # The first three retain the existing home input cells; remaining relatives

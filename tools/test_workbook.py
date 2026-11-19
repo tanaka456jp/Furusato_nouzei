@@ -144,6 +144,13 @@ class WorkbookTest(unittest.TestCase):
         self.assertEqual(batch["H5"].value, "上限額参考（円）")
         self.assertEqual(batch["I5"].value, "判定")
         self.assertEqual(batch["J5"].value, "判定理由（詳細）")
+        report = self.book["自動試算根拠"]
+        self.assertEqual(report.sheet_state, "veryHidden")
+        self.assertEqual(str(report.print_area), "'自動試算根拠'!$A$1:$D$27")
+        self.assertEqual(report["A15"].value, "住民税所得割（調整控除後・仮定）")
+        self.assertEqual(report["A17"].value, "ふるさと納税特例控除割合")
+        self.assertIn("未確定", report["A1"].value)
+        self.assertTrue(all(batch.column_dimensions[c].hidden for c in "KLMNOPQR"))
         self.assertEqual(batch.freeze_panes, "C6")
         self.assertEqual(batch.auto_filter.ref, "A5:J105")
         for row in (6, 9, 105):
@@ -165,6 +172,7 @@ class WorkbookTest(unittest.TestCase):
         self.assertIn('BindButton "操作画面", "btnImportWithholdingBatch"', vb)
         self.assertIn("Add-WorkbookButton $sheet 'D3' '複数人一覧'", setup)
         self.assertIn("Add-WorkbookButton $batch 'B4' '一覧消去'", setup)
+        self.assertIn("Add-WorkbookButton $batch 'J4' '全員分PDF出力'", setup)
         self.assertIn('Public Sub ClearBatchOverview()', vb)
         self.assertIn('Private Function BatchOverviewHasRecords()', vb)
         self.assertIn('If BatchOverviewHasRecords() Then', vb)
