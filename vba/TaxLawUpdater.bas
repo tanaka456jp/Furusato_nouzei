@@ -334,15 +334,15 @@ End Sub
 Private Function BatchOverviewHasRecords() As Boolean
     BatchOverviewHasRecords = _
         (Application.WorksheetFunction.CountA( _
-            ThisWorkbook.Worksheets("一括計算一覧").Range("A6:A105")) > 0)
+            ThisWorkbook.Worksheets("一括計算一覧").Range("B6:B105")) > 0
 End Function
 
 Public Sub ClearBatchOverview()
-    ThisWorkbook.Worksheets("一括計算一覧").Range("A6:R105").ClearContents
+    ThisWorkbook.Worksheets("一括計算一覧").Range("A6:S105").ClearContents
     ' Do not leave the final exported taxpayer in the hidden report sheet
     ' after clearing/saving another case.
     With ThisWorkbook.Worksheets("自動試算根拠")
-        .Range("B4:B19").ClearContents
+        .Range("B3:B19").ClearContents
         .Range("B20:D23").ClearContents
         .Visible = xlSheetVeryHidden
     End With
@@ -407,6 +407,34 @@ Failed:
 End Sub
 
 
+
+' Strict uppercase UTF-16 BMP name transport; never execute text as formula.
+Private Function DecodeRecipientNameForBatch(ByVal encoded As String) As String
+    Dim i As Long, cp As Long, candidate As String
+    If encoded = "" Then
+        DecodeRecipientNameForBatch = "氏名未判読"
+        Exit Function
+    End If
+    If Len(encoded) > 160 Or Len(encoded) Mod 4 <> 0 Or _
+       encoded Like "*[!0-9A-F]*" Then _
+       Err.Raise vbObjectError + 402, , "受給者氏名符号が不正です。"
+    For i = 1 To Len(encoded) Step 4
+        cp = CLng("&H" & Mid$(encoded, i, 4))
+        If Not ((cp >= &H3400 And cp <= &H9FFF) Or _
+                (cp >= &H3040 And cp <= &H30FF) Or _
+                (cp >= &H41 And cp <= &H5A) Or _
+                (cp >= &H61 And cp <= &H7A) Or _
+                (cp >= &HC0 And cp <= &H24F) Or _
+                cp = &H3005 Or cp = &H3006 Or cp = &H30FB Or _
+                cp = &HB7 Or cp = &H20 Or cp = &H2D) Then _
+                Err.Raise vbObjectError + 403, , "受給者氏名に不正文字があります。"
+        candidate = candidate & ChrW$(cp)
+    Next i
+    If Len(Trim$(candidate)) = 0 Or Left$(candidate, 1) = "-" Then _
+        Err.Raise vbObjectError + 404, , "受給者氏名が不正です。"
+    DecodeRecipientNameForBatch = candidate
+End Function
+
 ' This report is the separate, explicitly unverified batch preview and is
 ' never an alias for verified "計算根拠" or its strict CheckReportAvailable.
 Private Sub PopulateBatchReferenceSheet(ByVal index As Long, _
@@ -414,44 +442,45 @@ Private Sub PopulateBatchReferenceSheet(ByVal index As Long, _
                                         ByVal report As Worksheet)
     Dim status As String, rowNo As Long, ratioPpm As Double
     rowNo = index + 5
-    status = CStr(source.Cells(rowNo, 9).Value2)
+    status = CStr(source.Cells(rowNo, 10).Value2)
     If status <> "参考額（仮）" And status <> "HOLD／要確認" Then _
         Err.Raise vbObjectError + 390, , "一覧の判定が不正です。"
-    report.Range("B4:B19").ClearContents
+    report.Range("B3:B19").ClearContents
     report.Range("B20:D23").ClearContents
-    report.Range("B4").Value2 = CDbl(source.Cells(rowNo, 1).Value2)
-    report.Range("B5").Value2 = source.Cells(rowNo, 2).Value2
-    report.Range("B7").Value2 = source.Cells(rowNo, 3).Value2
-    report.Range("B8").Value2 = source.Cells(rowNo, 4).Value2
-    report.Range("B9").Value2 = source.Cells(rowNo, 5).Value2
-    report.Range("B10").Value2 = source.Cells(rowNo, 7).Value2
-    report.Range("B11").Value2 = source.Cells(rowNo, 6).Value2
+    report.Range("B3").Value2 = source.Cells(rowNo, 1).Value2
+    report.Range("B4").Value2 = CDbl(source.Cells(rowNo, 2).Value2)
+    report.Range("B5").Value2 = source.Cells(rowNo, 3).Value2
+    report.Range("B7").Value2 = source.Cells(rowNo, 4).Value2
+    report.Range("B8").Value2 = source.Cells(rowNo, 5).Value2
+    report.Range("B9").Value2 = source.Cells(rowNo, 6).Value2
+    report.Range("B10").Value2 = source.Cells(rowNo, 8).Value2
+    report.Range("B11").Value2 = source.Cells(rowNo, 7).Value2
     report.Range("B21").Value2 = status
     If status = "HOLD／要確認" Then
         report.Range("B19").ClearContents
         report.Range("B22").Value2 = "必須数値・原票の検証不足により計算保留"
-        report.Range("B23").Value2 = CStr(source.Cells(rowNo, 10).Value2)
+        report.Range("B23").Value2 = CStr(source.Cells(rowNo, 11).Value2)
     Else
         ' Legacy 10-column batches have no model trace. Fail closed and
         ' request a fresh import rather than inventing marginal tax rates.
-        If Len(CStr(source.Cells(rowNo, 11).Value2)) = 0 Then _
+        If Len(CStr(source.Cells(rowNo, 12).Value2)) = 0 Then _
             Err.Raise vbObjectError + 391, , _
               "この一覧に計算根拠の数値がありません。源泉票を再取込してください。"
-        If Len(CStr(source.Cells(rowNo, 18).Value2)) = 0 Then _
+        If Len(CStr(source.Cells(rowNo, 19).Value2)) = 0 Then _
             Err.Raise vbObjectError + 392, , "自治体モデルの根拠がありません。"
-        report.Range("B6").Value2 = source.Cells(rowNo, 11).Value2
-        report.Range("B12").Value2 = source.Cells(rowNo, 12).Value2
-        report.Range("B13").Value2 = source.Cells(rowNo, 13).Value2
-        report.Range("B14").Value2 = source.Cells(rowNo, 14).Value2
-        report.Range("B15").Value2 = source.Cells(rowNo, 15).Value2
-        ratioPpm = CDbl(source.Cells(rowNo, 16).Value2)
+        report.Range("B6").Value2 = source.Cells(rowNo, 12).Value2
+        report.Range("B12").Value2 = source.Cells(rowNo, 13).Value2
+        report.Range("B13").Value2 = source.Cells(rowNo, 14).Value2
+        report.Range("B14").Value2 = source.Cells(rowNo, 15).Value2
+        report.Range("B15").Value2 = source.Cells(rowNo, 16).Value2
+        ratioPpm = CDbl(source.Cells(rowNo, 17).Value2)
         If ratioPpm > 0 Then
             report.Range("B16").Value2 = 0.9 - ratioPpm / 1000000#
             report.Range("B17").Value2 = ratioPpm / 1000000#
         End If
-        report.Range("B18").Value2 = source.Cells(rowNo, 17).Value2
-        report.Range("B19").Value2 = source.Cells(rowNo, 8).Value2
-        report.Range("B20").Value2 = source.Cells(rowNo, 18).Value2
+        report.Range("B18").Value2 = source.Cells(rowNo, 18).Value2
+        report.Range("B19").Value2 = source.Cells(rowNo, 9).Value2
+        report.Range("B20").Value2 = source.Cells(rowNo, 19).Value2
         report.Range("B22").Value2 = "住民税所得割×20%が特例控除の上限"
         report.Range("B23").Value2 = "2,000＋(特例控除上限÷特例割合)、給与所得30%と比較"
     End If
@@ -513,7 +542,7 @@ Public Function ExportAllBatchReferencePDFsToFolder( _
     ' All per-person values must be purged from the cached PDF template
     ' even though the sheet is veryHidden. Source rows remain in A:R until
     ' the operator presses 一覧消去.
-    report.Range("B4:B19").ClearContents
+    report.Range("B3:B19").ClearContents
     report.Range("B20:D23").ClearContents
     report.Visible = xlSheetVeryHidden
     fso.MoveFolder staging, outputFolder
@@ -523,7 +552,7 @@ Failed:
     problem = Err.Description
     On Error Resume Next
     If Not report Is Nothing Then
-        report.Range("B4:B19").ClearContents
+        report.Range("B3:B19").ClearContents
         report.Range("B20:D23").ClearContents
         report.Visible = xlSheetVeryHidden
     End If
@@ -737,9 +766,9 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
     Set inputFile = Nothing
     If rows.Count < 1 Then Err.Raise vbObjectError + 358, , "ページがありません。"
     Set target = ThisWorkbook.Worksheets("一括計算一覧")
-    oldData = target.Range("A6:R105").Value2
+    oldData = target.Range("A6:S105").Value2
     changed = True
-    target.Range("A6:R105").ClearContents
+    target.Range("A6:S105").ClearContents
     For index = 1 To rows.Count
         record = rows.Item(index)
         For col = 1 To 18
@@ -753,7 +782,7 @@ Failed:
     problem = Err.Description
     On Error Resume Next
     If Not inputFile Is Nothing Then inputFile.Close
-    If changed Then target.Range("A6:R105").Value2 = oldData
+    If changed Then target.Range("A6:S105").Value2 = oldData
     On Error GoTo 0
     Err.Raise vbObjectError + 359, "TaxLawUpdater.LoadBatchFromTsv", problem
 End Function
