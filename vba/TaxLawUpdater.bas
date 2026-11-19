@@ -339,6 +339,13 @@ End Function
 
 Public Sub ClearBatchOverview()
     ThisWorkbook.Worksheets("一括計算一覧").Range("A6:R105").ClearContents
+    ' Do not leave the final exported taxpayer in the hidden report sheet
+    ' after clearing/saving another case.
+    With ThisWorkbook.Worksheets("自動試算根拠")
+        .Range("B4:B19").ClearContents
+        .Range("B20:D23").ClearContents
+        .Visible = xlSheetVeryHidden
+    End With
 End Sub
 
 Public Sub ClearBatchOverviewWithConfirm()
@@ -411,10 +418,7 @@ Private Sub PopulateBatchReferenceSheet(ByVal index As Long, _
     If status <> "参考額（仮）" And status <> "HOLD／要確認" Then _
         Err.Raise vbObjectError + 390, , "一覧の判定が不正です。"
     report.Range("B4:B19").ClearContents
-    report.Range("B20").ClearContents
-    report.Range("B21").ClearContents
-    report.Range("B22").ClearContents
-    report.Range("B23").ClearContents
+    report.Range("B20:D23").ClearContents
     report.Range("B4").Value2 = CDbl(source.Cells(rowNo, 1).Value2)
     report.Range("B5").Value2 = source.Cells(rowNo, 2).Value2
     report.Range("B7").Value2 = source.Cells(rowNo, 3).Value2
@@ -484,7 +488,7 @@ Public Function ExportAllBatchReferencePDFsToFolder( _
     For rowNo = 6 To 105
         If Len(CStr(batch.Cells(rowNo, 1).Value2)) <> 0 Then
             count = count + 1
-            If CDbl(batch.Cells(rowNo, 1).Value2) <> count Then _
+            If CDbl(batch.Cells(rowNo, 1).Value2) <> rowNo - 5 Then _
                 Err.Raise vbObjectError + 396, , "ページ番号が連続していません。"
             If CStr(batch.Cells(rowNo, 9).Value2) = "参考額（仮）" And _
                Len(CStr(batch.Cells(rowNo, 11).Value2)) = 0 Then _
@@ -506,6 +510,11 @@ Public Function ExportAllBatchReferencePDFsToFolder( _
         If fso.GetFile(pdfPath).Size < 500 Then _
             Err.Raise vbObjectError + 400, , "PDFのファイルサイズが不正です。"
     Next page
+    ' All per-person values must be purged from the cached PDF template
+    ' even though the sheet is veryHidden. Source rows remain in A:R until
+    ' the operator presses 一覧消去.
+    report.Range("B4:B19").ClearContents
+    report.Range("B20:D23").ClearContents
     report.Visible = xlSheetVeryHidden
     fso.MoveFolder staging, outputFolder
     ExportAllBatchReferencePDFsToFolder = count
@@ -513,7 +522,11 @@ Public Function ExportAllBatchReferencePDFsToFolder( _
 Failed:
     problem = Err.Description
     On Error Resume Next
-    If Not report Is Nothing Then report.Visible = xlSheetVeryHidden
+    If Not report Is Nothing Then
+        report.Range("B4:B19").ClearContents
+        report.Range("B20:D23").ClearContents
+        report.Visible = xlSheetVeryHidden
+    End If
     If Not fso Is Nothing Then
         If Len(staging) > 0 And fso.FolderExists(staging) Then _
             fso.DeleteFolder staging, True
