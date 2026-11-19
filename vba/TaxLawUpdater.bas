@@ -4,6 +4,8 @@ Option Explicit
 ' Only isolated tests use this nonmodal diagnostic state.
 Private mLastTestFailure As String
 Private mResultUnverified As Boolean
+' Default source import is source-only, unverified, zero-confirmation preview.
+Private mManualImport As Boolean
 Private mResultMaskBusy As Boolean
 Private mSavedResultFormats As Object
 Private Const CATALOG_URL As String = "https://raw.githubusercontent.com/tanaka456jp/Furusato_nouzei/main/taxdata/catalog.tsv"
@@ -556,6 +558,49 @@ Failed:
 End Function
 
 
+
+' One PDF may contain many unrelated people. Show a separate per-page table;
+' never aggregate them or transfer any name/house number to Excel.
+Private Sub AutoImportAllPages(ByVal sourcePdf As String, ByVal reader As String)
+    Dim fso As Object, shell As Object, tempTsv As String, cmd As String
+    Dim code As Long, count As Long, reason As String
+    On Error GoTo Failed
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    Set shell = CreateObject("WScript.Shell")
+    tempTsv = fso.BuildPath(fso.GetSpecialFolder(2), fso.GetTempName & ".tsv")
+    cmd = Chr$(34) & reader & Chr$(34) & _
+        " --input " & Chr$(34) & sourcePdf & Chr$(34) & _
+        " --output " & Chr$(34) & tempTsv & Chr$(34) & _
+        " --batch-bridge --batch-target-year " & _
+        CStr(CLng(ThisWorkbook.Worksheets("操作画面").Range("B4").Value2))
+    code = shell.Run(cmd, 0, True)
+    If code <> 0 Or Not fso.FileExists(tempTsv) Then _
+        Err.Raise vbObjectError + 377, , "一括自動参考額の読取に失敗しました。"
+    count = LoadBatchFromTsv(tempTsv)
+    If count < 1 Then Err.Raise vbObjectError + 378, , "読取ページがありません。"
+    GoTo Clean
+Failed:
+    reason = Err.Description
+    On Error Resume Next
+    If Not fso Is Nothing Then
+        If Len(tempTsv) > 0 Then
+            If fso.FileExists(tempTsv) Then fso.DeleteFile tempTsv, True
+        End If
+    End If
+    On Error GoTo 0
+    Err.Raise vbObjectError + 379, "AutoImportAllPages", reason
+Clean:
+    On Error Resume Next
+    If fso.FileExists(tempTsv) Then fso.DeleteFile tempTsv, True
+End Sub
+
+' Optional full-accuracy manual review from Macros dialog; not the default.
+Public Sub ImportWithholdingDetailed()
+    mManualImport = True
+    ImportWithholding
+    mManualImport = False
+End Sub
+
 ' Strict Japanese municipality-only decoder; never write full addresses.
 Private Function DecodeMunicipalityHint(ByVal encoded As String) As String
     Dim index As Long, point As Long
@@ -587,7 +632,9 @@ Public Sub ImportWithholding()
     Dim pageChoice As Variant, pageCount As Long, pageArg As String
     Dim municipalityClass As String, municipalityName As String
     Dim municipalitySelected As String, residenceYear As Long
+    Dim quick As Boolean, currentYear As Long
     On Error GoTo Failed
+    quick = Not mManualImport
     ' Select the PDF-only filter initially. Compound patterns hid PDFs.
     picked = Application.GetOpenFilename( _
         "PDF (*.pdf),*.pdf,PNG,*.png,JPG,*.jpg,JPEG,*.jpeg," & _
@@ -599,6 +646,9 @@ Public Sub ImportWithholding()
     If ThisWorkbook.ReadOnly Or Len(ThisWorkbook.Path) = 0 Then
         Err.Raise vbObjectError + 201, , "書き込み可能なブックをローカルに保存してから取込んでください。"
     End If
+    currentYear = CLng(ThisWorkbook.Worksheets("操作画面").Range("B4").Value2)
+    If currentYear <> 2025 And currentYear <> 2026 Then _
+        Err.Raise vbObjectError + 375, , "計算対象年は2025/2026年に限ります。"
     Set fso = CreateObject("Scripting.FileSystemObject")
     reader = fso.BuildPath(ThisWorkbook.Path, "FurusatoDocumentReader.exe")
     If Not fso.FileExists(reader) Then
@@ -628,6 +678,10 @@ Public Sub ImportWithholding()
             Err.Raise vbObjectError + 258, , "PDFは1～100ページで指定してください。"
         pageCount = CLng(raw)
         If pageCount > 1 Then
+            If quick Then
+                AutoImportAllPages CStr(picked), reader
+                GoTo CleanUp
+            End If
             pageChoice = Application.InputBox( _
                 "PDFに " & CStr(pageCount) & " ページあります。" & vbCrLf & _
                 "取り込む納税者のページ番号を入力してください（1～" & _
@@ -649,6 +703,7 @@ Public Sub ImportWithholding()
               " --input " & Chr$(34) & CStr(picked) & Chr$(34) & _
               " --output " & Chr$(34) & tempJson & Chr$(34) & _
               " --bridge " & Chr$(34) & tempTsv & Chr$(34) & pageArg
+    If quick Then command = command & " --auto-reference-year " & CStr(currentYear)
     exitCode = shell.Run(command, 0, True)
     If exitCode <> 0 Or Not fso.FileExists(tempTsv) Then
         Err.Raise vbObjectError + 203, , "源泉徴収票の読取に失敗しました。形式・OCR環境を確認してください。"
