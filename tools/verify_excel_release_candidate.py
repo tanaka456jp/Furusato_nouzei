@@ -1,6 +1,7 @@
 """Read-only offline prepublication check; never signs, approves or publishes."""
 import argparse
 import hashlib
+import io
 import json
 import re
 import sys
@@ -101,22 +102,51 @@ def verify(head, run_id, version, archive, expected_hash, ci, manifest, signatur
                  len(assessment["checks"]) == len(REQUIRED) and
                  assessment["review_stage"] == "MANUAL_FINAL_AUDIT_REQUIRED",
                  "EXCEL_PRIVATE_REVIEWS_INCOMPLETE")
-    _require(isinstance(signature, dict) and
-             signature.get("schema") == "furusato-signed-distribution-local/v1" and
+    # The Windows Office SIP/Authenticode verifier emits v2, not the old
+    # v1 marker that explicitly *did not* validate signature cryptography.
+    # Bind its asserted digests to the actual signed ZIP members, including
+    # the VBA binary inside the signed XLSM. These checks validate evidence
+    # consistency, NOT the provenance of a local report or human approval.
+    signed_fields = {
+        "schema", "archive_sha256", "signed_workbook_sha256",
+        "signed_vba_project_sha256", "reader_exe_sha256",
+        "reader_authenticode", "vba_certificate_thumbprint_verified",
+        "macro_workbook_signature", "office_vba_signed_property",
+        "timestamp_verified", "exact_release_members", "signature_gate",
+    }
+    _require(isinstance(signature, dict) and set(signature) == signed_fields and
+             signature.get("schema") == "furusato-signed-distribution-local/v2" and
              signature.get("archive_sha256") == actual_hash and
+             signature.get("signed_workbook_sha256") == workbook_sha and
              signature.get("reader_exe_sha256") == reader_sha and
-             signature.get("authenticode") == "VALID_TRUSTED_EXPECTED_SIGNER" and
-             signature.get("certificate_thumbprint_verified") is True and
+             signature.get("reader_authenticode") == "VALID_TRUSTED_EXPECTED_SIGNER" and
+             signature.get("vba_certificate_thumbprint_verified") is True and
              signature.get("macro_workbook_signature") ==
-                 "CONTAINER_DETECTED_CRYPTOGRAPHIC_VALIDITY_NOT_VERIFIED" and
+                 "OFFICE_SIP_CRYPTOGRAPHICALLY_VERIFIED" and
              signature.get("office_vba_signed_property") ==
                  "OFFICE_RECOGNIZED_SIGNED_PROJECT" and
-             signature.get("macro_signature_office_validation") ==
-                 "REQUIRED_BEFORE_RELEASE" and
+             signature.get("timestamp_verified") is True and
              signature.get("exact_release_members") == "THREE_EXPECTED_FILES_ONLY" and
-             signature.get("manual_publisher_approval") == "REQUIRED" and
-             signature.get("release_decision") == "HOLD",
+             signature.get("signature_gate") == "PASS",
              "SIGNED_ARCHIVE_LOCAL_EVIDENCE_INVALID")
+    try:
+        with ZipFile(io.BytesIO(workbook_bytes)) as signed_xlsm:
+            parts = [p for p in signed_xlsm.infolist()
+                     if p.filename.casefold() == "xl/vbaproject.bin"]
+            _require(len(parts) == 1 and 1024 <= parts[0].file_size <= 30_000_000
+                     and parts[0].compress_size > 0
+                     and parts[0].file_size <= parts[0].compress_size * 1000,
+                     "SIGNED_ARCHIVE_VBA_PROJECT_MISSING_OR_UNSAFE")
+            vba_data = signed_xlsm.read(parts[0])
+            _require(vba_data.startswith(bytes.fromhex("D0CF11E0A1B11AE1")),
+                     "SIGNED_ARCHIVE_VBA_PROJECT_NOT_OLE")
+    except (BadZipFile, KeyError) as exc:
+        raise ValueError("SIGNED_ARCHIVE_VBA_PROJECT_INVALID") from exc
+    _require(isinstance(signature["signed_vba_project_sha256"], str) and
+             HASH_RE.fullmatch(signature["signed_vba_project_sha256"]) and
+             hashlib.sha256(vba_data).hexdigest() ==
+                 signature["signed_vba_project_sha256"],
+             "SIGNED_ARCHIVE_VBA_PROJECT_HASH_MISMATCH")
     return {
         "schema": "furusato-excel-candidate-prepublication/v1",
         "product_scope": PRODUCT_SCOPE,
@@ -134,7 +164,7 @@ def verify(head, run_id, version, archive, expected_hash, ci, manifest, signatur
         "private_review_records": len(REQUIRED) - int(preprint_only),
         "source_lineage_after_signing": "REQUIRES_HUMAN_REVIEW",
         "office_vba_signed_property": "OFFICE_RECOGNIZED_SIGNED_PROJECT",
-        "office_vbe_signature": "REQUIRES_HUMAN_CRYPTOGRAPHIC_VALIDATION",
+        "office_vbe_signature": "LOCAL_SIP_CRYPTOGRAPHY_RECORDED_HUMAN_PROVENANCE_REVIEW_REQUIRED",
         "physical_tax_and_print_evidence": "REQUIRES_HUMAN_AUTHENTICITY_REVIEW",
         "release_authorization": "REQUIRES_EXPLICIT_FINAL_HUMAN_APPROVAL",
         "release_decision": "HOLD",
