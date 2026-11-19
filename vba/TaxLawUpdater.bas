@@ -1434,7 +1434,7 @@ Public Sub NewCase()
         ' B4 is calculated from B24, and must survive NewCase.
         .Range("B8").ClearContents
         .Range("B19:B20").ClearContents
-        .Range("B40,B43:B44").ClearContents
+        .Range("B40,B43:B44,B45:B49").ClearContents
     End With
     Application.Calculate
     RevealVerifiedResults

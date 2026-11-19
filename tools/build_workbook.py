@@ -382,7 +382,8 @@ def build(source, output):
         # B7/B22/B27-B30/B34 are formula results, never snapshot drivers.
         [f"B{i}" for i in (5,6,8,9,10,11,12,13,14,15,16,17,18)]
         + ["B19", "B21", "B24", "B25", "B26",
-           "B32", "B33", "B36", "B38", "B39", "B40", "B43", "B44"]
+           "B32", "B33", "B36", "B38", "B39", "B40", "B43", "B44",
+           "B45", "B46", "B47", "B48"]  # modified preview must expire
     )
     fingerprint_fields = (
         [ref(HOME, cell) for cell in fingerprint_home]

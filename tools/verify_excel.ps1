@@ -487,10 +487,9 @@ try {
     # confirmation. A later input edit MUST revoke that exact attestation,
     # even if the review status itself remains VERIFIED_AFTER_CORRECTION.
     $fingerprint = [string]$sourceAudit.Range('B42').Value2
-    # One extra locked F51 locality-name candidate is part of the exact
-    # reviewed case snapshot, alongside the existing 95 fields.
-    # A change in location candidate must invalidate source attestation.
-    if ($fingerprint -notmatch '^[0-9]+:' -or $fingerprint.Split('|').Count -ne 96) {
+    # Original 95 inputs + one municipality candidate + four auto-preview
+    # metadata fields. Every edit invalidates the exact source snapshot.
+    if ($fingerprint -notmatch '^[0-9]+:' -or $fingerprint.Split('|').Count -ne 100) {
         throw 'Source review snapshot missing length-prefixed fields'
     }
     $sourceAudit.Range('B41').Value2 = $fingerprint

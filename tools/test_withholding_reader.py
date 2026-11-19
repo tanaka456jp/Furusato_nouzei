@@ -585,7 +585,10 @@ class WithholdingTest(unittest.TestCase):
         # Both the validation and the application loop must skip the
         # nonnumeric WARNINGS metadata before calling CDbl.
         safe_loop = ('If key <> "STATUS" And key <> "YEAR" And key <> "WARNINGS" And _'
-                     '\n           key <> "MUNI_CLASS" And key <> "MUNI_NAME_HEX" Then')
+                     '\n           key <> "MUNI_CLASS" And key <> "MUNI_NAME_HEX" And _'
+                     '\n           key <> "AUTO_STATUS" And key <> "AUTO_SCOPE" And _'
+                     '\n           key <> "AUTO_LIMIT" And key <> "AUTO_YEAR" And _'
+                     '\n           key <> "AUTO_WARNINGS" Then')
         self.assertEqual(code.count(safe_loop), 2)
         self.assertIn('extra.Range("B20").Value2 = status', code)
         self.assertIn('extra.Range("B32").Value2 = fields("WARNINGS")', code)
