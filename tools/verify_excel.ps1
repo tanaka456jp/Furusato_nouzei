@@ -483,6 +483,32 @@ try {
         throw 'Unreviewed source/automatic total mismatch did not HOLD'
     }
     Assert-Value ([string]$homeSheet.Range('B8').Value2) '' 'Unreviewed source discrepancy hides limit'
+    # Zero-dialog preview acceptance on the disposable CI workbook.
+    # "AUTO_REFERENCE" can show a caveated hypothetical from B45, while
+    # B28 remains HOLD and no verified report can be printed or exported.
+    $homeSheet.Range('D51').Value2 = '条例差・不明'
+    $sourceAudit.Range('B45').Value2 = 100000.0
+    $sourceAudit.Range('B46').Value2 = 'AUTO_REFERENCE'
+    $sourceAudit.Range('B47').Value2 = 2026.0
+    $sourceAudit.Range('B48').Value2 = 'SALARY_ONLY_ASSUMED'
+    $excel.Calculate()
+    $sourceAudit.Range('B49').Value2 = [string]$sourceAudit.Range('B42').Value2
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value $homeSheet.Range('B8').Value2 100000 'Source-only number is immediately visible'
+    if ([string]$homeSheet.Range('A8').Value2 -notlike '*自動参考額*') {
+        throw 'Source-only amount is not clearly labelled as provisional'
+    }
+    if ([string]$homeSheet.Range('B28').Value2 -eq '正常' -or
+        [string]$homeSheet.Range('D8').Value2 -ne '') {
+        throw 'Source-only amount bypassed the detailed verification HOLD'
+    }
+    $sourceAudit.Range('B45').Value2 = 120000.0
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value ([string]$homeSheet.Range('B8').Value2) '' 'Editing preview value invalidates cached reference'
+    $sourceAudit.Range('B45:B49').ClearContents()
+    $homeSheet.Range('D51').Value2 = '標準市町村'
+    $excel.Run('TaxLawUpdater.RecalculateCase')
+    Assert-Value ([string]$homeSheet.Range('B8').Value2) '' 'Removed preview never shows stale amount'
     # Model the state stored by ReviewWithholding after an EXPLICIT
     # confirmation. A later input edit MUST revoke that exact attestation,
     # even if the review status itself remains VERIFIED_AFTER_CORRECTION.
