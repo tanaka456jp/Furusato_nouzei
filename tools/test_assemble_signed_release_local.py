@@ -132,7 +132,7 @@ class SignedAssemblyTests(unittest.TestCase):
         self.assertEqual(json.loads(self.receipt.read_text()), result)
 
     def test_ci_identity_and_source_digest_must_match(self):
-        self.assert_refused("SIGNED_ASSEMBLY_IDENTITY_INVALID", head="b" * 40)
+        self.assert_refused("SIGNED_ASSEMBLY_VBA_EVIDENCE_INVALID", head="b" * 40)
         self.assert_refused("SIGNED_ASSEMBLY_IDENTITY_INVALID", run_id=0)
         self.assert_refused("SIGNED_ASSEMBLY_IDENTITY_INVALID", version="v4.18.2")
         self.assert_refused("SIGNED_ASSEMBLY_UNACCEPTED_CI_SOURCES",
