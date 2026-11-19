@@ -163,6 +163,51 @@ try {
     if (Test-Path -LiteralPath $leakTarget) {
         throw 'Unrelated taxpayers were copied into a single-case file'
     }
+
+    # v2 trace, one reference page and one HOLD page: each must become a
+    # separate, clearly unverified A4 PDF, not a combined customer PDF.
+    QA-Stage 'batch-individual-provisional-pdf-start'
+    $reportHeader = $batchHead + [char]9 + (@(
+        'R_SOURCE_YEAR','R_SOURCE_BASIC','R_RESIDENT_DEDUCTIONS',
+        'R_RESIDENT_TAXABLE','R_RESIDENT_LEVY','R_SPECIAL_RATIO_PPM',
+        'R_SPECIAL_CAP','R_MODEL_LOCALITY') -join [char]9)
+    $v2Lines = @($reportHeader)
+    $v2Lines += (@(1,2026,8800000,6850000,2871190,383900,2183340,
+                  121000,'PROVISIONAL','AUTO_SOURCE_ASSUMPTION',
+                  2025,630000,2671190,4178000,415200,695800,83040,'UNCERTAIN') -join [char]9)
+    $v2Lines += (@(2,2026,8800000,6850000,2871190,383900,2183340,
+                  '', 'HOLD','AUTO_SOURCE_HOLD','','','','','','','','') -join [char]9)
+    $v2Path = Join-Path $dir 'synthetic-two-report-v2.tsv'
+    [IO.File]::WriteAllLines($v2Path,[string[]]$v2Lines,[Text.Encoding]::ASCII)
+    Assert-Value ([int]($excel.Run('TaxLawUpdater.LoadBatchFromTsv',$v2Path))) 2 'New report-v2 schema accepted'
+    Assert-Value $batchSheet.Range('K6').Value2 2025 'Source-year report trace saved'
+    Assert-Value $batchSheet.Range('O6').Value2 415200 'Resident levy is kept with selected model'
+    Assert-Value ([string]$batchSheet.Range('K7').Value2) '' 'HOLD report has no made-up model'
+    $outputRoot = Join-Path $dir 'individual-pdf-qa-root'
+    [IO.Directory]::CreateDirectory($outputRoot) | Out-Null
+    Assert-Value ([int]($excel.Run('TaxLawUpdater.ExportAllBatchReferencePDFsToFolder',
+                                  $outputRoot))) 2 'One PDF per anonymous input page'
+    $pdfs = @(Get-ChildItem -LiteralPath $outputRoot -File -Recurse -Filter '*.pdf')
+    Assert-Value $pdfs.Count 2 'Exactly two independent PDFs'
+    if (-not (($pdfs.Name -join '|') -like '*ページ001*' -and
+              ($pdfs.Name -join '|') -like '*ページ002*')) {
+        throw 'PDF source-page attribution missing'
+    }
+    foreach ($pdf in $pdfs) {
+        if ($pdf.Length -lt 500) { throw 'Empty individual PDF report' }
+    }
+    $reportSheet = $book.Worksheets.Item('自動試算根拠')
+    Assert-Value $reportSheet.Visible 2 'Private report sheet is hidden again'
+    $v2Bad = @($v2Lines)
+    $v2Bad[2] = (@(2,2026,8800000,6850000,2871190,383900,2183340,
+                   99999,'HOLD','AUTO_SOURCE_HOLD','','','','','','','','') -join [char]9)
+    $v2BadPath = Join-Path $dir 'synthetic-v2-invalid.tsv'
+    [IO.File]::WriteAllLines($v2BadPath,[string[]]$v2Bad,[Text.Encoding]::ASCII)
+    $badV2Accepted = [bool]($excel.Run('TaxLawUpdater.TryLoadBatchFromTsvForTest',
+                                       $v2BadPath))
+    if ($badV2Accepted) { throw 'Malformed v2 HOLD was accepted' }
+    Assert-Value $batchSheet.Range('O6').Value2 415200 'Failed v2 load retained original trace'
+    QA-Stage 'batch-individual-provisional-pdf-pass'
     [void]($excel.Run('TaxLawUpdater.ClearBatchOverview'))
     Assert-Value ([string]$batchSheet.Range('A6').Value2) '' 'Bulk wipe clears old salary rows'
     Assert-Value ([string]$batchSheet.Range('A10').Value2) '' 'Bulk wipe clears final row'
