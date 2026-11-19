@@ -419,7 +419,7 @@ Private Function DecodeRecipientNameForBatch(ByVal encoded As String) As String
        encoded Like "*[!0-9A-F]*" Then _
        Err.Raise vbObjectError + 402, , "受給者氏名符号が不正です。"
     For i = 1 To Len(encoded) Step 4
-        cp = CLng("&H" & Mid$(encoded, i, 4))
+        cp = CLng("&H0" & Mid$(encoded, i, 4))
         If Not ((cp >= &H3400 And cp <= &H9FFF) Or _
                 (cp >= &H3040 And cp <= &H30FF) Or _
                 (cp >= &H41 And cp <= &H5A) Or _
@@ -860,7 +860,7 @@ Private Function DecodeMunicipalityHint(ByVal encoded As String) As String
         Err.Raise vbObjectError + 366, , "受給者住所の市区町村候補コードが不正です。"
     End If
     For index = 1 To Len(encoded) Step 4
-        point = CLng("&H" & Mid$(encoded, index, 4))
+        point = CLng("&H0" & Mid$(encoded, index, 4))
         If Not ((point >= &H3040 And point <= &H30FF) Or _
                 (point >= &H3400 And point <= &H9FFF) Or point = &H3005) Then
             Err.Raise vbObjectError + 367, , "市区町村候補に使用できない文字が含まれます。"
