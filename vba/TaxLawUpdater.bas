@@ -317,6 +317,7 @@ Public Sub BindButtons()
     BindButton "操作画面", "btnReviewWithholding", "ReviewWithholding"
     BindButton "操作画面", "btnImportWithholdingBatch", "ImportWithholdingBatch"
     BindButton "一括計算一覧", "btnClearBatchOverviewWithConfirm", "ClearBatchOverviewWithConfirm"
+    BindButton "一括計算一覧", "btnExportAllBatchReferencePDFs", "ExportAllBatchReferencePDFs"
     BindButton "例外・分離課税", "btnReturnFromAdvanced", "ReturnFromAdvanced"
     BindButton "計算根拠", "btnReturnHome", "ReturnHome"
     BindButton "計算根拠", "btnPrintDetails", "PrintDetails"
@@ -337,7 +338,7 @@ Private Function BatchOverviewHasRecords() As Boolean
 End Function
 
 Public Sub ClearBatchOverview()
-    ThisWorkbook.Worksheets("一括計算一覧").Range("A6:J105").ClearContents
+    ThisWorkbook.Worksheets("一括計算一覧").Range("A6:R105").ClearContents
 End Sub
 
 Public Sub ClearBatchOverviewWithConfirm()
@@ -371,7 +372,8 @@ Public Sub ImportWithholdingBatch()
     command = Chr$(34) & reader & Chr$(34) & _
               " --input " & Chr$(34) & CStr(selected) & Chr$(34) & _
               " --output " & Chr$(34) & temporary & Chr$(34) & _
-              " --batch-bridge"
+              " --batch-bridge --batch-target-year " & _
+              CStr(CLng(ThisWorkbook.Worksheets("操作画面").Range("B4").Value2))
     Set shell = CreateObject("WScript.Shell")
     exitCode = shell.Run(command, 0, True)
     If exitCode <> 0 Or Not fso.FileExists(temporary) Then
@@ -396,6 +398,158 @@ Failed:
     MsgBox problem, vbExclamation, "複数人一覧の取込"
     Resume CleanUp
 End Sub
+
+
+' This report is the separate, explicitly unverified batch preview and is
+' never an alias for verified "計算根拠" or its strict CheckReportAvailable.
+Private Sub PopulateBatchReferenceSheet(ByVal index As Long, _
+                                        ByVal source As Worksheet, _
+                                        ByVal report As Worksheet)
+    Dim status As String, rowNo As Long, ratioPpm As Double
+    rowNo = index + 5
+    status = CStr(source.Cells(rowNo, 9).Value2)
+    If status <> "参考額（仮）" And status <> "HOLD／要確認" Then _
+        Err.Raise vbObjectError + 390, , "一覧の判定が不正です。"
+    report.Range("B4:B19").ClearContents
+    report.Range("B20").ClearContents
+    report.Range("B21").ClearContents
+    report.Range("B22").ClearContents
+    report.Range("B23").ClearContents
+    report.Range("B4").Value2 = CDbl(source.Cells(rowNo, 1).Value2)
+    report.Range("B5").Value2 = source.Cells(rowNo, 2).Value2
+    report.Range("B7").Value2 = source.Cells(rowNo, 3).Value2
+    report.Range("B8").Value2 = source.Cells(rowNo, 4).Value2
+    report.Range("B9").Value2 = source.Cells(rowNo, 5).Value2
+    report.Range("B10").Value2 = source.Cells(rowNo, 7).Value2
+    report.Range("B11").Value2 = source.Cells(rowNo, 6).Value2
+    report.Range("B21").Value2 = status
+    If status = "HOLD／要確認" Then
+        report.Range("B19").ClearContents
+        report.Range("B22").Value2 = "必須数値・原票の検証不足により計算保留"
+        report.Range("B23").Value2 = CStr(source.Cells(rowNo, 10).Value2)
+    Else
+        ' Legacy 10-column batches have no model trace. Fail closed and
+        ' request a fresh import rather than inventing marginal tax rates.
+        If Len(CStr(source.Cells(rowNo, 11).Value2)) = 0 Then _
+            Err.Raise vbObjectError + 391, , _
+              "この一覧に計算根拠の数値がありません。源泉票を再取込してください。"
+        If Len(CStr(source.Cells(rowNo, 18).Value2)) = 0 Then _
+            Err.Raise vbObjectError + 392, , "自治体モデルの根拠がありません。"
+        report.Range("B6").Value2 = source.Cells(rowNo, 11).Value2
+        report.Range("B12").Value2 = source.Cells(rowNo, 12).Value2
+        report.Range("B13").Value2 = source.Cells(rowNo, 13).Value2
+        report.Range("B14").Value2 = source.Cells(rowNo, 14).Value2
+        report.Range("B15").Value2 = source.Cells(rowNo, 15).Value2
+        ratioPpm = CDbl(source.Cells(rowNo, 16).Value2)
+        If ratioPpm > 0 Then
+            report.Range("B16").Value2 = 0.9 - ratioPpm / 1000000#
+            report.Range("B17").Value2 = ratioPpm / 1000000#
+        End If
+        report.Range("B18").Value2 = source.Cells(rowNo, 17).Value2
+        report.Range("B19").Value2 = source.Cells(rowNo, 8).Value2
+        report.Range("B20").Value2 = source.Cells(rowNo, 18).Value2
+        report.Range("B22").Value2 = "住民税所得割×20%が特例控除の上限"
+        report.Range("B23").Value2 = "2,000＋(特例控除上限÷特例割合)、給与所得30%と比較"
+    End If
+End Sub
+
+' No popups: also called by the isolated PC1 Windows Excel acceptance test.
+' Every page becomes its OWN file. A full report set is committed only after
+' all PDFs have been generated and checked in a temporary sibling folder.
+Public Function ExportAllBatchReferencePDFsToFolder( _
+        ByVal parentFolder As String) As Long
+    Dim fso As Object, batch As Worksheet, report As Worksheet
+    Dim staging As String, outputFolder As String, candidate As String
+    Dim rowNo As Long, page As Long, count As Long, serial As Long
+    Dim pdfPath As String, stem As String, problem As String
+    On Error GoTo Failed
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    If Not fso.FolderExists(parentFolder) Then _
+        Err.Raise vbObjectError + 393, , "保存先フォルダがありません。"
+    If Not BatchOverviewHasRecords() Then _
+        Err.Raise vbObjectError + 394, , "複数人一覧が空です。先に源泉票を読込してください。"
+    Set batch = ThisWorkbook.Worksheets("一括計算一覧")
+    Set report = ThisWorkbook.Worksheets("自動試算根拠")
+    stem = "Furusato_自動試算根拠_未確定_" & Format$(Now, "yyyymmdd_hhnnss")
+    For serial = 1 To 1000
+        outputFolder = fso.BuildPath(parentFolder, stem & "_" & CStr(serial))
+        staging = fso.BuildPath(parentFolder, "._furusato_stage_" & _
+                  Format$(Now, "yyyymmdd_hhnnss") & "_" & CStr(serial))
+        If Not fso.FolderExists(outputFolder) And _
+           Not fso.FolderExists(staging) Then Exit For
+    Next serial
+    If serial > 1000 Then Err.Raise vbObjectError + 395, , "出力先の確保に失敗しました。"
+    ' Validate entire source first: no partially published report folders.
+    count = 0
+    For rowNo = 6 To 105
+        If Len(CStr(batch.Cells(rowNo, 1).Value2)) <> 0 Then
+            count = count + 1
+            If CDbl(batch.Cells(rowNo, 1).Value2) <> count Then _
+                Err.Raise vbObjectError + 396, , "ページ番号が連続していません。"
+            If CStr(batch.Cells(rowNo, 9).Value2) = "参考額（仮）" And _
+               Len(CStr(batch.Cells(rowNo, 11).Value2)) = 0 Then _
+                Err.Raise vbObjectError + 397, , _
+                  "計算根拠がない旧一覧です。源泉票を再取込してください。"
+        End If
+    Next rowNo
+    If count < 1 Or count > 100 Then _
+        Err.Raise vbObjectError + 398, , "出力人数が上限外です。"
+    fso.CreateFolder staging
+    report.Visible = xlSheetVisible
+    For page = 1 To count
+        PopulateBatchReferenceSheet page, batch, report
+        pdfPath = fso.BuildPath(staging, _
+            "源泉票_ページ" & Format$(page, "000") & "_試算根拠_未確定.pdf")
+        report.ExportAsFixedFormat Type:=xlTypePDF, Filename:=pdfPath
+        If Not fso.FileExists(pdfPath) Then _
+            Err.Raise vbObjectError + 399, , "PDFの生成を確認できません。"
+        If fso.GetFile(pdfPath).Size < 500 Then _
+            Err.Raise vbObjectError + 400, , "PDFのファイルサイズが不正です。"
+    Next page
+    report.Visible = xlSheetVeryHidden
+    fso.MoveFolder staging, outputFolder
+    ExportAllBatchReferencePDFsToFolder = count
+    Exit Function
+Failed:
+    problem = Err.Description
+    On Error Resume Next
+    If Not report Is Nothing Then report.Visible = xlSheetVeryHidden
+    If Not fso Is Nothing Then
+        If Len(staging) > 0 And fso.FolderExists(staging) Then _
+            fso.DeleteFolder staging, True
+    End If
+    On Error GoTo 0
+    Err.Raise vbObjectError + 401, _
+        "TaxLawUpdater.ExportAllBatchReferencePDFsToFolder", problem
+End Function
+
+Public Sub ExportAllBatchReferencePDFs()
+    Dim picker As FileDialog, folder As String, count As Long
+    On Error GoTo Failed
+    Set picker = Application.FileDialog(msoFileDialogFolderPicker)
+    picker.Title = "各人の自動試算根拠PDFをまとめて保存するフォルダを選択"
+    If picker.Show <> -1 Then Exit Sub
+    folder = CStr(picker.SelectedItems(1))
+    count = ExportAllBatchReferencePDFsToFolder(folder)
+    MsgBox CStr(count) & "人分の未確定試算根拠PDFを出力しました。" & _
+        vbCrLf & "各ファイルは原票のページ番号で区別します。", _
+        vbInformation, "自動試算根拠PDF"
+    Exit Sub
+Failed:
+    MsgBox Err.Description, vbExclamation, "自動試算根拠PDF"
+End Sub
+
+' Expected failure path probe: never force a VBA modal error on CI runner.
+Public Function TryExportAllBatchReferencePDFsForTest( _
+        ByVal parentFolder As String) As Boolean
+    On Error GoTo Failed
+    TryExportAllBatchReferencePDFsForTest = _
+        (ExportAllBatchReferencePDFsToFolder(parentFolder) > 0)
+    Exit Function
+Failed:
+    Err.Clear
+    TryExportAllBatchReferencePDFsForTest = False
+End Function
 
 ' Test-only safe failure probe; Excel COM must not display a modal
 ' VBA run-time-error dialogue when a malformed batch file is rejected.
@@ -479,6 +633,7 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
     Dim line As String, requiredHeader As String, status As String
     Dim page As Long, col As Long, index As Long, oldData As Variant
     Dim changed As Boolean, problem As String
+    Dim header As String, reportHeader As String, withReport As Boolean
     On Error GoTo Failed
     Set fso = CreateObject("Scripting.FileSystemObject")
     If Not fso.FileExists(tsvPath) Then
@@ -490,16 +645,22 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
     requiredHeader = Join(Array("PAGE", "YEAR", "SALARY_GROSS", _
         "SALARY_INCOME", "TOTAL_DEDUCTIONS", "SOURCE_TAX", _
         "SOCIAL_INSURANCE", "REFERENCE_LIMIT", "STATUS", "REASON"), vbTab)
+    reportHeader = requiredHeader & vbTab & Join(Array( _
+        "R_SOURCE_YEAR", "R_SOURCE_BASIC", "R_RESIDENT_DEDUCTIONS", _
+        "R_RESIDENT_TAXABLE", "R_RESIDENT_LEVY", "R_SPECIAL_RATIO_PPM", _
+        "R_SPECIAL_CAP", "R_MODEL_LOCALITY"), vbTab)
     Set inputFile = fso.OpenTextFile(tsvPath, 1, False, 0)
     If inputFile.AtEndOfStream Then Err.Raise vbObjectError + 348, , "一覧データが空です。"
-    If inputFile.ReadLine <> requiredHeader Then
+    header = inputFile.ReadLine
+    If header <> requiredHeader And header <> reportHeader Then
         Err.Raise vbObjectError + 349, , "一覧データの形式が承認済みのものではありません。"
     End If
+    withReport = (header = reportHeader)
     Set rows = New Collection
     Do Until inputFile.AtEndOfStream
         line = inputFile.ReadLine
         pieces = Split(line, vbTab)
-        If UBound(pieces) <> 9 Then
+        If UBound(pieces) <> IIf(withReport, 17, 9) Then
             Err.Raise vbObjectError + 350, , "一括一覧の列数が不正です。"
         End If
         If rows.Count >= 100 Then
@@ -528,25 +689,47 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
             CStr(pieces(9)) Like "*[!A-Z_]*" Then
             Err.Raise vbObjectError + 357, , "一覧の理由コードが不正です。"
         End If
-        ReDim record(1 To 10)
+        ReDim record(1 To 18)
         For col = 1 To 8
             record(col) = ParseBatchNumber(CStr(pieces(col - 1)), _
                                           col > 1 And status = "HOLD")
         Next col
         record(9) = IIf(status = "HOLD", "HOLD／要確認", "参考額（仮）")
         record(10) = BatchReasonLabel(CStr(pieces(9)))
+        If withReport Then
+            If status = "HOLD" Then
+                For col = 10 To 17
+                    If Len(CStr(pieces(col))) > 0 Then _
+                        Err.Raise vbObjectError + 362, , "HOLD行に計算根拠数値があります。"
+                Next col
+            Else
+                For col = 11 To 17
+                    record(col) = ParseBatchNumber(CStr(pieces(col - 1)), False)
+                Next col
+                If record(11) <> 2025 And record(11) <> 2026 Then _
+                    Err.Raise vbObjectError + 363, , "根拠の源泉票年が不正です。"
+                If record(16) > 900000 Or record(17) <> record(15) / 5 Then _
+                    Err.Raise vbObjectError + 364, , "根拠の特例控除率が不正です。"
+                Select Case CStr(pieces(17))
+                    Case "STANDARD", "DESIGNATED", "UNCERTAIN"
+                        record(18) = CStr(pieces(17))
+                    Case Else
+                        Err.Raise vbObjectError + 365, , "根拠の自治体区分が不正です。"
+                End Select
+            End If
+        End If
         rows.Add record
     Loop
     inputFile.Close
     Set inputFile = Nothing
     If rows.Count < 1 Then Err.Raise vbObjectError + 358, , "ページがありません。"
     Set target = ThisWorkbook.Worksheets("一括計算一覧")
-    oldData = target.Range("A6:J105").Value2
+    oldData = target.Range("A6:R105").Value2
     changed = True
-    target.Range("A6:J105").ClearContents
+    target.Range("A6:R105").ClearContents
     For index = 1 To rows.Count
         record = rows.Item(index)
-        For col = 1 To 10
+        For col = 1 To 18
             target.Cells(index + 5, col).Value2 = record(col)
         Next col
     Next index
@@ -557,7 +740,7 @@ Failed:
     problem = Err.Description
     On Error Resume Next
     If Not inputFile Is Nothing Then inputFile.Close
-    If changed Then target.Range("A6:J105").Value2 = oldData
+    If changed Then target.Range("A6:R105").Value2 = oldData
     On Error GoTo 0
     Err.Raise vbObjectError + 359, "TaxLawUpdater.LoadBatchFromTsv", problem
 End Function
