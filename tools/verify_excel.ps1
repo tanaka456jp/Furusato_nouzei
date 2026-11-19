@@ -198,6 +198,8 @@ try {
     }
     $reportSheet = $book.Worksheets.Item('自動試算根拠')
     Assert-Value $reportSheet.Visible 2 'Private report sheet is hidden again'
+    Assert-Value ([string]$reportSheet.Range('B7').Value2) '' 'PDF template cleared salary after export'
+    Assert-Value ([string]$reportSheet.Range('B15').Value2) '' 'PDF template cleared levy after export'
     $v2Bad = @($v2Lines)
     $v2Bad[2] = (@(2,2026,8800000,6850000,2871190,383900,2183340,
                    99999,'HOLD','AUTO_SOURCE_HOLD','','','','','','','','') -join [char]9)
@@ -211,6 +213,8 @@ try {
     [void]($excel.Run('TaxLawUpdater.ClearBatchOverview'))
     Assert-Value ([string]$batchSheet.Range('A6').Value2) '' 'Bulk wipe clears old salary rows'
     Assert-Value ([string]$batchSheet.Range('A10').Value2) '' 'Bulk wipe clears final row'
+    Assert-Value ([string]$batchSheet.Range('O6').Value2) '' 'Bulk wipe clears hidden levy trace'
+    Assert-Value ([string]$reportSheet.Range('B7').Value2) '' 'Bulk wipe clears cached report salary'
     Assert-Value ([string]$homeSheet.Range('B12').Value2) '' 'Bulk wipe leaves single-case inputs unaffected'
     QA-Stage 'batch-salary-only-five-list-pass'
     # Synthetic live Excel COM regression: the source total is audit-only;
