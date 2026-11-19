@@ -281,49 +281,74 @@ public static class FurusatoWindowCapture {
             throw ('WORKSHEET_CONTENT_CLIPPED_BY_VIEWPORT_AT_' + $capture.row +
                 '_OBSERVED_' + $firstRow + '_' + $lastRow)
         }
-        $bitmap = New-Object System.Drawing.Bitmap($pxw,$pxh)
-        $graphics = [Drawing.Graphics]::FromImage($bitmap)
-        try {
-            $hdc = $graphics.GetHdc()
-            try {
-                $printed = [FurusatoWindowCapture]::PrintWindow($hwnd,$hdc,2)
-            } finally {
-                $graphics.ReleaseHdc($hdc)
-            }
-            if (-not $printed) {
-                throw 'EXCEL_WINDOW_CAPTURE_NOT_SUPPORTED'
-            }
-            $crop = New-Object System.Drawing.Bitmap($cropWidth,$cropHeight)
-            $cropGraphics = [Drawing.Graphics]::FromImage($crop)
-            try {
-                $destination = New-Object Drawing.Rectangle(0,0,$cropWidth,$cropHeight)
-                $sourceRect = New-Object Drawing.Rectangle($left,$top,$cropWidth,$cropHeight)
-                $cropGraphics.DrawImage($bitmap,$destination,$sourceRect,[Drawing.GraphicsUnit]::Pixel)
-            } finally {
-                $cropGraphics.Dispose()
-            }
-            try {
-                $colors = [Collections.Generic.HashSet[int]]::new()
-                for ($x=5; $x -lt $cropWidth; $x+=31) {
-                    for ($y=5; $y -lt $cropHeight; $y+=23) {
-                        [void]$colors.Add($crop.GetPixel($x,$y).ToArgb())
+        # Excel/Windows compositor can return a solid-colour frame even
+        # when PrintWindow reports success. Retry only this same Excel HWND:
+        # never capture the desktop, never waive viewport/content gates.
+        # Both supported PrintWindow modes must meet the original >=8-colour
+        # worksheet proof; an all-blank run remains a release-blocking FAIL.
+        $captured = $false
+        $everPrinted = $false
+        $captureFlags = -1
+        $captureAttempt = 0
+        $colors = [Collections.Generic.HashSet[int]]::new()
+        for ($attempt = 1; $attempt -le 3 -and -not $captured; $attempt++) {
+            $homeSheet.Activate()
+            $excel.ScreenUpdating = $true
+            Start-Sleep -Milliseconds (450 * $attempt)
+            foreach ($flags in @(2,0)) {
+                $bitmap = New-Object System.Drawing.Bitmap($pxw,$pxh)
+                $graphics = [Drawing.Graphics]::FromImage($bitmap)
+                try {
+                    $hdc = $graphics.GetHdc()
+                    try {
+                        $printed = [FurusatoWindowCapture]::PrintWindow($hwnd,$hdc,[uint32]$flags)
+                    } finally {
+                        $graphics.ReleaseHdc($hdc)
                     }
+                    if (-not $printed) { continue }
+                    $everPrinted = $true
+                    $crop = New-Object System.Drawing.Bitmap($cropWidth,$cropHeight)
+                    try {
+                        $cropGraphics = [Drawing.Graphics]::FromImage($crop)
+                        try {
+                            $destination = New-Object Drawing.Rectangle(0,0,$cropWidth,$cropHeight)
+                            $sourceRect = New-Object Drawing.Rectangle($left,$top,$cropWidth,$cropHeight)
+                            $cropGraphics.DrawImage($bitmap,$destination,$sourceRect,[Drawing.GraphicsUnit]::Pixel)
+                        } finally {
+                            $cropGraphics.Dispose()
+                        }
+                        $colors.Clear()
+                        for ($x=5; $x -lt $cropWidth; $x+=31) {
+                            for ($y=5; $y -lt $cropHeight; $y+=23) {
+                                [void]$colors.Add($crop.GetPixel($x,$y).ToArgb())
+                            }
+                        }
+                        if ($colors.Count -ge 8) {
+                            $crop.Save((Join-Path $EvidenceDirectory $capture.name),[Drawing.Imaging.ImageFormat]::Png)
+                            $captured = $true
+                            $captureFlags = $flags
+                            $captureAttempt = $attempt
+                            break
+                        }
+                    } finally {
+                        $crop.Dispose()
+                    }
+                } finally {
+                    $graphics.Dispose()
+                    $bitmap.Dispose()
                 }
-                if ($colors.Count -lt 8) {
-                    throw 'EXCEL_CAPTURE_BLANK_OR_UNRENDERED'
-                }
-                $crop.Save((Join-Path $EvidenceDirectory $capture.name),[Drawing.Imaging.ImageFormat]::Png)
-            } finally {
-                $crop.Dispose()
             }
-        } finally {
-            $graphics.Dispose()
-            $bitmap.Dispose()
+        }
+        if (-not $captured) {
+            if (-not $everPrinted) { throw 'EXCEL_WINDOW_CAPTURE_NOT_SUPPORTED' }
+            throw 'EXCEL_CAPTURE_BLANK_OR_UNRENDERED'
         }
         $pictures += [ordered]@{
             file = [string]$capture.name
             sha256 = (Get-FileHash -LiteralPath (Join-Path $EvidenceDirectory $capture.name) -Algorithm SHA256).Hash.ToLowerInvariant()
             sampled_colors = $colors.Count
+            printwindow_flags = $captureFlags
+            render_attempt = $captureAttempt
             pixels = @($cropWidth, $cropHeight)
         }
         $worksheetReadback += [ordered]@{
