@@ -459,7 +459,7 @@ def build(source, output):
     auto_ref_ok = (
         f'AND({ref(ADVANCED,"B46")}="AUTO_REFERENCE",'
         f'ISNUMBER({ref(ADVANCED,"B45")}),'
-        f'{ref(ADVANCED,"B47")}=B4,'
+        f'{ref(ADVANCED,"B47")}=IFERROR(1*B4,0),'
         f'{ref(ADVANCED,"B49")}<>"",'
         f'{ref(ADVANCED,"B49")}={ref(ADVANCED,"B42")},'
         'COUNT(B12,B15,B16)=3,'

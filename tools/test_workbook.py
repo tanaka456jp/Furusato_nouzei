@@ -64,6 +64,7 @@ class WorkbookTest(unittest.TestCase):
         self.assertIn('IF(B28<>"正常",IF(AND(',home["B8"].value)
         self.assertIn('AUTO_REFERENCE',home["B8"].value)
         self.assertIn('B49',home["B8"].value)
+        self.assertIn('B47=IFERROR(1*B4,0)',home["B8"].value)
         self.assertEqual(home["A9"].value, "=F9")
         self.assertIn("AUTO_REFERENCE", home["F9"].value)
         self.assertIn("ISNUMBER(", home["A8"].value)

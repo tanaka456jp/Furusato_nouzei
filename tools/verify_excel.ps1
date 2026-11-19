@@ -487,6 +487,15 @@ try {
     # "AUTO_REFERENCE" can show a caveated hypothetical from B45, while
     # B28 remains HOLD and no verified report can be printed or exported.
     $homeSheet.Range('D51').Value2 = '条例差・不明'
+    # Real bundled workbook uses a string-valued B4 ("2026") while VBA
+    # writes a numeric Long into B47. Equality without coercion is FALSE.
+    $previousYearValue = $homeSheet.Range('B4').Value2
+    $previousYearFormat = $homeSheet.Range('B4').NumberFormat
+    $homeSheet.Range('B4').NumberFormat = '@'
+    $homeSheet.Range('B4').Value2 = '2026'
+    if ($homeSheet.Range('B4').Value2 -isnot [string]) {
+        throw 'Text-valued tax year fixture was not applied'
+    }
     $sourceAudit.Range('B45').Value2 = 100000.0
     $sourceAudit.Range('B46').Value2 = 'AUTO_REFERENCE'
     $sourceAudit.Range('B47').Value2 = 2026.0
@@ -512,6 +521,8 @@ try {
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value ([string]$homeSheet.Range('B8').Value2) '' 'Editing preview value invalidates cached reference'
     $sourceAudit.Range('B45:B49').ClearContents()
+    $homeSheet.Range('B4').NumberFormat = $previousYearFormat
+    $homeSheet.Range('B4').Value2 = $previousYearValue
     $homeSheet.Range('D51').Value2 = '標準市町村'
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert-Value ([string]$homeSheet.Range('B8').Value2) '' 'Removed preview never shows stale amount'
