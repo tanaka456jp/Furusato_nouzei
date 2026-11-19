@@ -45,7 +45,7 @@ function Measure-Commands($book, [double]$pixelsPerPoint) {
         @{ Sheet = 2; Cell = 'C17'; Macro = 'ExportDetails' },
         @{ Sheet = 3; Cell = 'B2'; Macro = 'ReturnFromAdvanced' },
         @{ Sheet = 4; Cell = 'B4'; Macro = 'ClearBatchOverviewWithConfirm' },
-        @{ Sheet = 4; Cell = 'J4'; Macro = 'ExportAllBatchReferencePDFs' }
+        @{ Sheet = 4; Cell = 'K4'; Macro = 'ExportAllBatchReferencePDFs' }
     )
     $sheets = @($book.Worksheets.Item(1), $book.Worksheets.Item('計算根拠'),
         $book.Worksheets.Item('例外・分離課税'),

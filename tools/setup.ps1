@@ -187,7 +187,7 @@ End Sub
     $batch = $workbook.Worksheets.Item('一括計算一覧')
     try {
         Add-WorkbookButton $batch 'B4' '一覧消去' 'ClearBatchOverviewWithConfirm'
-        Add-WorkbookButton $batch 'J4' '全員分PDF出力' 'ExportAllBatchReferencePDFs'
+        Add-WorkbookButton $batch 'K4' '全員分PDF出力' 'ExportAllBatchReferencePDFs'
     } finally {
         [void][Runtime.InteropServices.Marshal]::ReleaseComObject($batch)
     }

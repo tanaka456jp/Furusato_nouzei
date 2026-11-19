@@ -582,23 +582,22 @@ def build(source, output):
     # income conditions remain HOLD rather than producing a false tax limit.
     batch.sheet_view.showGridLines = False
     batch.sheet_view.zoomScale = 85
-    # B4 contains the Japanese "一覧消去" command. Width 11 clipped its
-    # real Excel button caption at 1920x1080/125%; preserve visible margins.
-    for col, width in {"A": 9, "B": 19, "C": 19, "D": 19,
-                       "E": 19, "F": 18, "G": 19, "H": 19,
-                       "I": 15, "J": 36}.items():
+    # A = E03 recipient name, B = original source PDF page, C:K = figures.
+    # Widen B for the clear-list button and K for the PDF export button.
+    for col, width in {"A": 26, "B": 15, "C": 17, "D": 19,
+                       "E": 19, "F": 19, "G": 18, "H": 19,
+                       "I": 19, "J": 15, "K": 36}.items():
         batch.column_dimensions[col].width = width
-    # K:R hold only ASCII/number trace; no name, address or document path.
-    # The true source of the displayed figure is never overwritten by a
-    # per-person PDF export.
-    for letter in "KLMNOPQR":
+    # L:S numerical trace is included in the sort/filter range to prevent
+    # a name/amount/trace mismatch when Excel sorts by surname.
+    for letter in "LMNOPQRS":
         batch.column_dimensions[letter].hidden = True
     for line, note_text, height in (
         (1, "源泉徴収票｜複数人一括計算一覧（給与所得のみ・参考額）", 29),
         (2, "源泉徴収票の給与所得だけを想定。その他の所得・申告分離課税は対象外。精緻計算は操作画面で1人ずつ行ってください。", 34),
         (3, "HOLDは限度額を表示しません。参考額も確定金額ではありません。源泉票にない家族・自治体・控除等の条件を確認してください。", 34),
     ):
-        batch.merge_cells(start_row=line, start_column=1, end_row=line, end_column=10)
+        batch.merge_cells(start_row=line, start_column=1, end_row=line, end_column=11)
         cell = batch.cell(row=line, column=1, value=note_text)
         cell.alignment = Alignment(wrap_text=True, vertical="center")
         batch.row_dimensions[line].height = height
@@ -611,18 +610,18 @@ def build(source, output):
     batch["A4"].hyperlink = Hyperlink(ref="A4", location="'操作画面'!A1")
     batch["A4"].style = "Hyperlink"
     batch["C4"] = "読取人数"
-    batch["D4"] = '=COUNT(A6:A105)'
+    batch["D4"] = '=COUNT(B6:B105)'
     batch["E4"] = "参考額あり"
-    batch["F4"] = '=COUNTIF(I6:I105,"参考額（仮）")'
+    batch["F4"] = '=COUNTIF(J6:J105,"参考額（仮）")'
     batch["G4"] = "HOLD"
-    batch["H4"] = '=COUNTIF(I6:I105,"HOLD／要確認")'
-    batch["J4"] = "全員分PDF出力"
-    batch["J4"].alignment = Alignment(horizontal="center", vertical="center")
+    batch["H4"] = '=COUNTIF(J6:J105,"HOLD／要確認")'
+    batch["K4"] = "全員分PDF出力"
+    batch["K4"].alignment = Alignment(horizontal="center", vertical="center")
     for cell in ("D4", "F4", "H4"):
         batch[cell].font = Font(name="Yu Gothic", size=11, bold=True,
                                 color="163A56")
     for col, caption in enumerate((
-        "ページ", "試算所得年", "支払金額（円）", "給与所得（円）",
+        "氏名", "ページ", "試算所得年", "支払金額（円）", "給与所得（円）",
         "所得控除合計（円）", "源泉徴収税額（円）", "社会保険料（円）",
         "上限額参考（円）", "判定", "判定理由（詳細）",
     ), 1):
@@ -632,7 +631,7 @@ def build(source, output):
         cell.alignment = Alignment(wrap_text=True, vertical="center")
     batch.row_dimensions[5].height = 32
     batch.freeze_panes = "C6"
-    batch.auto_filter.ref = "A5:J105"
+    batch.auto_filter.ref = "A5:S105"  # move trace with person on sort
     batch.sheet_properties.pageSetUpPr.fitToPage = True
     batch.page_setup.fitToWidth = 1
     batch.page_setup.fitToHeight = 0
@@ -641,10 +640,10 @@ def build(source, output):
     batch.print_options.gridLines = False
     for row in range(6, 106):
         batch.row_dimensions[row].height = 21
-        for col in range(1, 19):
+        for col in range(1, 20):
             cell = batch.cell(row=row, column=col)
             cell.protection = Protection(locked=True)
-            if col in (3, 4, 5, 6, 7, 8, 11, 12, 13, 14, 15, 16, 17):
+            if col in (4, 5, 6, 7, 8, 9, 12, 13, 14, 15, 16, 17, 18):
                 cell.number_format = "#,##0;[Red](#,##0);-"
             if row % 2 == 0:
                 cell.fill = PatternFill("solid", fgColor="F4F8FB")
@@ -670,6 +669,11 @@ def build(source, output):
     auto_report.print_area = "A1:D27"
     bar(auto_report, 1, "源泉徴収票ごとの自動試算根拠｜未確定")
     note(auto_report, 2, "検証用の推定参考額です。確定した寄附限度額ではありません。対象所得年の給与・控除が継続する等の仮定を含みます。")
+    auto_report["A3"] = "受給者氏名（源泉票E03）"
+    auto_report["A3"].font = Font(name="Yu Gothic", size=10, color="163A56")
+    auto_report["B3"].font = Font(name="Yu Gothic", size=11, bold=True, color="163A56")
+    auto_report["B3"].alignment = Alignment(horizontal="left")
+    auto_report.row_dimensions[3].height = 24
     labels = {
         4: "元PDFのページ番号",
         5: "試算する所得年",
@@ -708,7 +712,7 @@ def build(source, output):
     note(auto_report, 24, "算式：MIN(2,000円＋住民税特例控除上限÷特例控除割合、給与所得×30%)を千円未満切捨。条件によっては本算式を適用できません。")
     note(auto_report, 25, "給与以外の所得、各種税額控除・住宅ローン控除、扶養・保険料の差額、自治体条例の差異は未確認です。")
     note(auto_report, 26, "前年の源泉票は翌年の所得や1月1日住所を保証しません。適用法令・所得控除の個別照合が必要です。")
-    note(auto_report, 27, "このレポートは匿名のPDFページ番号による試算です。氏名・住所は転記せず、確定版レポートとは区別します。")
+    note(auto_report, 27, "原票の受給者氏名をページ単位で表示。氏名を判読できない場合は必ず原票と照合。確定版レポートとは区別します。")
 
     # Separate every special-age relative's income and legal eligibility.
     # The first three retain the existing home input cells; remaining relatives
