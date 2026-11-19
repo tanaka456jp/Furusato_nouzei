@@ -132,13 +132,13 @@ try {
                               [Text.Encoding]::ASCII)
     Assert-Value ([int]($excel.Run('TaxLawUpdater.LoadBatchFromTsv', $batchPath))) 5 'Five-page numeric TSV loaded'
     $batchSheet = $book.Worksheets.Item('一括計算一覧')
-    Assert-Value $batchSheet.Range('A6').Value2 1 'First selected PDF page'
-    Assert-Value $batchSheet.Range('A10').Value2 5 'Fifth selected PDF page'
-    Assert-Value $batchSheet.Range('C6').Value2 5100000 'First source remains separate'
-    Assert-Value $batchSheet.Range('C10').Value2 5500000 'Fifth source remains separate'
-    Assert-Value $batchSheet.Range('H6').Value2 55000 'Provisional first row'
-    Assert-Value ([string]$batchSheet.Range('H7').Value2) '' 'HOLD has no reference limit'
-    Assert-Value ([string]$batchSheet.Range('I7').Value2) 'HOLD／要確認' 'HOLD status visible'
+    Assert-Value $batchSheet.Range('B6').Value2 1 'First selected PDF page'
+    Assert-Value $batchSheet.Range('B10').Value2 5 'Fifth selected PDF page'
+    Assert-Value $batchSheet.Range('D6').Value2 5100000 'First source remains separate'
+    Assert-Value $batchSheet.Range('D10').Value2 5500000 'Fifth source remains separate'
+    Assert-Value $batchSheet.Range('I6').Value2 55000 'Provisional first row'
+    Assert-Value ([string]$batchSheet.Range('I7').Value2) '' 'HOLD has no reference limit'
+    Assert-Value ([string]$batchSheet.Range('J7').Value2) 'HOLD／要確認' 'HOLD status visible'
     Assert-Value ([string]$homeSheet.Range('B12').Value2) '' 'Bulk leaves single-case salary unchanged'
     Assert-Value ([string]$homeSheet.Range('B15').Value2) '' 'Bulk leaves single-case withholding unchanged'
     Assert-Value ([string]$homeSheet.Range('B16').Value2) '' 'Bulk leaves single-case social insurance unchanged'
@@ -155,8 +155,8 @@ try {
     $badAccepted = [bool]($excel.Run(
         'TaxLawUpdater.TryLoadBatchFromTsvForTest', $invalidPath))
     if ($badAccepted) { throw 'Batch HOLD row with a limit was improperly accepted' }
-    Assert-Value $batchSheet.Range('H6').Value2 55000 'Previous list survives failed batch'
-    Assert-Value $batchSheet.Range('A10').Value2 5 'No rows lost on bad batch'
+    Assert-Value $batchSheet.Range('I6').Value2 55000 'Previous list survives failed batch'
+    Assert-Value $batchSheet.Range('B10').Value2 5 'No rows lost on bad batch'
     # Client case files must never contain unrelated bulk salary rows.
     $leakTarget = Join-Path $dir 'must-not-leak-other-taxpayers.xlsm'
     Assert-Value ([bool]($excel.Run('TaxLawUpdater.TrySaveCaseToFileForTest', $leakTarget))) $false 'Case save refuses a nonempty bulk list'
@@ -180,9 +180,9 @@ try {
     $v2Path = Join-Path $dir 'synthetic-two-report-v2.tsv'
     [IO.File]::WriteAllLines($v2Path,[string[]]$v2Lines,[Text.Encoding]::ASCII)
     Assert-Value ([int]($excel.Run('TaxLawUpdater.LoadBatchFromTsv',$v2Path))) 2 'New report-v2 schema accepted'
-    Assert-Value $batchSheet.Range('K6').Value2 2025 'Source-year report trace saved'
-    Assert-Value $batchSheet.Range('O6').Value2 415200 'Resident levy is kept with selected model'
-    Assert-Value ([string]$batchSheet.Range('K7').Value2) '' 'HOLD report has no made-up model'
+    Assert-Value $batchSheet.Range('L6').Value2 2025 'Source-year report trace saved'
+    Assert-Value $batchSheet.Range('P6').Value2 415200 'Resident levy is kept with selected model'
+    Assert-Value ([string]$batchSheet.Range('L7').Value2) '' 'HOLD report has no made-up model'
     $outputRoot = Join-Path $dir 'individual-pdf-qa-root'
     [IO.Directory]::CreateDirectory($outputRoot) | Out-Null
     Assert-Value ([int]($excel.Run('TaxLawUpdater.ExportAllBatchReferencePDFsToFolder',
@@ -208,12 +208,51 @@ try {
     $badV2Accepted = [bool]($excel.Run('TaxLawUpdater.TryLoadBatchFromTsvForTest',
                                        $v2BadPath))
     if ($badV2Accepted) { throw 'Malformed v2 HOLD was accepted' }
-    Assert-Value $batchSheet.Range('O6').Value2 415200 'Failed v2 load retained original trace'
+    Assert-Value $batchSheet.Range('P6').Value2 415200 'Failed v2 load retained original trace'
     QA-Stage 'batch-individual-provisional-pdf-pass'
+
+    # True v3 source name binding: synthetic names only, encoded in ASCII
+    # to avoid any real identity in GitHub/Actions or log output.
+    QA-Stage 'batch-e03-person-identity-v3-start'
+    $firstName = '山田 太郎'
+    $secondName = '佐藤 花子'
+    $firstHex = -join ($firstName.ToCharArray() | ForEach-Object {
+        [int][char]$_ -as [int] | ForEach-Object { $_.ToString('X4') }
+    })
+    $secondHex = -join ($secondName.ToCharArray() | ForEach-Object {
+        [int][char]$_ -as [int] | ForEach-Object { $_.ToString('X4') }
+    })
+    $v3Path = Join-Path $dir 'synthetic-two-person-v3.tsv'
+    $v3Lines = @($reportHeader + [char]9 + 'RECIPIENT_NAME_HEX')
+    $v3Lines += ($v2Lines[1] + [char]9 + $firstHex)
+    $v3Lines += ($v2Lines[2] + [char]9 + $secondHex)
+    [IO.File]::WriteAllLines($v3Path, [string[]]$v3Lines,[Text.Encoding]::ASCII)
+    Assert-Value ([int]($excel.Run('TaxLawUpdater.LoadBatchFromTsv',$v3Path))) 2 'E03 name-bound v3 loaded'
+    Assert-Value ([string]$batchSheet.Range('A6').Value2) $firstName 'First E03 person at A6'
+    Assert-Value ([string]$batchSheet.Range('A7').Value2) $secondName 'Second E03 person at A7'
+    Assert-Value $batchSheet.Range('B6').Value2 1 'First identity has source page 1'
+    Assert-Value $batchSheet.Range('B7').Value2 2 'Second identity has source page 2'
+    Assert-Value $batchSheet.Range('P6').Value2 415200 'Name and levy share a row'
+    $v3Root = Join-Path $dir 'name-bound-pdf-qa-root'
+    [IO.Directory]::CreateDirectory($v3Root) | Out-Null
+    Assert-Value ([int]($excel.Run('TaxLawUpdater.ExportAllBatchReferencePDFsToFolder',
+                                   $v3Root))) 2 'Each E03 identity has an individual PDF'
+    Assert-Value @(Get-ChildItem -LiteralPath $v3Root -File -Recurse -Filter '*.pdf').Count 2 'Two source-page PDFs generated'
+    Assert-Value ([string]$reportSheet.Range('B3').Value2) '' 'PDF cache has no remaining recipient name'
+    $v3Invalid = @($v3Lines)
+    $v3Invalid[1] = ($v2Lines[1] + [char]9 + '003D0043004D0044')
+    $v3InvalidPath = Join-Path $dir 'synthetic-v3-malicious-name.tsv'
+    [IO.File]::WriteAllLines($v3InvalidPath, [string[]]$v3Invalid,[Text.Encoding]::ASCII)
+    if ([bool]($excel.Run('TaxLawUpdater.TryLoadBatchFromTsvForTest',
+                          $v3InvalidPath))) {
+        throw 'Formula-like E03 recipient name bypassed validation'
+    }
+    Assert-Value ([string]$batchSheet.Range('A6').Value2) $firstName 'Rejected v3 did not overwrite person'
+    QA-Stage 'batch-e03-person-identity-v3-pass'
     [void]($excel.Run('TaxLawUpdater.ClearBatchOverview'))
-    Assert-Value ([string]$batchSheet.Range('A6').Value2) '' 'Bulk wipe clears old salary rows'
-    Assert-Value ([string]$batchSheet.Range('A10').Value2) '' 'Bulk wipe clears final row'
-    Assert-Value ([string]$batchSheet.Range('O6').Value2) '' 'Bulk wipe clears hidden levy trace'
+    Assert-Value ([string]$batchSheet.Range('B6').Value2) '' 'Bulk wipe clears old salary rows'
+    Assert-Value ([string]$batchSheet.Range('B10').Value2) '' 'Bulk wipe clears final row'
+    Assert-Value ([string]$batchSheet.Range('P6').Value2) '' 'Bulk wipe clears hidden levy trace'
     Assert-Value ([string]$reportSheet.Range('B7').Value2) '' 'Bulk wipe clears cached report salary'
     Assert-Value ([string]$homeSheet.Range('B12').Value2) '' 'Bulk wipe leaves single-case inputs unaffected'
     QA-Stage 'batch-salary-only-five-list-pass'
