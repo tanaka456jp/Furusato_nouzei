@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import sys
 from municipality_hint import recipient_municipality_hint, encode_municipality_name
+from recipient_name import from_e03, encode as encode_name
 
 SUPPORTED = {".pdf",".png",".jpg",".jpeg",".webp",".tif",".tiff",".bmp",
              ".heic",".heif",".txt",".csv",".tsv",".json"}
@@ -429,7 +430,7 @@ def finish(year,fields,mode,warnings=None):
             "personal_identifiers":"NEVER_EXTRACTED"}
 
 
-def extract(path,page_number=None):
+def extract(path,page_number=None,include_recipient_name=False):
     path=Path(path)
     ext=path.suffix.lower()
     if ext not in SUPPORTED: raise ValueError("Unsupported format")
@@ -486,6 +487,11 @@ def extract(path,page_number=None):
     elif occupancy:
         vals.update(occupancy)
     report = finish(detect_year(text, words),vals,mode,flags)
+    # Only batch mode opts into E03; default JSON stays identifier-free.
+    if include_recipient_name and mode in ("PDF_TEXT","PDF_PAGE_SELECTED"):
+        recipient = from_e03(words)
+        if recipient:
+            report["recipient_name_hex"] = encode_name(recipient)
     # Never send raw address or taxpayer identity to Excel or CI. Native PDF
     # candidate only; source record does not prove residence on 1 January.
     if mode in ("PDF_TEXT", "PDF_PAGE_SELECTED"):

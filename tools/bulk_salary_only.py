@@ -15,6 +15,7 @@ from audit_salary_donation_limit import (
 )
 from audit_withholding_reconciliation import reconcile
 from audit_insurance_deductions import _insurance_category, _new
+from recipient_name import decode as decode_name
 
 COLUMNS = (
     "PAGE", "YEAR", "SALARY_GROSS", "SALARY_INCOME", "TOTAL_DEDUCTIONS",
@@ -28,6 +29,7 @@ REPORT_COLUMNS = (
     "R_SPECIAL_CAP", "R_MODEL_LOCALITY",
 )
 ALLOWED_MODEL_LOCALITIES = ("STANDARD", "DESIGNATED", "UNCERTAIN")
+NAME_COLUMNS = ("RECIPIENT_NAME_HEX",)  # v3; never plaintext in TSV
 REQUIRED = (
     "salary_gross", "salary_reference", "deductions_reference",
     "income_tax_withheld", "social_insurance", "basic_reference",
@@ -198,12 +200,14 @@ def all_page_rows(path: Path, target_year=None) -> list[dict]:
     rows = []
     for page in range(1, count + 1):
         try:
-            result = extract(path, page_number=page)
+            result = extract(path, page_number=page,
+                             include_recipient_name=(target_year is not None))
             row = evaluate_page(page, result)
             if target_year is not None:
                 reference = make_automatic_reference(result, target_year)
                 row["YEAR"] = target_year
                 row.update({name: "" for name in REPORT_COLUMNS})
+                row["RECIPIENT_NAME_HEX"] = result.get("recipient_name_hex", "")
                 if reference["status"] == "AUTO_REFERENCE":
                     row["SALARY_INCOME"] = reference["salary_income"]
                     row["REFERENCE_LIMIT"] = reference["limit"]
@@ -223,6 +227,7 @@ def all_page_rows(path: Path, target_year=None) -> list[dict]:
                    for key in COLUMNS}
             if target_year is not None:
                 row.update({name: "" for name in REPORT_COLUMNS})
+                row["RECIPIENT_NAME_HEX"] = ""
             rows.append(row)
     return rows
 
@@ -236,7 +241,13 @@ def write_batch_bridge(rows: list[dict], output: Path) -> None:
     if not rows or not isinstance(rows, list):
         raise ValueError("EMPTY_BATCH_REPORT")
     with_report = any("R_SOURCE_YEAR" in row for row in rows)
-    columns = COLUMNS + REPORT_COLUMNS if with_report else COLUMNS
+    with_name = any("RECIPIENT_NAME_HEX" in row for row in rows)
+    if with_name and not with_report:
+        raise ValueError("NAME_REQUIRES_REPORT")
+    if with_name and any("RECIPIENT_NAME_HEX" not in row for row in rows):
+        raise ValueError("PARTIAL_NAME_SCHEMA")
+    columns = (COLUMNS + (REPORT_COLUMNS if with_report else ())
+               + (NAME_COLUMNS if with_name else ()))
     if with_report and any(any(k not in row for k in REPORT_COLUMNS)
                            for row in rows):
         raise ValueError("PARTIAL_REPORT_SCHEMA")
@@ -265,4 +276,10 @@ def write_batch_bridge(rows: list[dict], output: Path) -> None:
                       or trace[5] > 900000
                       or trace[6] != trace[4] // 5):
                     raise ValueError("INVALID_REPORT_TRACE")
+            if with_name:
+                encoded = row["RECIPIENT_NAME_HEX"]
+                if encoded:
+                    decode_name(encoded)
+                elif encoded != "":
+                    raise ValueError("INVALID_NAME_HEX")
             writer.writerow([row.get(key, "") for key in columns])
