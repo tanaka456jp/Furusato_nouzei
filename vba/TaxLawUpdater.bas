@@ -676,6 +676,7 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
     Dim page As Long, col As Long, index As Long, oldData As Variant
     Dim changed As Boolean, problem As String
     Dim header As String, reportHeader As String, withReport As Boolean
+    Dim nameHeader As String, withName As Boolean
     On Error GoTo Failed
     Set fso = CreateObject("Scripting.FileSystemObject")
     If Not fso.FileExists(tsvPath) Then
@@ -691,18 +692,20 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
         "R_SOURCE_YEAR", "R_SOURCE_BASIC", "R_RESIDENT_DEDUCTIONS", _
         "R_RESIDENT_TAXABLE", "R_RESIDENT_LEVY", "R_SPECIAL_RATIO_PPM", _
         "R_SPECIAL_CAP", "R_MODEL_LOCALITY"), vbTab)
+    nameHeader = reportHeader & vbTab & "RECIPIENT_NAME_HEX"
     Set inputFile = fso.OpenTextFile(tsvPath, 1, False, 0)
     If inputFile.AtEndOfStream Then Err.Raise vbObjectError + 348, , "一覧データが空です。"
     header = inputFile.ReadLine
-    If header <> requiredHeader And header <> reportHeader Then
+    If header <> requiredHeader And header <> reportHeader And header <> nameHeader Then
         Err.Raise vbObjectError + 349, , "一覧データの形式が承認済みのものではありません。"
     End If
-    withReport = (header = reportHeader)
+    withName = (header = nameHeader)
+    withReport = (header = reportHeader Or withName)
     Set rows = New Collection
     Do Until inputFile.AtEndOfStream
         line = inputFile.ReadLine
         pieces = Split(line, vbTab)
-        If UBound(pieces) <> IIf(withReport, 17, 9) Then
+        If UBound(pieces) <> IIf(withName, 18, IIf(withReport, 17, 9)) Then
             Err.Raise vbObjectError + 350, , "一括一覧の列数が不正です。"
         End If
         If rows.Count >= 100 Then
@@ -731,13 +734,15 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
             CStr(pieces(9)) Like "*[!A-Z_]*" Then
             Err.Raise vbObjectError + 357, , "一覧の理由コードが不正です。"
         End If
-        ReDim record(1 To 18)
+        ReDim record(1 To 19)
+        record(1) = "氏名未判読"
+        If withName Then record(1) = DecodeRecipientNameForBatch(CStr(pieces(18)))
         For col = 1 To 8
-            record(col) = ParseBatchNumber(CStr(pieces(col - 1)), _
+            record(col + 1) = ParseBatchNumber(CStr(pieces(col - 1)), _
                                           col > 1 And status = "HOLD")
         Next col
-        record(9) = IIf(status = "HOLD", "HOLD／要確認", "参考額（仮）")
-        record(10) = BatchReasonLabel(CStr(pieces(9)))
+        record(10) = IIf(status = "HOLD", "HOLD／要確認", "参考額（仮）")
+        record(11) = BatchReasonLabel(CStr(pieces(9)))
         If withReport Then
             If status = "HOLD" Then
                 For col = 10 To 17
@@ -745,16 +750,16 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
                         Err.Raise vbObjectError + 362, , "HOLD行に計算根拠数値があります。"
                 Next col
             Else
-                For col = 11 To 17
-                    record(col) = ParseBatchNumber(CStr(pieces(col - 1)), False)
+                For col = 12 To 18
+                    record(col) = ParseBatchNumber(CStr(pieces(col - 2)), False)
                 Next col
-                If record(11) <> 2025 And record(11) <> 2026 Then _
+                If record(12) <> 2025 And record(12) <> 2026 Then _
                     Err.Raise vbObjectError + 363, , "根拠の源泉票年が不正です。"
-                If record(16) > 900000 Or record(17) <> record(15) / 5 Then _
+                If record(17) > 900000 Or record(18) <> record(16) / 5 Then _
                     Err.Raise vbObjectError + 364, , "根拠の特例控除率が不正です。"
                 Select Case CStr(pieces(17))
                     Case "STANDARD", "DESIGNATED", "UNCERTAIN"
-                        record(18) = CStr(pieces(17))
+                        record(19) = CStr(pieces(17))
                     Case Else
                         Err.Raise vbObjectError + 365, , "根拠の自治体区分が不正です。"
                 End Select
@@ -771,7 +776,7 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
     target.Range("A6:S105").ClearContents
     For index = 1 To rows.Count
         record = rows.Item(index)
-        For col = 1 To 18
+        For col = 1 To 19
             target.Cells(index + 5, col).Value2 = record(col)
         Next col
     Next index
