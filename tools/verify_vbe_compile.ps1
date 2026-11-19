@@ -51,27 +51,7 @@ try {
         } catch {
             $moduleName = 'SELECTION_UNAVAILABLE'
         }
-        if ($moduleName -notmatch '^[A-Za-z0-9_]{1,64}
-} finally {
-    if ($book) { $book.Close($false) }
-    if ($excel) { $excel.Quit() }
-    foreach ($object in @($command, $pane, $project, $book, $excel)) {
-        if ($null -ne $object) { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($object) }
-    }
-}
-if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant() -cne $hash) {
-    throw 'VBE_COMPILE_CHANGED_WORKBOOK'
-}
-$report = [ordered]@{
-    schema = 'furusato-vbe-compile/v1'
-    workbook_sha256 = $hash
-    status = $state
-    command_id = 578
-    command_enabled_after = $false
-}
-[IO.File]::WriteAllText($EvidencePath, ($report | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
-Write-Host ('VBE_COMPILE_RESULT=' + $state)
-) {
+        if ($moduleName -notmatch '^[A-Za-z0-9_]{1,64}$') {
             $moduleName = 'UNKNOWN'
         }
         Write-Host ('VBE_COMPILE_INCOMPLETE_SOURCE_MODULE=' + $moduleName)
