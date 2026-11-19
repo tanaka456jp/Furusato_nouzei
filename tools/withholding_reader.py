@@ -9,6 +9,7 @@ import math
 from pathlib import Path
 import re
 import sys
+from municipality_hint import recipient_municipality_hint, encode_municipality_name
 
 SUPPORTED = {".pdf",".png",".jpg",".jpeg",".webp",".tif",".tiff",".bmp",
              ".heic",".heif",".txt",".csv",".tsv",".json"}
@@ -484,7 +485,14 @@ def extract(path,page_number=None):
         vals.pop("mortgage_occupancy_year",None)
     elif occupancy:
         vals.update(occupancy)
-    return finish(detect_year(text, words),vals,mode,flags)
+    report = finish(detect_year(text, words),vals,mode,flags)
+    # Never send raw address or taxpayer identity to Excel or CI. Native PDF
+    # candidate only; source record does not prove residence on 1 January.
+    if mode in ("PDF_TEXT", "PDF_PAGE_SELECTED"):
+        hint = recipient_municipality_hint(words)
+        if hint:
+            report["municipality_hint"] = hint
+    return report
 
 
 def write_bridge(result,output):
@@ -496,6 +504,11 @@ def write_bridge(result,output):
         # ASCII warnings, not raw personal data. The VBA UI can show precisely
         # why the extracted document is only a *provisional* import.
         writer.writerow(["WARNINGS",";".join(result.get("warnings",[]))])
+        hint = result.get("municipality_hint")
+        if isinstance(hint, dict) and hint.get("class") in (
+                "STANDARD", "DESIGNATED", "SPECIAL"):
+            writer.writerow(["MUNI_CLASS", hint["class"]])
+            writer.writerow(["MUNI_NAME_HEX", encode_municipality_name(hint["name"])])
         for key,val in sorted(result["fields"].items()):
             writer.writerow([key,val])
 
