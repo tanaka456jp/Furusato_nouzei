@@ -584,7 +584,8 @@ class WithholdingTest(unittest.TestCase):
         code = (Path(__file__).resolve().parents[1] / "vba" / "TaxLawUpdater.bas").read_text(encoding="utf-8")
         # Both the validation and the application loop must skip the
         # nonnumeric WARNINGS metadata before calling CDbl.
-        safe_loop = 'If key <> "STATUS" And key <> "YEAR" And key <> "WARNINGS" Then'
+        safe_loop = ('If key <> "STATUS" And key <> "YEAR" And key <> "WARNINGS" And _'
+                     '\n           key <> "MUNI_CLASS" And key <> "MUNI_NAME_HEX" Then')
         self.assertEqual(code.count(safe_loop), 2)
         self.assertIn('extra.Range("B20").Value2 = status', code)
         self.assertIn('extra.Range("B32").Value2 = fields("WARNINGS")', code)
