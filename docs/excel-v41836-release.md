@@ -35,3 +35,26 @@ python tools/publish_excel_release.py --run-id <RUN_ID> --head <HEAD_SHA> --outp
 正式公開を可能にするには、独立した署名済みアーカイブと配布ハッシュの実体検証・承認者認証・発行対象の固定・非公開証拠の最終監査を実装してテストし、上記ロックを意図的に解除する別の開発・受入工程が必要です。現時点ではタグ `v4.18.36` を発行しません。
 
 EXE署名に使用するSignToolも、VBA署名と共通のWindows SDK x86版・Microsoft署名の確認を必須とします。署名用ソフト自身の真正性を検証できない場合は署名を実行せずHOLDです。
+
+## 署名済み最終ZIPのローカル組立（2026年11月20日追加・公開許可ではない）
+
+`tools/assemble_signed_release_local.py` は、同一HEADのCI合格済み **未署名** XLSM・EXEと、PC①で個別に署名した **別ファイル** 2つを照合し、**リポジトリ外の非公開フォルダ**に3ファイル構成の最終候補ZIPを組み立てます。入力する2つの署名実行証跡は `sign_excel_vba_local.ps1` の `furusato-local-vba-signing/v2` と `sign_reader_exe_local.ps1` の `furusato-reader-authenticode-local/v1` です。
+
+```powershell
+python tools/assemble_signed_release_local.py `
+  --head "<PR_HEAD_SHA>" --run-id <同一HEADの5ジョブ合格Run-ID> --version v4.18.36 `
+  --accepted-book "C:\Private\accepted\Furusato_nouzei.xlsm" `
+  --signed-book "C:\Private\signed\Furusato_nouzei_signed.xlsm" `
+  --accepted-reader "C:\Private\accepted\FurusatoDocumentReader.exe" `
+  --signed-reader "C:\Private\signed\FurusatoDocumentReader_signed.exe" `
+  --vba-evidence "C:\Private\signed\vba_signing_local.json" `
+  --reader-evidence "C:\Private\signed\reader_signing_local.json" `
+  --accepted-book-sha "<CIで受入済みの未署名XLSM SHA-256>" `
+  --accepted-reader-sha "<CIで受入済みの未署名EXE SHA-256>" `
+  --target "C:\Private\final\Furusato_nouzei_v4.18.36_ReadyToUse.zip" `
+  --receipt "C:\Private\final\local_assembly_hold.json"
+```
+
+このコマンドは署名を行いません。署名済みXLSMとEXEの実バイト・署名前ソースSHA-256・VBAプロジェクト不変性・構造・証跡整合を確認しますが、**証跡ファイルの自己申告だけでは暗号署名の真正性が確認できないため**、出力は必ず `HOLD` です。ZIP生成後は `verify_signed_release_local.ps1` に署名者サムプリント、アーカイブSHA-256、署名済みZIPと独立した新規証跡パスを指定して、Office SIP・Authenticode・署名者・タイムスタンプ・Office VBA認識を実機で再検証してください。
+
+その後も、税務独立監査、残る2表示倍率、実紙への印刷、権限ある発行者の最終承認と、署名済み最終ZIPに承認を紐付ける安全な公開処理が未完了です。**この組立ツール単独の合格で正式公開可能にはなりません。** 署名用秘密鍵、個人情報、発行承認証跡をGitHub/CI/Artifactsへアップロードしないでください。
