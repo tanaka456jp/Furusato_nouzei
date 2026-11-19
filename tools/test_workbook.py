@@ -153,7 +153,7 @@ class WorkbookTest(unittest.TestCase):
         self.assertIn("未確定", report["A1"].value)
         self.assertEqual(report["A3"].value, "受給者氏名（源泉票E03）")
         self.assertEqual(batch["K4"].value, "全員分PDF出力")
-        self.assertIn("DecodeRecipientNameForBatch", vb if "vb" in locals() else (ROOT / "vba/TaxLawUpdater.bas").read_text(encoding="utf-8-sig"))
+        self.assertIn("DecodeRecipientNameForBatch", (ROOT / "vba/TaxLawUpdater.bas").read_text(encoding="utf-8-sig"))
         self.assertTrue(all(batch.column_dimensions[c].hidden for c in "LMNOPQRS"))
         self.assertEqual(batch.freeze_panes, "C6")
         self.assertEqual(batch.auto_filter.ref, "A5:S105")

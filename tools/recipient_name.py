@@ -48,7 +48,7 @@ def from_e03(words):
         return None
     chars, right = [], anchor[2]
     for w in row:
-        if chars and w[0] - right > 18:
+        if chars and w[0] - right > 6:
             chars.append(" ")
         chars.append(w[4])
         right = w[2]
