@@ -469,7 +469,8 @@ def build(source, output):
         f'{ref(ADVANCED,"B47")}=B4,'
         f'{ref(ADVANCED,"B49")}<>"",'
         f'{ref(ADVANCED,"B49")}={ref(ADVANCED,"B42")},'
-        'COUNT(B12,B15,B16)=3)'
+        'COUNT(B12,B15,B16)=3,'
+        'LEFT(B28,3)<>"エラー")'
     )
     home["B8"] = (f'=IF(B28<>"正常",IF({auto_ref_ok},'
                   f'{ref(ADVANCED,"B45")},""),{ref(RESIDENT,"B26")})')
