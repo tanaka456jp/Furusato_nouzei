@@ -410,6 +410,10 @@ End Function
 
 Private Function BatchReasonLabel(ByVal code As String) As String
     Select Case code
+        Case "AUTO_SOURCE_ASSUMPTION"
+            BatchReasonLabel = "前年等の給与・控除継続、他所得なし、住宅控除未調整の仮目安"
+        Case "AUTO_SOURCE_HOLD"
+            BatchReasonLabel = "原票の必須項目欠落・不一致等で自動目安は保留"
         Case "SALARY_ONLY_HYPOTHESIS"
             BatchReasonLabel = "給与所得のみ・他所得等なしを仮定"
         Case "INCOME_LEVY_EXEMPT_SALARY_ONLY"
