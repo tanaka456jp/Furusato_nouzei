@@ -71,6 +71,7 @@ jobs:
           python tools/test_open_probe_launcher.py
           python tools/test_vbaupdater_bridge.py
           python tools/test_withholding_reader.py
+          python tools/test_municipality_hint.py
           python tools/make_excel_open_probes.py Excel_open_probes --self-test
       - name: Parse shared-PC Windows PowerShell setup (static syntax)
         shell: pwsh
@@ -273,7 +274,8 @@ jobs:
           python -m pip install pyinstaller==6.16.0 pyinstaller-hooks-contrib==2026.10 pypdfium2==5.15.2 pymupdf==1.26.7 Pillow==13.0.0 pytesseract==0.3.13 packaging==25.0 openpyxl==3.1.5
           if ($LASTEXITCODE -ne 0) { throw 'Offline reader build dependencies unavailable' }
           python tools/test_withholding_reader.py
-          if ($LASTEXITCODE -ne 0) { throw 'Offline parser contract failed' }
+          python tools/test_municipality_hint.py
+          if ($LASTEXITCODE -ne 0) { throw 'Offline parser/municipality contract failed' }
           python -m PyInstaller --onefile --clean --noconfirm --name FurusatoDocumentReader --collect-all pypdfium2_raw --collect-all pypdfium2 --exclude-module fitz --exclude-module pymupdf --exclude-module pillow_heif tools/withholding_reader.py
           if ($LASTEXITCODE -ne 0) { throw 'Reader executable build failed' }
           python tools/verify_reader_runtime.py dist/FurusatoDocumentReader.exe

@@ -60,5 +60,45 @@ class MunicipalityCandidateTests(unittest.TestCase):
                 encode_municipality_name(bad)
 
 
+    def test_reader_bridge_only_exports_municipality_not_street(self):
+        from tempfile import TemporaryDirectory
+        from pathlib import Path
+        from unittest.mock import patch
+        from withholding_reader import extract, write_bridge
+        words = words_for("京都府京都市伏見区架空町12番34号")
+        with TemporaryDirectory() as tmp:
+            f = Path(tmp) / "placeholder.pdf"
+            f.write_bytes(b"synthetic")
+            with patch("withholding_reader.document_content",
+                       return_value=("令和 8 年分", words, "PDF_TEXT")):
+                result = extract(f)
+            self.assertEqual(result["municipality_hint"],
+                             {"name": "京都市", "class": "DESIGNATED"})
+            output = Path(tmp) / "bridge.tsv"
+            write_bridge(result, output)
+            bridge = output.read_text(encoding="utf-8")
+            self.assertIn("MUNI_CLASS\tDESIGNATED\n", bridge)
+            self.assertIn("MUNI_NAME_HEX\t4EAC90FD5E02\n", bridge)
+            for personal_address_part in ("伏見区", "架空町", "京都府"):
+                self.assertNotIn(personal_address_part, bridge)
+            with patch("withholding_reader.document_content",
+                       return_value=("令和 8 年分", words, "SCAN_OCR")):
+                scanned = extract(f)
+            self.assertNotIn("municipality_hint", scanned)
+
+    def test_vba_explicit_confirmation_reset_and_fingerprint(self):
+        from pathlib import Path
+        root = Path(__file__).resolve().parent
+        vba = (root.parent / "vba" / "TaxLawUpdater.bas").read_text(encoding="utf-8-sig")
+        builder = (root / "build_workbook.py").read_text(encoding="utf-8-sig")
+        for term in ('"MUNI_CLASS"', '"MUNI_NAME_HEX"',
+                     "DecodeMunicipalityHint", 'municipalitySelected = "条例差・不明"',
+                     'home.Range("D51").Value2 = municipalitySelected',
+                     'home.Range("F51").Value2 = municipalityName',
+                     'CStr(residenceYear) & "年1月1日',
+                     "vbYesNo + vbQuestion + vbDefaultButton2"):
+            self.assertIn(term, vba)
+        self.assertIn('["F51"]  # municipality candidate', builder)
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

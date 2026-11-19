@@ -33,7 +33,10 @@ def add_separate_tax(book, home, field, bar, note, progressive):
     field("D49", "適用条件", "未確認", ("未確認", "照合済", "特例あり"))
     field("D50", "分離課税の所得年", 2026, maximum=2026)
     field("D51", "住民税の課税自治体", "条例差・不明", ("標準市町村", "標準指定都市", "条例差・不明"))
-    note(home, 52, "課税自治体は通常・分離課税共通です。標準市町村（6%・4%）、標準指定都市（8%・2%）、超過課税等は「条例差・不明」を選択。")
+    home["F51"] = None  # municipality name only, never the full source address
+    home["F51"].protection = Protection(locked=True)
+    home.column_dimensions["F"].hidden = True
+    note(home, 52, '=IF(F51="","課税自治体は対象住民税年度1月1日の住所地と条例を確認しD51で選択。", "源泉票の受給者住所からの候補："&F51&"。住民税年度1月1日の住所地・条例を確認してください。")')
     note(home, 53, "検算対象を含む寄附金控除を除き、基礎控除を含む控除合計を税目別に入力。法定人的控除差は基礎控除5万円を含み、国税と住民税の控除合計の差とは別です。")
     note(home, 54, "入力はブックに保存できます。修正後は自動再計算（手動時はF9）。控除配分・年税額・寄附負担を再計算します。")
     home["A55"] = "詳細設定の状態"

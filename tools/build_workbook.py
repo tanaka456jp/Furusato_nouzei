@@ -375,6 +375,7 @@ def build(source, output):
         # source; do not reuse source verification across case-mode changes.
         + [f"B{i}" for i in range(44, 52)]
         + [f"D{i}" for i in range(44, 52)]
+        + ["F51"]  # municipality candidate is part of the review snapshot
         + [f"D{i}" for i in range(72, 78)]
     )
     fingerprint_extra = (
