@@ -504,6 +504,21 @@ def write_bridge(result,output):
         # ASCII warnings, not raw personal data. The VBA UI can show precisely
         # why the extracted document is only a *provisional* import.
         writer.writerow(["WARNINGS",";".join(result.get("warnings",[]))])
+        auto = result.get("automatic_reference")
+        if auto is not None:
+            if auto.get("status") == "AUTO_REFERENCE":
+                amount, year = auto["limit"], auto["target_year"]
+                if type(amount) is not int or not 0 <= amount <= 10**9:
+                    raise ValueError("INVALID_AUTOMATIC_LIMIT")
+                if type(year) is not int or year not in (2025, 2026):
+                    raise ValueError("INVALID_AUTOMATIC_YEAR")
+                writer.writerow(["AUTO_STATUS", "AUTO_REFERENCE"])
+                writer.writerow(["AUTO_LIMIT", amount])
+                writer.writerow(["AUTO_YEAR", year])
+                writer.writerow(["AUTO_SCOPE", "UNVERIFIED_SOURCE_ONLY"])
+                writer.writerow(["AUTO_WARNINGS", auto["reason"]])
+            else:
+                writer.writerow(["AUTO_STATUS", "HOLD"])
         hint = result.get("municipality_hint")
         if isinstance(hint, dict) and hint.get("class") in (
                 "STANDARD", "DESIGNATED", "SPECIAL"):
@@ -518,6 +533,8 @@ if __name__=="__main__":
     ap.add_argument("--input",required=True,type=Path)
     ap.add_argument("--output",required=True,type=Path)
     ap.add_argument("--bridge",type=Path)
+    ap.add_argument("--auto-reference-year",type=int,choices=(2025,2026),
+                    help="source-only hypothetical amount, not a verified limit")
     ap.add_argument("--page",type=int,help="1-based page index, one taxpayer only")
     ap.add_argument("--page-count",action="store_true",help="write count only; never inspect tax values")
     ap.add_argument("--batch-bridge", action="store_true",
@@ -539,6 +556,12 @@ if __name__=="__main__":
             print("PAGE_COUNT_READY")
             sys.exit(0)
         data=extract(args.input,page_number=args.page)
+        if args.auto_reference_year is not None:
+            if args.bridge is None:
+                raise ValueError("Automatic reference needs a local bridge")
+            from automatic_slip_reference import make_automatic_reference
+            data["automatic_reference"] = make_automatic_reference(
+                data,args.auto_reference_year)
         args.output.write_text(json.dumps(data,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
         if args.bridge: write_bridge(data,args.bridge)
         print("READER_"+data["status"])
