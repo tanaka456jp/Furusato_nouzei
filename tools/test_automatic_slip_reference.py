@@ -1,5 +1,13 @@
 """Anonymous synthetic tests for the source-only auto-reference pathway."""
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
+import json
+import subprocess
+import sys
+
+from bulk_salary_only import all_page_rows
 
 from automatic_slip_reference import make_automatic_reference
 
@@ -51,6 +59,51 @@ class AutoReferenceTests(unittest.TestCase):
         self.assertNotIn("VERIFIED", candidate["status"])
         self.assertIn("NO_OTHER_CREDITS_ASSUMED", candidate["reason"])
 
+
+    def test_batch_2026_reference_from_two_2025_pages_without_any_dialog(self):
+        original = source()
+        with patch("withholding_reader.pdf_page_count", return_value=2), \
+                patch("withholding_reader.extract", side_effect=[original, original]):
+            rows = all_page_rows(Path("synthetic.pdf"), target_year=2026)
+        self.assertEqual(len(rows), 2)
+        for index, row in enumerate(rows, 1):
+            self.assertEqual(row["PAGE"], index)
+            self.assertEqual(row["YEAR"], 2026)
+            self.assertEqual(row["STATUS"], "PROVISIONAL")
+            self.assertEqual(row["REASON"], "AUTO_SOURCE_ASSUMPTION")
+            self.assertGreater(row["REFERENCE_LIMIT"], 0)
+        with patch("withholding_reader.pdf_page_count", return_value=2), \
+                patch("withholding_reader.extract", side_effect=[original, ValueError("damaged")]):
+            rows = all_page_rows(Path("synthetic.pdf"), target_year=2026)
+        self.assertEqual(rows[1]["STATUS"], "HOLD")
+        self.assertEqual(rows[1]["REFERENCE_LIMIT"], "")
+
+    def test_local_json_cli_exports_auto_reference_and_no_identifier(self):
+        with TemporaryDirectory() as tmp:
+            file = Path(tmp) / "synthetic.json"
+            output = Path(tmp) / "result.json"
+            bridge = Path(tmp) / "bridge.tsv"
+            raw = source()
+            file.write_text(json.dumps({
+                "schema": "furusato-withholding/v1",
+                "year": raw["year"],
+                "fields": raw["fields"],
+            }), encoding="utf-8")
+            cli = Path(__file__).with_name("withholding_reader.py")
+            run = subprocess.run([
+                sys.executable, str(cli), "--input", str(file),
+                "--output", str(output), "--bridge", str(bridge),
+                "--auto-reference-year", "2026",
+            ], text=True, capture_output=True, check=False, timeout=30)
+            self.assertEqual(run.returncode, 0, run.stderr)
+            data = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(data["automatic_reference"]["status"], "AUTO_REFERENCE")
+            output_text = bridge.read_text(encoding="utf-8")
+            self.assertIn("AUTO_STATUS\tAUTO_REFERENCE", output_text)
+            self.assertIn("AUTO_SCOPE\tUNVERIFIED_SOURCE_ONLY", output_text)
+            self.assertIn("AUTO_YEAR\t2026", output_text)
+            self.assertNotIn("personal_name", output_text)
+            self.assertNotIn("residential_address", output_text)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
