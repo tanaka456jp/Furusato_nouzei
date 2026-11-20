@@ -136,7 +136,7 @@ class AutoReferenceTests(unittest.TestCase):
         insured["fields"]["life_deduction_reference"] = 39_999
         held = make_automatic_reference(insured, 2026)
         self.assertEqual(held["status"], "HOLD")
-        self.assertEqual(held["reason"], "MORTGAGE_DEDUCTION_DETAIL_REVIEW")
+        self.assertEqual(held["reason"], "MORTGAGE_LIFE_PREMIUM_REVIEW")
 
     def test_first_year_and_2022_mortgage_classes_fail_closed(self):
         base = dict(year=2026, salary_gross=7_000_000,
