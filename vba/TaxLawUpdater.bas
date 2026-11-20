@@ -645,6 +645,8 @@ Private Function BatchReasonLabel(ByVal code As String) As String
             BatchReasonLabel = "原票の必須項目欠落・不一致等で自動目安は保留"
         Case "MORTGAGE_POSSIBLE_AMOUNT_MISSING"
             BatchReasonLabel = "住宅ローン控除可能額が不明。源泉票の記載を確認"
+        Case "MORTGAGE_DEDUCTION_DETAIL_REVIEW"
+            BatchReasonLabel = "生命保険料控除等の内訳と所得控除合計を確認"
         Case "MORTGAGE_OCCUPANCY_CLASS_REVIEW"
             BatchReasonLabel = "住宅ローン控除の居住開始年・取得区分を確認"
         Case "MORTGAGE_NEXT_YEAR_REVIEW"
