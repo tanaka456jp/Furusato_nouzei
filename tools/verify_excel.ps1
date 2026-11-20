@@ -314,6 +314,59 @@ try {
     Assert-Value $batchSheet.Range('T6').Value2 151000 'Rejected comparison retains filing ceiling'
     Assert-Value ([double]$batchSheet.Range('K6').RowHeight) $noteHeight 'Rejected comparison preserves readable wrapped height'
     QA-Stage 'batch-one-stop-mortgage-v4-notes-pass'
+    QA-Stage 'batch-v5-editable-input-import-start'
+    $editColumns = @(
+        'EDIT_SOURCE_YEAR','EDIT_TARGET_YEAR','EDIT_MUNI_CLASS',
+        'EDIT_FORMAT','EDIT_WARNINGS','EDIT_SALARY_GROSS',
+        'EDIT_SALARY_REFERENCE','EDIT_INCOME_TAX_WITHHELD',
+        'EDIT_SOCIAL_INSURANCE','EDIT_LIFE_NEW','EDIT_LIFE_OLD',
+        'EDIT_MEDICAL_CARE','EDIT_ANNUITY_NEW','EDIT_ANNUITY_OLD',
+        'EDIT_EARTHQUAKE_DEDUCTION_REFERENCE',
+        'EDIT_OLD_LONG_PREMIUM_REFERENCE',
+        'EDIT_SPOUSE_DEDUCTION_REFERENCE','EDIT_SPOUSE_INCOME_REFERENCE',
+        'EDIT_SPOUSE_ELIGIBILITY_FLAG','EDIT_UNDER16_COUNT',
+        'EDIT_SPECIAL_RELATIVE_COUNT',
+        'EDIT_SPECIAL_RELATIVE_DEDUCTION_REFERENCE',
+        'EDIT_INCOME_ADJUSTMENT','EDIT_MORTGAGE_CREDIT',
+        'EDIT_MORTGAGE_POSSIBLE_CREDIT',
+        'EDIT_MORTGAGE_OCCUPANCY_YEAR','EDIT_MORTGAGE_CLAIM_COUNT'
+    )
+    $v5Header = $v4Header + [char]9 + ($editColumns -join [char]9)
+    $v5Extra = @(2026,2026,'STANDARD','PDF_TEXT','',8800000,
+                 6850000,383900,2183340,0,0,0,0,0,0,0,0,0,0,
+                 0,0,0,0,0,300000,2024,1)
+    if ($v5Extra.Count -ne $editColumns.Count) {
+        throw 'V5_EDIT_SOURCE_SCHEMA_FIXTURE_WRONG'
+    }
+    $v5Lines = @($v5Header)
+    $v5Lines += $v4First + [char]9 + ($v5Extra -join [char]9)
+    $v5Lines += $v4Lines[2] + ([char]9 * $editColumns.Count)
+    $v5Path = Join-Path $dir 'synthetic-v5-per-person-edit.tsv'
+    [IO.File]::WriteAllLines($v5Path,[string[]]$v5Lines,
+                             [Text.Encoding]::ASCII)
+    if (-not [bool]($excel.Run(
+             'TaxLawUpdater.TryLoadBatchFromTsvForTest',$v5Path))) {
+        $code = [long]($excel.Run('TaxLawUpdater.BatchLastInnerErrorForTest'))
+        throw ('V5_SOURCE_EDITOR_NOT_LOADED_CODE=' + $code)
+    }
+    $batchEditor = $book.Worksheets.Item('一括入力修正')
+    Assert-Value $batchEditor.Range('B6').Value2 1 'V5 detail source page is aligned'
+    Assert-Value $batchEditor.Range('H6').Value2 8800000 'V5 detail salary amount'
+    Assert-Value $batchEditor.Range('D6').Value2 2026 'V5 target income year'
+    Assert-Value $batchSheet.Range('T6').Value2 151000 'V5 second filing mode retained'
+    Assert-MacroAction ([string]$batchEditor.Buttons().Item('btnRecalculateBatchEdits').OnAction) 'FurusatoQA.xlsm!TaxLawUpdater.RecalculateBatchFromEditor' 'Batch editor button ownership'
+    $batchEditor.Range('K6').Value2 = 2200000
+    # The reader is intentionally not bundled into this isolated QA copy.
+    # A recalculation attempt must fail without changing other persons,
+    # the displayed ceiling, the derived total, or the user's corrections.
+    if ([bool]($excel.Run('TaxLawUpdater.TryRecalculateBatchForTest'))) {
+        throw 'BATCH_EDITOR_ACCEPTED_MISSING_READER'
+    }
+    Assert-Value $batchEditor.Range('K6').Value2 2200000 'Failed recalc retained correction'
+    Assert-Value $batchSheet.Range('F6').Value2 2871190 'Failed recalc kept derived total'
+    Assert-Value $batchSheet.Range('T6').Value2 151000 'Failed recalc kept filing amount'
+    Assert-Value $batchSheet.Range('B7').Value2 2 'Failed recalc kept other person'
+    QA-Stage 'batch-v5-editable-input-import-pass'
     [void]($excel.Run('TaxLawUpdater.ClearBatchOverview'))
     Assert-Value ([string]$batchSheet.Range('B6').Value2) '' 'Bulk wipe clears old salary rows'
     Assert-Value ([string]$batchSheet.Range('B10').Value2) '' 'Bulk wipe clears final row'
