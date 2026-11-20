@@ -16,6 +16,9 @@ from bulk_salary_only import (
     write_batch_bridge, pack_editor_source,
 )
 from automatic_slip_reference import make_automatic_reference
+from batch_source_deductions import (
+    reconcile_mortgage_deductions, MortgageDeductionError,
+)
 from recipient_name import decode as decode_name
 
 INPUT_COLUMNS = ("PAGE", "RECIPIENT_NAME_HEX") + EDIT_COLUMNS
@@ -106,11 +109,16 @@ def reconstruct_total(record, target):
     fields.update({"basic_reference": basic,
                    "life_deduction_reference": life,
                    "deductions_reference": total})
-    # Cross-check source tax independently; changing salary without changing
-    # withholding tax must not silently keep a stale ceiling.
-    if reconcile(source_year, fields).get("source_tax") != "MATCH":
-        return total
-    return total
+    # Source-year national total is rebuilt, then target-year national total
+    # is reprojected by the independent approved deduction model. The main
+    # overview must NOT display stale G06 from the preceding-year slip.
+    target_salary = independent_nta_fifth_table_salary_income(target, gross) - adjust
+    try:
+        return reconcile_mortgage_deductions(
+            fields, source_year, target, basic, salary_income,
+            target_salary)["target_national"]
+    except (MortgageDeductionError, TypeError, ValueError):
+        return None
 
 
 def evaluated_row(page, name_hex, record, target, total):
