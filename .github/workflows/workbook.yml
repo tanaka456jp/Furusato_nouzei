@@ -466,6 +466,11 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - name: Download exact-run offline reader for batch correction Excel test
+        uses: actions/download-artifact@v4
+        with:
+          name: Furusato_DocumentReader_Windows_EXE_${{ github.run_id }}-${{ github.run_attempt }}
+          path: _reader_for_excel
       - name: Build, install and verify stale-results safety (isolated Excel)
         shell: powershell
         run: |
@@ -551,7 +556,20 @@ jobs:
         run: |
           $work = Join-Path $env:RUNNER_TEMP ('furusato-' + $env:GITHUB_RUN_ID + '-' + $env:GITHUB_RUN_ATTEMPT)
           $evidence = Join-Path $work 'excel_acceptance.json'
-          & .\tools\verify_excel.ps1 -Workbook (Join-Path $work 'review/Furusato_nouzei.xlsm') -EvidencePath $evidence -PdfEvidencePath (Join-Path $work 'pdf_layout_evidence') -SourceHead (git rev-parse HEAD)
+          $readers = @(Get-ChildItem -LiteralPath _reader_for_excel -Recurse -File -Filter FurusatoDocumentReader.exe)
+          $reports = @(Get-ChildItem -LiteralPath _reader_for_excel -Recurse -File -Filter reader_build.json)
+          if ($readers.Count -ne 1 -or $reports.Count -ne 1) {
+            throw 'Offline reader artifact contents ambiguous'
+          }
+          $source = Get-Content -LiteralPath $reports[0].FullName -Raw -Encoding UTF8 | ConvertFrom-Json
+          $digest = (Get-FileHash -LiteralPath $readers[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($source.head_sha -cne (git rev-parse HEAD).Trim() -or
+              $source.exe_sha256 -cne $digest -or
+              $source.run_id -ne [long]$env:GITHUB_RUN_ID -or
+              $source.exe_authenticode -cne 'UNSIGNED') {
+            throw 'Offline batch reader is not the verified same-run unsigned build'
+          }
+          & .\tools\verify_excel.ps1 -Workbook (Join-Path $work 'review/Furusato_nouzei.xlsm') -ReaderExecutable $readers[0].FullName -EvidencePath $evidence -PdfEvidencePath (Join-Path $work 'pdf_layout_evidence') -SourceHead (git rev-parse HEAD)
           if (-not $?) { throw 'Windows Excel acceptance failed' }
           if (-not (Test-Path -LiteralPath $evidence)) { throw 'Excel acceptance evidence was not created' }
           $report = Get-Content -LiteralPath $evidence -Raw -Encoding UTF8 | ConvertFrom-Json
