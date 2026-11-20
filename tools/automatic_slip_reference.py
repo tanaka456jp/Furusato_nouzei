@@ -89,7 +89,11 @@ def make_automatic_reference(extracted, target_year):
         family_details_entered = any(fields.get(k, 0) for k in (
             "under16_count", "dependent_general_count", "dependent_special_count",
             "dependent_elderly_count", "dependent_cohabiting_elderly_count",
-            "under23_life_eligible_flag"))
+            "under23_life_eligible_flag",
+            "spouse_deduction_reference", "spouse_income_reference",
+            "spouse_eligibility_flag", "life_new", "life_old",
+            "medical_care", "annuity_new", "annuity_old",
+            "earthquake_deduction_reference"))
         if mortgage_present or family_details_entered:
             try:
                 mortgage_deductions = reconcile_mortgage_deductions(
