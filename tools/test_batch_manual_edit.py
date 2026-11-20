@@ -144,6 +144,64 @@ class BatchManualEditTests(unittest.TestCase):
         self.assertEqual(sorted(p.name for p in Path(folder.name).iterdir()),
                          ["overview.tsv"])
 
+
+    def test_family_category_rebuild_and_local_deduction_rates(self):
+        from batch_source_deductions import reviewed_family_details
+        values = {
+            "dependent_general_count": (380_000, 330_000, 50_000),
+            "dependent_special_count": (630_000, 450_000, 180_000),
+            "dependent_elderly_count": (480_000, 380_000, 100_000),
+            "dependent_cohabiting_elderly_count": (580_000, 450_000, 130_000),
+        }
+        for key, (income, resident, difference) in values.items():
+            with self.subTest(category=key):
+                item = source()
+                item["fields"][key] = 1
+                edited = data_row(1, item)
+                if key == "dependent_general_count":
+                    edited["EDIT_UNDER23_LIFE_ELIGIBLE_FLAG"] = "0"
+                inp, out = self.make_files([edited])
+                recalculate_file(inp, out)
+                with out.open(encoding="ascii", newline="") as stream:
+                    row = next(csv.DictReader(stream, delimiter="\t"))
+                self.assertEqual(row["TOTAL_DEDUCTIONS"], str(1_670_000 + income))
+                self.assertEqual(row["STATUS"], "HOLD")
+                self.assertEqual(row["REFERENCE_LIMIT"], "")
+                reviewed = reviewed_family_details(
+                    {key: 1, "under23_life_eligible_flag": 0
+                     if key == "dependent_general_count" else None}, 2026, 2026)
+                self.assertEqual(reviewed["resident"], resident)
+                self.assertEqual(reviewed["personal_difference"], 50_000 + difference)
+
+    def test_under23_new_life_requires_review_when_general_age_unknown(self):
+        item = source(insurance=120_000)
+        item["fields"]["dependent_general_count"] = 1
+        initial = data_row(1, item)
+        inp, out = self.make_files([initial])
+        recalculate_file(inp, out)
+        with out.open(encoding="ascii", newline="") as stream:
+            first = next(csv.DictReader(stream, delimiter="\t"))
+        self.assertEqual(first["REASON"], "EDIT_FAMILY_DEDUCTION_REVIEW")
+        initial["EDIT_UNDER23_LIFE_ELIGIBLE_FLAG"] = "1"
+        confirmed_inp, confirmed_out = self.make_files([initial])
+        recalculate_file(confirmed_inp, confirmed_out)
+        with confirmed_out.open(encoding="ascii", newline="") as stream:
+            confirmed = next(csv.DictReader(stream, delimiter="\t"))
+        self.assertNotEqual(confirmed["REASON"], "EDIT_FAMILY_DEDUCTION_REVIEW")
+        self.assertEqual(confirmed["TOTAL_DEDUCTIONS"], "2110000")
+
+    def test_invalid_family_count_does_not_affect_second_person(self):
+        first, second = data_row(1, source()), data_row(2, source())
+        first["EDIT_DEPENDENT_SPECIAL_COUNT"] = "31"
+        inp, out = self.make_files([first, second])
+        recalculate_file(inp, out)
+        with out.open(encoding="ascii", newline="") as stream:
+            rows = list(csv.DictReader(stream, delimiter="\t"))
+        self.assertEqual(rows[0]["REASON"], "EDIT_FAMILY_DEDUCTION_REVIEW")
+        self.assertEqual(rows[0]["REFERENCE_LIMIT"], "")
+        self.assertEqual(rows[1]["STATUS"], "PROVISIONAL")
+        self.assertEqual(rows[1]["TOTAL_DEDUCTIONS"], "1670000")
+
     def test_formula_and_duplicate_columns_are_rejected(self):
         row = data_row(1, source())
         row["EDIT_SALARY_GROSS"] = "=1+2"
