@@ -202,6 +202,19 @@ class BatchManualEditTests(unittest.TestCase):
         self.assertEqual(rows[1]["STATUS"], "PROVISIONAL")
         self.assertEqual(rows[1]["TOTAL_DEDUCTIONS"], "1670000")
 
+    def test_explicit_zero_spouse_fields_do_not_create_false_hold(self):
+        item = data_row(1, source())
+        item["EDIT_SPOUSE_DEDUCTION_REFERENCE"] = "0"
+        item["EDIT_SPOUSE_INCOME_REFERENCE"] = "0"
+        item["EDIT_SPOUSE_ELIGIBILITY_FLAG"] = "0"
+        inp, out = self.make_files([item])
+        recalculate_file(inp, out)
+        with out.open(encoding="ascii", newline="") as stream:
+            row = next(csv.DictReader(stream, delimiter="\t"))
+        self.assertEqual(row["TOTAL_DEDUCTIONS"], "1670000")
+        self.assertEqual(row["STATUS"], "PROVISIONAL", row["REASON"])
+        self.assertNotEqual(row["FILING_LIMIT"], "")
+
     def test_formula_and_duplicate_columns_are_rejected(self):
         row = data_row(1, source())
         row["EDIT_SALARY_GROSS"] = "=1+2"
