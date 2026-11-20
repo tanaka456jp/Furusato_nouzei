@@ -1,10 +1,10 @@
 """Conservative salary-only mortgage one-stop estimate and filing comparison.
 
 All outputs are provisional model references, not verified personal taxes.
-Use only same-year year-end-adjusted wages, a single 2023+ mortgage claim,
-ordinary 5% resident-housing transfer, and fully reconciled withholding.
-Missing acquisition eligibility, additional deductions, or residency must not
-be silently represented as an exact homeowner filing benefit.
+Use a reconciled source-year wage and a single 2023+ mortgage claim.
+For a following-year projection keep the source mortgage-possible amount
+unchanged, but recalculate its national/resident split for the target tax year.
+Unsupported eligibility and deductions are never verified benefits.
 """
 from audit_salary_donation_limit import (
     independent_salary_ceiling, independent_one_stop_after_housing,
@@ -12,6 +12,7 @@ from audit_salary_donation_limit import (
 )
 from audit_mortgage_filing import independent_mortgage_filing_ceiling
 from audit_withholding_reconciliation import progressive_income_tax, reconcile
+from batch_source_deductions import MortgageDeductionError, reconcile_mortgage_deductions
 from fractions import Fraction
 
 
@@ -30,9 +31,10 @@ def compare_mortgage_modes(*, evidence, source_year, target_year,
     *maximum* one-stop amount across the same splits.
     """
     fields = evidence.get("fields") or {}
-    if source_year != target_year:
-        raise MortgageBatchScopeError("MORTGAGE_NEXT_YEAR_NOT_VERIFIED")
-    if type(source_year) is not int or source_year not in (2025, 2026):
+    if (type(source_year) is not int or type(target_year) is not int
+            or source_year not in (2025, 2026)
+            or target_year not in (2025, 2026)
+            or source_year > target_year or target_year - source_year > 1):
         raise MortgageBatchScopeError("MORTGAGE_TAX_YEAR_UNSUPPORTED")
     if not all(type(value) is int for value in
                (salary_income, national_deductions, resident_deductions,
@@ -40,28 +42,32 @@ def compare_mortgage_modes(*, evidence, source_year, target_year,
         raise MortgageBatchScopeError("MORTGAGE_DEDUCTIONS_NOT_RECONCILED")
     if (type(fields.get("salary_gross")) is not int or
             fields.get("income_adjustment", 0) != 0 or
-            fields.get("under16_count", 0) != 0 or
+            fields.get("salary_reference") !=
+            independent_nta_fifth_table_salary_income(
+                source_year, fields["salary_gross"]) or
             salary_income != independent_nta_fifth_table_salary_income(
-                source_year, fields["salary_gross"])):
+                target_year, fields["salary_gross"])):
         raise MortgageBatchScopeError("MORTGAGE_SALARY_OR_FAMILY_UNVERIFIED")
-    from bulk_salary_only import _life_deductions
+    source_basic = fields.get("basic_reference")
+    if source_basic is None:
+        from audit_salary_donation_limit import BASIC
+        source_basic = next(
+            (v for upper, v in BASIC[source_year]
+             if fields["salary_reference"] <= upper), None)
     try:
-        national_life, resident_life = _life_deductions(fields)
-    except (TypeError, ValueError) as exc:
-        raise MortgageBatchScopeError("MORTGAGE_LIFE_PREMIUM_INVALID") from exc
-    if (fields.get("life_deduction_reference", 0) != national_life
-            or national_deductions !=
-            fields.get("social_insurance", -1) + national_basic + national_life
-            or resident_deductions !=
-            fields.get("social_insurance", -1) + 430_000 + resident_life):
-        # Both distinct statutory deductions must be reconstructed from
-        # the FIVE premium boxes and match the source national total.
-        raise MortgageBatchScopeError("MORTGAGE_NONBASIC_DEDUCTIONS_UNVERIFIED")
-    if any(type(fields.get(key, 0)) is not int or fields.get(key, 0) != 0
-           for key in ("earthquake_paid", "earthquake_deduction_reference",
-                       "spouse_income_reference", "special_relative_count",
-                       "special_relative_deduction_reference")):
-        raise MortgageBatchScopeError("MORTGAGE_OTHER_DEDUCTIONS_UNVERIFIED")
+        d = reconcile_mortgage_deductions(
+            fields, source_year, target_year, source_basic,
+            fields["salary_reference"], salary_income)
+    except MortgageDeductionError as exc:
+        raise MortgageBatchScopeError(str(exc)) from None
+    if (national_deductions != d["target_national"]
+            or resident_deductions != d["target_resident"]
+            or national_basic != d["target_basic"]):
+        raise MortgageBatchScopeError("MORTGAGE_DEDUCTIONS_NOT_RECONCILED")
+    from audit_salary_donation_limit import resident_income_levy_exemption_limit
+    if salary_income <= resident_income_levy_exemption_limit(
+            fields.get("under16_count", 0)):
+        raise MortgageBatchScopeError("MORTGAGE_FAMILY_DEDUCTION_REVIEW")
     claim_count = fields.get("mortgage_claim_count")
     if type(claim_count) is not int or claim_count != 1:
         # An absent G35 is NOT proof of only one housing credit. Avoid
@@ -76,15 +82,20 @@ def compare_mortgage_modes(*, evidence, source_year, target_year,
     if (type(used) is not int or type(possible) is not int or
             possible <= 0 or used < 0 or used > possible):
         raise MortgageBatchScopeError("MORTGAGE_CREDIT_NOT_RECONCILED")
+    # Compare the original G29 with original tax, not target-year tax.
+    source_taxable = max(
+        0, fields["salary_reference"] - d["source_national"]) // 1000 * 1000
+    source_national_tax = progressive_income_tax(source_taxable)
     national_taxable = max(0, salary_income - national_deductions)//1000*1000
     national_tax = progressive_income_tax(national_taxable)
+    target_used = min(possible, national_tax)
     # In the NTA slip the "possible" amount can be omitted when the full
     # credit is consumed by income tax. But if the national liability is
     # *fully* used, an omitted possible amount leaves the resident carryover
     # unknown. Do not equate actual applied with total allowable credit.
-    if "mortgage_possible_credit" not in fields and used >= national_tax:
+    if "mortgage_possible_credit" not in fields and used >= source_national_tax:
         raise MortgageBatchScopeError("MORTGAGE_POSSIBLE_CREDIT_REQUIRED")
-    if used != min(possible, national_tax):
+    if used != min(possible, source_national_tax):
         raise MortgageBatchScopeError("MORTGAGE_USED_AMOUNT_DISAGREES")
     if reconcile(source_year, fields).get("source_tax") != "MATCH":
         raise MortgageBatchScopeError("MORTGAGE_SOURCE_TAX_NOT_RECONCILED")
@@ -101,7 +112,7 @@ def compare_mortgage_modes(*, evidence, source_year, target_year,
     scenarios = []
     for municipality in municipalities:
         nominal = independent_salary_ceiling(
-            year=source_year, salary_income=salary_income,
+            year=target_year, salary_income=salary_income,
             resident_deductions=resident_deductions,
             personal_difference=50_000, municipality=municipality)
         # Reject special high-rate schemes unsupported by the one-stop
@@ -109,7 +120,7 @@ def compare_mortgage_modes(*, evidence, source_year, target_year,
         if nominal["special_ratio"] < Fraction(56307, 100000):
             raise MortgageBatchScopeError("MORTGAGE_HIGH_RATE_UNVERIFIED")
         basis = (national_taxable + max(0, national_basic - 480000))//1000*1000
-        resident_housing = min(possible-used, 97500, basis*5//100)
+        resident_housing = min(possible-target_used, 97500, basis*5//100)
         one_stop = independent_one_stop_after_housing(
             nominal_thousand_yen=nominal["thousand_yen_reference"],
             resident_income_levy=nominal["resident_income_levy"],
@@ -125,7 +136,7 @@ def compare_mortgage_modes(*, evidence, source_year, target_year,
     try:
         filing = [
             independent_mortgage_filing_ceiling(
-                year=source_year, salary_income=salary_income,
+                year=target_year, salary_income=salary_income,
                 national_deductions=national_deductions,
                 resident_deductions=resident_deductions,
                 mortgage_possible=possible, occupancy_year=occupancy,
@@ -141,9 +152,9 @@ def compare_mortgage_modes(*, evidence, source_year, target_year,
     return {"one_stop_limit": conservative,
             "selected_municipality": selected_municipality,
             "filing_higher_limit": higher_filing,
-            "mortgage_applied_national": used,
+            "mortgage_applied_national": target_used,
             "mortgage_resident_transfer": min(
-                possible - used, 97500,
+                possible - target_used, 97500,
                 (national_taxable + max(0, national_basic-480000))//1000*1000*5//100),
             "model_locality": municipality_class if municipality_class in
                 ("STANDARD", "DESIGNATED") else "UNCERTAIN"}
