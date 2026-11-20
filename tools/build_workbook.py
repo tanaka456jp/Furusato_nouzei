@@ -586,15 +586,15 @@ def build(source, output):
     # Widen B for the clear-list button and K for the PDF export button.
     for col, width in {"A": 26, "B": 15, "C": 17, "D": 19,
                        "E": 19, "F": 19, "G": 18, "H": 19,
-                       "I": 19, "J": 15, "K": 36}.items():
+                       "I": 19, "J": 15, "K": 53}.items():
         batch.column_dimensions[col].width = width
     # L:S numerical trace is included in the sort/filter range to prevent
     # a name/amount/trace mismatch when Excel sorts by surname.
     for letter in "LMNOPQRS":
         batch.column_dimensions[letter].hidden = True
     for line, note_text, height in (
-        (1, "源泉徴収票｜複数人一括計算一覧（給与所得のみ・参考額）", 29),
-        (2, "源泉徴収票の給与所得だけを想定。その他の所得・申告分離課税は対象外。精緻計算は操作画面で1人ずつ行ってください。", 34),
+        (1, "源泉徴収票｜複数人一括計算一覧（ワンストップ特例・参考額）", 29),
+        (2, "確定申告なし・ワンストップ特例を前提とした給与所得のみの参考額。確定申告が有利な検証ケースは備考に比較額を表示します。", 34),
         (3, "HOLDは限度額を表示しません。参考額も確定金額ではありません。源泉票にない家族・自治体・控除等の条件を確認してください。", 34),
     ):
         batch.merge_cells(start_row=line, start_column=1, end_row=line, end_column=11)
@@ -623,7 +623,7 @@ def build(source, output):
     for col, caption in enumerate((
         "氏名", "ページ", "試算所得年", "支払金額（円）", "給与所得（円）",
         "所得控除合計（円）", "源泉徴収税額（円）", "社会保険料（円）",
-        "上限額参考（円）", "判定", "判定理由（詳細）",
+        "上限額参考（円）", "判定", "備考（判定理由・申告時比較）",
     ), 1):
         cell = batch.cell(row=5, column=col, value=caption)
         cell.fill = PatternFill("solid", fgColor="163A56")
@@ -645,6 +645,9 @@ def build(source, output):
             cell.protection = Protection(locked=True)
             if col in (4, 5, 6, 7, 8, 9, 12, 13, 14, 15, 16, 17, 18):
                 cell.number_format = "#,##0;[Red](#,##0);-"
+            if col == 11:
+                cell.alignment = Alignment(
+                    wrap_text=True, vertical="center", horizontal="left")
             if row % 2 == 0:
                 cell.fill = PatternFill("solid", fgColor="F4F8FB")
 
