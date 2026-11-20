@@ -125,6 +125,7 @@ def make_automatic_reference(extracted, target_year):
     # Default batch route is NO tax return + one-stop application. A
     # housing-credit slip must never silently receive the no-credit amount.
     filing_higher = None
+    filing_limit = (amount if model is not None else None)
     if mortgage_present:
         from batch_mortgage_one_stop import (
             MortgageBatchScopeError, compare_mortgage_modes)
@@ -158,6 +159,7 @@ def make_automatic_reference(extracted, target_year):
             return hold("MORTGAGE_ONE_STOP_REQUIRES_INDIVIDUAL_REVIEW")
         amount = comparison["one_stop_limit"]
         filing_higher = comparison["filing_higher_limit"]
+        filing_limit = comparison["filing_limit"]
         # The independent minimum after housing must use the corresponding
         # locality's *same* levy and rate trace.
         scenario_key = comparison["selected_municipality"]
@@ -211,6 +213,6 @@ def make_automatic_reference(extracted, target_year):
                           if model is not None else 0),
         "R_MODEL_LOCALITY": model_locality,
     }
-    return {"status": "AUTO_REFERENCE", "limit": amount, "filing_higher_limit": filing_higher, "mortgage_mode": mortgage_present, "target_year": target_year,
+    return {"status": "AUTO_REFERENCE", "limit": amount, "filing_higher_limit": filing_higher, "filing_limit": filing_limit, "mortgage_mode": mortgage_present, "target_year": target_year,
             "salary_income": projected_salary, "reason": ";".join(caveats),
             "report_trace": trace}
