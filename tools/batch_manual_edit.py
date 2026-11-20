@@ -75,36 +75,41 @@ def reconstruct_total(record, target):
     needed = ("salary_gross", "salary_reference",
               "income_tax_withheld", "social_insurance")
     if not all(type(fields.get(k)) is int for k in needed):
-        return None
+        fail("EDIT_REQUIRED_FIELDS_MISSING")
     gross = fields["salary_gross"]
     salary_income = fields["salary_reference"]
     adjust = fields.get("income_adjustment", 0)
-    if (gross > 20_000_000 or salary_income > gross or
-            not 0 <= adjust <= 150_000 or
-            salary_income != independent_nta_fifth_table_salary_income(
-                source_year, gross) - adjust):
-        return None
+    if gross > 20_000_000 or salary_income > gross:
+        fail("EDIT_SALARY_OUTSIDE_SUPPORTED_SCOPE")
+    if not 0 <= adjust <= 150_000:
+        fail("EDIT_INCOME_ADJUSTMENT_INVALID")
+    if salary_income != independent_nta_fifth_table_salary_income(
+            source_year, gross) - adjust:
+        fail("EDIT_SALARY_INCOME_MISMATCH")
     basic = next((amount for maximum, amount in BASIC[source_year]
                   if salary_income <= maximum), None)
     if basic is None:
-        return None
+        fail("EDIT_BASIC_DEDUCTION_OUTSIDE_SCOPE")
     eligible = source_year == 2026 and fields.get("under16_count", 0) > 0
-    life, _ = _life_deductions(fields, year=source_year,
-                               eligible_under23=eligible)
+    try:
+        life, _ = _life_deductions(fields, year=source_year,
+                                   eligible_under23=eligible)
+    except ValueError:
+        fail("EDIT_LIFE_PREMIUM_INVALID")
     quake = fields.get("earthquake_deduction_reference", 0)
     if (type(quake) is not int or quake > 50_000 or
             fields.get("old_long_premium_reference", 0) != 0):
-        return None
+        fail("EDIT_EARTHQUAKE_PREMIUM_REVIEW")
     spouse = fields.get("spouse_deduction_reference", 0)
     if type(spouse) is not int or spouse not in (0, 380_000):
-        return None
+        fail("EDIT_SPOUSE_DEDUCTION_REVIEW")
     if spouse and (type(fields.get("spouse_income_reference")) is not int or
                    fields["spouse_income_reference"] >
                    (580_000 if source_year == 2025 else 620_000)):
-        return None
+        fail("EDIT_SPOUSE_DEDUCTION_REVIEW")
     if any(fields.get(k, 0) for k in
            ("special_relative_count", "special_relative_deduction_reference")):
-        return None
+        fail("EDIT_SPECIAL_RELATIVE_REVIEW")
     total = fields["social_insurance"] + basic + life + quake + spouse
     fields.update({"basic_reference": basic,
                    "life_deduction_reference": life,
@@ -118,10 +123,10 @@ def reconstruct_total(record, target):
             fields, source_year, target, basic, salary_income,
             target_salary)["target_national"]
     except (MortgageDeductionError, TypeError, ValueError):
-        return None
+        fail("EDIT_DEDUCTIONS_NOT_RECONCILED")
 
 
-def evaluated_row(page, name_hex, record, target, total):
+def evaluated_row(page, name_hex, record, target, total, reason="EDIT_INPUT_REVIEW_REQUIRED"):
     if record is None or target not in (2025, 2026):
         return {
             **{k: (page if k == "PAGE" else
@@ -142,7 +147,7 @@ def evaluated_row(page, name_hex, record, target, total):
         "SOURCE_TAX": fields.get("income_tax_withheld", ""),
         "SOCIAL_INSURANCE": fields.get("social_insurance", ""),
         "REFERENCE_LIMIT": "", "STATUS": "HOLD",
-        "REASON": "EDIT_INPUT_REVIEW_REQUIRED",
+        "REASON": reason,
         "RECIPIENT_NAME_HEX": name_hex, "FILING_LIMIT": "",
         **{k: "" for k in REPORT_COLUMNS},
     }
@@ -161,7 +166,11 @@ def evaluated_row(page, name_hex, record, target, total):
             })
             row.update(auto["report_trace"])
         else:
-            row["REASON"] = "EDIT_SOURCE_TAX_OR_DEDUCTIONS_REVIEW"
+            if (auto.get("status") == "AUTO_REFERENCE" and
+                    reconcile(record["year"], fields).get("source_tax") != "MATCH"):
+                row["REASON"] = "EDIT_SOURCE_TAX_MISMATCH"
+            else:
+                row["REASON"] = "EDIT_SOURCE_TAX_OR_DEDUCTIONS_REVIEW"
     row.update(pack_editor_source(record, target))
     return row
 
@@ -190,13 +199,20 @@ def recalculate_file(source: Path, destination: Path):
                 decode_name(hex_name)
             evidence, target_year = evidence_from_edit(record)
             total = None
+            reason = "EDIT_INPUT_REVIEW_REQUIRED"
             if evidence is not None:
                 try:
                     total = reconstruct_total(evidence, target_year)
-                except (TypeError, ValueError, KeyError):
-                    total = None
+                except ValueError as exc:
+                    candidate = str(exc)
+                    reason = (candidate if len(candidate) <= 64 and
+                              CODE.fullmatch(candidate) and
+                              candidate.startswith("EDIT_")
+                              else "EDIT_DEDUCTIONS_NOT_RECONCILED")
+                except (TypeError, KeyError):
+                    reason = "EDIT_DEDUCTIONS_NOT_RECONCILED"
             results.append(evaluated_row(page, hex_name, evidence,
-                                          target_year, total))
+                                          target_year, total, reason))
     if not results:
         fail("EDIT_EMPTY")
     write_batch_bridge(results, destination)
