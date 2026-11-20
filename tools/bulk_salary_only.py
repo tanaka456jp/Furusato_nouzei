@@ -230,6 +230,11 @@ def all_page_rows(path: Path, target_year=None) -> list[dict]:
                     reviewed = {
                         "MORTGAGE_POSSIBLE_AMOUNT_MISSING",
                         "MORTGAGE_DEDUCTION_DETAIL_REVIEW",
+                        "MORTGAGE_BASIC_DEDUCTION_REVIEW",
+                        "MORTGAGE_LIFE_PREMIUM_REVIEW",
+                        "MORTGAGE_EARTHQUAKE_REVIEW",
+                        "MORTGAGE_SPOUSE_DEDUCTION_REVIEW",
+                        "MORTGAGE_FAMILY_DEDUCTION_REVIEW",
                         "MORTGAGE_OCCUPANCY_CLASS_REVIEW",
                         "MORTGAGE_NEXT_YEAR_REVIEW",
                         "MORTGAGE_LOCAL_TAX_REVIEW",
