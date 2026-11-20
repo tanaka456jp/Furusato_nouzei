@@ -63,6 +63,18 @@ class MortgageBatchOneStopTest(unittest.TestCase):
                 with self.assertRaises(MortgageBatchScopeError):
                     compare(evidence=data)
 
+    def test_missing_claim_count_is_not_assumed_single(self):
+        missing = sample()
+        del missing["fields"]["mortgage_claim_count"]
+        with self.assertRaisesRegex(MortgageBatchScopeError,
+                                    "MULTIPLE_CLAIMS_UNVERIFIED"):
+            compare(evidence=missing)
+        altered = sample()
+        altered["fields"]["mortgage_claim_count"] = True
+        with self.assertRaisesRegex(MortgageBatchScopeError,
+                                    "MULTIPLE_CLAIMS_UNVERIFIED"):
+            compare(evidence=altered)
+
     def test_omitted_possible_credit_cannot_hide_resident_carryover(self):
         data = sample()
         del data["fields"]["mortgage_possible_credit"]
