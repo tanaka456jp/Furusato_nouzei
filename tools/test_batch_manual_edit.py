@@ -233,6 +233,22 @@ class BatchManualEditTests(unittest.TestCase):
         self.assertEqual(row["STATUS"], "PROVISIONAL")
         self.assertEqual(row["FILING_LIMIT"], "")
 
+    def test_spouse_edit_uses_distinct_resident_deduction(self):
+        record = source()
+        record["fields"].update({
+            "spouse_deduction_reference": 380_000,
+            "spouse_income_reference": 0,
+            "spouse_eligibility_flag": 1,
+            "income_tax_withheld": 222_000,
+        })
+        inp, out = self.make_files([data_row(1, record)])
+        recalculate_file(inp, out)
+        with out.open(encoding="ascii", newline="") as stream:
+            actual = next(csv.DictReader(stream, delimiter="\t"))
+        self.assertEqual(actual["TOTAL_DEDUCTIONS"], "2050000")
+        self.assertEqual(actual["R_RESIDENT_DEDUCTIONS"], "1760000")
+        self.assertEqual(actual["STATUS"], "PROVISIONAL", actual["REASON"])
+
     def test_formula_and_duplicate_columns_are_rejected(self):
         row = data_row(1, source())
         row["EDIT_SALARY_GROSS"] = "=1+2"
