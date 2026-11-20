@@ -127,7 +127,22 @@ def make_automatic_reference(extracted, target_year):
                 national_basic=source_basic,
                 municipality_class=(extracted.get("municipality_hint")
                                     or {}).get("class", "UNCERTAIN"))
-        except (MortgageBatchScopeError, TypeError, ValueError):
+        except MortgageBatchScopeError as exc:
+            # Only immutable, reviewed reason codes can travel to the Excel
+            # bridge; never carry document text or personal identifiers.
+            distinctions = {
+                "MORTGAGE_POSSIBLE_CREDIT_REQUIRED":
+                    "MORTGAGE_POSSIBLE_AMOUNT_MISSING",
+                "MORTGAGE_OCCUPANCY_OR_CLASS_UNVERIFIED":
+                    "MORTGAGE_OCCUPANCY_CLASS_REVIEW",
+                "MORTGAGE_NEXT_YEAR_NOT_VERIFIED":
+                    "MORTGAGE_NEXT_YEAR_REVIEW",
+                "MORTGAGE_MUNICIPALITY_RATE_UNVERIFIED":
+                    "MORTGAGE_LOCAL_TAX_REVIEW",
+            }
+            return hold(distinctions.get(
+                str(exc), "MORTGAGE_ONE_STOP_REQUIRES_INDIVIDUAL_REVIEW"))
+        except (TypeError, ValueError):
             return hold("MORTGAGE_ONE_STOP_REQUIRES_INDIVIDUAL_REVIEW")
         amount = comparison["one_stop_limit"]
         filing_higher = comparison["filing_higher_limit"]
