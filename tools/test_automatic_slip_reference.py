@@ -162,7 +162,7 @@ class AutoReferenceTests(unittest.TestCase):
             fixture["fields"], 2025, 2026, 630_000, 5_740_000, 5_740_000)
         self.assertEqual(detail["source_national"], 2_312_000)
         self.assertEqual(detail["target_national"], 2_372_000)
-        self.assertEqual(detail["target_resident"], 2_044_000)
+        self.assertEqual(detail["target_resident"], 2_040_000)  # Resident care relief is ¥16k
         projected = make_automatic_reference(fixture, 2026)
         self.assertEqual(projected["status"], "AUTO_REFERENCE", projected)
         self.assertTrue(projected["mortgage_mode"])
