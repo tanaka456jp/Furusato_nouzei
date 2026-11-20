@@ -70,7 +70,7 @@ class AutoReferenceTests(unittest.TestCase):
             salary_reference=5_200_000, deductions_reference=1_670_000,
             social_insurance=1_000_000, basic_reference=670_000,
             income_tax_withheld=0, mortgage_possible_credit=300_000,
-            mortgage_credit=278_500, mortgage_occupancy_year=2024)
+            mortgage_credit=278_500, mortgage_claim_count=1, mortgage_occupancy_year=2024)
         actual = make_automatic_reference(candidate, 2026)
         self.assertEqual(actual["status"], "AUTO_REFERENCE", actual)
         self.assertTrue(actual["mortgage_mode"])
@@ -90,7 +90,7 @@ class AutoReferenceTests(unittest.TestCase):
             salary_reference=5_200_000, deductions_reference=1_670_000,
             social_insurance=1_000_000, basic_reference=670_000,
             income_tax_withheld=0, mortgage_possible_credit=300_000,
-            mortgage_credit=278_500, mortgage_occupancy_year=2024)
+            mortgage_credit=278_500, mortgage_claim_count=1, mortgage_occupancy_year=2024)
         annual["municipality_hint"] = {"name": "synthetic city",
                                         "class": "SPECIAL"}
         special = make_automatic_reference(annual, 2026)
@@ -124,7 +124,7 @@ class AutoReferenceTests(unittest.TestCase):
             life_new=120_000, life_deduction_reference=40_000,
             deductions_reference=1_710_000, income_tax_withheld=0,
             mortgage_possible_credit=300_000, mortgage_credit=270_500,
-            mortgage_occupancy_year=2024)
+            mortgage_claim_count=1, mortgage_occupancy_year=2024)
         accepted = make_automatic_reference(insured, 2026)
         self.assertEqual(accepted["status"], "AUTO_REFERENCE", accepted)
         self.assertTrue(accepted["mortgage_mode"])
@@ -143,7 +143,7 @@ class AutoReferenceTests(unittest.TestCase):
                     salary_reference=5_200_000, deductions_reference=1_670_000,
                     social_insurance=1_000_000, basic_reference=670_000,
                     income_tax_withheld=0, mortgage_possible_credit=300_000,
-                    mortgage_credit=278_500)
+                    mortgage_credit=278_500, mortgage_claim_count=1)
         for occupancy in (2022, 2026, 2027):
             with self.subTest(occupancy=occupancy):
                 proposal = make_automatic_reference(
