@@ -119,6 +119,13 @@ def reconcile_mortgage_deductions(fields, source_year, target_year,
     spouse_inferred = False
     spouse_amount = fields.get("spouse_deduction_reference")
     spouse_income = fields.get("spouse_income_reference")
+    # Batch editor faithfully stores explicit zeros for empty source boxes.
+    # (deduction=0, income=0, eligibility=0) means NO spouse deduction,
+    # not an invalid claim to a 380,000-yen ordinary-spouse deduction.
+    if (spouse_amount == 0 and spouse_income in (None, 0)
+            and fields.get("spouse_eligibility_flag", 0) == 0):
+        spouse_amount = None
+        spouse_income = None
     if spouse_amount is None and type(spouse_income) is int:
         # Some native PDFs print G13 immediately *after* its amount, so a
         # strict right-of-anchor extractor can omit it. Infer the 380k
