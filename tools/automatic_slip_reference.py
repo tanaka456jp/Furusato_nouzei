@@ -63,6 +63,21 @@ def make_automatic_reference(extracted, target_year):
     nonbasic = gross_deductions - source_basic
     if nonbasic < social:
         return hold("SOURCE_DEDUCTIONS_INCONSISTENT")
+    mortgage_keys = ("mortgage_credit", "mortgage_possible_credit",
+                     "mortgage_occupancy_year", "mortgage_claim_count")
+    mortgage_present = any(fields.get(k) not in (None, 0) for k in mortgage_keys)
+    if mortgage_present:
+        # A mortgage comparison needs the independently derived RESIDENT
+        # life-insurance deduction, not the national figure printed on the
+        # slip. Unsupported family and earthquake deductions still HOLD.
+        from bulk_salary_only import _life_deductions
+        try:
+            national_life, resident_life = _life_deductions(fields)
+        except (TypeError, ValueError):
+            return hold("MORTGAGE_ONE_STOP_REQUIRES_INDIVIDUAL_REVIEW")
+        if (fields.get("life_deduction_reference", 0) != national_life
+                or nonbasic != social + national_life):
+            return hold("MORTGAGE_DEDUCTION_DETAIL_REVIEW")
     model = None
     model_locality = "UNCERTAIN"
     try:
@@ -76,7 +91,8 @@ def make_automatic_reference(extracted, target_year):
                                 target_year, gross) - adjustment)
         if projected_salary < 0 or projected_salary > gross:
             return hold("PROJECTED_SALARY_INVALID")
-        resident_deductions = nonbasic + 430_000
+        resident_deductions = (social + resident_life + 430_000
+                               if mortgage_present else nonbasic + 430_000)
         if projected_salary <= 450_000:
             amount = 0
         elif resident_deductions >= projected_salary:
@@ -109,9 +125,6 @@ def make_automatic_reference(extracted, target_year):
         return hold("MODEL_OUTSIDE_SCOPE")
     # Default batch route is NO tax return + one-stop application. A
     # housing-credit slip must never silently receive the no-credit amount.
-    mortgage_keys = ("mortgage_credit", "mortgage_possible_credit",
-                     "mortgage_occupancy_year", "mortgage_claim_count")
-    mortgage_present = any(fields.get(k) not in (None, 0) for k in mortgage_keys)
     filing_higher = None
     if mortgage_present:
         from batch_mortgage_one_stop import (
