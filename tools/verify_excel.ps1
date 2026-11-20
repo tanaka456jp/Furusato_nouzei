@@ -402,6 +402,43 @@ try {
         Assert-Value $batchSheet.Range('B7').Value2 2 'Second person not mixed by recalculation'
     }
     QA-Stage 'batch-v5-editable-input-import-pass'
+    # v6 extends the verified v5 schema with four adult dependent counts
+    # and the operator-verified 2026 under-23 life-insurance condition.
+    QA-Stage 'batch-v6-family-editor-start'
+    $v6Fields = @('EDIT_DEPENDENT_GENERAL_COUNT', 'EDIT_DEPENDENT_SPECIAL_COUNT',
+                  'EDIT_DEPENDENT_ELDERLY_COUNT',
+                  'EDIT_DEPENDENT_COHABITING_ELDERLY_COUNT',
+                  'EDIT_UNDER23_LIFE_ELIGIBLE_FLAG')
+    $v6Header = $v5Header + [char]9 + ($v6Fields -join [char]9)
+    $v6Rows = @($v6Header)
+    $v6Rows += $v4First + [char]9 + ($v5Extra -join [char]9) + [char]9 +
+               (@(1,0,0,0,0) -join [char]9)
+    $v6Rows += $v4Lines[2] + [char]9 + ($v5Extra2 -join [char]9) + [char]9 +
+               (@(0,0,0,0,0) -join [char]9)
+    $v6Path = Join-Path $dir 'synthetic-v6-family-editor.tsv'
+    [IO.File]::WriteAllLines($v6Path, [string[]]$v6Rows, [Text.Encoding]::ASCII)
+    if (-not [bool]($excel.Run(
+            'TaxLawUpdater.TryLoadBatchFromTsvForTest', $v6Path))) {
+        throw 'BATCH_V6_FAMILY_EDITOR_NOT_LOADED'
+    }
+    Assert-Value $batchEditor.Range('AD6').Value2 1 'V6 general dependent category'
+    Assert-Value $batchEditor.Range('AE6').Value2 0 'V6 special dependent category'
+    Assert-Value $batchEditor.Range('AH6').Value2 0 'V6 under23 life confirmation'
+    Assert-Value $batchEditor.Range('AD7').Value2 0 'V6 second person remains distinct'
+    if ($ReaderExecutable) {
+        # Recalculate the original mortgage row with ONE general dependent.
+        # Its old income-tax mortgage credit may no longer reconcile; this
+        # must retain the recomputed deduction but HOLD both mode limits.
+        if (-not [bool]($excel.Run('TaxLawUpdater.TryRecalculateBatchForTest'))) {
+            throw 'BATCH_V6_FAMILY_RECALC_REJECTED'
+        }
+        Assert-Value $batchSheet.Range('F6').Value2 2050000 'Family tax deduction automatically added'
+        Assert-Value $batchSheet.Range('J6').Value2 'HOLD／要確認' 'Stale mortgage/source tax held'
+        Assert-Value ([string]$batchSheet.Range('I6').Value2) '' 'Family changed one-stop masked'
+        Assert-Value ([string]$batchSheet.Range('T6').Value2) '' 'Family changed filing masked'
+        Assert-Value $batchSheet.Range('B7').Value2 2 'Other person preserved in V6'
+    }
+    QA-Stage 'batch-v6-family-editor-pass'
     [void]($excel.Run('TaxLawUpdater.ClearBatchOverview'))
     Assert-Value ([string]$batchSheet.Range('B6').Value2) '' 'Bulk wipe clears old salary rows'
     Assert-Value ([string]$batchSheet.Range('B10').Value2) '' 'Bulk wipe clears final row'
