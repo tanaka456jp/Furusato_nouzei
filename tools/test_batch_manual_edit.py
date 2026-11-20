@@ -215,6 +215,24 @@ class BatchManualEditTests(unittest.TestCase):
         self.assertEqual(row["STATUS"], "PROVISIONAL", row["REASON"])
         self.assertNotEqual(row["FILING_LIMIT"], "")
 
+    def test_under16_family_levy_exemption_prevents_false_limit(self):
+        example = source()
+        example["fields"] = {
+            "salary_gross": 2_600_000,
+            "salary_reference": 1_740_000,
+            "social_insurance": 200_000,
+            "income_tax_withheld": 25_500,
+            "under16_count": 3,
+        }
+        inp, out = self.make_files([data_row(1, example)])
+        recalculate_file(inp, out)
+        with out.open(encoding="ascii", newline="") as stream:
+            row = next(csv.DictReader(stream, delimiter="\t"))
+        self.assertEqual(row["TOTAL_DEDUCTIONS"], "1240000")
+        self.assertEqual(row["REFERENCE_LIMIT"], "0")
+        self.assertEqual(row["STATUS"], "PROVISIONAL")
+        self.assertEqual(row["FILING_LIMIT"], "")
+
     def test_formula_and_duplicate_columns_are_rejected(self):
         row = data_row(1, source())
         row["EDIT_SALARY_GROSS"] = "=1+2"
