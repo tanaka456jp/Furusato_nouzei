@@ -125,7 +125,8 @@ def make_automatic_reference(extracted, target_year):
                 national_deductions=gross_deductions,
                 resident_deductions=resident_deductions,
                 national_basic=source_basic,
-                municipality_class=model_locality)
+                municipality_class=(extracted.get("municipality_hint")
+                                    or {}).get("class", "UNCERTAIN"))
         except (MortgageBatchScopeError, TypeError, ValueError):
             return hold("MORTGAGE_ONE_STOP_REQUIRES_INDIVIDUAL_REVIEW")
         amount = comparison["one_stop_limit"]
