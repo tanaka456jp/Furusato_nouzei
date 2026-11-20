@@ -7,7 +7,7 @@ from zipfile import ZipFile
 
 from audit_withholding_reconciliation import progressive_income_tax
 from batch_manual_edit import INPUT_COLUMNS, recalculate_file
-from bulk_salary_only import pack_editor_source
+from bulk_salary_only import pack_editor_source, write_batch_bridge
 from recipient_name import encode
 
 
@@ -102,6 +102,28 @@ class BatchManualEditTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "EDIT_YEAR_INVALID"):
             recalculate_file(path, output)
         self.assertFalse(output.exists())
+
+    def test_partial_failure_does_not_overwrite_previous_bridge(self):
+        """A later invalid person must never truncate an existing batch."""
+        folder = TemporaryDirectory(prefix="synthetic_batch_atomic_")
+        self.addCleanup(folder.cleanup)
+        output = Path(folder.name) / "overview.tsv"
+        original = b"PREVIOUS_VALID_BATCH_RETAINED\\n"
+        output.write_bytes(original)
+        good = {
+            "PAGE": 1, "YEAR": 2026, "SALARY_GROSS": 7_000_000,
+            "SALARY_INCOME": 5_200_000, "TOTAL_DEDUCTIONS": 1_670_000,
+            "SOURCE_TAX": 284_300, "SOCIAL_INSURANCE": 1_000_000,
+            "REFERENCE_LIMIT": 90_000, "STATUS": "PROVISIONAL",
+            "REASON": "SALARY_ONLY_HYPOTHESIS",
+        }
+        invalid = {**good, "PAGE": 2, "STATUS": "HOLD",
+                   "REASON": "SOURCE_REVIEW_REQUIRED"}
+        with self.assertRaisesRegex(ValueError, "HOLD_WITH_REFERENCE_LIMIT"):
+            write_batch_bridge([good, invalid], output)
+        self.assertEqual(output.read_bytes(), original)
+        self.assertEqual(sorted(p.name for p in Path(folder.name).iterdir()),
+                         ["overview.tsv"])
 
     def test_formula_and_duplicate_columns_are_rejected(self):
         row = data_row(1, source())
