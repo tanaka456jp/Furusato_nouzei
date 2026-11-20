@@ -723,6 +723,8 @@ Private Function BatchReasonLabel(ByVal code As String) As String
             BatchReasonLabel = "配偶者控除額・配偶者所得等の組合せを確認"
         Case "EDIT_SPECIAL_RELATIVE_REVIEW"
             BatchReasonLabel = "特定親族の年齢・所得と控除額は個別確認が必要"
+        Case "EDIT_FAMILY_DEDUCTION_REVIEW"
+            BatchReasonLabel = "扶養親族の区分・人数、23歳未満の生命保険特例の確認が必要"
         Case "EDIT_DEDUCTIONS_NOT_RECONCILED"
             BatchReasonLabel = "修正後の所得控除内訳が対象年の控除計算と一致しません"
         Case "EDIT_SOURCE_TAX_MISMATCH"
@@ -850,7 +852,7 @@ Public Function RecalculateBatchFromEditor( _
             Err.Raise vbObjectError + 470, , "氏名に数式を入力できません。"
         line = CStr(index) & vbTab & _
                EncodeRecipientForBatch(CStr(editor.Cells(index + 5, 1).Value2))
-        For col = 1 To 27
+        For col = 1 To 32
             line = line & vbTab & _
                    BatchEditedValue(editor.Cells(index + 5, col + 2), col)
         Next col
@@ -910,8 +912,8 @@ End Function
 
 ' A single schema definition is used to load source detail fields and to
 ' export corrected values back to the Python-free offline reader.
-Private Function BatchEditFieldHeader() As String
-    BatchEditFieldHeader = Join(Array( _
+Private Function BatchEditFieldHeaderLegacy() As String
+    BatchEditFieldHeaderLegacy = Join(Array( _
         "EDIT_SOURCE_YEAR", "EDIT_TARGET_YEAR", "EDIT_MUNI_CLASS", _
         "EDIT_FORMAT", "EDIT_WARNINGS", "EDIT_SALARY_GROSS", _
         "EDIT_SALARY_REFERENCE", "EDIT_INCOME_TAX_WITHHELD", _
@@ -926,6 +928,14 @@ Private Function BatchEditFieldHeader() As String
         "EDIT_MORTGAGE_OCCUPANCY_YEAR", "EDIT_MORTGAGE_CLAIM_COUNT"), vbTab)
 End Function
 
+Private Function BatchEditFieldHeader() As String
+    BatchEditFieldHeader = BatchEditFieldHeaderLegacy() & vbTab & Join(Array( _
+        "EDIT_DEPENDENT_GENERAL_COUNT", "EDIT_DEPENDENT_SPECIAL_COUNT", _
+        "EDIT_DEPENDENT_ELDERLY_COUNT", _
+        "EDIT_DEPENDENT_COHABITING_ELDERLY_COUNT", _
+        "EDIT_UNDER23_LIFE_ELIGIBLE_FLAG"), vbTab)
+End Function
+
 Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
     Dim fso As Object, inputFile As Object, target As Worksheet
     Dim rows As Collection, pieces As Variant, record As Variant
@@ -936,7 +946,8 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
     Dim header As String, reportHeader As String, withReport As Boolean
     Dim nameHeader As String, withName As Boolean
     Dim filingHeader As String, withFiling As Boolean
-    Dim editHeader As String, withEdit As Boolean
+    Dim editHeader As String, legacyEditHeader As String, withEdit As Boolean
+    Dim editFieldCount As Long
     Dim editor As Worksheet, oldEdit As Variant
     Dim filingLimit As Variant
     mBatchLastInnerError = 0
@@ -957,16 +968,18 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
         "R_SPECIAL_CAP", "R_MODEL_LOCALITY"), vbTab)
     nameHeader = reportHeader & vbTab & "RECIPIENT_NAME_HEX"
     filingHeader = nameHeader & vbTab & "FILING_LIMIT"
+    legacyEditHeader = filingHeader & vbTab & BatchEditFieldHeaderLegacy()
     editHeader = filingHeader & vbTab & BatchEditFieldHeader()
     Set inputFile = fso.OpenTextFile(tsvPath, 1, False, 0)
     If inputFile.AtEndOfStream Then Err.Raise vbObjectError + 348, , "一覧データが空です。"
     header = inputFile.ReadLine
     If header <> requiredHeader And header <> reportHeader And _
        header <> nameHeader And header <> filingHeader And _
-       header <> editHeader Then
+       header <> legacyEditHeader And header <> editHeader Then
         Err.Raise vbObjectError + 349, , "一覧データの形式が承認済みのものではありません。"
     End If
-    withEdit = (header = editHeader)
+    withEdit = (header = editHeader Or header = legacyEditHeader)
+    editFieldCount = IIf(header = legacyEditHeader, 27, 32)
     withFiling = (header = filingHeader Or withEdit)
     withName = (header = nameHeader Or withFiling)
     withReport = (header = reportHeader Or withName)
@@ -974,7 +987,7 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
     Do Until inputFile.AtEndOfStream
         line = inputFile.ReadLine
         pieces = Split(line, vbTab)
-        If UBound(pieces) <> IIf(withEdit, 46, IIf(withFiling, 19, _
+        If UBound(pieces) <> IIf(withEdit, 19 + editFieldCount, IIf(withFiling, 19, _
                                     IIf(withName, 18, IIf(withReport, 17, 9)))) Then
             Err.Raise vbObjectError + 350, , "一括一覧の列数が不正です。"
         End If
@@ -1004,7 +1017,7 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
             CStr(pieces(9)) Like "*[!A-Z_]*" Then
             Err.Raise vbObjectError + 357, , "一覧の理由コードが不正です。"
         End If
-        ReDim record(1 To 47)
+        ReDim record(1 To 52)
         record(1) = "氏名未判読"
         If withName Then record(1) = DecodeRecipientNameForBatch(CStr(pieces(18)))
         For col = 1 To 8
@@ -1071,7 +1084,7 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
                 "／確定申告時上限は条件不足につき要確認"
         End If
         If withEdit Then
-            For col = 1 To 27
+            For col = 1 To editFieldCount
                 Select Case col
                     Case 3
                         Select Case CStr(pieces(19 + col))
@@ -1111,14 +1124,14 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
     Set target = ThisWorkbook.Worksheets("一括計算一覧")
     Set editor = ThisWorkbook.Worksheets("一括入力修正")
     target.Unprotect
-    oldEdit = editor.Range("A6:AC105").Value2
+    oldEdit = editor.Range("A6:AH105").Value2
     oldData = target.Range("A6:T105").Value2
     For page = 6 To 105
         oldHeights(page) = target.Rows(page).RowHeight
     Next page
     changed = True
     target.Range("A6:T105").ClearContents
-    editor.Range("A6:AC105").ClearContents
+    editor.Range("A6:AH105").ClearContents
     target.Rows("6:105").RowHeight = 21
     For index = 1 To rows.Count
         record = rows.Item(index)
@@ -1128,7 +1141,7 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
         If withEdit Then
             editor.Cells(index + 5, 1).Value2 = record(1)
             editor.Cells(index + 5, 2).Value2 = record(2)
-            For col = 1 To 27
+            For col = 1 To editFieldCount
                 editor.Cells(index + 5, col + 2).Value2 = record(20 + col)
             Next col
         End If
@@ -1156,7 +1169,7 @@ Failed:
     If changed Then
         target.Unprotect
         target.Range("A6:T105").Value2 = oldData
-        editor.Range("A6:AC105").Value2 = oldEdit
+        editor.Range("A6:AH105").Value2 = oldEdit
         For page = 6 To 105
             target.Rows(page).RowHeight = oldHeights(page)
         Next page
