@@ -279,6 +279,11 @@ try {
     }
     Assert-Value $batchSheet.Range('I6').Value2 121000 'Default one-stop limit unchanged by filing comparison'
     Assert-Value ([string]$batchSheet.Range('A6').Value2) $firstName 'V4 name and filing comparison stay on one row'
+    Assert-Value ([string]$batchSheet.Range('K5').Value2) '備考（判定理由・申告時比較）' 'V4 batch notes column labeled clearly'
+    $noteHeight = [double]$batchSheet.Range('K6').RowHeight
+    if ($noteHeight -lt 54) {
+        throw 'MORTGAGE_V4_NOTE_ROW_NOT_TALL_ENOUGH'
+    }
     $note = [string]$batchSheet.Range('K6').Value2
     if ($note -notlike '*ワンストップ*' -or
         $note -notlike '*確定申告の方が上限額増*' -or
@@ -304,6 +309,7 @@ try {
     }
     Assert-Value $batchSheet.Range('I6').Value2 121000 'Invalid filing cap did not change the base'
     Assert-Value ([string]$batchSheet.Range('K6').Value2) $note 'Rejected comparison leaves original remarks'
+    Assert-Value ([double]$batchSheet.Range('K6').RowHeight) $noteHeight 'Rejected comparison preserves readable wrapped height'
     QA-Stage 'batch-one-stop-mortgage-v4-notes-pass'
     [void]($excel.Run('TaxLawUpdater.ClearBatchOverview'))
     Assert-Value ([string]$batchSheet.Range('B6').Value2) '' 'Bulk wipe clears old salary rows'
