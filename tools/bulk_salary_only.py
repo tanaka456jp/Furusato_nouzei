@@ -225,7 +225,7 @@ def all_page_rows(path: Path, target_year=None) -> list[dict]:
                             else "AUTO_ONE_STOP_HOUSING")
                     else:
                         row["REASON"] = "AUTO_SOURCE_ASSUMPTION"
-                    comparison = reference.get("filing_higher_limit")
+                    comparison = reference.get("filing_limit")
                     if comparison is not None:
                         row["FILING_LIMIT"] = comparison
                     row.update(reference["report_trace"])
@@ -324,9 +324,12 @@ def write_batch_bridge(rows: list[dict], output: Path) -> None:
                 if comparison not in (None, ""):
                     if (status != "PROVISIONAL" or
                         type(comparison) is not int or
-                        comparison <= row.get("REFERENCE_LIMIT", -1) or
+                        comparison < 0 or
                         comparison > 10**9 or comparison % 1000):
                         raise ValueError("INVALID_FILING_COMPARISON")
                 elif comparison not in ("", None):
                     raise ValueError("INVALID_FILING_COMPARISON")
+                if (comparison not in ("", None) and
+                        not isinstance(row.get("REFERENCE_LIMIT"), int)):
+                    raise ValueError("FILING_WITHOUT_ONE_STOP")
             writer.writerow([row.get(key, "") for key in columns])
