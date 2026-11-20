@@ -83,7 +83,13 @@ def make_automatic_reference(extracted, target_year):
                                 target_year, gross) - adjustment)
         if projected_salary < 0 or projected_salary > gross:
             return hold("PROJECTED_SALARY_INVALID")
-        if mortgage_present:
+        # A verified family count requires recomputation of LOCAL deductions,
+        # never the source national nonbasic amount carried into local tax.
+        family_details_entered = any(fields.get(k, 0) for k in (
+            "under16_count", "dependent_general_count", "dependent_special_count",
+            "dependent_elderly_count", "dependent_cohabiting_elderly_count",
+            "under23_life_eligible_flag"))
+        if mortgage_present or family_details_entered:
             try:
                 mortgage_deductions = reconcile_mortgage_deductions(
                     fields, source_year, target_year, source_basic,
@@ -91,7 +97,10 @@ def make_automatic_reference(extracted, target_year):
             except MortgageDeductionError as exc:
                 return hold(str(exc))
         resident_deductions = (mortgage_deductions["target_resident"]
-                               if mortgage_present else nonbasic + 430_000)
+                               if mortgage_deductions is not None
+                               else nonbasic + 430_000)
+        personal_difference = (mortgage_deductions["personal_difference"]
+                               if mortgage_deductions is not None else 50_000)
         if projected_salary <= 450_000:
             amount = 0
         elif resident_deductions >= projected_salary:
@@ -114,7 +123,7 @@ def make_automatic_reference(extracted, target_year):
             scenarios = [independent_salary_ceiling(
                 year=target_year, salary_income=projected_salary,
                 resident_deductions=resident_deductions,
-                personal_difference=50_000, municipality=place,
+                personal_difference=personal_difference, municipality=place,
             ) for place in places]
             # Keep the exact *chosen* model with the minimum reference.
             # Never mix the rate from one municipality with the levy of another.
@@ -133,9 +142,11 @@ def make_automatic_reference(extracted, target_year):
         from audit_withholding_reconciliation import reconcile
         from audit_salary_filing import independent_salary_filing_ceiling
         try:
-            projected = reconcile_mortgage_deductions(
-                fields, source_year, target_year, source_basic,
-                gross_source_income, projected_salary)
+            projected = (mortgage_deductions
+                         if mortgage_deductions is not None
+                         else reconcile_mortgage_deductions(
+                             fields, source_year, target_year, source_basic,
+                             gross_source_income, projected_salary))
             if (reconcile(source_year, fields).get("source_tax") == "MATCH"
                     and projected["target_resident"] == resident_deductions
                     and (extracted.get("municipality_hint") or {}).get("class")
@@ -144,7 +155,9 @@ def make_automatic_reference(extracted, target_year):
                     year=target_year, salary_income=projected_salary,
                     national_deductions=projected["target_national"],
                     resident_deductions=projected["target_resident"],
-                    municipality=places[0])["tax_return_thousand_yen_reference"]
+                    municipality=places[0],
+                    personal_difference=projected["personal_difference"]
+                )["tax_return_thousand_yen_reference"]
                 if filing_limit > amount:
                     filing_higher = filing_limit
         except (MortgageDeductionError, ValueError, TypeError, KeyError):
@@ -212,8 +225,14 @@ def make_automatic_reference(extracted, target_year):
             caveats.append("UNDER23_DEPENDENTS_ASSUMED_ELIGIBLE_NEXT_YEAR")
         if mortgage_deductions["prior_year_spouse_assumed"]:
             caveats.append("SPOUSE_ELIGIBILITY_ASSUMED_NEXT_YEAR")
+        if mortgage_deductions["prior_year_adult_dependents_assumed"]:
+            caveats.append("ADULT_DEPENDENT_ELIGIBILITY_ASSUMED_NEXT_YEAR")
         if mortgage_deductions["source_spouse_inferred_from_total"]:
             caveats.append("SOURCE_SPOUSE_DEDUCTION_INFERRED_FROM_TOTAL")
+    if (mortgage_deductions is not None and
+            mortgage_deductions["prior_year_adult_dependents_assumed"] and
+            not mortgage_present):
+        caveats.append("ADULT_DEPENDENT_ELIGIBILITY_ASSUMED_NEXT_YEAR")
     if any(fields.get(k, 0) for k in ("special_relative_count",
                                          "special_relative_deduction_reference",
                                          "spouse_income_reference")):
