@@ -1157,9 +1157,19 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
     For index = 1 To rows.Count
         If target.Rows(index + 5).RowHeight < 21 Then _
             target.Rows(index + 5).RowHeight = 21
-        If Len(CStr(target.Cells(index + 5, 11).Value2)) > 50 Then
+        ' Japanese wrapped notes can need several rows even for fewer than
+        ' 50 characters (roughly two Excel-width units per Kanji). The
+        ' previous 50-character threshold let the independent filing
+        ' comparison be clipped on an actual 125% DPI Windows Excel run.
+        ' AutoFit is unreliable across installed printers, so apply minimum
+        ' physical row heights for all populated comparison notes.
+        If Len(CStr(target.Cells(index + 5, 11).Value2)) >= 30 Then
             If target.Rows(index + 5).RowHeight < 66 Then _
                 target.Rows(index + 5).RowHeight = 66
+        End If
+        If Len(CStr(target.Cells(index + 5, 11).Value2)) >= 75 Then
+            If target.Rows(index + 5).RowHeight < 90 Then _
+                target.Rows(index + 5).RowHeight = 90
         End If
     Next index
     target.Protect AllowFiltering:=True, UserInterfaceOnly:=True

@@ -121,6 +121,11 @@ assert "'TaxLawUpdater.LoadBatchFromTsv'" not in verify_ps, (
     "Direct VBA batch loader call may leave unattended Excel blocked by error modal")
 assert "BATCH_V1_LOAD_REJECTED_CODE" in verify_ps
 assert "BATCH_V2_LOAD_REJECTED_CODE" in verify_ps
+assert "Len(CStr(target.Cells(index + 5, 11).Value2)) >= 30" in vba, (
+    "Japanese filing-comparison notes must get a readable minimum row height")
+assert 'target.Rows(index + 5).RowHeight = 66' in vba
+assert "Len(CStr(target.Cells(index + 5, 11).Value2)) > 50" not in vba, (
+    "Old 50-character threshold clipped the v4 synthetic filing note on PC1")
 assert "TaxLawUpdater.TrySaveCaseToFileForTest" in verify_ps
 assert "TaxLawUpdater.TryExportDetailsToFileForTest" in verify_ps
 assert "TaxLawUpdater.TaxLawUpdateLastFailure" in verify_ps
