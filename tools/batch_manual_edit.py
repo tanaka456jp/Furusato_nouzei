@@ -17,7 +17,8 @@ from bulk_salary_only import (
 )
 from automatic_slip_reference import make_automatic_reference
 from batch_source_deductions import (
-    reconcile_mortgage_deductions, MortgageDeductionError,
+    reconcile_mortgage_deductions, reviewed_family_details,
+    MortgageDeductionError,
 )
 from recipient_name import decode as decode_name
 
@@ -90,7 +91,11 @@ def reconstruct_total(record, target):
                   if salary_income <= maximum), None)
     if basic is None:
         fail("EDIT_BASIC_DEDUCTION_OUTSIDE_SCOPE")
-    eligible = source_year == 2026 and fields.get("under16_count", 0) > 0
+    try:
+        family = reviewed_family_details(fields, source_year, target)
+    except MortgageDeductionError:
+        fail("EDIT_FAMILY_DEDUCTION_REVIEW")
+    eligible = source_year == 2026 and family["has_eligible_under23"]
     try:
         life, _ = _life_deductions(fields, year=source_year,
                                    eligible_under23=eligible)
@@ -110,7 +115,8 @@ def reconstruct_total(record, target):
     if any(fields.get(k, 0) for k in
            ("special_relative_count", "special_relative_deduction_reference")):
         fail("EDIT_SPECIAL_RELATIVE_REVIEW")
-    total = fields["social_insurance"] + basic + life + quake + spouse
+    total = (fields["social_insurance"] + basic + life + quake + spouse
+             + family["national"])
     fields.update({"basic_reference": basic,
                    "life_deduction_reference": life,
                    "deductions_reference": total})
