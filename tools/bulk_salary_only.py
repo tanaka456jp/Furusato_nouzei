@@ -226,6 +226,7 @@ def all_page_rows(path: Path, target_year=None) -> list[dict]:
                     row["STATUS"] = "HOLD"
                     reviewed = {
                         "MORTGAGE_POSSIBLE_AMOUNT_MISSING",
+                        "MORTGAGE_DEDUCTION_DETAIL_REVIEW",
                         "MORTGAGE_OCCUPANCY_CLASS_REVIEW",
                         "MORTGAGE_NEXT_YEAR_REVIEW",
                         "MORTGAGE_LOCAL_TAX_REVIEW",
