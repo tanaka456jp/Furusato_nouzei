@@ -3,6 +3,7 @@
 Only generated fake numbers/names; no client PDF or personal information.
 """
 import csv
+import errno
 import subprocess
 import sys
 from pathlib import Path
@@ -24,10 +25,20 @@ def main(exe):
                                delimiter="\t", lineterminator="\n")
             w.writeheader()
             w.writerows(rows)
-        run = subprocess.run([str(exe), "--batch-recalculate",
-                              "--input", str(infile), "--output", str(outfile)],
-                             capture_output=True, text=True, timeout=60)
-        assert run.returncode == 0, "EXE_BATCH_RECALC_ERROR"
+        try:
+            run = subprocess.run([str(exe), "--batch-recalculate",
+                                  "--input", str(infile), "--output", str(outfile)],
+                                 capture_output=True, text=True, timeout=60)
+        except OSError as exc:
+            # Python traceback exposes real Windows user profile paths.
+            if getattr(exc, "winerror", None) == 5 or exc.errno == errno.EACCES:
+                raise SystemExit("READER_EXE_LAUNCH_ACCESS_DENIED") from None
+            raise SystemExit("READER_EXE_LAUNCH_OS_ERROR") from None
+        except subprocess.TimeoutExpired:
+            raise SystemExit("READER_EXE_LAUNCH_TIMEOUT") from None
+        if run.returncode != 0:
+            # Never print stdout/stderr of an untrusted executable.
+            raise SystemExit("READER_EXE_BATCH_RECALC_NONZERO_EXIT")
         assert "BATCH_RECALCULATED_PROVISIONAL" in run.stdout, "EXE_MARKER_MISSING"
         with outfile.open("r", encoding="ascii", newline="") as handle:
             output = list(csv.DictReader(handle, delimiter="\t"))
