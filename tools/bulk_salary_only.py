@@ -224,7 +224,17 @@ def all_page_rows(path: Path, target_year=None) -> list[dict]:
                 else:
                     row["REFERENCE_LIMIT"] = ""
                     row["STATUS"] = "HOLD"
-                    row["REASON"] = "AUTO_SOURCE_HOLD"
+                    reviewed = {
+                        "MORTGAGE_POSSIBLE_AMOUNT_MISSING",
+                        "MORTGAGE_OCCUPANCY_CLASS_REVIEW",
+                        "MORTGAGE_NEXT_YEAR_REVIEW",
+                        "MORTGAGE_LOCAL_TAX_REVIEW",
+                        "MORTGAGE_ONE_STOP_REQUIRES_INDIVIDUAL_REVIEW",
+                    }
+                    code = reference.get("reason")
+                    row["REASON"] = (
+                        code if isinstance(code, str) and code in reviewed
+                        else "AUTO_SOURCE_HOLD")
             rows.append(row)
         except Exception:
             # Do not write the exception, PDF text, name, amount, or filename.
