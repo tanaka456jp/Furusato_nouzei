@@ -341,6 +341,7 @@ End Function
 
 Public Sub ClearBatchOverview()
     ThisWorkbook.Worksheets("一括計算一覧").Range("A6:S105").ClearContents
+    ThisWorkbook.Worksheets("一括計算一覧").Rows("6:105").RowHeight = 21
     ' Do not leave the final exported taxpayer in the hidden report sheet
     ' after clearing/saving another case.
     With ThisWorkbook.Worksheets("自動試算根拠")
@@ -718,6 +719,7 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
     Dim rows As Collection, pieces As Variant, record As Variant
     Dim line As String, requiredHeader As String, status As String
     Dim page As Long, col As Long, index As Long, oldData As Variant
+    Dim oldHeights(6 To 105) As Double
     Dim changed As Boolean, problem As String
     Dim header As String, reportHeader As String, withReport As Boolean
     Dim nameHeader As String, withName As Boolean
@@ -844,13 +846,28 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
     If rows.Count < 1 Then Err.Raise vbObjectError + 358, , "ページがありません。"
     Set target = ThisWorkbook.Worksheets("一括計算一覧")
     oldData = target.Range("A6:S105").Value2
+    For page = 6 To 105
+        oldHeights(page) = target.Rows(page).RowHeight
+    Next page
     changed = True
     target.Range("A6:S105").ClearContents
+    target.Rows("6:105").RowHeight = 21
     For index = 1 To rows.Count
         record = rows.Item(index)
         For col = 1 To 19
             target.Cells(index + 5, col).Value2 = record(col)
         Next col
+    Next index
+    ' K is the wrapped remarks column. Auto-fit only the populated rows,
+    ' preserving the previous row heights when the transaction rolls back.
+    target.Range("A6:K" & CStr(rows.Count + 5)).Rows.AutoFit
+    For index = 1 To rows.Count
+        If target.Rows(index + 5).RowHeight < 21 Then _
+            target.Rows(index + 5).RowHeight = 21
+        If Len(CStr(target.Cells(index + 5, 11).Value2)) > 50 Then
+            If target.Rows(index + 5).RowHeight < 54 Then _
+                target.Rows(index + 5).RowHeight = 54
+        End If
     Next index
     target.Activate
     LoadBatchFromTsv = rows.Count
@@ -860,7 +877,12 @@ Failed:
     mBatchLastInnerError = Err.Number
     On Error Resume Next
     If Not inputFile Is Nothing Then inputFile.Close
-    If changed Then target.Range("A6:S105").Value2 = oldData
+    If changed Then
+        target.Range("A6:S105").Value2 = oldData
+        For page = 6 To 105
+            target.Rows(page).RowHeight = oldHeights(page)
+        Next page
+    End If
     On Error GoTo 0
     Err.Raise vbObjectError + 359, "TaxLawUpdater.LoadBatchFromTsv", problem
 End Function
