@@ -63,6 +63,31 @@ class MortgageBatchOneStopTest(unittest.TestCase):
                 with self.assertRaises(MortgageBatchScopeError):
                     compare(evidence=data)
 
+    def test_omitted_possible_credit_cannot_hide_resident_carryover(self):
+        data = sample()
+        del data["fields"]["mortgage_possible_credit"]
+        # Source income tax is fully absorbed. No inferred "possible" amount
+        # may erase an unobserved residual resident housing credit.
+        with self.assertRaisesRegex(MortgageBatchScopeError,
+                                    "POSSIBLE_CREDIT_REQUIRED"):
+            compare(evidence=data)
+        # If used is strictly below income tax, there can be no unallocated
+        # amount under the same-year salary-only reconciled tax model.
+        data = sample(possible=100_000, used=100_000)
+        del data["fields"]["mortgage_possible_credit"]
+        # Keep the corresponding withholding evidence coherent.
+        from audit_withholding_reconciliation import progressive_income_tax
+        national = progressive_income_tax(3_530_000)
+        data["fields"]["income_tax_withheld"] = (
+            ((national - 100_000) * 1021 // 100_000) * 100)
+        result = compare(evidence=data)
+        self.assertEqual(result["mortgage_resident_transfer"], 0)
+
+    def test_special_local_tax_ordinance_is_not_ordinary_unknown_city(self):
+        with self.assertRaisesRegex(MortgageBatchScopeError,
+                                    "MUNICIPALITY_RATE_UNVERIFIED"):
+            compare(municipality_class="SPECIAL")
+
     def test_higher_filing_note_requires_strict_same_conclusion(self):
         baseline = compare()
         # These are mocked numerical conditions for output gating only;
