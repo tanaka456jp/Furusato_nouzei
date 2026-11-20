@@ -77,6 +77,7 @@ class BatchManualEditTests(unittest.TestCase):
         self.assertEqual(actual["STATUS"], "HOLD")
         self.assertEqual(actual["REFERENCE_LIMIT"], "")
         self.assertEqual(actual["FILING_LIMIT"], "")
+        self.assertEqual(actual["REASON"], "EDIT_SOURCE_TAX_MISMATCH")
 
     def test_mortgage_unverifiable_fields_do_not_reuse_other_mode_amount(self):
         record = source(mortgage=True)
@@ -102,6 +103,24 @@ class BatchManualEditTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "EDIT_YEAR_INVALID"):
             recalculate_file(path, output)
         self.assertFalse(output.exists())
+
+    def test_invalid_salary_and_spouse_edits_explain_hold(self):
+        first = data_row(1, source())
+        first["EDIT_SALARY_GROSS"] = 7_100_000
+        second = data_row(2, source())
+        second["EDIT_SPOUSE_DEDUCTION_REFERENCE"] = 380_000
+        input_file, output = self.make_files([first, second])
+        recalculate_file(input_file, output)
+        with output.open(encoding="ascii", newline="") as stream:
+            rows = list(csv.DictReader(stream, delimiter="\\t"))
+        self.assertEqual(rows[0]["STATUS"], "HOLD")
+        self.assertEqual(rows[0]["REASON"], "EDIT_SALARY_INCOME_MISMATCH")
+        self.assertEqual(rows[1]["STATUS"], "HOLD")
+        self.assertEqual(rows[1]["REASON"], "EDIT_SPOUSE_DEDUCTION_REVIEW")
+        self.assertEqual(rows[0]["REFERENCE_LIMIT"], "")
+        self.assertEqual(rows[1]["FILING_LIMIT"], "")
+        self.assertEqual(rows[0]["RECIPIENT_NAME_HEX"], first["RECIPIENT_NAME_HEX"])
+        self.assertEqual(rows[1]["RECIPIENT_NAME_HEX"], second["RECIPIENT_NAME_HEX"])
 
     def test_partial_failure_does_not_overwrite_previous_bridge(self):
         """A later invalid person must never truncate an existing batch."""
