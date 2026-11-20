@@ -217,9 +217,14 @@ def all_page_rows(path: Path, target_year=None) -> list[dict]:
                     row["SALARY_INCOME"] = reference["salary_income"]
                     row["REFERENCE_LIMIT"] = reference["limit"]
                     row["STATUS"] = "PROVISIONAL"
-                    row["REASON"] = ("AUTO_ONE_STOP_HOUSING"
-                                     if reference.get("mortgage_mode")
-                                     else "AUTO_SOURCE_ASSUMPTION")
+                    if reference.get("mortgage_mode"):
+                        row["REASON"] = (
+                            "AUTO_ONE_STOP_HOUSING_SPOUSE_INFERRED"
+                            if "SOURCE_SPOUSE_DEDUCTION_INFERRED_FROM_TOTAL"
+                            in reference.get("reason", "")
+                            else "AUTO_ONE_STOP_HOUSING")
+                    else:
+                        row["REASON"] = "AUTO_SOURCE_ASSUMPTION"
                     comparison = reference.get("filing_higher_limit")
                     if comparison is not None:
                         row["FILING_LIMIT"] = comparison
