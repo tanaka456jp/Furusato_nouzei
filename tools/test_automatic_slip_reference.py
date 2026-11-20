@@ -58,11 +58,44 @@ class AutoReferenceTests(unittest.TestCase):
         self.assertEqual(trace["R_MODEL_LOCALITY"], "UNCERTAIN")
         self.assertNotIn("name", str(trace).lower())
 
-    def test_unmodelled_housing_is_disclosed_not_claimed_exact(self):
+    def test_unverified_housing_is_hold_not_an_undiscounted_limit(self):
         result = make_automatic_reference(
             source(mortgage_possible_credit=300_000), 2026)
-        self.assertEqual(result["status"], "AUTO_REFERENCE")
-        self.assertIn("MORTGAGE_CREDIT_NOT_MODELLED", result["reason"])
+        self.assertEqual(result["status"], "HOLD")
+        self.assertNotIn("limit", result)
+
+    def test_same_year_2026_mortgage_is_one_stop_and_comparison_stays_optional(self):
+        candidate = source(
+            year=2026, salary_gross=7_000_000,
+            salary_reference=5_200_000, deductions_reference=1_670_000,
+            social_insurance=1_000_000, basic_reference=670_000,
+            income_tax_withheld=0, mortgage_possible_credit=300_000,
+            mortgage_credit=278_500, mortgage_occupancy_year=2024)
+        actual = make_automatic_reference(candidate, 2026)
+        self.assertEqual(actual["status"], "AUTO_REFERENCE", actual)
+        self.assertTrue(actual["mortgage_mode"])
+        self.assertEqual(actual["limit"] % 1000, 0)
+        self.assertIn("NO_TAX_RETURN_ONE_STOP_ASSUMED", actual["reason"])
+        self.assertIn("MORTGAGE_ONE_STOP_5PCT_MODEL_PROVISIONAL", actual["reason"])
+        self.assertNotIn("MORTGAGE_CREDIT_NOT_MODELLED", actual["reason"])
+        self.assertNotIn("name", str(actual["report_trace"]).lower())
+        # Same source reused for the next tax year must not project the
+        # mortgage balance, housing credit and residency as already known.
+        projected = make_automatic_reference(candidate, 2025)
+        self.assertEqual(projected["status"], "HOLD")
+
+    def test_first_year_and_2022_mortgage_classes_fail_closed(self):
+        base = dict(year=2026, salary_gross=7_000_000,
+                    salary_reference=5_200_000, deductions_reference=1_670_000,
+                    social_insurance=1_000_000, basic_reference=670_000,
+                    income_tax_withheld=0, mortgage_possible_credit=300_000,
+                    mortgage_credit=278_500)
+        for occupancy in (2022, 2026, 2027):
+            with self.subTest(occupancy=occupancy):
+                proposal = make_automatic_reference(
+                    source(**base, mortgage_occupancy_year=occupancy), 2026)
+                self.assertEqual(proposal["status"], "HOLD", proposal)
+                self.assertNotIn("limit", proposal)
 
     def test_no_numeric_for_wrong_year_or_incomplete_deductions(self):
         for evidence, target in (
@@ -109,6 +142,35 @@ class AutoReferenceTests(unittest.TestCase):
             rows = all_page_rows(Path("synthetic.pdf"), target_year=2026)
         self.assertEqual(rows[1]["STATUS"], "HOLD")
         self.assertEqual(rows[1]["REFERENCE_LIMIT"], "")
+
+    def test_v4_mortgage_filing_amount_is_numeric_and_never_in_hold(self):
+        import csv
+        from bulk_salary_only import write_batch_bridge
+        valid = source(year=2026)
+        with patch("withholding_reader.pdf_page_count", return_value=2), \
+             patch("withholding_reader.extract", side_effect=[valid, valid]), \
+             patch("automatic_slip_reference.make_automatic_reference") as model:
+            model.return_value = make_automatic_reference(valid, 2026)
+            # Artificially inject a comparison only for transport testing:
+            # this does NOT assert real tax-filing superiority.
+            model.return_value["filing_higher_limit"] = (
+                model.return_value["limit"] + 10_000)
+            model.return_value["mortgage_mode"] = True
+            rows = all_page_rows(Path("synthetic.pdf"), target_year=2026)
+        self.assertEqual(rows[0]["FILING_LIMIT"], rows[0]["REFERENCE_LIMIT"]+10_000)
+        self.assertEqual(rows[0]["REASON"], "AUTO_ONE_STOP_HOUSING")
+        with TemporaryDirectory() as folder:
+            target = Path(folder) / "batch.tsv"
+            write_batch_bridge(rows, target)
+            with target.open(encoding="ascii", newline="") as f:
+                observed = list(csv.DictReader(f, delimiter="\t"))
+        self.assertEqual(len(observed), 2)
+        self.assertEqual(observed[0]["FILING_LIMIT"],
+                         str(rows[0]["FILING_LIMIT"]))
+        rows[0]["FILING_LIMIT"] = rows[0]["REFERENCE_LIMIT"] - 1_000
+        with TemporaryDirectory() as folder:
+            with self.assertRaisesRegex(ValueError, "INVALID_FILING_COMPARISON"):
+                write_batch_bridge(rows, Path(folder) / "invalid.tsv")
 
     def test_v3_name_hex_retains_exact_person_page_association(self):
         import csv
