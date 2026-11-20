@@ -17,7 +17,6 @@ from bulk_salary_only import (
 )
 from automatic_slip_reference import make_automatic_reference
 from recipient_name import decode as decode_name
-from batch_source_deductions import reconcile_mortgage_deductions, MortgageDeductionError
 
 INPUT_COLUMNS = ("PAGE", "RECIPIENT_NAME_HEX") + EDIT_COLUMNS
 VALID_SOURCE = ("PDF_TEXT", "PDF_PAGE_SELECTED",
@@ -46,14 +45,14 @@ def evidence_from_edit(row):
     year = parse_integer(row["EDIT_SOURCE_YEAR"], optional=True)
     target = parse_integer(row["EDIT_TARGET_YEAR"], optional=True)
     if year not in (2025, 2026) or target not in (2025, 2026):
-        return None, target
+        fail("EDIT_YEAR_INVALID")
     values = {
         k: parse_integer(row["EDIT_" + k.upper()], optional=True)
         for k in EDIT_FIELDS
     }
     values = {k: v for k, v in values.items() if v is not None}
     if row["EDIT_FORMAT"] not in VALID_SOURCE or row["EDIT_MUNI_CLASS"] not in VALID_MUNI:
-        return None, target
+        fail("EDIT_SOURCE_OR_MUNICIPALITY_INVALID")
     warning_str = row["EDIT_WARNINGS"]
     if type(warning_str) is not str or len(warning_str) > 250:
         fail("EDIT_WARNINGS_INVALID")
