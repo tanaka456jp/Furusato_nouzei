@@ -187,6 +187,8 @@ def make_automatic_reference(extracted, target_year):
             caveats.append("UNDER23_DEPENDENTS_ASSUMED_ELIGIBLE_NEXT_YEAR")
         if mortgage_deductions["prior_year_spouse_assumed"]:
             caveats.append("SPOUSE_ELIGIBILITY_ASSUMED_NEXT_YEAR")
+        if mortgage_deductions["source_spouse_inferred_from_total"]:
+            caveats.append("SOURCE_SPOUSE_DEDUCTION_INFERRED_FROM_TOTAL")
     if any(fields.get(k, 0) for k in ("special_relative_count",
                                          "special_relative_deduction_reference",
                                          "spouse_income_reference")):
