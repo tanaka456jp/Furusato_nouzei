@@ -293,6 +293,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Reader executable build failed' }
           python tools/verify_reader_runtime.py dist/FurusatoDocumentReader.exe
           if ($LASTEXITCODE -ne 0) { throw 'Reader binary dependency verification failed' }
+          python tools/smoke_batch_recalculate_exe.py dist/FurusatoDocumentReader.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Reader EXE cannot recalculate corrected batch inputs' }
           $temp = Join-Path $env:RUNNER_TEMP ('furusato_reader_' + [guid]::NewGuid().ToString('N'))
           New-Item -ItemType Directory -Path $temp | Out-Null
           try {
