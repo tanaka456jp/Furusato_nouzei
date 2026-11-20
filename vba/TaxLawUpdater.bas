@@ -726,6 +726,24 @@ End Function
 ' invokes it after the offline reader exits successfully.  All input lines
 ' are validated BEFORE the first worksheet mutation, and a worksheet-level
 ' rollback preserves the previous list if a subsequent Excel write fails.
+' A single schema definition is used to load source detail fields and to
+' export corrected values back to the Python-free offline reader.
+Private Function BatchEditFieldHeader() As String
+    BatchEditFieldHeader = Join(Array( _
+        "EDIT_SOURCE_YEAR", "EDIT_TARGET_YEAR", "EDIT_MUNI_CLASS", _
+        "EDIT_FORMAT", "EDIT_WARNINGS", "EDIT_SALARY_GROSS", _
+        "EDIT_SALARY_REFERENCE", "EDIT_INCOME_TAX_WITHHELD", _
+        "EDIT_SOCIAL_INSURANCE", "EDIT_LIFE_NEW", "EDIT_LIFE_OLD", _
+        "EDIT_MEDICAL_CARE", "EDIT_ANNUITY_NEW", "EDIT_ANNUITY_OLD", _
+        "EDIT_EARTHQUAKE_DEDUCTION_REFERENCE", _
+        "EDIT_OLD_LONG_PREMIUM_REFERENCE", "EDIT_SPOUSE_DEDUCTION_REFERENCE", _
+        "EDIT_SPOUSE_INCOME_REFERENCE", "EDIT_SPOUSE_ELIGIBILITY_FLAG", _
+        "EDIT_UNDER16_COUNT", "EDIT_SPECIAL_RELATIVE_COUNT", _
+        "EDIT_SPECIAL_RELATIVE_DEDUCTION_REFERENCE", "EDIT_INCOME_ADJUSTMENT", _
+        "EDIT_MORTGAGE_CREDIT", "EDIT_MORTGAGE_POSSIBLE_CREDIT", _
+        "EDIT_MORTGAGE_OCCUPANCY_YEAR", "EDIT_MORTGAGE_CLAIM_COUNT"), vbTab)
+End Function
+
 Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
     Dim fso As Object, inputFile As Object, target As Worksheet
     Dim rows As Collection, pieces As Variant, record As Variant
@@ -757,19 +775,7 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
         "R_SPECIAL_CAP", "R_MODEL_LOCALITY"), vbTab)
     nameHeader = reportHeader & vbTab & "RECIPIENT_NAME_HEX"
     filingHeader = nameHeader & vbTab & "FILING_LIMIT"
-    editHeader = filingHeader & vbTab & Join(Array( _
-        "EDIT_SOURCE_YEAR", "EDIT_TARGET_YEAR", "EDIT_MUNI_CLASS", _
-        "EDIT_FORMAT", "EDIT_WARNINGS", "EDIT_SALARY_GROSS", _
-        "EDIT_SALARY_REFERENCE", "EDIT_INCOME_TAX_WITHHELD", _
-        "EDIT_SOCIAL_INSURANCE", "EDIT_LIFE_NEW", "EDIT_LIFE_OLD", _
-        "EDIT_MEDICAL_CARE", "EDIT_ANNUITY_NEW", "EDIT_ANNUITY_OLD", _
-        "EDIT_EARTHQUAKE_DEDUCTION_REFERENCE", _
-        "EDIT_OLD_LONG_PREMIUM_REFERENCE", "EDIT_SPOUSE_DEDUCTION_REFERENCE", _
-        "EDIT_SPOUSE_INCOME_REFERENCE", "EDIT_SPOUSE_ELIGIBILITY_FLAG", _
-        "EDIT_UNDER16_COUNT", "EDIT_SPECIAL_RELATIVE_COUNT", _
-        "EDIT_SPECIAL_RELATIVE_DEDUCTION_REFERENCE", "EDIT_INCOME_ADJUSTMENT", _
-        "EDIT_MORTGAGE_CREDIT", "EDIT_MORTGAGE_POSSIBLE_CREDIT", _
-        "EDIT_MORTGAGE_OCCUPANCY_YEAR", "EDIT_MORTGAGE_CLAIM_COUNT"), vbTab)
+    editHeader = filingHeader & vbTab & BatchEditFieldHeader()
     Set inputFile = fso.OpenTextFile(tsvPath, 1, False, 0)
     If inputFile.AtEndOfStream Then Err.Raise vbObjectError + 348, , "一覧データが空です。"
     header = inputFile.ReadLine
