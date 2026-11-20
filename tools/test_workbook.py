@@ -168,7 +168,7 @@ class WorkbookTest(unittest.TestCase):
         self.assertIn("BatchLastInnerErrorForTest", (ROOT / "vba/TaxLawUpdater.bas").read_text(encoding="utf-8-sig"))
         self.assertTrue(all(batch.column_dimensions[c].hidden for c in "LMNOPQRS"))
         self.assertEqual(batch.freeze_panes, "C6")
-        self.assertEqual(batch.auto_filter.ref, "A5:S105")
+        self.assertEqual(batch.auto_filter.ref, "A5:T105")
         for row in (6, 9, 105):
             self.assertIsNone(batch[f"I{row}"].value)
         vb = (ROOT / "vba/TaxLawUpdater.bas").read_text(encoding="utf-8-sig")
@@ -183,7 +183,7 @@ class WorkbookTest(unittest.TestCase):
         self.assertNotIn("[void]($excel.Run('TaxLawUpdater.LoadBatchFromTsv', $invalidPath))", qa)
         self.assertIn('"一括計算一覧"', vb)
         self.assertIn('If status = "HOLD" And Len(CStr(pieces(7))) > 0 Then', vb)
-        self.assertIn('target.Range("A6:S105").ClearContents', vb)
+        self.assertIn('target.Range("A6:T105").ClearContents', vb)
         self.assertIn('reportHeader = requiredHeader & vbTab', vb)
         self.assertIn('Public Function ExportAllBatchReferencePDFsToFolder(', vb)
         self.assertIn('Public Sub ExportAllBatchReferencePDFs()', vb)
