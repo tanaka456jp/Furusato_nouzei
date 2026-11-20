@@ -163,7 +163,10 @@ End Sub
         try {
             $area = $target.Range($address)
             $control = $target.Buttons().Add($area.Left + 2, $area.Top + 2, $area.Width - 4, $area.Height - 4)
-            $control.Name = 'btn' + $macro
+            # Match the stable ID that TaxLawUpdater.BindButtons expects.
+            $control.Name = if ($macro -eq 'RecalculateBatchFromEditor') {
+                'btnRecalculateBatchEdits'
+            } else { 'btn' + $macro }
             # Qualify with the final workbook name; Workbook_Open will rebind
             # automatically if a case is later opened under a different name.
             $control.OnAction = "'" + [IO.Path]::GetFileName($final).Replace("'", "''") + "'!TaxLawUpdater." + $macro

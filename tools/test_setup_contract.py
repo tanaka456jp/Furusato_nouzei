@@ -59,6 +59,8 @@ assert "製品への自動採用はしません" in ps, "Repaired workbook must 
 assert "Remove-Item -LiteralPath $stagingDir -Recurse -Force" in ps, "Staging cleanup missing"
 assert "Unblock-File" not in ps and "Set-ItemProperty" not in ps, "Do not bypass Office security settings"
 assert "TaxLawUpdater.BindButtons" in ps, "First-run macro rebinding smoke missing"
+assert "btnRecalculateBatchEdits" in ps, "Batch edit button must match BindButtons name"
+assert '"btnRecalculateBatchEdits", "RecalculateBatchFromEditor"' in vba, "VBA batch button must match the installer"
 assert "TaxLawUpdater.BindButtons" in ps.split("Private Sub Workbook_Open()", 1)[-1], "Workbook_Open must rebind buttons for saved cases"
 assert "Public Sub BindButtons()" in vba, "Workbook-specific button binding routine missing"
 assert "Replace(ThisWorkbook.Name" in vba, "Button macros are not workbook-qualified"
