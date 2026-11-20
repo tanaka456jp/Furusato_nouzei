@@ -112,7 +112,7 @@ class BatchManualEditTests(unittest.TestCase):
         input_file, output = self.make_files([first, second])
         recalculate_file(input_file, output)
         with output.open(encoding="ascii", newline="") as stream:
-            rows = list(csv.DictReader(stream, delimiter="\\t"))
+            rows = list(csv.DictReader(stream, delimiter="\t"))
         self.assertEqual(rows[0]["STATUS"], "HOLD")
         self.assertEqual(rows[0]["REASON"], "EDIT_SALARY_INCOME_MISMATCH")
         self.assertEqual(rows[1]["STATUS"], "HOLD")
