@@ -66,7 +66,7 @@ def compare_mortgage_modes(*, evidence, source_year, target_year,
         raise MortgageBatchScopeError("MORTGAGE_DEDUCTIONS_NOT_RECONCILED")
     from audit_salary_donation_limit import resident_income_levy_exemption_limit
     if salary_income <= resident_income_levy_exemption_limit(
-            fields.get("under16_count", 0)):
+            d["family_count"]):
         raise MortgageBatchScopeError("MORTGAGE_FAMILY_DEDUCTION_REVIEW")
     claim_count = fields.get("mortgage_claim_count")
     if type(claim_count) is not int or claim_count != 1:
@@ -114,7 +114,8 @@ def compare_mortgage_modes(*, evidence, source_year, target_year,
         nominal = independent_salary_ceiling(
             year=target_year, salary_income=salary_income,
             resident_deductions=resident_deductions,
-            personal_difference=50_000, municipality=municipality)
+            personal_difference=d["personal_difference"],
+            municipality=municipality)
         # Reject special high-rate schemes unsupported by the one-stop
         # equivalent income-tax-rate calculation.
         if nominal["special_ratio"] < Fraction(56307, 100000):
@@ -141,7 +142,8 @@ def compare_mortgage_modes(*, evidence, source_year, target_year,
                 national_deductions=national_deductions,
                 resident_deductions=resident_deductions,
                 mortgage_possible=possible, occupancy_year=occupancy,
-                personal_difference=50_000, municipality=municipality
+                personal_difference=d["personal_difference"],
+                municipality=municipality
             )["tax_return_thousand_yen_reference"]
             for municipality in municipalities
         ]
