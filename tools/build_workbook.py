@@ -697,7 +697,7 @@ def build(source, output):
         20: "自治体税率モデル（仮定）",
         21: "判定",
         22: "選択した税率モデルの算式",
-        23: "特例控除額の計算式",
+        23: "ワンストップ根拠・申告時比較",
     }
     for row, label in labels.items():
         auto_report[f"A{row}"] = label
@@ -711,9 +711,9 @@ def build(source, output):
     for row in (20, 21, 22, 23):
         auto_report.merge_cells(start_row=row, start_column=2, end_row=row, end_column=4)
         auto_report[f"B{row}"].alignment = Alignment(wrap_text=True, vertical="center")
-        auto_report.row_dimensions[row].height = 30
-    note(auto_report, 24, "算式：MIN(2,000円＋住民税特例控除上限÷特例控除割合、給与所得×30%)を千円未満切捨。条件によっては本算式を適用できません。")
-    note(auto_report, 25, "給与以外の所得、各種税額控除・住宅ローン控除、扶養・保険料の差額、自治体条例の差異は未確認です。")
+        auto_report.row_dimensions[row].height = 52 if row == 23 else 30
+    note(auto_report, 24, "特例控除上限は住宅ローン控除前の住民税所得割額を基準に計算。住宅ローン控除がある場合は、控除後の住民税額の余力も考慮します。")
+    note(auto_report, 25, "原則、確定申告なし・ワンストップ特例を仮定。確定申告時の参考上限額が大きい場合のみ比較を表示します。住宅取得区分・扶養・自治体条件等は個別確認が必要です。")
     note(auto_report, 26, "前年の源泉票は翌年の所得や1月1日住所を保証しません。適用法令・所得控除の個別照合が必要です。")
     note(auto_report, 27, "原票の受給者氏名をページ単位で表示。氏名を判読できない場合は必ず原票と照合。確定版レポートとは区別します。")
 
