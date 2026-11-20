@@ -49,13 +49,15 @@ COMPLEX_FIELDS = {
 }
 
 
-def _life_deductions(fields: dict) -> tuple[int, int]:
+def _life_deductions(fields: dict, *, year=2025, eligible_under23=False) -> tuple[int, int]:
     """Compute insurance relief from the five *paid premium* boxes.
 
     Earthquake cases remain outside batch mode, since the slip alone does
     not distinguish old-long-term contracts and paid premiums.
     The national result must reconcile to G27 before resident use.
     """
+    if year not in (2025, 2026) or type(eligible_under23) is not bool or (year != 2026 and eligible_under23):
+        raise ValueError("UNAPPROVED_LIFE_DEDUCTION_YEAR")
     amounts = [fields.get(key, 0) for key in
                ("life_new", "life_old", "medical_care", "annuity_new",
                 "annuity_old")]
@@ -65,7 +67,8 @@ def _life_deductions(fields: dict) -> tuple[int, int]:
     results = []
     for resident in (False, True):
         total = (
-            _insurance_category(life_new, life_old, resident=resident)
+            _insurance_category(life_new, life_old, resident=resident,
+                                eligible_2026_under23=(eligible_under23 and not resident))
             + _new(care, resident=resident)
             + _insurance_category(annuity_new, annuity_old, resident=resident)
         )
