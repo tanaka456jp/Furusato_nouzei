@@ -191,6 +191,12 @@ class AutoReferenceTests(unittest.TestCase):
                          inferred_result)
         self.assertIn("SOURCE_SPOUSE_DEDUCTION_INFERRED_FROM_TOTAL",
                       inferred_result["reason"])
+        with patch("withholding_reader.pdf_page_count", return_value=1), \
+             patch("withholding_reader.extract", return_value=inferred):
+            inferred_row = all_page_rows(Path("fictional.pdf"), target_year=2026)[0]
+        self.assertEqual(inferred_row["STATUS"], "PROVISIONAL")
+        self.assertEqual(inferred_row["REASON"],
+                         "AUTO_ONE_STOP_HOUSING_SPOUSE_INFERRED")
         inferred["fields"]["spouse_eligibility_flag"] = 0
         self.assertEqual(make_automatic_reference(inferred, 2026)["reason"],
                          "MORTGAGE_SPOUSE_DEDUCTION_REVIEW")
