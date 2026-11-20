@@ -138,6 +138,67 @@ class AutoReferenceTests(unittest.TestCase):
         self.assertEqual(held["status"], "HOLD")
         self.assertEqual(held["reason"], "MORTGAGE_LIFE_PREMIUM_REVIEW")
 
+    def test_prior_year_spouse_earthquake_under16_mortgage_projection(self):
+        # All synthetic values: reproduce deduction CATEGORIES, not any
+        # actual taxpayer's income, identity, source document or amounts.
+        fixture = source(
+            salary_gross=7_600_000, salary_reference=5_740_000,
+            basic_reference=630_000, social_insurance=1_230_000,
+            deductions_reference=2_312_000, income_tax_withheld=0,
+            life_new=150_000, medical_care=20_000,
+            life_deduction_reference=60_000,
+            earthquake_deduction_reference=12_000,
+            old_long_premium_reference=0,
+            spouse_income_reference=300_000,
+            spouse_deduction_reference=380_000,
+            under16_count=2,
+            mortgage_possible_credit=300_000, mortgage_credit=258_100,
+            mortgage_occupancy_year=2024, mortgage_claim_count=1,
+        )
+        from audit_withholding_reconciliation import reconcile
+        from batch_source_deductions import reconcile_mortgage_deductions
+        self.assertEqual(reconcile(2025, fixture["fields"])["source_tax"], "MATCH")
+        detail = reconcile_mortgage_deductions(
+            fixture["fields"], 2025, 2026, 630_000, 5_740_000, 5_740_000)
+        self.assertEqual(detail["source_national"], 2_312_000)
+        self.assertEqual(detail["target_national"], 2_372_000)
+        self.assertEqual(detail["target_resident"], 2_044_000)
+        projected = make_automatic_reference(fixture, 2026)
+        self.assertEqual(projected["status"], "AUTO_REFERENCE", projected)
+        self.assertTrue(projected["mortgage_mode"])
+        self.assertGreater(projected["limit"], 0)
+        self.assertEqual(projected["report_trace"]["R_SOURCE_YEAR"], 2025)
+        self.assertEqual(projected["target_year"], 2026)
+        self.assertIn("MORTGAGE_BALANCE_CHANGE_NOT_MODELLED",
+                      projected["reason"])
+        self.assertIn("UNDER23_DEPENDENTS_ASSUMED_ELIGIBLE_NEXT_YEAR",
+                      projected["reason"])
+        with patch("withholding_reader.pdf_page_count", return_value=1), \\
+             patch("withholding_reader.extract", return_value=fixture):
+            row = all_page_rows(Path("fictional.pdf"), target_year=2026)[0]
+        self.assertEqual(row["STATUS"], "PROVISIONAL", row)
+        self.assertEqual(row["REASON"], "AUTO_ONE_STOP_HOUSING")
+        self.assertEqual(row["R_SOURCE_YEAR"], 2025)
+
+        # Neither invalid spouse entitlement nor old-long earthquake relief
+        # is laundered into a plausible-looking reference amount.
+        for mutation, reason in (
+            ({"spouse_income_reference": 900_000},
+             "MORTGAGE_SPOUSE_DEDUCTION_REVIEW"),
+            ({"old_long_premium_reference": 10_000},
+             "MORTGAGE_EARTHQUAKE_REVIEW"),
+            ({"life_deduction_reference": 59_000},
+             "MORTGAGE_LIFE_PREMIUM_REVIEW"),
+            ({"deductions_reference": 2_311_999},
+             "MORTGAGE_DEDUCTION_DETAIL_REVIEW"),
+        ):
+            changed = {**fixture,
+                       "fields": {**fixture["fields"], **mutation}}
+            actual = make_automatic_reference(changed, 2026)
+            self.assertEqual(actual["status"], "HOLD", actual)
+            self.assertEqual(actual["reason"], reason)
+            self.assertNotIn("limit", actual)
+
     def test_first_year_and_2022_mortgage_classes_fail_closed(self):
         base = dict(year=2026, salary_gross=7_000_000,
                     salary_reference=5_200_000, deductions_reference=1_670_000,
