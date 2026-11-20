@@ -10,6 +10,7 @@ basic are applied, but no future employment/family fact is asserted.
 from audit_salary_donation_limit import (
     BASIC, independent_nta_fifth_table_salary_income, independent_salary_ceiling,
 )
+from batch_source_deductions import MortgageDeductionError, reconcile_mortgage_deductions
 
 REQUIRED = ("salary_gross", "salary_reference", "deductions_reference",
             "social_insurance", "income_tax_withheld")
@@ -66,18 +67,9 @@ def make_automatic_reference(extracted, target_year):
     mortgage_keys = ("mortgage_credit", "mortgage_possible_credit",
                      "mortgage_occupancy_year", "mortgage_claim_count")
     mortgage_present = any(fields.get(k) not in (None, 0) for k in mortgage_keys)
-    if mortgage_present:
-        # A mortgage comparison needs the independently derived RESIDENT
-        # life-insurance deduction, not the national figure printed on the
-        # slip. Unsupported family and earthquake deductions still HOLD.
-        from bulk_salary_only import _life_deductions
-        try:
-            national_life, resident_life = _life_deductions(fields)
-        except (TypeError, ValueError):
-            return hold("MORTGAGE_ONE_STOP_REQUIRES_INDIVIDUAL_REVIEW")
-        if (fields.get("life_deduction_reference", 0) != national_life
-                or nonbasic != social + national_life):
-            return hold("MORTGAGE_DEDUCTION_DETAIL_REVIEW")
+    # Source-year deductions are reconciled after salary projection so the
+    # target-year basic/insurance rules cannot contaminate the source check.
+    mortgage_deductions = None
     model = None
     model_locality = "UNCERTAIN"
     try:
@@ -91,7 +83,14 @@ def make_automatic_reference(extracted, target_year):
                                 target_year, gross) - adjustment)
         if projected_salary < 0 or projected_salary > gross:
             return hold("PROJECTED_SALARY_INVALID")
-        resident_deductions = (social + resident_life + 430_000
+        if mortgage_present:
+            try:
+                mortgage_deductions = reconcile_mortgage_deductions(
+                    fields, source_year, target_year, source_basic,
+                    gross_source_income, projected_salary)
+            except MortgageDeductionError as exc:
+                return hold(str(exc))
+        resident_deductions = (mortgage_deductions["target_resident"]
                                if mortgage_present else nonbasic + 430_000)
         if projected_salary <= 450_000:
             amount = 0
@@ -135,9 +134,9 @@ def make_automatic_reference(extracted, target_year):
             comparison = compare_mortgage_modes(
                 evidence=extracted, source_year=source_year,
                 target_year=target_year, salary_income=projected_salary,
-                national_deductions=gross_deductions,
+                national_deductions=mortgage_deductions["target_national"],
                 resident_deductions=resident_deductions,
-                national_basic=source_basic,
+                national_basic=mortgage_deductions["target_basic"],
                 municipality_class=(extracted.get("municipality_hint")
                                     or {}).get("class", "UNCERTAIN"))
         except MortgageBatchScopeError as exc:
@@ -182,6 +181,12 @@ def make_automatic_reference(extracted, target_year):
         caveats.append("BLANK_SOCIAL_INSURANCE_ASSUMED_ZERO")
     if mortgage_present:
         caveats.append("MORTGAGE_ONE_STOP_5PCT_MODEL_PROVISIONAL")
+        if mortgage_deductions["mortgage_possible_unchanged"]:
+            caveats.append("MORTGAGE_BALANCE_CHANGE_NOT_MODELLED")
+        if mortgage_deductions["prior_year_under23_life_assumed"]:
+            caveats.append("UNDER23_DEPENDENTS_ASSUMED_ELIGIBLE_NEXT_YEAR")
+        if mortgage_deductions["prior_year_spouse_assumed"]:
+            caveats.append("SPOUSE_ELIGIBILITY_ASSUMED_NEXT_YEAR")
     if any(fields.get(k, 0) for k in ("special_relative_count",
                                          "special_relative_deduction_reference",
                                          "spouse_income_reference")):
