@@ -268,7 +268,9 @@ try {
                   2026,670000,2671190,4178000,415200,695800,
                   83040,'UNCERTAIN',$firstHex,151000) -join [char]9)
     $v4Lines += $v4First
-    $v4Lines += ($v2Lines[2] + [char]9 + $secondHex + [char]9 + '')
+    $v4Lines += ($v2Lines[2].Replace('AUTO_SOURCE_HOLD',
+                    'MORTGAGE_POSSIBLE_AMOUNT_MISSING') +
+                    [char]9 + $secondHex + [char]9 + '')
     $v4Path = Join-Path $dir 'synthetic-batch-v4-mortgage-note.tsv'
     [IO.File]::WriteAllLines($v4Path,[string[]]$v4Lines,[Text.Encoding]::ASCII)
     if (-not [bool]($excel.Run('TaxLawUpdater.TryLoadBatchFromTsvForTest',$v4Path))) {
@@ -285,6 +287,10 @@ try {
     }
     if ([string]$batchSheet.Range('K7').Value2 -like '*確定申告の方が上限額増*') {
         throw 'MORTGAGE_V4_COMPARISON_LEAKED_TO_HOLD_ROW'
+    }
+    if ([string]$batchSheet.Range('K7').Value2 -notlike
+        '*住宅ローン控除可能額が不明*') {
+        throw 'MORTGAGE_HOLD_REASON_NOT_VISIBLE'
     }
     $v4Invalid = @($v4Lines)
     $v4Invalid[1] = $v4First.Replace(([char]9 + '151000'),
