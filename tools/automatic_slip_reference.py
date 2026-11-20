@@ -107,11 +107,39 @@ def make_automatic_reference(extracted, target_year):
             amount = model["thousand_yen_reference"]
     except (TypeError, ValueError, KeyError):
         return hold("MODEL_OUTSIDE_SCOPE")
+    # Default batch route is NO tax return + one-stop application. A
+    # housing-credit slip must never silently receive the no-credit amount.
+    mortgage_keys = ("mortgage_credit", "mortgage_possible_credit",
+                     "mortgage_occupancy_year", "mortgage_claim_count")
+    mortgage_present = any(fields.get(k) not in (None, 0) for k in mortgage_keys)
+    filing_higher = None
+    if mortgage_present:
+        from batch_mortgage_one_stop import (
+            MortgageBatchScopeError, compare_mortgage_modes)
+        if model is None:
+            return hold("MORTGAGE_NO_RESIDENT_TAX_CAP")
+        try:
+            comparison = compare_mortgage_modes(
+                evidence=extracted, source_year=source_year,
+                target_year=target_year, salary_income=projected_salary,
+                national_deductions=gross_deductions,
+                resident_deductions=resident_deductions,
+                national_basic=source_basic,
+                municipality_class=model_locality)
+        except (MortgageBatchScopeError, TypeError, ValueError):
+            return hold("MORTGAGE_ONE_STOP_REQUIRES_INDIVIDUAL_REVIEW")
+        amount = comparison["one_stop_limit"]
+        filing_higher = comparison["filing_higher_limit"]
+        # The independent minimum after housing must use the corresponding
+        # locality's *same* levy and rate trace.
+        scenario_key = comparison["selected_municipality"]
+        model = next(s for place, s in zip(places, scenarios)
+                     if place == scenario_key)
     if type(amount) is not int or not 0 <= amount <= 10**9:
         return hold("ESTIMATE_INVALID")
     caveats = ["SALARY_ONLY_ASSUMED", "LOCAL_TAX_RESIDENCE_UNCONFIRMED",
                "NATIONAL_TO_LOCAL_DEDUCTIONS_ASSUMED",
-               "NO_OTHER_CREDITS_ASSUMED"]
+               "NO_OTHER_CREDITS_ASSUMED", "NO_TAX_RETURN_ONE_STOP_ASSUMED"]
     locality = (extracted.get("municipality_hint") or {}).get("class")
     if locality in ("STANDARD", "DESIGNATED"):
         caveats.append("MUNICIPALITY_FROM_DOCUMENT_ASSUMED")
@@ -123,8 +151,8 @@ def make_automatic_reference(extracted, target_year):
         # Reader must have observed an explicitly blank native G26 box and
         # inserted zero provisionally; never certify zero as the actual amount.
         caveats.append("BLANK_SOCIAL_INSURANCE_ASSUMED_ZERO")
-    if fields.get("mortgage_credit", 0) or fields.get("mortgage_possible_credit", 0):
-        caveats.append("MORTGAGE_CREDIT_NOT_MODELLED")
+    if mortgage_present:
+        caveats.append("MORTGAGE_ONE_STOP_5PCT_MODEL_PROVISIONAL")
     if any(fields.get(k, 0) for k in ("special_relative_count",
                                          "special_relative_deduction_reference",
                                          "spouse_income_reference")):
@@ -147,6 +175,6 @@ def make_automatic_reference(extracted, target_year):
                           if model is not None else 0),
         "R_MODEL_LOCALITY": model_locality,
     }
-    return {"status": "AUTO_REFERENCE", "limit": amount, "target_year": target_year,
+    return {"status": "AUTO_REFERENCE", "limit": amount, "filing_higher_limit": filing_higher, "mortgage_mode": mortgage_present, "target_year": target_year,
             "salary_income": projected_salary, "reason": ";".join(caveats),
             "report_trace": trace}
