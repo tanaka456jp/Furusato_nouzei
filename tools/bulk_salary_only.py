@@ -31,6 +31,42 @@ REPORT_COLUMNS = (
 ALLOWED_MODEL_LOCALITIES = ("STANDARD", "DESIGNATED", "UNCERTAIN")
 NAME_COLUMNS = ("RECIPIENT_NAME_HEX",)  # v3; never plaintext in TSV
 FILING_COLUMNS = ("FILING_LIMIT",)  # v4; optional numeric comparison only
+# v5 local-only detailed editor. Salary gross/income and tax amounts are
+# ordinary input values, never totals. Only the derived G06 deduction total
+# is intentionally excluded from editing and reconstructed on recalculation.
+EDIT_FIELDS = (
+    "salary_gross", "salary_reference", "income_tax_withheld", "social_insurance",
+    "life_new", "life_old", "medical_care", "annuity_new", "annuity_old",
+    "earthquake_deduction_reference", "old_long_premium_reference",
+    "spouse_deduction_reference", "spouse_income_reference",
+    "spouse_eligibility_flag", "under16_count", "special_relative_count",
+    "special_relative_deduction_reference", "income_adjustment",
+    "mortgage_credit", "mortgage_possible_credit", "mortgage_occupancy_year",
+    "mortgage_claim_count",
+)
+EDIT_META = ("EDIT_SOURCE_YEAR", "EDIT_TARGET_YEAR", "EDIT_MUNI_CLASS",
+             "EDIT_FORMAT", "EDIT_WARNINGS")
+EDIT_COLUMNS = EDIT_META + tuple("EDIT_" + item.upper() for item in EDIT_FIELDS)
+
+
+def pack_editor_source(evidence, target_year):
+    """Whitelisted, source-annotated inputs; never original PDF or address."""
+    fields = evidence.get("fields") or {}
+    hint = evidence.get("municipality_hint") or {}
+    return {
+        **{"EDIT_SOURCE_YEAR": evidence.get("year", ""),
+           "EDIT_TARGET_YEAR": target_year,
+           "EDIT_MUNI_CLASS": hint.get("class", "UNCERTAIN")
+            if hint.get("class") in ("STANDARD", "DESIGNATED", "SPECIAL")
+            else "UNCERTAIN",
+           "EDIT_FORMAT": evidence.get("format", ""),
+           "EDIT_WARNINGS": "|".join(
+               w for w in (evidence.get("warnings") or [])
+               if type(w) is str and len(w) <= 64 and
+               w.replace("_", "").isalnum() and w.upper() == w)[:250]},
+        **{"EDIT_" + key.upper(): fields.get(key, "") for key in EDIT_FIELDS},
+    }
+
 REQUIRED = (
     "salary_gross", "salary_reference", "deductions_reference",
     "income_tax_withheld", "social_insurance", "basic_reference",
@@ -213,6 +249,7 @@ def all_page_rows(path: Path, target_year=None) -> list[dict]:
                 row.update({name: "" for name in REPORT_COLUMNS})
                 row["RECIPIENT_NAME_HEX"] = result.get("recipient_name_hex", "")
                 row["FILING_LIMIT"] = ""
+                row.update(pack_editor_source(result, target_year))
                 if reference["status"] == "AUTO_REFERENCE":
                     row["SALARY_INCOME"] = reference["salary_income"]
                     row["REFERENCE_LIMIT"] = reference["limit"]
@@ -260,6 +297,7 @@ def all_page_rows(path: Path, target_year=None) -> list[dict]:
                 row.update({name: "" for name in REPORT_COLUMNS})
                 row["RECIPIENT_NAME_HEX"] = ""
                 row["FILING_LIMIT"] = ""
+                row.update({key: "" for key in EDIT_COLUMNS})
             rows.append(row)
     return rows
 
@@ -276,6 +314,9 @@ def write_batch_bridge(rows: list[dict], output: Path) -> None:
     with_name = any("RECIPIENT_NAME_HEX" in row for row in rows)
     if with_name and not with_report:
         raise ValueError("NAME_REQUIRES_REPORT")
+    with_edit = any("EDIT_SOURCE_YEAR" in row for row in rows)
+    if with_edit and any(any(k not in row for k in EDIT_COLUMNS) for row in rows):
+        raise ValueError("PARTIAL_EDIT_SCHEMA")
     with_filing = any("FILING_LIMIT" in row for row in rows)
     if with_filing and (not with_name or
                         any("FILING_LIMIT" not in row for row in rows)):
@@ -284,7 +325,8 @@ def write_batch_bridge(rows: list[dict], output: Path) -> None:
         raise ValueError("PARTIAL_NAME_SCHEMA")
     columns = (COLUMNS + (REPORT_COLUMNS if with_report else ())
                + (NAME_COLUMNS if with_name else ())
-               + (FILING_COLUMNS if with_filing else ()))
+               + (FILING_COLUMNS if with_filing else ())
+               + (EDIT_COLUMNS if with_edit else ()))
     if with_report and any(any(k not in row for k in REPORT_COLUMNS)
                            for row in rows):
         raise ValueError("PARTIAL_REPORT_SCHEMA")
@@ -332,4 +374,17 @@ def write_batch_bridge(rows: list[dict], output: Path) -> None:
                 if (comparison not in ("", None) and
                         not isinstance(row.get("REFERENCE_LIMIT"), int)):
                     raise ValueError("FILING_WITHOUT_ONE_STOP")
+            if with_edit:
+                if not with_filing:
+                    raise ValueError("EDIT_REQUIRES_FILING")
+                for key in EDIT_COLUMNS:
+                    value = row[key]
+                    if key in ("EDIT_MUNI_CLASS", "EDIT_FORMAT", "EDIT_WARNINGS"):
+                        if (type(value) is not str or len(value) > 250 or
+                                any(c not in "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_|"
+                                    for c in value)):
+                            raise ValueError("INVALID_EDIT_METADATA")
+                    elif value not in ("", None) and (
+                            type(value) is not int or not 0 <= value <= 10**12):
+                        raise ValueError("INVALID_EDIT_NUMERIC")
             writer.writerow([row.get(key, "") for key in columns])
