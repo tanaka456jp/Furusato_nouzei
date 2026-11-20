@@ -21,6 +21,7 @@ CODE_MAP = {
     "G29":"mortgage_credit","G30":"life_new","G31":"life_old",
     "G32":"medical_care","G33":"annuity_new","G34":"annuity_old",
     "G35":"mortgage_claim_count","G36":"mortgage_possible_credit",
+    "G09":"spouse_eligibility_flag",
     "G13":"spouse_deduction_reference",
     "G43":"spouse_income_reference",
     "G72":"special_relative_count", "G20":"under16_count",
