@@ -64,8 +64,20 @@ def reconcile_mortgage_deductions(fields, source_year, target_year,
 
     source_spouse = 0
     resident_spouse = 0
+    spouse_inferred = False
     spouse_amount = fields.get("spouse_deduction_reference")
     spouse_income = fields.get("spouse_income_reference")
+    if spouse_amount is None and type(spouse_income) is int:
+        # Some native PDFs print G13 immediately *after* its amount, so a
+        # strict right-of-anchor extractor can omit it. Infer the 380k
+        # ordinary-spouse relief ONLY when G09 confirms spouse presence,
+        # G43 confirms low spouse income and the entire remaining G06
+        # difference is exactly 380k. It is still a source assumption.
+        residual = (fields["deductions_reference"] - fields["social_insurance"]
+                    - source_basic - source_life - quake)
+        if fields.get("spouse_eligibility_flag") == 1 and residual == 380_000:
+            spouse_amount = residual
+            spouse_inferred = True
     if spouse_amount is not None or spouse_income is not None:
         # G13=380k and G43<=income threshold establish an ordinary spouse
         # only in the first income band. Do not silently infer elderly spouse,
@@ -102,5 +114,6 @@ def reconcile_mortgage_deductions(fields, source_year, target_year,
             target_year != source_year and target_under23),
         "prior_year_spouse_assumed": (
             target_year != source_year and source_spouse > 0),
+        "source_spouse_inferred_from_total": spouse_inferred,
         "mortgage_possible_unchanged": target_year != source_year,
     }
