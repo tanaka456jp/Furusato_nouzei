@@ -342,6 +342,7 @@ End Function
 Public Sub ClearBatchOverview()
     ThisWorkbook.Worksheets("一括計算一覧").Range("A6:T105").ClearContents
     ThisWorkbook.Worksheets("一括計算一覧").Rows("6:105").RowHeight = 21
+    ThisWorkbook.Worksheets("一括入力修正").Range("A6:AC105").ClearContents
     ' Do not leave the final exported taxpayer in the hidden report sheet
     ' after clearing/saving another case.
     With ThisWorkbook.Worksheets("自動試算根拠")
@@ -735,6 +736,8 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
     Dim header As String, reportHeader As String, withReport As Boolean
     Dim nameHeader As String, withName As Boolean
     Dim filingHeader As String, withFiling As Boolean
+    Dim editHeader As String, withEdit As Boolean
+    Dim editor As Worksheet, oldEdit As Variant
     Dim filingLimit As Variant
     mBatchLastInnerError = 0
     On Error GoTo Failed
@@ -754,22 +757,37 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
         "R_SPECIAL_CAP", "R_MODEL_LOCALITY"), vbTab)
     nameHeader = reportHeader & vbTab & "RECIPIENT_NAME_HEX"
     filingHeader = nameHeader & vbTab & "FILING_LIMIT"
+    editHeader = filingHeader & vbTab & Join(Array( _
+        "EDIT_SOURCE_YEAR", "EDIT_TARGET_YEAR", "EDIT_MUNI_CLASS", _
+        "EDIT_FORMAT", "EDIT_WARNINGS", "EDIT_SALARY_GROSS", _
+        "EDIT_SALARY_REFERENCE", "EDIT_INCOME_TAX_WITHHELD", _
+        "EDIT_SOCIAL_INSURANCE", "EDIT_LIFE_NEW", "EDIT_LIFE_OLD", _
+        "EDIT_MEDICAL_CARE", "EDIT_ANNUITY_NEW", "EDIT_ANNUITY_OLD", _
+        "EDIT_EARTHQUAKE_DEDUCTION_REFERENCE", _
+        "EDIT_OLD_LONG_PREMIUM_REFERENCE", "EDIT_SPOUSE_DEDUCTION_REFERENCE", _
+        "EDIT_SPOUSE_INCOME_REFERENCE", "EDIT_SPOUSE_ELIGIBILITY_FLAG", _
+        "EDIT_UNDER16_COUNT", "EDIT_SPECIAL_RELATIVE_COUNT", _
+        "EDIT_SPECIAL_RELATIVE_DEDUCTION_REFERENCE", "EDIT_INCOME_ADJUSTMENT", _
+        "EDIT_MORTGAGE_CREDIT", "EDIT_MORTGAGE_POSSIBLE_CREDIT", _
+        "EDIT_MORTGAGE_OCCUPANCY_YEAR", "EDIT_MORTGAGE_CLAIM_COUNT"), vbTab)
     Set inputFile = fso.OpenTextFile(tsvPath, 1, False, 0)
     If inputFile.AtEndOfStream Then Err.Raise vbObjectError + 348, , "一覧データが空です。"
     header = inputFile.ReadLine
     If header <> requiredHeader And header <> reportHeader And _
-       header <> nameHeader And header <> filingHeader Then
+       header <> nameHeader And header <> filingHeader And _
+       header <> editHeader Then
         Err.Raise vbObjectError + 349, , "一覧データの形式が承認済みのものではありません。"
     End If
-    withFiling = (header = filingHeader)
+    withEdit = (header = editHeader)
+    withFiling = (header = filingHeader Or withEdit)
     withName = (header = nameHeader Or withFiling)
     withReport = (header = reportHeader Or withName)
     Set rows = New Collection
     Do Until inputFile.AtEndOfStream
         line = inputFile.ReadLine
         pieces = Split(line, vbTab)
-        If UBound(pieces) <> IIf(withFiling, 19, _
-                                    IIf(withName, 18, IIf(withReport, 17, 9))) Then
+        If UBound(pieces) <> IIf(withEdit, 46, IIf(withFiling, 19, _
+                                    IIf(withName, 18, IIf(withReport, 17, 9)))) Then
             Err.Raise vbObjectError + 350, , "一括一覧の列数が不正です。"
         End If
         If rows.Count >= 100 Then
@@ -798,7 +816,7 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
             CStr(pieces(9)) Like "*[!A-Z_]*" Then
             Err.Raise vbObjectError + 357, , "一覧の理由コードが不正です。"
         End If
-        ReDim record(1 To 20)
+        ReDim record(1 To 47)
         record(1) = "氏名未判読"
         If withName Then record(1) = DecodeRecipientNameForBatch(CStr(pieces(18)))
         For col = 1 To 8
@@ -864,24 +882,67 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
             record(11) = CStr(record(11)) & _
                 "／確定申告時上限は条件不足につき要確認"
         End If
+        If withEdit Then
+            For col = 1 To 27
+                Select Case col
+                    Case 3
+                        Select Case CStr(pieces(19 + col))
+                            Case "", "STANDARD", "DESIGNATED", "SPECIAL", "UNCERTAIN"
+                                record(20 + col) = CStr(pieces(19 + col))
+                            Case Else
+                                Err.Raise vbObjectError + 407, , "自治体区分が不正です。"
+                        End Select
+                    Case 4
+                        Select Case CStr(pieces(19 + col))
+                            Case "", "PDF_TEXT", "PDF_PAGE_SELECTED", _
+                                 "STRUCTURED_JSON", "STRUCTURED_TEXT", "TEXT_LABELS"
+                                record(20 + col) = CStr(pieces(19 + col))
+                            Case Else
+                                Err.Raise vbObjectError + 407, , "資料種別が不正です。"
+                        End Select
+                    Case 5
+                        If Len(CStr(pieces(19 + col))) > 250 Or _
+                           CStr(pieces(19 + col)) Like "*[!A-Z0-9_|]*" Then _
+                            Err.Raise vbObjectError + 407, , "注意コードが不正です。"
+                        record(20 + col) = CStr(pieces(19 + col))
+                    Case Else
+                        record(20 + col) = ParseBatchNumber( _
+                            CStr(pieces(19 + col)), True)
+                        If Len(CStr(pieces(19 + col))) > 0 Then
+                            If CDbl(record(20 + col)) > 1000000000000# Then _
+                                Err.Raise vbObjectError + 407, , "修正用数値が大きすぎます。"
+                        End If
+                End Select
+            Next col
+        End If
         rows.Add record
     Loop
     inputFile.Close
     Set inputFile = Nothing
     If rows.Count < 1 Then Err.Raise vbObjectError + 358, , "ページがありません。"
     Set target = ThisWorkbook.Worksheets("一括計算一覧")
+    Set editor = ThisWorkbook.Worksheets("一括入力修正")
+    oldEdit = editor.Range("A6:AC105").Value2
     oldData = target.Range("A6:T105").Value2
     For page = 6 To 105
         oldHeights(page) = target.Rows(page).RowHeight
     Next page
     changed = True
     target.Range("A6:T105").ClearContents
+    editor.Range("A6:AC105").ClearContents
     target.Rows("6:105").RowHeight = 21
     For index = 1 To rows.Count
         record = rows.Item(index)
         For col = 1 To 20
             target.Cells(index + 5, col).Value2 = record(col)
         Next col
+        If withEdit Then
+            editor.Cells(index + 5, 1).Value2 = record(1)
+            editor.Cells(index + 5, 2).Value2 = record(2)
+            For col = 1 To 27
+                editor.Cells(index + 5, col + 2).Value2 = record(20 + col)
+            Next col
+        End If
     Next index
     ' K is the wrapped remarks column. Auto-fit only the populated rows,
     ' preserving the previous row heights when the transaction rolls back.
@@ -904,6 +965,7 @@ Failed:
     If Not inputFile Is Nothing Then inputFile.Close
     If changed Then
         target.Range("A6:T105").Value2 = oldData
+        editor.Range("A6:AC105").Value2 = oldEdit
         For page = 6 To 105
             target.Rows(page).RowHeight = oldHeights(page)
         Next page
