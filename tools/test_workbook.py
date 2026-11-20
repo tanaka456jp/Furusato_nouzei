@@ -145,9 +145,10 @@ class WorkbookTest(unittest.TestCase):
         self.assertEqual(batch["A5"].value, "氏名")
         self.assertEqual(batch["B5"].value, "原票ページ")
         self.assertEqual(batch["C5"].value, "計算対象年（適用税制）")
-        self.assertEqual(batch["I5"].value, "上限額参考（円）")
+        self.assertEqual(batch["I5"].value, "ワンストップ上限（仮・円）")
         self.assertEqual(batch["J5"].value, "判定")
-        self.assertEqual(batch["K5"].value, "備考（判定理由・申告時比較）")
+        self.assertEqual(batch["K5"].value, "備考（判定理由・両方式の差）")
+        self.assertEqual(batch["T5"].value, "確定申告上限（仮・円）")
         self.assertTrue(batch["K6"].alignment.wrap_text)
         self.assertGreaterEqual(batch.column_dimensions["K"].width, 50)
         report = self.book["自動試算根拠"]
