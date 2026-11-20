@@ -38,9 +38,7 @@ class MortgageBatchOneStopTest(unittest.TestCase):
         self.assertEqual(result["selected_municipality"], "standard")
         self.assertEqual(result["one_stop_limit"] % 1000, 0)
         self.assertGreater(result["one_stop_limit"], 0)
-        self.assertNotIn("filing_higher_limit",
-                         {"filing_higher_limit": result["filing_higher_limit"]}
-                         if result["filing_higher_limit"] is None else {})
+        self.assertIsNone(result["filing_higher_limit"])
 
     def test_no_tax_return_applies_to_same_source_year_only(self):
         with self.assertRaisesRegex(MortgageBatchScopeError, "NEXT_YEAR"):
