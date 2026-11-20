@@ -642,6 +642,8 @@ Private Function BatchReasonLabel(ByVal code As String) As String
             BatchReasonLabel = "確定申告なし・ワンストップ特例適用、給与のみ等を仮定した参考額"
         Case "AUTO_ONE_STOP_HOUSING"
             BatchReasonLabel = "住宅ローン控除を考慮した仮の参考額（ワンストップ・給与のみ仮定）"
+        Case "AUTO_ONE_STOP_HOUSING_SPOUSE_INFERRED"
+            BatchReasonLabel = "住宅控除を含む仮の参考額／配偶者控除額は原票の所得控除合計との差額から仮定（要確認）"
         Case "AUTO_SOURCE_HOLD"
             BatchReasonLabel = "原票の必須項目欠落・不一致等で自動目安は保留"
         Case "MORTGAGE_POSSIBLE_AMOUNT_MISSING"
@@ -848,7 +850,8 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
         If withFiling Then
             If Len(CStr(pieces(19))) > 0 Then
                 If status <> "PROVISIONAL" Or _
-                   CStr(pieces(9)) <> "AUTO_ONE_STOP_HOUSING" Then _
+                   (CStr(pieces(9)) <> "AUTO_ONE_STOP_HOUSING" And _
+                    CStr(pieces(9)) <> "AUTO_ONE_STOP_HOUSING_SPOUSE_INFERRED") Then _
                     Err.Raise vbObjectError + 405, , _
                         "確定申告の比較額は住宅控除の参考行にのみ使用できます。"
                 filingLimit = ParseBatchNumber(CStr(pieces(19)), False)
