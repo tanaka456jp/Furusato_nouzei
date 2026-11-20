@@ -546,12 +546,24 @@ if __name__=="__main__":
                     help="source-only hypothetical amount, not a verified limit")
     ap.add_argument("--page",type=int,help="1-based page index, one taxpayer only")
     ap.add_argument("--page-count",action="store_true",help="write count only; never inspect tax values")
+    ap.add_argument("--batch-recalculate", action="store_true",
+                    help="re-evaluate local corrected numeric batch TSV")
     ap.add_argument("--batch-bridge", action="store_true",
                     help="write one numeric summary row per PDF page; no identifiers")
     ap.add_argument("--batch-target-year",type=int,choices=(2025,2026),
                     help="automatic provisional per-page target year")
     args=ap.parse_args()
     try:
+        if args.batch_recalculate:
+            if (args.batch_bridge or args.page is not None or
+                    args.bridge is not None or args.page_count or
+                    args.batch_target_year is not None or
+                    args.auto_reference_year is not None):
+                raise ValueError("Batch edit mode arguments conflict")
+            from batch_manual_edit import recalculate_file
+            recalculate_file(args.input, args.output)
+            print("BATCH_RECALCULATED_PROVISIONAL")
+            sys.exit(0)
         if args.batch_bridge:
             if args.page is not None or args.bridge is not None or args.page_count:
                 raise ValueError("Batch mode does not accept page or bridge")
