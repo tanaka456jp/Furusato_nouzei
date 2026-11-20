@@ -594,13 +594,26 @@ def build(source, output):
         batch.column_dimensions[letter].hidden = True
     for line, note_text, height in (
         (1, "源泉徴収票｜一括計算（給与所得のみ・ワンストップ特例・参考額）", 29),
-        (2, "確定申告なし・ワンストップ特例を前提とした給与所得のみの参考額。その他の所得は対象外。確定申告が有利な検証ケースは備考に比較額を表示。精緻計算は操作画面で個別に実施してください。", 34),
-        (3, "HOLDは限度額を表示しません。参考額も確定金額ではありません。源泉票にない家族・自治体・控除等の条件を確認してください。", 34),
+        (2, "確定申告なし・ワンストップ特例、前年の給与・保険料・扶養・住宅ローン控除可能額などが継続するとの仮定による参考額。所得控除は試算対象年の法令で再計算。確定した上限額ではありません。", 42),
+        (3, "原票の年分を確認してください。HOLD行は年分・控除内訳等が未確認の場合があります。住宅ローン残高の年次変動は考慮しない旨を該当者の備考に表示します。", 44),
     ):
         batch.merge_cells(start_row=line, start_column=1, end_row=line, end_column=11)
         cell = batch.cell(row=line, column=1, value=note_text)
         cell.alignment = Alignment(wrap_text=True, vertical="center")
         batch.row_dimensions[line].height = height
+    # The hidden numerical trace keeps source year per person; the visible
+    # summary derives its years from that trace and the target-year column.
+    # A previous year's source is NEVER displayed as target-year evidence.
+    batch["A3"] = ('="原票年分："&IF(COUNT(L6:L105)=0,"未確認",'
+                   'IF(COUNTIF(L6:L105,2025)=COUNT(L6:L105),"2025年（令和7年）",'
+                   'IF(COUNTIF(L6:L105,2026)=COUNT(L6:L105),'
+                   '"2026年（令和8年）","2025/2026年混在")))&'
+                   '" ｜ 試算対象："&IF(COUNT(C6:C105)=0,"未取込",'
+                   'IF(COUNTIF(C6:C105,2026)=COUNT(C6:C105),'
+                   '"2026年（令和8年）",IF(COUNTIF(C6:C105,2025)=COUNT(C6:C105),'
+                   '"2025年（令和7年）","年分混在")))&'
+                   '" ｜ 試算対象年の法令を適用（参考額・未確定）"')
+    batch["A3"].font = Font(name="Yu Gothic", bold=True, color="163A56")
     batch["A1"].font = Font(name="Yu Gothic", size=14, bold=True, color="FFFFFF")
     batch["A1"].fill = PatternFill("solid", fgColor="163A56")
     # Excel Form buttons need more than the default 15pt row height;
@@ -621,7 +634,7 @@ def build(source, output):
         batch[cell].font = Font(name="Yu Gothic", size=11, bold=True,
                                 color="163A56")
     for col, caption in enumerate((
-        "氏名", "ページ", "試算所得年", "支払金額（円）", "給与所得（円）",
+        "氏名", "原票ページ", "計算対象年（適用税制）", "支払金額（円）", "給与所得（円）",
         "所得控除合計（円）", "源泉徴収税額（円）", "社会保険料（円）",
         "上限額参考（円）", "判定", "備考（判定理由・申告時比較）",
     ), 1):
@@ -638,6 +651,7 @@ def build(source, output):
     batch.page_setup.orientation = "landscape"
     batch.page_setup.paperSize = batch.PAPERSIZE_A3
     batch.print_options.gridLines = False
+    batch.print_title_rows = "1:5"
     for row in range(6, 106):
         batch.row_dimensions[row].height = 21
         for col in range(1, 20):
