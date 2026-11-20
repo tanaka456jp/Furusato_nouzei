@@ -149,6 +149,15 @@ class WorkbookTest(unittest.TestCase):
         self.assertEqual(batch["J5"].value, "判定")
         self.assertEqual(batch["K5"].value, "備考（判定理由・両方式の差）")
         self.assertEqual(batch["T5"].value, "確定申告上限（仮・円）")
+        editor = self.book["一括入力修正"]
+        self.assertEqual(editor.sheet_state, "visible")
+        self.assertIn("所得控除合計は自動算出", editor["A1"].value)
+        self.assertEqual(editor["C5"].value, "原票年")
+        self.assertEqual(editor["H5"].value, "支払金額")
+        self.assertEqual(editor["AC5"].value, "住宅控除適用数")
+        self.assertNotIn("所得控除合計", [editor.cell(5, x).value for x in range(1, 30)])
+        self.assertEqual(editor["C4"].value, "修正値で全員再計算")
+        self.assertIn("RecalculateBatchFromEditor", (ROOT / "vba/TaxLawUpdater.bas").read_text(encoding="utf-8-sig"))
         self.assertTrue(batch["K6"].alignment.wrap_text)
         self.assertGreaterEqual(batch.column_dimensions["K"].width, 50)
         report = self.book["自動試算根拠"]
@@ -441,7 +450,7 @@ class WorkbookTest(unittest.TestCase):
 
     def test_single_visible_home(self):
         self.assertEqual(self.book.active.title, HOME)
-        self.assertEqual([s.title for s in self.book if s.sheet_state == "visible"], [HOME, "特定親族明細", "一括計算一覧"])
+        self.assertEqual([s.title for s in self.book if s.sheet_state == "visible"], [HOME, "特定親族明細", "一括計算一覧", "一括入力修正"])
         self.assertEqual(self.book[DETAIL].sheet_state, "veryHidden")
         self.assertEqual(self.book[HOME]["C4"].alignment.indent, 2)
         self.assertIn("課税自治体", self.book[HOME]["A42"].value)
