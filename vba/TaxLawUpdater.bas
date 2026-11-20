@@ -750,6 +750,7 @@ Private Function BatchEditedValue(ByVal cell As Range, _
         Err.Raise vbObjectError + 462, , "修正欄にExcelの数式を使用できません。"
     value = cell.Value2
     If IsEmpty(value) Then Exit Function
+    If Len(CStr(value)) = 0 Then Exit Function
     If index = 3 Then
         s = CStr(value)
         Select Case s
@@ -784,7 +785,8 @@ End Function
 ' identities and whitelisted values are sent to the offline bundled reader.
 ' Rebuilding from all rows is transactional: a failed CLI or TSV leaves
 ' both the preview and the user's corrections untouched.
-Public Function RecalculateBatchFromEditor() As Long
+Public Function RecalculateBatchFromEditor( _
+        Optional ByVal quiet As Boolean = False) As Long
     Dim editor As Worksheet, summary As Worksheet, fso As Object, shell As Object
     Dim reader As String, temporaryIn As String, temporaryOut As String
     Dim file As Object, line As String, command As String
@@ -865,14 +867,15 @@ Failed:
     On Error Resume Next
     If Not file Is Nothing Then file.Close
     On Error GoTo 0
-    MsgBox problem, vbExclamation, "一括入力の再計算"
+    If Not quiet Then _
+        MsgBox problem, vbExclamation, "一括入力の再計算"
     Resume CleanUp
 End Function
 
 ' Nonmodal entry used by the isolated Windows Excel test.
 Public Function TryRecalculateBatchForTest() As Boolean
     On Error GoTo Failed
-    TryRecalculateBatchForTest = (RecalculateBatchFromEditor() > 0)
+    TryRecalculateBatchForTest = (RecalculateBatchFromEditor(True) > 0)
     Exit Function
 Failed:
     Err.Clear
