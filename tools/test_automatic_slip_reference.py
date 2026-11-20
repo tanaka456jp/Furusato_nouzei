@@ -113,6 +113,31 @@ class AutoReferenceTests(unittest.TestCase):
             [row["REASON"] for row in rows],
             ["MORTGAGE_POSSIBLE_AMOUNT_MISSING"] * 2)
 
+    def test_2026_mortgage_with_insurance_uses_distinct_resident_relief(self):
+        # Synthetic ¥7m salary, single approved 2024 mortgage. The slip
+        # gives national new-life deduction ¥40,000, whereas the resident
+        # relief computed from the same ¥120,000 premium is ¥28,000.
+        insured = source(
+            year=2026, salary_gross=7_000_000,
+            salary_reference=5_200_000, basic_reference=670_000,
+            social_insurance=1_000_000,
+            life_new=120_000, life_deduction_reference=40_000,
+            deductions_reference=1_710_000, income_tax_withheld=0,
+            mortgage_possible_credit=300_000, mortgage_credit=270_500,
+            mortgage_occupancy_year=2024)
+        accepted = make_automatic_reference(insured, 2026)
+        self.assertEqual(accepted["status"], "AUTO_REFERENCE", accepted)
+        self.assertTrue(accepted["mortgage_mode"])
+        self.assertEqual(
+            accepted["report_trace"]["R_RESIDENT_DEDUCTIONS"], 1_458_000)
+        self.assertGreater(accepted["limit"], 0)
+        # Nonreconciling the printed national deduction cannot be silently
+        # mistaken for identical local and national life relief.
+        insured["fields"]["life_deduction_reference"] = 39_999
+        held = make_automatic_reference(insured, 2026)
+        self.assertEqual(held["status"], "HOLD")
+        self.assertEqual(held["reason"], "MORTGAGE_DEDUCTION_DETAIL_REVIEW")
+
     def test_first_year_and_2022_mortgage_classes_fail_closed(self):
         base = dict(year=2026, salary_gross=7_000_000,
                     salary_reference=5_200_000, deductions_reference=1_670_000,
