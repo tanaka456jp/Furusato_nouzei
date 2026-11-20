@@ -67,6 +67,12 @@ def compare_mortgage_modes(*, evidence, source_year, target_year,
         raise MortgageBatchScopeError("MORTGAGE_CREDIT_NOT_RECONCILED")
     national_taxable = max(0, salary_income - national_deductions)//1000*1000
     national_tax = progressive_income_tax(national_taxable)
+    # In the NTA slip the "possible" amount can be omitted when the full
+    # credit is consumed by income tax. But if the national liability is
+    # *fully* used, an omitted possible amount leaves the resident carryover
+    # unknown. Do not equate actual applied with total allowable credit.
+    if "mortgage_possible_credit" not in fields and used >= national_tax:
+        raise MortgageBatchScopeError("MORTGAGE_POSSIBLE_CREDIT_REQUIRED")
     if used != min(possible, national_tax):
         raise MortgageBatchScopeError("MORTGAGE_USED_AMOUNT_DISAGREES")
     if reconcile(source_year, fields).get("source_tax") != "MATCH":
@@ -75,8 +81,12 @@ def compare_mortgage_modes(*, evidence, source_year, target_year,
         municipalities = ("standard",)
     elif municipality_class == "DESIGNATED":
         municipalities = ("designated",)
-    else:
+    elif municipality_class == "UNCERTAIN":
         municipalities = ("standard", "designated")
+    else:
+        # 'SPECIAL' can indicate a non-standard local-tax ordinance, not
+        # simply an unknown standard/designated city-share split.
+        raise MortgageBatchScopeError("MORTGAGE_MUNICIPALITY_RATE_UNVERIFIED")
     scenarios = []
     for municipality in municipalities:
         nominal = independent_salary_ceiling(
