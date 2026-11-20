@@ -12,6 +12,58 @@ class MortgageDeductionError(ValueError):
     """The withholding-slip deductions cannot be reconstructed safely."""
 
 
+
+# Reviewed ordinary family deduction amounts: income tax / resident tax /
+# personal difference. NTA No.1180; municipality human-difference tables.
+_FAMILY_RATES = {
+    "dependent_general_count": (380_000, 330_000, 50_000),
+    "dependent_special_count": (630_000, 450_000, 180_000),
+    "dependent_elderly_count": (480_000, 380_000, 100_000),
+    "dependent_cohabiting_elderly_count": (580_000, 450_000, 130_000),
+}
+
+
+def reviewed_family_details(fields, source_year, target_year):
+    """Do not guess a dependent's age or source/target eligibility.
+
+    A general dependent may be 16-18 OR 23+, so a new-life premium in 2026
+    needs an explicit 0/1 under-23 confirmation unless an under-16 or
+    special dependent already proves the age condition.
+    """
+    counts = {}
+    for key in _FAMILY_RATES:
+        value = fields.get(key, 0)
+        if type(value) is not int or not 0 <= value <= 30:
+            raise MortgageDeductionError("MORTGAGE_FAMILY_DEDUCTION_REVIEW")
+        counts[key] = value
+    under16 = fields.get("under16_count", 0)
+    if type(under16) is not int or not 0 <= under16 <= 30:
+        raise MortgageDeductionError("MORTGAGE_FAMILY_DEDUCTION_REVIEW")
+    if under16 + sum(counts.values()) > 30:
+        raise MortgageDeductionError("MORTGAGE_FAMILY_DEDUCTION_REVIEW")
+    flag = fields.get("under23_life_eligible_flag")
+    if flag is not None and (type(flag) is not int or flag not in (0, 1)):
+        raise MortgageDeductionError("MORTGAGE_FAMILY_DEDUCTION_REVIEW")
+    known = under16 > 0 or counts["dependent_special_count"] > 0
+    if flag == 0 and known:
+        raise MortgageDeductionError("MORTGAGE_FAMILY_DEDUCTION_REVIEW")
+    if flag == 1 and not (known or counts["dependent_general_count"] > 0):
+        raise MortgageDeductionError("MORTGAGE_FAMILY_DEDUCTION_REVIEW")
+    if (flag is None and counts["dependent_general_count"] > 0
+            and not known and fields.get("life_new", 0)
+            and 2026 in (source_year, target_year)):
+        raise MortgageDeductionError("MORTGAGE_FAMILY_DEDUCTION_REVIEW")
+    return {
+        "national": sum(counts[k] * v[0] for k, v in _FAMILY_RATES.items()),
+        "resident": sum(counts[k] * v[1] for k, v in _FAMILY_RATES.items()),
+        "personal_difference": 50_000 + sum(
+            counts[k] * v[2] for k, v in _FAMILY_RATES.items()),
+        "family_count": under16 + sum(counts.values()),
+        "has_eligible_under23": known or flag == 1,
+        "has_adult_dependents": sum(counts.values()) > 0,
+    }
+
+
 def reconcile_mortgage_deductions(fields, source_year, target_year,
                                   source_basic, source_salary, target_salary):
     if source_year not in (2025, 2026) or target_year not in (2025, 2026):
@@ -36,10 +88,10 @@ def reconcile_mortgage_deductions(fields, source_year, target_year,
     children = fields.get("under16_count", 0)
     if type(children) is not int or not 0 <= children <= 30:
         raise MortgageDeductionError("MORTGAGE_FAMILY_DEDUCTION_REVIEW")
-    # A declared under-16 dependent stays under 23 in the following year.
-    # Whether the person remains eligible is an explicit projection assumption.
-    source_under23 = source_year == 2026 and children > 0
-    target_under23 = target_year == 2026 and children > 0
+    # Entered family counts remain a next-year projection assumption.
+    family = reviewed_family_details(fields, source_year, target_year)
+    source_under23 = source_year == 2026 and family["has_eligible_under23"]
+    target_under23 = target_year == 2026 and family["has_eligible_under23"]
     try:
         source_life, _ = _life_deductions(
             fields, year=source_year, eligible_under23=source_under23)
@@ -100,16 +152,23 @@ def reconcile_mortgage_deductions(fields, source_year, target_year,
         raise MortgageDeductionError("MORTGAGE_FAMILY_DEDUCTION_REVIEW")
 
     social = fields["social_insurance"]
-    source_national = social + source_basic + source_life + quake + source_spouse
+    source_national = (social + source_basic + source_life + quake
+                       + source_spouse + family["national"])
     if fields["deductions_reference"] != source_national:
         raise MortgageDeductionError("MORTGAGE_DEDUCTION_DETAIL_REVIEW")
 
     return {
         "source_national": source_national,
         "target_basic": target_basic,
-        "target_national": social + target_basic + target_life + quake + source_spouse,
+        "target_national": (social + target_basic + target_life + quake
+                            + source_spouse + family["national"]),
         "target_resident": (social + 430_000 + target_resident_life
-                            + resident_quake + resident_spouse),
+                            + resident_quake + resident_spouse + family["resident"]),
+        "personal_difference": (family["personal_difference"]
+                                + (50_000 if source_spouse else 0)),
+        "family_count": family["family_count"] + (1 if source_spouse else 0),
+        "prior_year_adult_dependents_assumed": (
+            target_year != source_year and family["has_adult_dependents"]),
         "prior_year_under23_life_assumed": (
             target_year != source_year and target_under23),
         "prior_year_spouse_assumed": (
