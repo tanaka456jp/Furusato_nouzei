@@ -340,7 +340,7 @@ try {
     }
     $v5Lines = @($v5Header)
     $v5Lines += $v4First + [char]9 + ($v5Extra -join [char]9)
-    $v5Lines += $v4Lines[2] + ([char]9 * $editColumns.Count)
+    $v5Lines += $v4Lines[2] + (([string][char]9) * $editColumns.Count)
     $v5Path = Join-Path $dir 'synthetic-v5-per-person-edit.tsv'
     [IO.File]::WriteAllLines($v5Path,[string[]]$v5Lines,
                              [Text.Encoding]::ASCII)
