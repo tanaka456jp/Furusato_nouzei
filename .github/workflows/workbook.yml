@@ -572,6 +572,10 @@ jobs:
               $source.exe_authenticode -cne 'UNSIGNED') {
             throw 'Offline batch reader is not the verified same-run unsigned build'
           }
+          # Prove the same signed-off reader runs on the Windows self-hosted
+          # runner BEFORE invoking it from Excel COM. Synthetic values only.
+          python tools/smoke_batch_recalculate_exe.py $readers[0].FullName
+          if ($LASTEXITCODE -ne 0) { throw 'PC1_BATCH_READER_EXE_PREFLIGHT_FAILED' }
           & .\tools\verify_excel.ps1 -Workbook (Join-Path $work 'review/Furusato_nouzei.xlsm') -ReaderExecutable $readers[0].FullName -EvidencePath $evidence -PdfEvidencePath (Join-Path $work 'pdf_layout_evidence') -SourceHead (git rev-parse HEAD)
           if (-not $?) { throw 'Windows Excel acceptance failed' }
           if (-not (Test-Path -LiteralPath $evidence)) { throw 'Excel acceptance evidence was not created' }

@@ -121,6 +121,11 @@ assert "'TaxLawUpdater.LoadBatchFromTsv'" not in verify_ps, (
     "Direct VBA batch loader call may leave unattended Excel blocked by error modal")
 assert "BATCH_V1_LOAD_REJECTED_CODE" in verify_ps
 assert "BATCH_V2_LOAD_REJECTED_CODE" in verify_ps
+assert "BatchRecalcLastStageForTest" in vba and "BatchRecalcLastExitCodeForTest" in vba, (
+    "Recalculation must expose numeric-only PC1 diagnostics")
+assert "BATCH_V5_RECALC_VALID_ROW_REJECTED stage=" in verify_ps, (
+    "PC1 failed batch edit must distinguish EXE startup from bridge import")
+
 assert "Len(CStr(target.Cells(index + 5, 11).Value2)) >= 30" in vba, (
     "Japanese filing-comparison notes must get a readable minimum row height")
 assert 'target.Rows(index + 5).RowHeight = 66' in vba

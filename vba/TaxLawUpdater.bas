@@ -6,6 +6,10 @@ Private mLastTestFailure As String
 Private mResultUnverified As Boolean
 ' Numeric-only diagnostic for isolated PC1 tests. Never records name/text/paths.
 Private mBatchLastInnerError As Long
+' Diagnostic-only numeric state. No taxpayer inputs, paths or names are stored.
+Private mBatchRecalcLastStage As Long
+Private mBatchRecalcLastError As Long
+Private mBatchRecalcLastExitCode As Long
 ' Default source import is source-only, unverified, zero-confirmation preview.
 Private mManualImport As Boolean
 Private mResultMaskBusy As Boolean
@@ -821,6 +825,9 @@ Public Function RecalculateBatchFromEditor( _
     Dim index As Long, col As Long, total As Long, exitCode As Long
     Dim problem As String
     On Error GoTo Failed
+    mBatchRecalcLastStage = 1
+    mBatchRecalcLastError = 0
+    mBatchRecalcLastExitCode = -1
     Set editor = ThisWorkbook.Worksheets("一括入力修正")
     Set summary = ThisWorkbook.Worksheets("一括計算一覧")
     If Not BatchOverviewHasRecords() Then _
@@ -832,6 +839,7 @@ Public Function RecalculateBatchFromEditor( _
     reader = fso.BuildPath(ThisWorkbook.Path, "FurusatoDocumentReader.exe")
     If Not fso.FileExists(reader) Then _
         Err.Raise vbObjectError + 468, , "同梱の読取EXEが見つかりません。"
+    mBatchRecalcLastStage = 2
     temporaryIn = fso.BuildPath(fso.GetSpecialFolder(2), _
                                 fso.GetTempName & ".tsv")
     temporaryOut = fso.BuildPath(fso.GetSpecialFolder(2), _
@@ -860,6 +868,7 @@ Public Function RecalculateBatchFromEditor( _
     Next index
     file.Close
     Set file = Nothing
+    mBatchRecalcLastStage = 3
     If total < 1 Then Err.Raise vbObjectError + 471, , "修正データがありません。"
     For index = total + 1 To 100
         If Len(CStr(editor.Cells(index + 5, 2).Value2)) > 0 Or _
@@ -871,13 +880,18 @@ Public Function RecalculateBatchFromEditor( _
               " --input " & Chr$(34) & temporaryIn & Chr$(34) & _
               " --output " & Chr$(34) & temporaryOut & Chr$(34) & _
               " --batch-recalculate"
+    mBatchRecalcLastStage = 4
     exitCode = shell.Run(command, 0, True)
+    mBatchRecalcLastExitCode = exitCode
+    mBatchRecalcLastStage = 5
     If exitCode <> 0 Or Not fso.FileExists(temporaryOut) Then _
         Err.Raise vbObjectError + 473, , _
             "修正値の検証・再計算に失敗しました。元の一覧は変更していません。"
+    mBatchRecalcLastStage = 6
     RecalculateBatchFromEditor = LoadBatchFromTsv(temporaryOut)
     If RecalculateBatchFromEditor <> total Then _
         Err.Raise vbObjectError + 474, , "再計算した人数が一致しません。"
+    mBatchRecalcLastStage = 7
 CleanUp:
     On Error Resume Next
     If Not file Is Nothing Then file.Close
@@ -891,6 +905,7 @@ CleanUp:
     End If
     Exit Function
 Failed:
+    mBatchRecalcLastError = Err.Number
     problem = Err.Description
     On Error Resume Next
     If Not file Is Nothing Then file.Close
@@ -898,6 +913,19 @@ Failed:
     If Not quiet Then _
         MsgBox problem, vbExclamation, "一括入力の再計算"
     GoTo CleanUp
+End Function
+
+' Numeric-only, never copied to the PDF or taxpayer overview.
+Public Function BatchRecalcLastStageForTest() As Long
+    BatchRecalcLastStageForTest = mBatchRecalcLastStage
+End Function
+
+Public Function BatchRecalcLastErrorForTest() As Long
+    BatchRecalcLastErrorForTest = mBatchRecalcLastError
+End Function
+
+Public Function BatchRecalcLastExitCodeForTest() As Long
+    BatchRecalcLastExitCodeForTest = mBatchRecalcLastExitCode
 End Function
 
 ' Nonmodal entry used by the isolated Windows Excel test.
