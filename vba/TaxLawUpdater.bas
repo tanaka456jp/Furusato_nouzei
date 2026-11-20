@@ -341,8 +341,12 @@ Private Function BatchOverviewHasRecords() As Boolean
 End Function
 
 Public Sub ClearBatchOverview()
-    ThisWorkbook.Worksheets("一括計算一覧").Range("A6:T105").ClearContents
-    ThisWorkbook.Worksheets("一括計算一覧").Rows("6:105").RowHeight = 21
+    With ThisWorkbook.Worksheets("一括計算一覧")
+        .Unprotect
+        .Range("A6:T105").ClearContents
+        .Rows("6:105").RowHeight = 21
+        .Protect AllowFiltering:=True, UserInterfaceOnly:=True
+    End With
     ThisWorkbook.Worksheets("一括入力修正").Range("A6:AC105").ClearContents
     ' Do not leave the final exported taxpayer in the hidden report sheet
     ' after clearing/saving another case.
@@ -869,7 +873,7 @@ Failed:
     On Error GoTo 0
     If Not quiet Then _
         MsgBox problem, vbExclamation, "一括入力の再計算"
-    Resume CleanUp
+    GoTo CleanUp
 End Function
 
 ' Nonmodal entry used by the isolated Windows Excel test.
@@ -1084,6 +1088,7 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
     If rows.Count < 1 Then Err.Raise vbObjectError + 358, , "ページがありません。"
     Set target = ThisWorkbook.Worksheets("一括計算一覧")
     Set editor = ThisWorkbook.Worksheets("一括入力修正")
+    target.Unprotect
     oldEdit = editor.Range("A6:AC105").Value2
     oldData = target.Range("A6:T105").Value2
     For page = 6 To 105
@@ -1117,6 +1122,7 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
                 target.Rows(index + 5).RowHeight = 66
         End If
     Next index
+    target.Protect AllowFiltering:=True, UserInterfaceOnly:=True
     target.Activate
     LoadBatchFromTsv = rows.Count
     Exit Function
@@ -1126,12 +1132,15 @@ Failed:
     On Error Resume Next
     If Not inputFile Is Nothing Then inputFile.Close
     If changed Then
+        target.Unprotect
         target.Range("A6:T105").Value2 = oldData
         editor.Range("A6:AC105").Value2 = oldEdit
         For page = 6 To 105
             target.Rows(page).RowHeight = oldHeights(page)
         Next page
     End If
+    If Not target Is Nothing Then _
+        target.Protect AllowFiltering:=True, UserInterfaceOnly:=True
     On Error GoTo 0
     Err.Raise vbObjectError + 359, "TaxLawUpdater.LoadBatchFromTsv", problem
 End Function
