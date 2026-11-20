@@ -46,6 +46,9 @@ EDIT_FIELDS = (
     "special_relative_deduction_reference", "income_adjustment",
     "mortgage_credit", "mortgage_possible_credit", "mortgage_occupancy_year",
     "mortgage_claim_count",
+    "dependent_general_count", "dependent_special_count",
+    "dependent_elderly_count", "dependent_cohabiting_elderly_count",
+    "under23_life_eligible_flag",
 )
 EDIT_META = ("EDIT_SOURCE_YEAR", "EDIT_TARGET_YEAR", "EDIT_MUNI_CLASS",
              "EDIT_FORMAT", "EDIT_WARNINGS")
