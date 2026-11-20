@@ -7,6 +7,9 @@ other income, split taxation, complex family/housing situations => HOLD.
 from __future__ import annotations
 
 import csv
+import io
+import os
+import tempfile
 from pathlib import Path
 
 from audit_salary_donation_limit import (
@@ -330,7 +333,9 @@ def write_batch_bridge(rows: list[dict], output: Path) -> None:
     if with_report and any(any(k not in row for k in REPORT_COLUMNS)
                            for row in rows):
         raise ValueError("PARTIAL_REPORT_SCHEMA")
-    with Path(output).open("w", encoding="ascii", newline="") as handle:
+    # Validate and serialize ALL rows before touching the destination.
+    # A malformed later taxpayer must never leave an apparently valid prefix.
+    with io.StringIO() as handle:
         writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
         writer.writerow(columns)
         for idx, row in enumerate(rows, 1):
@@ -388,3 +393,19 @@ def write_batch_bridge(rows: list[dict], output: Path) -> None:
                             type(value) is not int or not 0 <= value <= 10**12):
                         raise ValueError("INVALID_EDIT_NUMERIC")
             writer.writerow([row.get(key, "") for key in columns])
+        serialized = handle.getvalue()
+    # Replace in the same directory only after the complete bridge has passed
+    # validation and a temporary file has been flushed to disk.
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+                mode="w", encoding="ascii", newline="", dir=Path(output).parent,
+                prefix=".furusato_batch_", suffix=".tmp", delete=False) as stream:
+            temporary = Path(stream.name)
+            stream.write(serialized)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, output)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
