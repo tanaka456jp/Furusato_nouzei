@@ -641,13 +641,23 @@ Private Function BatchReasonLabel(ByVal code As String) As String
         Case "AUTO_SOURCE_ASSUMPTION"
             BatchReasonLabel = "確定申告なし・ワンストップ特例適用、給与のみ等を仮定した参考額"
         Case "AUTO_ONE_STOP_HOUSING"
-            BatchReasonLabel = "確定申告なし・ワンストップ特例適用（住宅ローン控除考慮、要確認）"
+            BatchReasonLabel = "住宅ローン控除を考慮した仮の参考額（ワンストップ・給与のみ仮定）"
         Case "AUTO_SOURCE_HOLD"
             BatchReasonLabel = "原票の必須項目欠落・不一致等で自動目安は保留"
         Case "MORTGAGE_POSSIBLE_AMOUNT_MISSING"
             BatchReasonLabel = "住宅ローン控除可能額が不明。源泉票の記載を確認"
         Case "MORTGAGE_DEDUCTION_DETAIL_REVIEW"
-            BatchReasonLabel = "生命保険料控除等の内訳と所得控除合計を確認"
+            BatchReasonLabel = "所得控除合計と社会保険・配偶者・生命・地震等の内訳が不一致"
+        Case "MORTGAGE_BASIC_DEDUCTION_REVIEW"
+            BatchReasonLabel = "原票年分の基礎控除額と再計算額が不一致"
+        Case "MORTGAGE_LIFE_PREMIUM_REVIEW"
+            BatchReasonLabel = "生命保険料内訳と源泉票控除額の照合が不一致"
+        Case "MORTGAGE_EARTHQUAKE_REVIEW"
+            BatchReasonLabel = "地震保険料と旧長期損害保険料の区分を確認"
+        Case "MORTGAGE_SPOUSE_DEDUCTION_REVIEW"
+            BatchReasonLabel = "配偶者所得・控除額の原票照合が未完了"
+        Case "MORTGAGE_FAMILY_DEDUCTION_REVIEW"
+            BatchReasonLabel = "扶養親族・特定親族等の要件を個別に確認"
         Case "MORTGAGE_OCCUPANCY_CLASS_REVIEW"
             BatchReasonLabel = "住宅ローン控除の居住開始年・取得区分を確認"
         Case "MORTGAGE_NEXT_YEAR_REVIEW"
@@ -818,6 +828,20 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
                 End Select
             End If
         End If
+        ' Never present a previous-year mortgage as a verified current balance.
+        ' The amount is a *projection* with the printed G36 unchanged; all
+        ' unverified family, income and locality conditions remain assumptions.
+        If withReport And status = "PROVISIONAL" Then
+            If CDbl(record(12)) <> CDbl(record(3)) Then
+                record(11) = CStr(record(11)) & _
+                    "／原票" & CStr(record(12)) & "年→試算" & _
+                    CStr(record(3)) & "年（試算年の税制・前年条件継続を仮定）"
+                If CStr(pieces(9)) = "AUTO_ONE_STOP_HOUSING" Then
+                    record(11) = CStr(record(11)) & _
+                        "／住宅ローン残高の変動は考慮せず、原票の控除可能額を据置き"
+                End If
+            End If
+        End If
         ' The default result is the one-stop/no-filing estimate. A second
         ' amount may ONLY be shown in the notes column when an independent
         ' same-year model found a strictly larger tax-return reference.
@@ -865,8 +889,8 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
         If target.Rows(index + 5).RowHeight < 21 Then _
             target.Rows(index + 5).RowHeight = 21
         If Len(CStr(target.Cells(index + 5, 11).Value2)) > 50 Then
-            If target.Rows(index + 5).RowHeight < 54 Then _
-                target.Rows(index + 5).RowHeight = 54
+            If target.Rows(index + 5).RowHeight < 66 Then _
+                target.Rows(index + 5).RowHeight = 66
         End If
     Next index
     target.Activate
