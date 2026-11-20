@@ -84,6 +84,24 @@ class AutoReferenceTests(unittest.TestCase):
         projected = make_automatic_reference(candidate, 2025)
         self.assertEqual(projected["status"], "HOLD")
 
+    def test_special_locality_and_omitted_housing_carryover_are_hold(self):
+        annual = source(
+            year=2026, salary_gross=7_000_000,
+            salary_reference=5_200_000, deductions_reference=1_670_000,
+            social_insurance=1_000_000, basic_reference=670_000,
+            income_tax_withheld=0, mortgage_possible_credit=300_000,
+            mortgage_credit=278_500, mortgage_occupancy_year=2024)
+        annual["municipality_hint"] = {"name": "synthetic city",
+                                        "class": "SPECIAL"}
+        special = make_automatic_reference(annual, 2026)
+        self.assertEqual(special["status"], "HOLD")
+        self.assertNotIn("limit", special)
+        annual["municipality_hint"] = {"class": "STANDARD"}
+        del annual["fields"]["mortgage_possible_credit"]
+        unverified = make_automatic_reference(annual, 2026)
+        self.assertEqual(unverified["status"], "HOLD")
+        self.assertNotIn("limit", unverified)
+
     def test_first_year_and_2022_mortgage_classes_fail_closed(self):
         base = dict(year=2026, salary_gross=7_000_000,
                     salary_reference=5_200_000, deductions_reference=1_670_000,
