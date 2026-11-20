@@ -9,6 +9,7 @@ basic are applied, but no future employment/family fact is asserted.
 """
 from audit_salary_donation_limit import (
     BASIC, independent_nta_fifth_table_salary_income, independent_salary_ceiling,
+    resident_income_levy_exemption_limit,
 )
 from batch_source_deductions import MortgageDeductionError, reconcile_mortgage_deductions
 
@@ -101,7 +102,13 @@ def make_automatic_reference(extracted, target_year):
                                else nonbasic + 430_000)
         personal_difference = (mortgage_deductions["personal_difference"]
                                if mortgage_deductions is not None else 50_000)
-        if projected_salary <= 450_000:
+        if (projected_salary <= 450_000 or
+                (mortgage_deductions is not None and
+                 projected_salary <= resident_income_levy_exemption_limit(
+                     mortgage_deductions["family_count"]))):
+            # Confirmed family count can raise the resident income-levy
+            # exemption above the universal single-taxpayer threshold.
+            # The taxable base alone must never generate a false cap.
             amount = 0
         elif resident_deductions >= projected_salary:
             amount = 0
