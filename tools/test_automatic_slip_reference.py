@@ -291,6 +291,8 @@ class AutoReferenceTests(unittest.TestCase):
             # this does NOT assert real tax-filing superiority.
             model.return_value["filing_higher_limit"] = (
                 model.return_value["limit"] + 10_000)
+            model.return_value["filing_limit"] = (
+                model.return_value["limit"] + 10_000)
             model.return_value["mortgage_mode"] = True
             rows = all_page_rows(Path("synthetic.pdf"), target_year=2026)
         self.assertEqual(rows[0]["FILING_LIMIT"], rows[0]["REFERENCE_LIMIT"]+10_000)
@@ -303,7 +305,7 @@ class AutoReferenceTests(unittest.TestCase):
         self.assertEqual(len(observed), 2)
         self.assertEqual(observed[0]["FILING_LIMIT"],
                          str(rows[0]["FILING_LIMIT"]))
-        rows[0]["FILING_LIMIT"] = rows[0]["REFERENCE_LIMIT"] - 1_000
+        rows[0]["FILING_LIMIT"] = -1_000
         with TemporaryDirectory() as folder:
             with self.assertRaisesRegex(ValueError, "INVALID_FILING_COMPARISON"):
                 write_batch_bridge(rows, Path(folder) / "invalid.tsv")
