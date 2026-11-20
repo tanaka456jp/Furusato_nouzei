@@ -76,6 +76,7 @@ jobs:
           python tools/test_withholding_reader.py
           python tools/test_automatic_slip_reference.py
           python tools/test_batch_manual_edit.py
+          python tools/test_audit_salary_filing.py
           python tools/test_recipient_name.py
           python tools/test_municipality_hint.py
           python tools/make_excel_open_probes.py Excel_open_probes --self-test
@@ -249,6 +250,7 @@ jobs:
           python tools/test_withholding_reader.py
           python tools/test_automatic_slip_reference.py
           python tools/test_batch_manual_edit.py
+          python tools/test_audit_salary_filing.py
           python tools/test_recipient_name.py
           if ($LASTEXITCODE -ne 0) { throw 'Offline withholding reader test failed' }
       - name: Reject synthetic unsigned VBA in native Windows PowerShell 5.1
@@ -286,6 +288,7 @@ jobs:
           python tools/test_withholding_reader.py
           python tools/test_automatic_slip_reference.py
           python tools/test_batch_manual_edit.py
+          python tools/test_audit_salary_filing.py
           python tools/test_recipient_name.py
           python tools/test_municipality_hint.py
           if ($LASTEXITCODE -ne 0) { throw 'Offline parser/municipality contract failed' }

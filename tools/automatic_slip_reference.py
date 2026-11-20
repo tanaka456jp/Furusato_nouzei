@@ -125,7 +125,30 @@ def make_automatic_reference(extracted, target_year):
     # Default batch route is NO tax return + one-stop application. A
     # housing-credit slip must never silently receive the no-credit amount.
     filing_higher = None
-    filing_limit = (amount if model is not None else None)
+    filing_limit = None
+    if not mortgage_present and model is not None:
+        # Compute the tax-return pathway independently, not by copying I.
+        # A source-year income-tax match and reconciled target-year resident
+        # deductions are required; otherwise only filing stays unconfirmed.
+        from audit_withholding_reconciliation import reconcile
+        from audit_salary_filing import independent_salary_filing_ceiling
+        try:
+            projected = reconcile_mortgage_deductions(
+                fields, source_year, target_year, source_basic,
+                gross_source_income, projected_salary)
+            if (reconcile(source_year, fields).get("source_tax") == "MATCH"
+                    and projected["target_resident"] == resident_deductions
+                    and (extracted.get("municipality_hint") or {}).get("class")
+                    in ("STANDARD", "DESIGNATED")):
+                filing_limit = independent_salary_filing_ceiling(
+                    year=target_year, salary_income=projected_salary,
+                    national_deductions=projected["target_national"],
+                    resident_deductions=projected["target_resident"],
+                    municipality=places[0])["tax_return_thousand_yen_reference"]
+                if filing_limit > amount:
+                    filing_higher = filing_limit
+        except (MortgageDeductionError, ValueError, TypeError, KeyError):
+            filing_limit = None
     if mortgage_present:
         from batch_mortgage_one_stop import (
             MortgageBatchScopeError, compare_mortgage_modes)
