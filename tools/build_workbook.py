@@ -683,16 +683,16 @@ def build(source, output):
     editor.sheet_view.zoomScale = 80
     editor.freeze_panes = "H6"
     editor["A1"] = "源泉徴収票｜各人の入力値を修正（所得控除合計は自動算出）"
-    editor.merge_cells("A1:AC1")
+    editor.merge_cells("A1:AH1")
     editor["A1"].font = Font(name="Yu Gothic", size=14, bold=True, color="FFFFFF")
     editor["A1"].fill = PatternFill("solid", fgColor="163A56")
     editor.row_dimensions[1].height = 29
     editor["A2"] = "氏名・原票ページと同じ行の数字のみ修正してください。所得控除合計は編集せず「修正値で全員再計算」を押すと自動で再算出します。"
-    editor.merge_cells("A2:AC2")
+    editor.merge_cells("A2:AH2")
     editor["A2"].alignment = Alignment(wrap_text=True, vertical="center")
     editor.row_dimensions[2].height = 33
     editor["A3"] = "源泉票の所得年・控除内訳・住宅ローン控除条件を個別確認。未確認の数字や税額不一致はHOLDとなり、推測で限度額を表示しません。"
-    editor.merge_cells("A3:AC3")
+    editor.merge_cells("A3:AH3")
     editor["A3"].alignment = Alignment(wrap_text=True, vertical="center")
     editor.row_dimensions[3].height = 31
     editor["A4"] = "一覧へ戻る"
@@ -707,10 +707,13 @@ def build(source, output):
         "配偶者控除", "配偶者所得", "配偶者該当", "16歳未満扶養",
         "特定親族人数", "特定親族特別控除", "所得金額調整控除",
         "所得税住宅控除額", "住宅控除可能額", "住宅居住開始年", "住宅控除適用数",
+        "一般扶養人数（16～18／23～69歳）", "特定扶養人数（19～22歳）",
+        "老人扶養人数（同居老親等以外）", "同居老親等人数",
+        "23歳未満扶養の生命保険特例（0/1）",
     )
     from openpyxl.utils import get_column_letter
     editor_cols = ("氏名", "原票ページ") + edit_labels
-    assert len(editor_cols) == 29
+    assert len(editor_cols) == 34
     for idx, label in enumerate(editor_cols, 1):
         letter = get_column_letter(idx)
         cell = editor.cell(row=5, column=idx, value=label)
@@ -722,10 +725,10 @@ def build(source, output):
     editor.column_dimensions["F"].hidden = True
     editor.column_dimensions["G"].hidden = True
     editor.row_dimensions[5].height = 44
-    editor.auto_filter.ref = "A5:AC105"
+    editor.auto_filter.ref = "A5:AH105"
     for line in range(6, 106):
         editor.row_dimensions[line].height = 22
-        for idx in range(1, 30):
+        for idx in range(1, 35):
             cell = editor.cell(row=line, column=idx)
             cell.number_format = "#,##0" if idx >= 8 else "General"
             cell.protection = Protection(locked=(idx in (2, 6, 7)))
