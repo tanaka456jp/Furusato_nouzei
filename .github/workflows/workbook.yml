@@ -59,6 +59,7 @@ jobs:
           python tools/test_reader_exe_signer.py
           python tools/test_distribution_integrity.py
           python tools/test_package_ready_to_use_review.py
+          python tools/test_package_internal_unsigned.py
           python tools/test_automated_excel_release.py
           python tools/verify_separate_oracle.py
           node tools/test_excel_gas_v4183.cjs
@@ -818,6 +819,38 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'CI acceptance receipt negative tests failed' }
           python tools/record_ci_acceptance.py --head-sha "${{ github.event.pull_request.head.sha || github.sha }}" --run-id "${{ github.run_id }}" --static "${{ needs.static.result }}" --windows-compat "${{ needs.windows_compat.result }}" --excel "${{ needs.excel.result }}" --document-reader "${{ needs.document_reader.result }}" --review ready_to_use_review_hold.json --archive Furusato_nouzei_ReadyToUse_REVIEW_HOLD.zip --output ci_exact_head_acceptance_hold.json
           if ($LASTEXITCODE -ne 0) { throw 'Exact-head CI provenance / archive validation failed' }
+      - name: Assemble unsigned internal-use evaluation bundle (NOT a release)
+        if: github.event.pull_request.number == 5
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $reports = @(Get-ChildItem -LiteralPath _review_reader -Filter reader_build.json -Recurse -File)
+          $notices = @(Get-ChildItem -LiteralPath _review_reader -Filter THIRD_PARTY_NOTICES.txt -Recurse -File)
+          if ($reports.Count -ne 1 -or $notices.Count -ne 1) {
+            throw 'Internal unsigned bundle: ambiguous reader reports or license notices'
+          }
+          python tools/package_internal_unsigned.py --review-zip Furusato_nouzei_ReadyToUse_REVIEW_HOLD.zip --review-receipt ready_to_use_review_hold.json --reader-report $reports[0].FullName --notice $notices[0].FullName --head "${{ github.event.pull_request.head.sha || github.sha }}" --run-id "$env:GITHUB_RUN_ID" --output Furusato_nouzei_INTERNAL_UNSIGNED.zip --evidence internal_unsigned_hold.json
+          if ($LASTEXITCODE -ne 0) { throw 'Internal unsigned review ZIP failed source/signature verification' }
+          $out = Get-Content -LiteralPath internal_unsigned_hold.json -Raw -Encoding UTF8 | ConvertFrom-Json
+          $digest = (Get-FileHash -LiteralPath Furusato_nouzei_INTERNAL_UNSIGNED.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($out.release_decision -cne 'HOLD' -or
+              $out.vba_signature -cne 'UNSIGNED' -or
+              $out.exe_authenticode -cne 'UNSIGNED' -or
+              $out.package_class -cne 'UNSIGNED_PRIVATE_INTERNAL_EVALUATION' -or
+              $out.archive_sha256 -cne $digest) {
+            throw 'Internal unsigned ZIP must remain untrusted and byte-identical'
+          }
+          'Unsigned INTERNAL evaluation ZIP verified from same-run accepted binaries; tax/release=HOLD.' >> $env:GITHUB_STEP_SUMMARY
+      - name: Upload clearly labeled unsigned internal-use candidate
+        if: github.event.pull_request.number == 5
+        uses: actions/upload-artifact@v4
+        with:
+          name: Furusato_INTERNAL_UNSIGNED_HOLD_${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            Furusato_nouzei_INTERNAL_UNSIGNED.zip
+            internal_unsigned_hold.json
+          if-no-files-found: error
+          retention-days: 14
       - name: Upload review-only ReadyToUse ZIP and anonymous SHA evidence
         uses: actions/upload-artifact@v4
         with:
