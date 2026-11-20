@@ -121,6 +121,10 @@ assert "'TaxLawUpdater.LoadBatchFromTsv'" not in verify_ps, (
     "Direct VBA batch loader call may leave unattended Excel blocked by error modal")
 assert "BATCH_V1_LOAD_REJECTED_CODE" in verify_ps
 assert "BATCH_V2_LOAD_REJECTED_CODE" in verify_ps
+workflow = (ROOT / ".github/workflows/workbook.yml").read_text(encoding="utf-8")
+assert "probe_reader_launch_policy.ps1" in workflow
+assert "reader_launch_diagnostic.json" in workflow
+assert "PC1_BATCH_READER_EXE_ACCESS_DENIED_RELEASE_HOLD" in workflow
 assert "BatchRecalcLastStageForTest" in vba and "BatchRecalcLastExitCodeForTest" in vba, (
     "Recalculation must expose numeric-only PC1 diagnostics")
 assert "BATCH_V5_RECALC_VALID_ROW_REJECTED stage=" in verify_ps, (

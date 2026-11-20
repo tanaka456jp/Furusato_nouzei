@@ -58,6 +58,7 @@ jobs:
           python tools/test_signed_release_negative.py
           python tools/test_excel_vba_signer.py
           python tools/test_reader_exe_signer.py
+          python tools/test_reader_launch_diagnostics.py
           python tools/test_distribution_integrity.py
           python tools/test_package_ready_to_use_review.py
           python tools/test_package_internal_unsigned.py
@@ -575,7 +576,11 @@ jobs:
           # Prove the same signed-off reader runs on the Windows self-hosted
           # runner BEFORE invoking it from Excel COM. Synthetic values only.
           python tools/smoke_batch_recalculate_exe.py $readers[0].FullName
-          if ($LASTEXITCODE -ne 0) { throw 'PC1_BATCH_READER_EXE_PREFLIGHT_FAILED' }
+          if ($LASTEXITCODE -ne 0) {
+            # Windows security policy must NOT be bypassed by CI.
+            & .\tools\probe_reader_launch_policy.ps1 -ReaderExecutable $readers[0].FullName -EvidencePath (Join-Path $work 'reader_launch_diagnostic.json')
+            throw 'PC1_BATCH_READER_EXE_ACCESS_DENIED_RELEASE_HOLD'
+          }
           & .\tools\verify_excel.ps1 -Workbook (Join-Path $work 'review/Furusato_nouzei.xlsm') -ReaderExecutable $readers[0].FullName -EvidencePath $evidence -PdfEvidencePath (Join-Path $work 'pdf_layout_evidence') -SourceHead (git rev-parse HEAD)
           if (-not $?) { throw 'Windows Excel acceptance failed' }
           if (-not (Test-Path -LiteralPath $evidence)) { throw 'Excel acceptance evidence was not created' }
@@ -766,6 +771,7 @@ jobs:
         with:
           name: furusato-windows-logs-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
+            ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/reader_launch_diagnostic.json
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/excel_acceptance.json
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/excel_open_probe.json
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/vbaupdater_bridge.json
