@@ -30,6 +30,7 @@ REPORT_COLUMNS = (
 )
 ALLOWED_MODEL_LOCALITIES = ("STANDARD", "DESIGNATED", "UNCERTAIN")
 NAME_COLUMNS = ("RECIPIENT_NAME_HEX",)  # v3; never plaintext in TSV
+FILING_COLUMNS = ("FILING_LIMIT",)  # v4; optional numeric comparison only
 REQUIRED = (
     "salary_gross", "salary_reference", "deductions_reference",
     "income_tax_withheld", "social_insurance", "basic_reference",
@@ -208,11 +209,17 @@ def all_page_rows(path: Path, target_year=None) -> list[dict]:
                 row["YEAR"] = target_year
                 row.update({name: "" for name in REPORT_COLUMNS})
                 row["RECIPIENT_NAME_HEX"] = result.get("recipient_name_hex", "")
+                row["FILING_LIMIT"] = ""
                 if reference["status"] == "AUTO_REFERENCE":
                     row["SALARY_INCOME"] = reference["salary_income"]
                     row["REFERENCE_LIMIT"] = reference["limit"]
                     row["STATUS"] = "PROVISIONAL"
-                    row["REASON"] = "AUTO_SOURCE_ASSUMPTION"
+                    row["REASON"] = ("AUTO_ONE_STOP_HOUSING"
+                                     if reference.get("mortgage_mode")
+                                     else "AUTO_SOURCE_ASSUMPTION")
+                    comparison = reference.get("filing_higher_limit")
+                    if comparison is not None:
+                        row["FILING_LIMIT"] = comparison
                     row.update(reference["report_trace"])
                 else:
                     row["REFERENCE_LIMIT"] = ""
@@ -228,6 +235,7 @@ def all_page_rows(path: Path, target_year=None) -> list[dict]:
             if target_year is not None:
                 row.update({name: "" for name in REPORT_COLUMNS})
                 row["RECIPIENT_NAME_HEX"] = ""
+                row["FILING_LIMIT"] = ""
             rows.append(row)
     return rows
 
@@ -244,10 +252,15 @@ def write_batch_bridge(rows: list[dict], output: Path) -> None:
     with_name = any("RECIPIENT_NAME_HEX" in row for row in rows)
     if with_name and not with_report:
         raise ValueError("NAME_REQUIRES_REPORT")
+    with_filing = any("FILING_LIMIT" in row for row in rows)
+    if with_filing and (not with_name or
+                        any("FILING_LIMIT" not in row for row in rows)):
+        raise ValueError("FILING_REQUIRES_COMPLETE_NAMED_REPORT")
     if with_name and any("RECIPIENT_NAME_HEX" not in row for row in rows):
         raise ValueError("PARTIAL_NAME_SCHEMA")
     columns = (COLUMNS + (REPORT_COLUMNS if with_report else ())
-               + (NAME_COLUMNS if with_name else ()))
+               + (NAME_COLUMNS if with_name else ())
+               + (FILING_COLUMNS if with_filing else ()))
     if with_report and any(any(k not in row for k in REPORT_COLUMNS)
                            for row in rows):
         raise ValueError("PARTIAL_REPORT_SCHEMA")
@@ -282,4 +295,14 @@ def write_batch_bridge(rows: list[dict], output: Path) -> None:
                     decode_name(encoded)
                 elif encoded != "":
                     raise ValueError("INVALID_NAME_HEX")
+            if with_filing:
+                comparison = row["FILING_LIMIT"]
+                if comparison not in (None, ""):
+                    if (status != "PROVISIONAL" or
+                        type(comparison) is not int or
+                        comparison <= row.get("REFERENCE_LIMIT", -1) or
+                        comparison > 10**9 or comparison % 1000):
+                        raise ValueError("INVALID_FILING_COMPARISON")
+                elif comparison not in ("", None):
+                    raise ValueError("INVALID_FILING_COMPARISON")
             writer.writerow([row.get(key, "") for key in columns])
