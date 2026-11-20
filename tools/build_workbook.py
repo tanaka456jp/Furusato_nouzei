@@ -24,6 +24,7 @@ SPLIT_ALLOC = "分離課税寄附控除"
 MORTGAGE_RETURN = "住宅確申寄附検算"
 RELATIVES = "特定親族明細"
 BATCH = "一括計算一覧"
+BATCH_EDITOR = "一括入力修正"
 AUTO_REPORT = "自動試算根拠"
 RELATIVE_LAST_ROW = 8  # 5 attested relatives; first three use home D14:D16
 
@@ -64,6 +65,7 @@ def build(source, output):
     home = book.create_sheet(HOME, 0)
     relatives = book.create_sheet(RELATIVES, 1)
     batch = book.create_sheet(BATCH, 2)
+    editor = book.create_sheet(BATCH_EDITOR, 3)
     detail = book.create_sheet(DETAIL)
     auto_report = book.create_sheet(AUTO_REPORT)
     extra = book.create_sheet(ADVANCED)
@@ -619,6 +621,9 @@ def build(source, output):
     # Excel Form buttons need more than the default 15pt row height;
     # the Japanese clear-list caption was vertically clipped at 125% DPI.
     batch.row_dimensions[4].height = 34
+    batch["I4"] = "個別数値の手修正"
+    batch["I4"].hyperlink = Hyperlink(ref="I4", location="'一括入力修正'!A1")
+    batch["I4"].style = "Hyperlink"
     batch["A4"] = "操作画面に戻る"
     batch["A4"].hyperlink = Hyperlink(ref="A4", location="'操作画面'!A1")
     batch["A4"].style = "Hyperlink"
@@ -669,6 +674,68 @@ def build(source, output):
             if row % 2 == 0:
                 cell.fill = PatternFill("solid", fgColor="F4F8FB")
 
+
+    # Batch source-detail editor. The G06 deduction total is derived only
+    # during recalculation and intentionally has NO editable cell here.
+    # Each row is tied to its original PDF page and cannot be grouped with
+    # another person's record. The opaque provenance columns stay hidden.
+    editor.sheet_view.showGridLines = False
+    editor.sheet_view.zoomScale = 80
+    editor.freeze_panes = "H6"
+    editor["A1"] = "源泉徴収票｜各人の入力値を修正（所得控除合計は自動算出）"
+    editor.merge_cells("A1:AC1")
+    editor["A1"].font = Font(name="Yu Gothic", size=14, bold=True, color="FFFFFF")
+    editor["A1"].fill = PatternFill("solid", fgColor="163A56")
+    editor.row_dimensions[1].height = 29
+    editor["A2"] = "氏名・原票ページと同じ行の数字のみ修正してください。所得控除合計は編集せず「修正値で全員再計算」を押すと自動で再算出します。"
+    editor.merge_cells("A2:AC2")
+    editor["A2"].alignment = Alignment(wrap_text=True, vertical="center")
+    editor.row_dimensions[2].height = 33
+    editor["A3"] = "源泉票の所得年・控除内訳・住宅ローン控除条件を個別確認。未確認の数字や税額不一致はHOLDとなり、推測で限度額を表示しません。"
+    editor.merge_cells("A3:AC3")
+    editor["A3"].alignment = Alignment(wrap_text=True, vertical="center")
+    editor.row_dimensions[3].height = 31
+    editor["A4"] = "一覧へ戻る"
+    editor["A4"].hyperlink = Hyperlink(ref="A4", location="'一括計算一覧'!A1")
+    editor["A4"].style = "Hyperlink"
+    editor["C4"] = "修正値で全員再計算"
+    edit_labels = (
+        "原票年", "試算対象年", "自治体区分", "内部資料種別", "原票の注意コード",
+        "支払金額", "給与所得控除後（原票）", "源泉徴収税額", "社会保険料",
+        "新生命保険料", "旧生命保険料", "介護医療保険料", "新個人年金保険料",
+        "旧個人年金保険料", "地震保険料控除", "旧長期損保払込額",
+        "配偶者控除", "配偶者所得", "配偶者該当", "16歳未満扶養",
+        "特定親族人数", "特定親族特別控除", "所得金額調整控除",
+        "所得税住宅控除額", "住宅控除可能額", "住宅居住開始年", "住宅控除適用数",
+    )
+    from openpyxl.utils import get_column_letter
+    editor_cols = ("氏名", "原票ページ") + edit_labels
+    assert len(editor_cols) == 29
+    for idx, label in enumerate(editor_cols, 1):
+        letter = get_column_letter(idx)
+        cell = editor.cell(row=5, column=idx, value=label)
+        cell.fill = PatternFill("solid", fgColor="163A56")
+        cell.font = Font(name="Yu Gothic", size=9, bold=True, color="FFFFFF")
+        cell.alignment = Alignment(wrap_text=True, vertical="center")
+        editor.column_dimensions[letter].width = (
+            25 if idx == 1 else 14 if idx in (2, 3, 4) else 18)
+    editor.column_dimensions["F"].hidden = True
+    editor.column_dimensions["G"].hidden = True
+    editor.row_dimensions[5].height = 44
+    editor.auto_filter.ref = "A5:AC105"
+    for line in range(6, 106):
+        editor.row_dimensions[line].height = 22
+        for idx in range(1, 30):
+            cell = editor.cell(row=line, column=idx)
+            cell.number_format = "#,##0" if idx >= 8 else "General"
+            cell.protection = Protection(locked=(idx in (2, 6, 7)))
+            if idx not in (2, 6, 7):
+                cell.fill = PatternFill("solid", fgColor="FFF5DA")
+    editor.sheet_properties.pageSetUpPr.fitToPage = True
+    editor.page_setup.fitToWidth = 1
+    editor.page_setup.fitToHeight = 0
+    editor.page_setup.orientation = "landscape"
+    # Detail editor is an INPUT workspace, not a tax report for printing.
 
     # Prepared per-person report sheet, populated only from the selected
     # source PDF row. The official verified report is a DIFFERENT sheet and
@@ -1511,7 +1578,7 @@ def build(source, output):
     detail["B23"].font = Font(name="Yu Gothic", bold=True, color="9C4100")
     detail.print_area = "A1:D23"
     for sheet in book:
-        sheet.sheet_state = "visible" if sheet in (home, relatives, batch) else "veryHidden"
+        sheet.sheet_state = "visible" if sheet in (home, relatives, batch, editor) else "veryHidden"
         sheet.sheet_view.tabSelected = sheet == home
     book.active = 0
     # Retain a complete first-open calculation while allowing Excel to use
