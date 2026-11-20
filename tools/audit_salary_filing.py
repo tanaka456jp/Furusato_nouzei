@@ -11,11 +11,13 @@ from audit_withholding_reconciliation import progressive_income_tax
 
 def calculate_salary_filing_case(*, year, salary_income, national_deductions,
                                  resident_deductions, donation,
-                                 municipality="standard"):
+                                 municipality="standard",
+                                 personal_difference=50_000):
     if type(year) is not int or year not in (2025, 2026):
         raise ValueError("UNAPPROVED_FILING_YEAR")
     if any(type(v) is not int or v < 0 or v > 10**12 for v in
-           (salary_income, national_deductions, resident_deductions, donation)):
+           (salary_income, national_deductions, resident_deductions,
+            donation, personal_difference)):
         raise ValueError("INVALID_FILING_INPUT")
     if (salary_income <= 450_000 or national_deductions >= salary_income
             or resident_deductions >= salary_income or
@@ -23,7 +25,8 @@ def calculate_salary_filing_case(*, year, salary_income, national_deductions,
         raise ValueError("FILING_OUTSIDE_SUPPORTED_SCOPE")
     base = independent_salary_ceiling(
         year=year, salary_income=salary_income,
-        resident_deductions=resident_deductions, municipality=municipality)
+        resident_deductions=resident_deductions,
+        personal_difference=personal_difference, municipality=municipality)
     national_before = (salary_income - national_deductions) // 1000 * 1000
     deductible = min(donation, salary_income * 4 // 10) - 2_000
     national_after = max(
@@ -47,7 +50,8 @@ def calculate_salary_filing_case(*, year, salary_income, national_deductions,
 
 def independent_salary_filing_ceiling(*, year, salary_income,
                                      national_deductions, resident_deductions,
-                                     municipality="standard"):
+                                     municipality="standard",
+                                     personal_difference=50_000):
     """Conservative safe prefix on a ¥1,000 grid; no monotonicity assumption."""
     ceiling = 0
     for donation in range(2_000, salary_income * 3 // 10 + 1, 1_000):
@@ -55,7 +59,8 @@ def independent_salary_filing_ceiling(*, year, salary_income,
             year=year, salary_income=salary_income,
             national_deductions=national_deductions,
             resident_deductions=resident_deductions, donation=donation,
-            municipality=municipality)
+            municipality=municipality,
+            personal_difference=personal_difference)
         if not case["within_2000_yen_reference"]:
             break
         ceiling = donation
