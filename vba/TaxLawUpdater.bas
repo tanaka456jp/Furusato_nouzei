@@ -340,7 +340,7 @@ Private Function BatchOverviewHasRecords() As Boolean
 End Function
 
 Public Sub ClearBatchOverview()
-    ThisWorkbook.Worksheets("一括計算一覧").Range("A6:S105").ClearContents
+    ThisWorkbook.Worksheets("一括計算一覧").Range("A6:T105").ClearContents
     ThisWorkbook.Worksheets("一括計算一覧").Rows("6:105").RowHeight = 21
     ' Do not leave the final exported taxpayer in the hidden report sheet
     ' after clearing/saving another case.
@@ -485,14 +485,13 @@ Private Sub PopulateBatchReferenceSheet(ByVal index As Long, _
         report.Range("B19").Value2 = source.Cells(rowNo, 9).Value2
         report.Range("B20").Value2 = source.Cells(rowNo, 19).Value2
         report.Range("B22").Value2 = "住民税所得割×20%が特例控除の上限"
-        report.Range("B23").Value2 = "2,000＋(特例控除上限÷特例割合)、給与所得30%と比較"
-        If InStr(1, CStr(source.Cells(rowNo, 11).Value2), _
-                 "確定申告の方が上限額増", vbBinaryCompare) > 0 Then
-            report.Range("B23").Value2 = CStr(source.Cells(rowNo, 11).Value2)
-        ElseIf InStr(1, CStr(source.Cells(rowNo, 11).Value2), _
-                 "住宅ローン控除考慮", vbBinaryCompare) > 0 Then
-            report.Range("B23").Value2 = "ワンストップ適用時・住宅控除後の参考上限（個別確認）"
-        End If
+        report.Range("B23").Value2 = "ワンストップ：" & _
+            Format$(CDbl(source.Cells(rowNo, 9).Value2), "#,##0") & _
+            "円／確定申告：" & _
+            IIf(Len(CStr(source.Cells(rowNo, 20).Value2)) = 0, _
+                "要確認", _
+                Format$(Val(CStr(source.Cells(rowNo, 20).Value2)), "#,##0") & "円")
+
     End If
 End Sub
 
@@ -799,7 +798,7 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
             CStr(pieces(9)) Like "*[!A-Z_]*" Then
             Err.Raise vbObjectError + 357, , "一覧の理由コードが不正です。"
         End If
-        ReDim record(1 To 19)
+        ReDim record(1 To 20)
         record(1) = "氏名未判読"
         If withName Then record(1) = DecodeRecipientNameForBatch(CStr(pieces(18)))
         For col = 1 To 8
@@ -844,27 +843,26 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
                 End If
             End If
         End If
-        ' The default result is the one-stop/no-filing estimate. A second
-        ' amount may ONLY be shown in the notes column when an independent
-        ' same-year model found a strictly larger tax-return reference.
-        If withFiling Then
-            If Len(CStr(pieces(19))) > 0 Then
-                If status <> "PROVISIONAL" Or _
-                   (CStr(pieces(9)) <> "AUTO_ONE_STOP_HOUSING" And _
-                    CStr(pieces(9)) <> "AUTO_ONE_STOP_HOUSING_SPOUSE_INFERRED") Then _
-                    Err.Raise vbObjectError + 405, , _
-                        "確定申告の比較額は住宅控除の参考行にのみ使用できます。"
-                filingLimit = ParseBatchNumber(CStr(pieces(19)), False)
-                If CDbl(filingLimit) <= CDbl(record(9)) Or _
-                   CDbl(filingLimit) > 1000000000# Or _
-                   CDbl(filingLimit) <> Fix(CDbl(filingLimit) / 1000#) * 1000# Or _
-                   CDbl(record(3)) <> CDbl(record(12)) Then _
-                    Err.Raise vbObjectError + 406, , _
-                        "確定申告時の限度額が不正です。"
+        ' Both modes have their own visible columns: I = one-stop, T =
+        ' filing. Never substitute one limit for an unverified other mode.
+        If withFiling And Len(CStr(pieces(19))) > 0 Then
+            If status <> "PROVISIONAL" Then _
+                Err.Raise vbObjectError + 405, , _
+                    "保留行に確定申告の参考額は設定できません。"
+            filingLimit = ParseBatchNumber(CStr(pieces(19)), False)
+            If CDbl(filingLimit) < 0 Or _
+               CDbl(filingLimit) > 1000000000# Or _
+               CDbl(filingLimit) <> Fix(CDbl(filingLimit) / 1000#) * 1000# Then _
+                Err.Raise vbObjectError + 406, , _
+                    "確定申告時の限度額が不正です。"
+            record(20) = filingLimit
+            If CDbl(filingLimit) > CDbl(record(9)) Then
                 record(11) = CStr(record(11)) & _
-                    "／確定申告の方が上限額増（申告時参考上限：" & _
-                    Format$(CDbl(filingLimit), "#,##0") & "円）"
+                    "／確定申告の方が上限額増"
             End If
+        ElseIf withFiling And status = "PROVISIONAL" Then
+            record(11) = CStr(record(11)) & _
+                "／確定申告時上限は条件不足につき要確認"
         End If
         rows.Add record
     Loop
@@ -872,16 +870,16 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
     Set inputFile = Nothing
     If rows.Count < 1 Then Err.Raise vbObjectError + 358, , "ページがありません。"
     Set target = ThisWorkbook.Worksheets("一括計算一覧")
-    oldData = target.Range("A6:S105").Value2
+    oldData = target.Range("A6:T105").Value2
     For page = 6 To 105
         oldHeights(page) = target.Rows(page).RowHeight
     Next page
     changed = True
-    target.Range("A6:S105").ClearContents
+    target.Range("A6:T105").ClearContents
     target.Rows("6:105").RowHeight = 21
     For index = 1 To rows.Count
         record = rows.Item(index)
-        For col = 1 To 19
+        For col = 1 To 20
             target.Cells(index + 5, col).Value2 = record(col)
         Next col
     Next index
@@ -905,7 +903,7 @@ Failed:
     On Error Resume Next
     If Not inputFile Is Nothing Then inputFile.Close
     If changed Then
-        target.Range("A6:S105").Value2 = oldData
+        target.Range("A6:T105").Value2 = oldData
         For page = 6 To 105
             target.Rows(page).RowHeight = oldHeights(page)
         Next page
