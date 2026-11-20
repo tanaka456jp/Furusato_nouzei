@@ -256,6 +256,49 @@ try {
     }
     Assert-Value ([string]$batchSheet.Range('A6').Value2) $firstName 'Rejected v3 did not overwrite person'
     QA-Stage 'batch-e03-person-identity-v3-pass'
+    # v4: a confirmed higher filing-only model comparison is an OPTIONAL
+    # numeric note. The primary amount stays the no-filing/one-stop amount.
+    # All names, tax figures and PDF source rows here are synthetic.
+    QA-Stage 'batch-one-stop-mortgage-v4-notes-start'
+    $v4Header = $reportHeader + [char]9 + 'RECIPIENT_NAME_HEX' +
+                [char]9 + 'FILING_LIMIT'
+    $v4Lines = @($v4Header)
+    $v4First = (@(1,2026,8800000,6850000,2871190,383900,2183340,
+                  121000,'PROVISIONAL','AUTO_ONE_STOP_HOUSING',
+                  2026,670000,2671190,4178000,415200,695800,
+                  83040,'UNCERTAIN',$firstHex,151000) -join [char]9)
+    $v4Lines += $v4First
+    $v4Lines += ($v2Lines[2] + [char]9 + $secondHex + [char]9 + '')
+    $v4Path = Join-Path $dir 'synthetic-batch-v4-mortgage-note.tsv'
+    [IO.File]::WriteAllLines($v4Path,[string[]]$v4Lines,[Text.Encoding]::ASCII)
+    if (-not [bool]($excel.Run('TaxLawUpdater.TryLoadBatchFromTsvForTest',$v4Path))) {
+        $code = [long]($excel.Run('TaxLawUpdater.BatchLastInnerErrorForTest'))
+        throw ('MORTGAGE_V4_REJECTED_CODE=' + $code)
+    }
+    Assert-Value $batchSheet.Range('I6').Value2 121000 'Default one-stop limit unchanged by filing comparison'
+    Assert-Value ([string]$batchSheet.Range('A6').Value2) $firstName 'V4 name and filing comparison stay on one row'
+    $note = [string]$batchSheet.Range('K6').Value2
+    if ($note -notlike '*ワンストップ*' -or
+        $note -notlike '*確定申告の方が上限額増*' -or
+        $note -notlike '*151,000円*') {
+        throw 'MORTGAGE_V4_NOTE_NOT_VISIBLE_OR_NOT_MATCHED'
+    }
+    if ([string]$batchSheet.Range('K7').Value2 -like '*確定申告の方が上限額増*') {
+        throw 'MORTGAGE_V4_COMPARISON_LEAKED_TO_HOLD_ROW'
+    }
+    $v4Invalid = @($v4Lines)
+    $v4Invalid[1] = $v4First.Replace(([char]9 + '151000'),
+                                    ([char]9 + '119000'))
+    $v4BadPath = Join-Path $dir 'synthetic-batch-v4-low-comparison.tsv'
+    [IO.File]::WriteAllLines($v4BadPath,[string[]]$v4Invalid,
+                             [Text.Encoding]::ASCII)
+    if ([bool]($excel.Run('TaxLawUpdater.TryLoadBatchFromTsvForTest',
+                         $v4BadPath))) {
+        throw 'MORTGAGE_V4_BAD_FILING_CAP_ACCEPTED'
+    }
+    Assert-Value $batchSheet.Range('I6').Value2 121000 'Invalid filing cap did not change the base'
+    Assert-Value ([string]$batchSheet.Range('K6').Value2) $note 'Rejected comparison leaves original remarks'
+    QA-Stage 'batch-one-stop-mortgage-v4-notes-pass'
     [void]($excel.Run('TaxLawUpdater.ClearBatchOverview'))
     Assert-Value ([string]$batchSheet.Range('B6').Value2) '' 'Bulk wipe clears old salary rows'
     Assert-Value ([string]$batchSheet.Range('B10').Value2) '' 'Bulk wipe clears final row'
