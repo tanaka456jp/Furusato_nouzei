@@ -188,6 +188,8 @@ End Sub
     try {
         Add-WorkbookButton $batch 'B4' '一覧消去' 'ClearBatchOverviewWithConfirm'
         Add-WorkbookButton $batch 'K4' '全員分PDF出力' 'ExportAllBatchReferencePDFs'
+        $editor = $workbook.Worksheets.Item('一括入力修正')
+        Add-WorkbookButton $editor 'C4' '修正値で全員再計算' 'RecalculateBatchFromEditor'
     } finally {
         [void][Runtime.InteropServices.Marshal]::ReleaseComObject($batch)
     }
