@@ -320,6 +320,7 @@ Public Sub BindButtons()
     BindButton "操作画面", "btnImportWithholdingBatch", "ImportWithholdingBatch"
     BindButton "一括計算一覧", "btnClearBatchOverviewWithConfirm", "ClearBatchOverviewWithConfirm"
     BindButton "一括計算一覧", "btnExportAllBatchReferencePDFs", "ExportAllBatchReferencePDFs"
+    BindButton "一括入力修正", "btnRecalculateBatchEdits", "RecalculateBatchFromEditor"
     BindButton "例外・分離課税", "btnReturnFromAdvanced", "ReturnFromAdvanced"
     BindButton "計算根拠", "btnReturnHome", "ReturnHome"
     BindButton "計算根拠", "btnPrintDetails", "PrintDetails"
@@ -726,6 +727,158 @@ End Function
 ' invokes it after the offline reader exits successfully.  All input lines
 ' are validated BEFORE the first worksheet mutation, and a worksheet-level
 ' rollback preserves the previous list if a subsequent Excel write fails.
+' Only printable name characters accepted by the E03 decoder can be sent
+' back to the EXE. Never transfer formulas, PDF text, or source paths.
+Private Function EncodeRecipientForBatch(ByVal candidate As String) As String
+    Dim idx As Long, cp As Long, encoded As String
+    If Len(candidate) < 1 Or Len(candidate) > 40 Then _
+        Err.Raise vbObjectError + 460, , "氏名の文字数を確認してください。"
+    For idx = 1 To Len(candidate)
+        cp = AscW(Mid$(candidate, idx, 1))
+        If cp < 0 Then cp = cp + 65536
+        encoded = encoded & Right$("0000" & Hex$(cp), 4)
+    Next idx
+    If DecodeRecipientNameForBatch(encoded) <> candidate Then _
+        Err.Raise vbObjectError + 461, , "氏名を確認してください。"
+    EncodeRecipientForBatch = encoded
+End Function
+
+Private Function BatchEditedValue(ByVal cell As Range, _
+                                  ByVal index As Long) As String
+    Dim value As Variant, s As String, n As Double
+    If cell.HasFormula Then _
+        Err.Raise vbObjectError + 462, , "修正欄にExcelの数式を使用できません。"
+    value = cell.Value2
+    If IsEmpty(value) Then Exit Function
+    If index = 3 Then
+        s = CStr(value)
+        Select Case s
+            Case "STANDARD", "DESIGNATED", "SPECIAL", "UNCERTAIN", ""
+            Case Else
+                Err.Raise vbObjectError + 463, , "自治体区分が不正です。"
+        End Select
+    ElseIf index = 4 Then
+        s = CStr(value)
+        Select Case s
+            Case "PDF_TEXT", "PDF_PAGE_SELECTED", _
+                 "STRUCTURED_JSON", "STRUCTURED_TEXT", "TEXT_LABELS", ""
+            Case Else
+                Err.Raise vbObjectError + 463, , "資料種別が不正です。"
+        End Select
+    ElseIf index = 5 Then
+        s = CStr(value)
+        If Len(s) > 250 Or s Like "*[!A-Z0-9_|]*" Then _
+            Err.Raise vbObjectError + 463, , "源泉票の注意コードを確認してください。"
+    Else
+        If Not IsNumeric(value) Then _
+            Err.Raise vbObjectError + 464, , "入力数値を確認してください。"
+        n = CDbl(value)
+        If n < 0 Or n > 1000000000000# Or n <> Fix(n) Then _
+            Err.Raise vbObjectError + 465, , "数値は0以上の整数にしてください。"
+        s = Format$(n, "0")
+    End If
+    BatchEditedValue = s
+End Function
+
+' Does not read/modify the single-taxpayer screen.  Only anonymous page
+' identities and whitelisted values are sent to the offline bundled reader.
+' Rebuilding from all rows is transactional: a failed CLI or TSV leaves
+' both the preview and the user's corrections untouched.
+Public Function RecalculateBatchFromEditor() As Long
+    Dim editor As Worksheet, summary As Worksheet, fso As Object, shell As Object
+    Dim reader As String, temporaryIn As String, temporaryOut As String
+    Dim file As Object, line As String, command As String
+    Dim index As Long, col As Long, total As Long, exitCode As Long
+    Dim problem As String
+    On Error GoTo Failed
+    Set editor = ThisWorkbook.Worksheets("一括入力修正")
+    Set summary = ThisWorkbook.Worksheets("一括計算一覧")
+    If Not BatchOverviewHasRecords() Then _
+        Err.Raise vbObjectError + 466, , "先に源泉票の一括取込をしてください。"
+    If ThisWorkbook.ReadOnly Or Len(ThisWorkbook.Path) = 0 Then _
+        Err.Raise vbObjectError + 467, , _
+            "書き込み可能なローカルのExcelブックが必要です。"
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    reader = fso.BuildPath(ThisWorkbook.Path, "FurusatoDocumentReader.exe")
+    If Not fso.FileExists(reader) Then _
+        Err.Raise vbObjectError + 468, , "同梱の読取EXEが見つかりません。"
+    temporaryIn = fso.BuildPath(fso.GetSpecialFolder(2), _
+                                fso.GetTempName & ".tsv")
+    temporaryOut = fso.BuildPath(fso.GetSpecialFolder(2), _
+                                 fso.GetTempName & ".tsv")
+    Set file = fso.CreateTextFile(temporaryIn, True, False)
+    file.WriteLine "PAGE" & vbTab & "RECIPIENT_NAME_HEX" & vbTab & _
+                    BatchEditFieldHeader()
+    total = 0
+    For index = 1 To 100
+        If Len(CStr(summary.Cells(index + 5, 2).Value2)) = 0 Then Exit For
+        total = total + 1
+        If CDbl(summary.Cells(index + 5, 2).Value2) <> CDbl(index) Or _
+           Not IsNumeric(editor.Cells(index + 5, 2).Value2) Then _
+            Err.Raise vbObjectError + 469, , "原票ページと編集行が不一致です。"
+        If CDbl(editor.Cells(index + 5, 2).Value2) <> CDbl(index) Then _
+            Err.Raise vbObjectError + 469, , "原票ページを変更しないでください。"
+        If editor.Cells(index + 5, 1).HasFormula Then _
+            Err.Raise vbObjectError + 470, , "氏名に数式を入力できません。"
+        line = CStr(index) & vbTab & _
+               EncodeRecipientForBatch(CStr(editor.Cells(index + 5, 1).Value2))
+        For col = 1 To 27
+            line = line & vbTab & _
+                   BatchEditedValue(editor.Cells(index + 5, col + 2), col)
+        Next col
+        file.WriteLine line
+    Next index
+    file.Close
+    Set file = Nothing
+    If total < 1 Then Err.Raise vbObjectError + 471, , "修正データがありません。"
+    For index = total + 1 To 100
+        If Len(CStr(editor.Cells(index + 5, 2).Value2)) > 0 Or _
+           Len(CStr(summary.Cells(index + 5, 2).Value2)) > 0 Then _
+            Err.Raise vbObjectError + 472, , "編集行の人数が不正です。"
+    Next index
+    Set shell = CreateObject("WScript.Shell")
+    command = Chr$(34) & reader & Chr$(34) & _
+              " --input " & Chr$(34) & temporaryIn & Chr$(34) & _
+              " --output " & Chr$(34) & temporaryOut & Chr$(34) & _
+              " --batch-recalculate"
+    exitCode = shell.Run(command, 0, True)
+    If exitCode <> 0 Or Not fso.FileExists(temporaryOut) Then _
+        Err.Raise vbObjectError + 473, , _
+            "修正値の検証・再計算に失敗しました。元の一覧は変更していません。"
+    RecalculateBatchFromEditor = LoadBatchFromTsv(temporaryOut)
+    If RecalculateBatchFromEditor <> total Then _
+        Err.Raise vbObjectError + 474, , "再計算した人数が一致しません。"
+CleanUp:
+    On Error Resume Next
+    If Not file Is Nothing Then file.Close
+    If Not fso Is Nothing Then
+        If Len(temporaryIn) > 0 Then
+            If fso.FileExists(temporaryIn) Then fso.DeleteFile temporaryIn, True
+        End If
+        If Len(temporaryOut) > 0 Then
+            If fso.FileExists(temporaryOut) Then fso.DeleteFile temporaryOut, True
+        End If
+    End If
+    Exit Function
+Failed:
+    problem = Err.Description
+    On Error Resume Next
+    If Not file Is Nothing Then file.Close
+    On Error GoTo 0
+    MsgBox problem, vbExclamation, "一括入力の再計算"
+    Resume CleanUp
+End Function
+
+' Nonmodal entry used by the isolated Windows Excel test.
+Public Function TryRecalculateBatchForTest() As Boolean
+    On Error GoTo Failed
+    TryRecalculateBatchForTest = (RecalculateBatchFromEditor() > 0)
+    Exit Function
+Failed:
+    Err.Clear
+    TryRecalculateBatchForTest = False
+End Function
+
 ' A single schema definition is used to load source detail fields and to
 ' export corrected values back to the Python-free offline reader.
 Private Function BatchEditFieldHeader() As String
