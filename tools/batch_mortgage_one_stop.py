@@ -62,7 +62,10 @@ def compare_mortgage_modes(*, evidence, source_year, target_year,
                        "spouse_income_reference", "special_relative_count",
                        "special_relative_deduction_reference")):
         raise MortgageBatchScopeError("MORTGAGE_OTHER_DEDUCTIONS_UNVERIFIED")
-    if fields.get("mortgage_claim_count", 1) != 1:
+    claim_count = fields.get("mortgage_claim_count")
+    if type(claim_count) is not int or claim_count != 1:
+        # An absent G35 is NOT proof of only one housing credit. Avoid
+        # inadvertently combining multiple homes/renovation deductions.
         raise MortgageBatchScopeError("MORTGAGE_MULTIPLE_CLAIMS_UNVERIFIED")
     occupancy = fields.get("mortgage_occupancy_year")
     if type(occupancy) is not int or not 2023 <= occupancy < source_year:
