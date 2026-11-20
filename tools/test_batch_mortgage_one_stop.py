@@ -41,7 +41,7 @@ class MortgageBatchOneStopTest(unittest.TestCase):
         self.assertIsNone(result["filing_higher_limit"])
 
     def test_no_tax_return_applies_to_same_source_year_only(self):
-        with self.assertRaisesRegex(MortgageBatchScopeError, "NEXT_YEAR"):
+        with self.assertRaisesRegex(MortgageBatchScopeError, "TAX_YEAR_UNSUPPORTED"):
             compare(target_year=2025)
         with self.assertRaisesRegex(MortgageBatchScopeError, "OCCUPANCY"):
             compare(evidence=sample(occupancy=2026))
