@@ -279,15 +279,17 @@ try {
     }
     Assert-Value $batchSheet.Range('I6').Value2 121000 'Default one-stop limit unchanged by filing comparison'
     Assert-Value ([string]$batchSheet.Range('A6').Value2) $firstName 'V4 name and filing comparison stay on one row'
-    Assert-Value ([string]$batchSheet.Range('K5').Value2) '備考（判定理由・申告時比較）' 'V4 batch notes column labeled clearly'
+    Assert-Value ([string]$batchSheet.Range('K5').Value2) '備考（判定理由・両方式の差）' 'V4 batch notes column labeled clearly'
     $noteHeight = [double]$batchSheet.Range('K6').RowHeight
     if ($noteHeight -lt 54) {
         throw 'MORTGAGE_V4_NOTE_ROW_NOT_TALL_ENOUGH'
     }
+    Assert-Value $batchSheet.Range('T6').Value2 151000 'Independent filing ceiling visible'
+    Assert-Value ([string]$batchSheet.Range('T7').Value2) '' 'Unverified filing ceiling remains blank'
     $note = [string]$batchSheet.Range('K6').Value2
     if ($note -notlike '*ワンストップ*' -or
         $note -notlike '*確定申告の方が上限額増*' -or
-        $note -notlike '*151,000円*') {
+        $note -notlike '*上限額増*') {
         throw 'MORTGAGE_V4_NOTE_NOT_VISIBLE_OR_NOT_MATCHED'
     }
     if ([string]$batchSheet.Range('K7').Value2 -like '*確定申告の方が上限額増*') {
@@ -299,7 +301,7 @@ try {
     }
     $v4Invalid = @($v4Lines)
     $v4Invalid[1] = $v4First.Replace(([char]9 + '151000'),
-                                    ([char]9 + '119000'))
+                                    ([char]9 + '119500'))
     $v4BadPath = Join-Path $dir 'synthetic-batch-v4-low-comparison.tsv'
     [IO.File]::WriteAllLines($v4BadPath,[string[]]$v4Invalid,
                              [Text.Encoding]::ASCII)
@@ -309,6 +311,7 @@ try {
     }
     Assert-Value $batchSheet.Range('I6').Value2 121000 'Invalid filing cap did not change the base'
     Assert-Value ([string]$batchSheet.Range('K6').Value2) $note 'Rejected comparison leaves original remarks'
+    Assert-Value $batchSheet.Range('T6').Value2 151000 'Rejected comparison retains filing ceiling'
     Assert-Value ([double]$batchSheet.Range('K6').RowHeight) $noteHeight 'Rejected comparison preserves readable wrapped height'
     QA-Stage 'batch-one-stop-mortgage-v4-notes-pass'
     [void]($excel.Run('TaxLawUpdater.ClearBatchOverview'))
