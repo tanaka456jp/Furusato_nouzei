@@ -144,7 +144,9 @@ class WorkbookTest(unittest.TestCase):
         self.assertEqual(batch["B5"].value, "ページ")
         self.assertEqual(batch["I5"].value, "上限額参考（円）")
         self.assertEqual(batch["J5"].value, "判定")
-        self.assertEqual(batch["K5"].value, "判定理由（詳細）")
+        self.assertEqual(batch["K5"].value, "備考（判定理由・申告時比較）")
+        self.assertTrue(batch["K6"].alignment.wrap_text)
+        self.assertGreaterEqual(batch.column_dimensions["K"].width, 50)
         report = self.book["自動試算根拠"]
         self.assertEqual(report.sheet_state, "veryHidden")
         self.assertEqual(str(report.print_area), "'自動試算根拠'!$A$1:$D$27")
