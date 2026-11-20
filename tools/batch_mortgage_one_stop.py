@@ -44,13 +44,21 @@ def compare_mortgage_modes(*, evidence, source_year, target_year,
             salary_income != independent_nta_fifth_table_salary_income(
                 source_year, fields["salary_gross"])):
         raise MortgageBatchScopeError("MORTGAGE_SALARY_OR_FAMILY_UNVERIFIED")
-    if national_deductions != fields.get("social_insurance", -1) + national_basic:
-        # Resident and national life/earthquake/family allowances differ.
+    from bulk_salary_only import _life_deductions
+    try:
+        national_life, resident_life = _life_deductions(fields)
+    except (TypeError, ValueError) as exc:
+        raise MortgageBatchScopeError("MORTGAGE_LIFE_PREMIUM_INVALID") from exc
+    if (fields.get("life_deduction_reference", 0) != national_life
+            or national_deductions !=
+            fields.get("social_insurance", -1) + national_basic + national_life
+            or resident_deductions !=
+            fields.get("social_insurance", -1) + 430_000 + resident_life):
+        # Both distinct statutory deductions must be reconstructed from
+        # the FIVE premium boxes and match the source national total.
         raise MortgageBatchScopeError("MORTGAGE_NONBASIC_DEDUCTIONS_UNVERIFIED")
     if any(type(fields.get(key, 0)) is not int or fields.get(key, 0) != 0
-           for key in ("life_new", "life_old", "medical_care", "annuity_new",
-                       "annuity_old", "earthquake_paid",
-                       "earthquake_deduction_reference",
+           for key in ("earthquake_paid", "earthquake_deduction_reference",
                        "spouse_income_reference", "special_relative_count",
                        "special_relative_deduction_reference")):
         raise MortgageBatchScopeError("MORTGAGE_OTHER_DEDUCTIONS_UNVERIFIED")
