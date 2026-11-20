@@ -2,6 +2,7 @@
 # Run on a dedicated Windows Excel desktop with VBOM access configured for the build user.
 param(
     [Parameter(Mandatory=$true)][string]$Workbook,
+    [string]$ReaderExecutable = '',
     [string]$EvidencePath = '',
     [string]$PdfEvidencePath = '',
     [ValidatePattern('^[a-f0-9]{40}$')][string]$SourceHead
@@ -332,15 +333,21 @@ try {
         'EDIT_MORTGAGE_OCCUPANCY_YEAR','EDIT_MORTGAGE_CLAIM_COUNT'
     )
     $v5Header = $v4Header + [char]9 + ($editColumns -join [char]9)
-    $v5Extra = @(2026,2026,'STANDARD','PDF_TEXT','',8800000,
-                 6850000,383900,2183340,0,0,0,0,0,0,0,0,0,0,
-                 0,0,0,0,0,300000,2024,1)
+    $v5Extra = @(2026,2026,'STANDARD','PDF_TEXT','',7000000,
+                 5200000,0,1000000,0,0,0,0,0,0,0,0,0,0,
+                 0,0,0,0,278500,300000,2024,1)
+    $v5Extra2 = @($v5Extra)
+    $v5Extra2[7] = 284300   # without housing, year-end tax after surtax
+    $v5Extra2[23] = 0
+    $v5Extra2[24] = 0
+    $v5Extra2[25] = 0
+    $v5Extra2[26] = 0
     if ($v5Extra.Count -ne $editColumns.Count) {
         throw 'V5_EDIT_SOURCE_SCHEMA_FIXTURE_WRONG'
     }
     $v5Lines = @($v5Header)
     $v5Lines += $v4First + [char]9 + ($v5Extra -join [char]9)
-    $v5Lines += $v4Lines[2] + (([string][char]9) * $editColumns.Count)
+    $v5Lines += $v4Lines[2] + [char]9 + ($v5Extra2 -join [char]9)
     $v5Path = Join-Path $dir 'synthetic-v5-per-person-edit.tsv'
     [IO.File]::WriteAllLines($v5Path,[string[]]$v5Lines,
                              [Text.Encoding]::ASCII)
@@ -351,7 +358,7 @@ try {
     }
     $batchEditor = $book.Worksheets.Item('一括入力修正')
     Assert-Value $batchEditor.Range('B6').Value2 1 'V5 detail source page is aligned'
-    Assert-Value $batchEditor.Range('H6').Value2 8800000 'V5 detail salary amount'
+    Assert-Value $batchEditor.Range('H6').Value2 7000000 'V5 detail salary amount'
     Assert-Value $batchEditor.Range('D6').Value2 2026 'V5 target income year'
     Assert-Value $batchSheet.Range('T6').Value2 151000 'V5 second filing mode retained'
     Assert-MacroAction ([string]$batchEditor.Buttons().Item('btnRecalculateBatchEdits').OnAction) 'FurusatoQA.xlsm!TaxLawUpdater.RecalculateBatchFromEditor' 'Batch editor button ownership'
@@ -366,6 +373,34 @@ try {
     Assert-Value $batchSheet.Range('F6').Value2 2871190 'Failed recalc kept derived total'
     Assert-Value $batchSheet.Range('T6').Value2 151000 'Failed recalc kept filing amount'
     Assert-Value $batchSheet.Range('B7').Value2 2 'Failed recalc kept other person'
+    if ($ReaderExecutable) {
+        if (-not (Test-Path -LiteralPath $ReaderExecutable -PathType Leaf)) {
+            throw 'BATCH_RECALC_TEST_READER_MISSING'
+        }
+        [IO.File]::Copy((Resolve-Path -LiteralPath $ReaderExecutable).Path,
+                        (Join-Path $dir 'FurusatoDocumentReader.exe'))
+        $batchEditor.Range('K6').Value2 = 1000000
+        if (-not [bool]($excel.Run('TaxLawUpdater.TryRecalculateBatchForTest'))) {
+            throw 'BATCH_V5_RECALC_VALID_ROW_REJECTED'
+        }
+        Assert-Value $batchSheet.Range('F6').Value2 1670000 'Target year deduction total derived'
+        Assert-Value $batchSheet.Range('J6').Value2 '参考額（仮）' 'Corrected housing row provisional'
+        Assert-Value $batchSheet.Range('I6').Value2 ([double]$batchSheet.Range('I6').Value2) 'One-stop numeric'
+        if ($null -eq $batchSheet.Range('T6').Value2 -or
+            [string]$batchSheet.Range('T6').Value2 -eq '') {
+            throw 'BATCH_V5_FILING_CEILING_NOT_CALCULATED'
+        }
+        Assert-Value $batchSheet.Range('B7').Value2 2 'Other person page remains distinct'
+        $batchEditor.Range('K6').Value2 = 1100000
+        if (-not [bool]($excel.Run('TaxLawUpdater.TryRecalculateBatchForTest'))) {
+            throw 'BATCH_V5_RECALC_UNRECONCILED_ROW_REJECTED'
+        }
+        Assert-Value $batchSheet.Range('F6').Value2 1770000 'Edited social insurance automatically recalculated deductions'
+        Assert-Value $batchSheet.Range('J6').Value2 'HOLD／要確認' 'Stale withholding enforces HOLD'
+        Assert-Value ([string]$batchSheet.Range('I6').Value2) '' 'HOLD leaves one-stop blank'
+        Assert-Value ([string]$batchSheet.Range('T6').Value2) '' 'HOLD leaves filing blank'
+        Assert-Value $batchSheet.Range('B7').Value2 2 'Second person not mixed by recalculation'
+    }
     QA-Stage 'batch-v5-editable-input-import-pass'
     [void]($excel.Run('TaxLawUpdater.ClearBatchOverview'))
     Assert-Value ([string]$batchSheet.Range('B6').Value2) '' 'Bulk wipe clears old salary rows'
