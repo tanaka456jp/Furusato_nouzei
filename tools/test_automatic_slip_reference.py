@@ -95,12 +95,23 @@ class AutoReferenceTests(unittest.TestCase):
                                         "class": "SPECIAL"}
         special = make_automatic_reference(annual, 2026)
         self.assertEqual(special["status"], "HOLD")
+        self.assertEqual(special["reason"], "MORTGAGE_LOCAL_TAX_REVIEW")
         self.assertNotIn("limit", special)
         annual["municipality_hint"] = {"class": "STANDARD"}
         del annual["fields"]["mortgage_possible_credit"]
         unverified = make_automatic_reference(annual, 2026)
         self.assertEqual(unverified["status"], "HOLD")
+        self.assertEqual(unverified["reason"],
+                         "MORTGAGE_POSSIBLE_AMOUNT_MISSING")
         self.assertNotIn("limit", unverified)
+        with patch("withholding_reader.pdf_page_count", return_value=2), \
+             patch("withholding_reader.extract",
+                   side_effect=[annual, annual]):
+            rows = all_page_rows(Path("synthetic.pdf"), target_year=2026)
+        self.assertTrue(all(row["STATUS"] == "HOLD" for row in rows))
+        self.assertEqual(
+            [row["REASON"] for row in rows],
+            ["MORTGAGE_POSSIBLE_AMOUNT_MISSING"] * 2)
 
     def test_first_year_and_2022_mortgage_classes_fail_closed(self):
         base = dict(year=2026, salary_gross=7_000_000,
