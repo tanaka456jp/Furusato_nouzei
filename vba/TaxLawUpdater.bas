@@ -1064,24 +1064,29 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
         End If
         ' Both modes have their own visible columns: I = one-stop, T =
         ' filing. Never substitute one limit for an unverified other mode.
-        If withFiling And Len(CStr(pieces(19))) > 0 Then
-            If status <> "PROVISIONAL" Then _
-                Err.Raise vbObjectError + 405, , _
-                    "保留行に確定申告の参考額は設定できません。"
-            filingLimit = ParseBatchNumber(CStr(pieces(19)), False)
-            If CDbl(filingLimit) < 0 Or _
-               CDbl(filingLimit) > 1000000000# Or _
-               CDbl(filingLimit) <> Fix(CDbl(filingLimit) / 1000#) * 1000# Then _
-                Err.Raise vbObjectError + 406, , _
-                    "確定申告時の限度額が不正です。"
-            record(20) = filingLimit
-            If CDbl(filingLimit) > CDbl(record(9)) Then
+        ' VBA And is NOT short circuit: never index pieces(19) for v1/v2/v3
+        ' rows that contain only 10/18/19 fields. A Subscript-out-of-range
+        ' exception otherwise opens an unattended Excel error dialog.
+        If withFiling Then
+            If Len(CStr(pieces(19))) > 0 Then
+                If status <> "PROVISIONAL" Then _
+                    Err.Raise vbObjectError + 405, , _
+                        "保留行に確定申告の参考額は設定できません。"
+                filingLimit = ParseBatchNumber(CStr(pieces(19)), False)
+                If CDbl(filingLimit) < 0 Or _
+                   CDbl(filingLimit) > 1000000000# Or _
+                   CDbl(filingLimit) <> Fix(CDbl(filingLimit) / 1000#) * 1000# Then _
+                    Err.Raise vbObjectError + 406, , _
+                        "確定申告時の限度額が不正です。"
+                record(20) = filingLimit
+                If CDbl(filingLimit) > CDbl(record(9)) Then
+                    record(11) = CStr(record(11)) & _
+                        "／確定申告の方が上限額増"
+                End If
+            ElseIf status = "PROVISIONAL" Then
                 record(11) = CStr(record(11)) & _
-                    "／確定申告の方が上限額増"
+                    "／確定申告時上限は条件不足につき要確認"
             End If
-        ElseIf withFiling And status = "PROVISIONAL" Then
-            record(11) = CStr(record(11)) & _
-                "／確定申告時上限は条件不足につき要確認"
         End If
         If withEdit Then
             For col = 1 To editFieldCount

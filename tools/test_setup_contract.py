@@ -113,6 +113,14 @@ assert 'Err.Raise vbObjectError + 116' not in vba
 assert "Public Function TaxLawUpdateLastFailure() As String" in vba
 assert "TrySaveCaseToFileForTest" in vba and "TryExportDetailsToFileForTest" in vba
 verify_ps = (ROOT / "tools/verify_excel.ps1").read_text(encoding="utf-8-sig")
+assert "If withFiling And Len(CStr(pieces(19)))" not in vba, (
+    "VBA And evaluates out-of-range pieces(19) on legacy batch rows")
+assert "If withFiling Then" in vba and "If Len(CStr(pieces(19))) > 0 Then" in vba, (
+    "Legacy v1/v2/v3 schemas must guard the filing column before indexing")
+assert "'TaxLawUpdater.LoadBatchFromTsv'" not in verify_ps, (
+    "Direct VBA batch loader call may leave unattended Excel blocked by error modal")
+assert "BATCH_V1_LOAD_REJECTED_CODE" in verify_ps
+assert "BATCH_V2_LOAD_REJECTED_CODE" in verify_ps
 assert "TaxLawUpdater.TrySaveCaseToFileForTest" in verify_ps
 assert "TaxLawUpdater.TryExportDetailsToFileForTest" in verify_ps
 assert "TaxLawUpdater.TaxLawUpdateLastFailure" in verify_ps

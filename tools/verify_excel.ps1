@@ -131,7 +131,14 @@ try {
     $batchPath = Join-Path $dir 'synthetic-five-batch.tsv'
     [IO.File]::WriteAllLines($batchPath, [string[]]$batchLines,
                               [Text.Encoding]::ASCII)
-    Assert-Value ([int]($excel.Run('TaxLawUpdater.LoadBatchFromTsv', $batchPath))) 5 'Five-page numeric TSV loaded'
+    # Never call a potentially throwing VBA loader directly from unattended
+    # Excel COM: an unhandled VBA runtime-error dialog blocks the runner.
+    QA-Stage 'batch-v1-loader-call-start'
+    if (-not [bool]($excel.Run('TaxLawUpdater.TryLoadBatchFromTsvForTest', $batchPath))) {
+        $code = [long]($excel.Run('TaxLawUpdater.BatchLastInnerErrorForTest'))
+        throw ('BATCH_V1_LOAD_REJECTED_CODE=' + $code)
+    }
+    QA-Stage 'batch-v1-loader-call-pass'
     $batchSheet = $book.Worksheets.Item('一括計算一覧')
     Assert-Value $batchSheet.Range('B6').Value2 1 'First selected PDF page'
     Assert-Value $batchSheet.Range('B10').Value2 5 'Fifth selected PDF page'
@@ -180,14 +187,21 @@ try {
                   '', 'HOLD','AUTO_SOURCE_HOLD','','','','','','','','') -join [char]9)
     $v2Path = Join-Path $dir 'synthetic-two-report-v2.tsv'
     [IO.File]::WriteAllLines($v2Path,[string[]]$v2Lines,[Text.Encoding]::ASCII)
-    Assert-Value ([int]($excel.Run('TaxLawUpdater.LoadBatchFromTsv',$v2Path))) 2 'New report-v2 schema accepted'
+    QA-Stage 'batch-v2-loader-call-start'
+    if (-not [bool]($excel.Run('TaxLawUpdater.TryLoadBatchFromTsvForTest', $v2Path))) {
+        $code = [long]($excel.Run('TaxLawUpdater.BatchLastInnerErrorForTest'))
+        throw ('BATCH_V2_LOAD_REJECTED_CODE=' + $code)
+    }
+    QA-Stage 'batch-v2-loader-call-pass'
     Assert-Value $batchSheet.Range('L6').Value2 2025 'Source-year report trace saved'
     Assert-Value $batchSheet.Range('P6').Value2 415200 'Resident levy is kept with selected model'
     Assert-Value ([string]$batchSheet.Range('L7').Value2) '' 'HOLD report has no made-up model'
     $outputRoot = Join-Path $dir 'individual-pdf-qa-root'
     [IO.Directory]::CreateDirectory($outputRoot) | Out-Null
-    Assert-Value ([int]($excel.Run('TaxLawUpdater.ExportAllBatchReferencePDFsToFolder',
-                                  $outputRoot))) 2 'One PDF per anonymous input page'
+    if (-not [bool]($excel.Run('TaxLawUpdater.TryExportAllBatchReferencePDFsForTest',
+                               $outputRoot))) {
+        throw 'BATCH_V2_REPORT_EXPORT_REJECTED'
+    }
     $pdfs = @(Get-ChildItem -LiteralPath $outputRoot -File -Recurse -Filter '*.pdf')
     Assert-Value $pdfs.Count 2 'Exactly two independent PDFs'
     if (-not (($pdfs.Name -join '|') -like '*ページ001*' -and
