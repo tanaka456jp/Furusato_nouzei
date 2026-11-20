@@ -8,6 +8,7 @@ be silently represented as an exact homeowner filing benefit.
 """
 from audit_salary_donation_limit import (
     independent_salary_ceiling, independent_one_stop_after_housing,
+    independent_nta_fifth_table_salary_income,
 )
 from audit_mortgage_filing import independent_mortgage_filing_ceiling
 from audit_withholding_reconciliation import progressive_income_tax, reconcile
@@ -37,6 +38,12 @@ def compare_mortgage_modes(*, evidence, source_year, target_year,
                (salary_income, national_deductions, resident_deductions,
                 national_basic)):
         raise MortgageBatchScopeError("MORTGAGE_DEDUCTIONS_NOT_RECONCILED")
+    if (type(fields.get("salary_gross")) is not int or
+            fields.get("income_adjustment", 0) != 0 or
+            fields.get("under16_count", 0) != 0 or
+            salary_income != independent_nta_fifth_table_salary_income(
+                source_year, fields["salary_gross"])):
+        raise MortgageBatchScopeError("MORTGAGE_SALARY_OR_FAMILY_UNVERIFIED")
     if national_deductions != fields.get("social_insurance", -1) + national_basic:
         # Resident and national life/earthquake/family allowances differ.
         raise MortgageBatchScopeError("MORTGAGE_NONBASIC_DEDUCTIONS_UNVERIFIED")
