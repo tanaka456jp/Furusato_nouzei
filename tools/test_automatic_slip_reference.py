@@ -173,7 +173,7 @@ class AutoReferenceTests(unittest.TestCase):
                       projected["reason"])
         self.assertIn("UNDER23_DEPENDENTS_ASSUMED_ELIGIBLE_NEXT_YEAR",
                       projected["reason"])
-        with patch("withholding_reader.pdf_page_count", return_value=1), \\
+        with patch("withholding_reader.pdf_page_count", return_value=1), \
              patch("withholding_reader.extract", return_value=fixture):
             row = all_page_rows(Path("fictional.pdf"), target_year=2026)[0]
         self.assertEqual(row["STATUS"], "PROVISIONAL", row)
