@@ -129,6 +129,7 @@ def compare_mortgage_modes(*, evidence, source_year, target_year,
         scenarios.append((municipality, one_stop))
     selected_municipality, conservative = min(scenarios, key=lambda x: x[1])
     higher_filing = None
+    filing_limit = None
     # A tax-return comparator never alters the default one-stop number.
     # Only tax-return conditions independently comparable to the slip may
     # produce a conditional filing benefit note. No assumption is made about
@@ -144,14 +145,19 @@ def compare_mortgage_modes(*, evidence, source_year, target_year,
             )["tax_return_thousand_yen_reference"]
             for municipality in municipalities
         ]
-        if (len(set(filing)) == 1 and filing[0] > max(v for _,v in scenarios)
-                and filing[0] > 2000):
-            higher_filing = filing[0]
+        if len(set(filing)) == 1:
+            # Show the filing reference EVEN when it equals or is below
+            # one-stop. Disagreeing ordinary city-class scenarios remain
+            # blank rather than inventing a particular municipality.
+            filing_limit = filing[0]
+            if filing_limit > max(v for _,v in scenarios) and filing_limit > 2000:
+                higher_filing = filing_limit
     except (ValueError, TypeError):
         pass
     return {"one_stop_limit": conservative,
             "selected_municipality": selected_municipality,
             "filing_higher_limit": higher_filing,
+            "filing_limit": filing_limit,
             "mortgage_applied_national": target_used,
             "mortgage_resident_transfer": min(
                 possible - target_used, 97500,
