@@ -11,6 +11,7 @@ from audit_salary_donation_limit import (
 )
 from audit_mortgage_filing import independent_mortgage_filing_ceiling
 from audit_withholding_reconciliation import progressive_income_tax, reconcile
+from fractions import Fraction
 
 
 class MortgageBatchScopeError(ValueError):
@@ -77,7 +78,7 @@ def compare_mortgage_modes(*, evidence, source_year, target_year,
             personal_difference=50_000, municipality=municipality)
         # Reject special high-rate schemes unsupported by the one-stop
         # equivalent income-tax-rate calculation.
-        if nominal["special_ratio"] < 56307/100000:
+        if nominal["special_ratio"] < Fraction(56307, 100000):
             raise MortgageBatchScopeError("MORTGAGE_HIGH_RATE_UNVERIFIED")
         basis = (national_taxable + max(0, national_basic - 480000))//1000*1000
         resident_housing = min(possible-used, 97500, basis*5//100)
@@ -87,7 +88,7 @@ def compare_mortgage_modes(*, evidence, source_year, target_year,
             resident_mortgage_credit=resident_housing,
         )["one_stop_effective_thousand_yen_reference"]
         scenarios.append((municipality, one_stop))
-    conservative = min(value for _,value in scenarios)
+    selected_municipality, conservative = min(scenarios, key=lambda x: x[1])
     higher_filing = None
     # A tax-return comparator never alters the default one-stop number.
     # Only tax-return conditions independently comparable to the slip may
@@ -110,6 +111,7 @@ def compare_mortgage_modes(*, evidence, source_year, target_year,
     except (ValueError, TypeError):
         pass
     return {"one_stop_limit": conservative,
+            "selected_municipality": selected_municipality,
             "filing_higher_limit": higher_filing,
             "mortgage_applied_national": used,
             "mortgage_resident_transfer": min(
