@@ -180,6 +180,21 @@ class AutoReferenceTests(unittest.TestCase):
         self.assertEqual(row["REASON"], "AUTO_ONE_STOP_HOUSING")
         self.assertEqual(row["R_SOURCE_YEAR"], 2025)
 
+        # The G13 amount may be located left of its printed code; only the
+        # explicit G09 flag, G43 spouse income and exact G06 residual permit
+        # an assumption, which must be labelled as such.
+        inferred = {**fixture, "fields": {**fixture["fields"],
+                                          "spouse_eligibility_flag": 1}}
+        del inferred["fields"]["spouse_deduction_reference"]
+        inferred_result = make_automatic_reference(inferred, 2026)
+        self.assertEqual(inferred_result["status"], "AUTO_REFERENCE",
+                         inferred_result)
+        self.assertIn("SOURCE_SPOUSE_DEDUCTION_INFERRED_FROM_TOTAL",
+                      inferred_result["reason"])
+        inferred["fields"]["spouse_eligibility_flag"] = 0
+        self.assertEqual(make_automatic_reference(inferred, 2026)["reason"],
+                         "MORTGAGE_SPOUSE_DEDUCTION_REVIEW")
+
         # Neither invalid spouse entitlement nor old-long earthquake relief
         # is laundered into a plausible-looking reference amount.
         for mutation, reason in (
