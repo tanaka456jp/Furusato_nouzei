@@ -474,7 +474,8 @@ try {
         $vbaCode = [long]($excel.Run('TaxLawUpdater.BatchRecalcLastErrorForTest'))
         $exeCode = [long]($excel.Run('TaxLawUpdater.BatchRecalcLastExitCodeForTest'))
         throw ('BATCH_V5_RECALC_VALID_ROW_REJECTED stage=' + $stage +
-               ' vba=' + $vbaCode + ' exe=' + $exeCode)
+               ' vba=' + $vbaCode + ' exe=' + $exeCode +
+               ' attempts=' + [long]($excel.Run('TaxLawUpdater.BatchRecalcLaunchAttemptsForTest')))
         }
         Assert-Value $batchSheet.Range('F6').Value2 1670000 'Target year deduction total derived'
         Assert-Value $batchSheet.Range('J6').Value2 '参考額（仮）' 'Corrected housing row provisional'
@@ -489,7 +490,8 @@ try {
             throw ('BATCH_V5_RECALC_UNRECONCILED_ROW_REJECTED stage=' +
                    [long]($excel.Run('TaxLawUpdater.BatchRecalcLastStageForTest')) +
                    ' vba=' + [long]($excel.Run('TaxLawUpdater.BatchRecalcLastErrorForTest')) +
-                   ' exe=' + [long]($excel.Run('TaxLawUpdater.BatchRecalcLastExitCodeForTest')))
+                   ' exe=' + [long]($excel.Run('TaxLawUpdater.BatchRecalcLastExitCodeForTest')) +
+                    ' attempts=' + [long]($excel.Run('TaxLawUpdater.BatchRecalcLaunchAttemptsForTest')))
         }
         Assert-Value $batchSheet.Range('F6').Value2 1770000 'Edited social insurance automatically recalculated deductions'
         Assert-Value $batchSheet.Range('J6').Value2 'HOLD／要確認' 'Stale withholding enforces HOLD'
@@ -529,7 +531,8 @@ try {
             throw ('BATCH_V6_FAMILY_RECALC_REJECTED stage=' +
                    [long]($excel.Run('TaxLawUpdater.BatchRecalcLastStageForTest')) +
                    ' vba=' + [long]($excel.Run('TaxLawUpdater.BatchRecalcLastErrorForTest')) +
-                   ' exe=' + [long]($excel.Run('TaxLawUpdater.BatchRecalcLastExitCodeForTest')))
+                   ' exe=' + [long]($excel.Run('TaxLawUpdater.BatchRecalcLastExitCodeForTest')) +
+                    ' attempts=' + [long]($excel.Run('TaxLawUpdater.BatchRecalcLaunchAttemptsForTest')))
         }
         Assert-Value $batchSheet.Range('F6').Value2 2050000 'Family tax deduction automatically added'
         Assert-Value $batchSheet.Range('J6').Value2 'HOLD／要確認' 'Stale mortgage/source tax held'

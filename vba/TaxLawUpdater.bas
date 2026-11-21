@@ -10,6 +10,7 @@ Private mBatchLastInnerError As Long
 Private mBatchRecalcLastStage As Long
 Private mBatchRecalcLastError As Long
 Private mBatchRecalcLastExitCode As Long
+Private mBatchRecalcLastLaunchAttempts As Long
 ' Default source import is source-only, unverified, zero-confirmation preview.
 Private mManualImport As Boolean
 Private mResultMaskBusy As Boolean
@@ -896,6 +897,29 @@ Failed:
     ExportBatchEditsForTest = 0
 End Function
 
+' Windows can transiently deny launch during inspection of the exact
+' local reader. Retry at most once, same command and security context.
+' Permanent access denial remains an error; never change Office/AV policy.
+Private Function RunBatchReaderWithAccessRetry(ByVal launcher As Object, _
+        ByVal command As String, ByVal fso As Object, _
+        ByVal outputPath As String) As Long
+    Dim firstError As Long
+    mBatchRecalcLastLaunchAttempts = 1
+    On Error Resume Next
+    RunBatchReaderWithAccessRetry = launcher.Run(command, 0, True)
+    firstError = Err.Number
+    Err.Clear
+    On Error GoTo 0
+    If firstError = 0 Then Exit Function
+    If firstError <> 70 Or fso.FileExists(outputPath) Then
+        Err.Raise firstError, "TaxLawUpdater.ReaderLaunch", _
+                  "読取EXEの起動が拒否されました。元の一覧は変更していません。"
+    End If
+    Application.Wait Now + TimeSerial(0, 0, 1)
+    mBatchRecalcLastLaunchAttempts = 2
+    RunBatchReaderWithAccessRetry = launcher.Run(command, 0, True)
+End Function
+
 ' Does not read/modify the single-taxpayer screen.  Only anonymous page
 ' identities and whitelisted values are sent to the offline bundled reader.
 ' Rebuilding from all rows is transactional: a failed CLI or TSV leaves
@@ -911,6 +935,7 @@ Public Function RecalculateBatchFromEditor( _
     mBatchRecalcLastStage = 1
     mBatchRecalcLastError = 0
     mBatchRecalcLastExitCode = -1
+    mBatchRecalcLastLaunchAttempts = 0
     Set editor = ThisWorkbook.Worksheets("一括入力修正")
     Set summary = ThisWorkbook.Worksheets("一括計算一覧")
     If Not BatchOverviewHasRecords() Then _
@@ -935,7 +960,7 @@ Public Function RecalculateBatchFromEditor( _
               " --output " & Chr$(34) & temporaryOut & Chr$(34) & _
               " --batch-recalculate"
     mBatchRecalcLastStage = 4
-    exitCode = shell.Run(command, 0, True)
+    exitCode = RunBatchReaderWithAccessRetry(shell, command, fso, temporaryOut)
     mBatchRecalcLastExitCode = exitCode
     mBatchRecalcLastStage = 5
     If exitCode <> 0 Or Not fso.FileExists(temporaryOut) Then _
@@ -980,6 +1005,11 @@ End Function
 
 Public Function BatchRecalcLastExitCodeForTest() As Long
     BatchRecalcLastExitCodeForTest = mBatchRecalcLastExitCode
+End Function
+
+' How many identical launch attempts were made (0/1/2); no paths or names.
+Public Function BatchRecalcLaunchAttemptsForTest() As Long
+    BatchRecalcLaunchAttemptsForTest = mBatchRecalcLastLaunchAttempts
 End Function
 
 ' Nonmodal entry used by the isolated Windows Excel test.

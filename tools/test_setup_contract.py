@@ -181,4 +181,16 @@ assert "Len(CStr(target.Cells(index + 5, 11).Value2)) > 50" not in vba, (
 assert "TaxLawUpdater.TrySaveCaseToFileForTest" in verify_ps
 assert "TaxLawUpdater.TryExportDetailsToFileForTest" in verify_ps
 assert "TaxLawUpdater.TaxLawUpdateLastFailure" in verify_ps
+
+# One same-command retry is permitted only for VBA Err 70; fail closed otherwise.
+assert "RunBatchReaderWithAccessRetry(shell, command, fso, temporaryOut)" in vba
+retry = vba.split("Private Function RunBatchReaderWithAccessRetry(", 1)[1].split("End Function", 1)[0]
+assert retry.count("launcher.Run(command, 0, True)") == 2
+assert "If firstError <> 70 Or fso.FileExists(outputPath) Then" in retry
+assert "mBatchRecalcLastLaunchAttempts = 1" in retry
+assert "mBatchRecalcLastLaunchAttempts = 2" in retry
+assert "Application.Wait Now + TimeSerial(0, 0, 1)" in retry
+assert "Err.Raise firstError" in retry
+assert "BatchRecalcLaunchAttemptsForTest" in vba
+assert verify.count("TaxLawUpdater.BatchRecalcLaunchAttemptsForTest") == 3
 print("PASS: flat ASCII delivery ZIP; source/payload matched; Unicode VBA import and smoke run present.")
