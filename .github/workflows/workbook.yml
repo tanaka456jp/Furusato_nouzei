@@ -665,12 +665,25 @@ jobs:
               $source.exe_authenticode -cne 'UNSIGNED') {
             throw 'Offline batch reader is not the verified same-run unsigned build'
           }
-          # Prove the same signed-off reader runs on the Windows self-hosted
-          # runner BEFORE invoking it from Excel COM. Synthetic values only.
-          # Separate the Excel/VBA data handoff from Windows policy blocking the
-          # unsigned PyInstaller EXE. This partial QA never approves a release.
-          & .\tools\verify_excel.ps1 -Workbook (Join-Path $work 'review/Furusato_nouzei.xlsm') -BatchBridgeOnly -FullSyntheticSuite
-          if (-not $?) { throw 'PC1_EXCEL_SOURCE_BRIDGE_FAILED' }
+          # Source-only full synthetic QA already passed earlier in this SAME
+          # job. Re-running its full Excel COM suite here consumed PC1 time
+          # without testing anything new. Verify the exact same-run receipt,
+          # HEAD, source bytes, and non-release scope instead.
+          $sourceOnlyPath = Join-Path $work 'sourceonly_excel_acceptance.json'
+          if (-not (Test-Path -LiteralPath $sourceOnlyPath -PathType Leaf)) {
+            throw 'PC1_PRE_READER_SOURCE_ONLY_RECEIPT_MISSING'
+          }
+          $priorSource = Get-Content -LiteralPath $sourceOnlyPath -Raw -Encoding UTF8 | ConvertFrom-Json
+          $preReaderHash = (Get-FileHash -LiteralPath (Join-Path $work 'review/Furusato_nouzei.xlsm') -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($priorSource.schema -cne 'furusato-excel-source-only-acceptance/v1' -or
+              $priorSource.verdict -cne 'SOURCE_ONLY_PASS_RELEASE_HOLD' -or
+              $priorSource.source_head -cne (git rev-parse HEAD).Trim() -or
+              $priorSource.workbook_sha256 -cne $preReaderHash -or
+              $priorSource.bundled_exe_executed -ne $false -or
+              $priorSource.signed_product_accepted -ne $false -or
+              $priorSource.release_approved -ne $false) {
+            throw 'PC1_PRE_READER_SOURCE_ONLY_RECEIPT_INVALID_OR_STALE'
+          }
           # Only recognized, sanitized smoke error classes are passed to CI.
           # Any nonzero exit used to be mislabeled as WinError 5.
           $smokeText = @(& python tools/smoke_batch_recalculate_exe.py $readers[0].FullName 2>&1 |
