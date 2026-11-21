@@ -17,6 +17,33 @@ $root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $inputPath = (Resolve-Path -LiteralPath $Workbook).Path
 $originalHash = (Get-FileHash -LiteralPath $inputPath -Algorithm SHA256).Hash
 $stage = [IO.Path]::GetFullPath($StagingRoot)
+# The external VBAUpdater project-diff may briefly leave a user-mapped
+# section open on the disposable BAS. Acquire an exclusive handle without
+# changing ACL, Office trust, or the canonical source. Never retry a partial
+# write: retries apply ONLY to opening the untouched staged file.
+function Write-DisposableSourceSafely([string]$filePath, [string]$content) {
+    $handle = $null
+    for ($attempt = 1; $attempt -le 20; $attempt++) {
+        try {
+            $handle = [IO.File]::Open($filePath,
+                [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+            break
+        } catch [IO.IOException] {
+            if ($attempt -eq 20) { throw 'VBAUPDATER_STAGED_SOURCE_LOCK_NOT_RELEASED' }
+            Start-Sleep -Milliseconds 500
+        }
+    }
+    if ($null -eq $handle) { throw 'VBAUPDATER_STAGED_SOURCE_UNAVAILABLE' }
+    try {
+        $bytes = (New-Object System.Text.UTF8Encoding($false)).GetBytes($content)
+        $handle.SetLength(0)
+        $handle.Write($bytes, 0, $bytes.Length)
+        $handle.Flush($true)
+    } finally { $handle.Dispose() }
+    if ([IO.File]::ReadAllText($filePath, [Text.Encoding]::UTF8) -cne $content) {
+        throw 'VBAUPDATER_STAGED_SOURCE_WRITE_MISMATCH'
+    }
+}
 $report = [ordered]@{
     schema = 'furusato-vbaupdater-readonly/v1'
     status = 'NOT_STARTED'
@@ -118,8 +145,7 @@ try {
                 throw 'Cannot install safe disposable VBAUpdater push marker'
             }
             $changedSource = $sourceText.Insert($pos + $needle.Length, "`n" + $marker)
-            [IO.File]::WriteAllText($stagedSource, $changedSource,
-                (New-Object System.Text.UTF8Encoding($false)))
+            Write-DisposableSourceSafely $stagedSource $changedSource
             $report.synthetic_source_delta = 'MARKER_COMMENT_IN_STAGE_ONLY'
             Push-Location -LiteralPath $updater
             try {

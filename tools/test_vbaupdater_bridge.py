@@ -66,6 +66,11 @@ class VbaUpdaterBridgeTest(unittest.TestCase):
         self.assertIn("MARKER_COMMENT_IN_STAGE_ONLY", bridge)
         self.assertIn("synthetic_source_verified", bridge)
         self.assertIn("STAGED_PUSH_EXCEL_PASS", bridge)
+        self.assertIn("Write-DisposableSourceSafely $stagedSource $changedSource", bridge)
+        self.assertIn("VBAUPDATER_STAGED_SOURCE_LOCK_NOT_RELEASED", bridge)
+        self.assertIn("[IO.FileShare]::None", bridge)
+        self.assertNotIn("[IO.File]::WriteAllText($stagedSource", bridge)
+        self.assertIn("original_preserved", bridge)
         workflow = (ROOT / ".github" / "workflows" / "workbook.yml").read_text(encoding="utf-8")
         mandatory = workflow.split("- name: VBAUpdater staged project-push (mandatory acceptance)", 1)[1].split("- name: Upload verified review XLSM", 1)[0]
         self.assertNotIn("continue-on-error:", mandatory)
