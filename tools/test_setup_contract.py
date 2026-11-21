@@ -131,6 +131,18 @@ assert "-BatchBridgeOnly -FullSyntheticSuite" in workflow and "QA_BATCH_SOURCE_B
     "PC1 must test full Excel VBA/tax fixtures using Python bridge without blocked unsigned EXE")
 assert "QA_SOURCE_ONLY_FULL_SYNTHETIC_SUITE_PASS_RELEASE_STILL_HOLD" in verify_ps, (
     "Source-only acceptance cannot be called a release PASS")
+assert "SOURCE_ONLY_PASS_RELEASE_HOLD" in verify_ps and "signed_product_accepted = $false" in verify_ps, (
+    "Source-only receipt must explicitly remain non-release, even after Excel PASS")
+assert "Independent VBAUpdater sandbox project push (HOLD diagnostic)" in workflow, (
+    "VBAUpdater must receive isolated diagnostics even when unsigned reader is blocked")
+assert "Compare independent 41 Excel / GAS synthetic cases (HOLD diagnostic)" in workflow, (
+    "PC1 41-case comparison must not be skipped by unsigned EXE access denial")
+assert "gas_sourceonly_comparison.json" in workflow and "sourceonly_excel_acceptance.json" in workflow, (
+    "Source-only partial artifacts must survive blocked reader failure")
+assert workflow.index("Independent PC1 source-only full Excel acceptance (HOLD)") < workflow.index("python tools/smoke_batch_recalculate_exe.py $readers[0].FullName"), (
+    "Independent Excel evidence must be collected before reader execution")
+assert workflow.index("Independent VBAUpdater sandbox project push (HOLD diagnostic)") < workflow.index("python tools/smoke_batch_recalculate_exe.py $readers[0].FullName")
+assert workflow.index("Compare independent 41 Excel / GAS synthetic cases (HOLD diagnostic)") < workflow.index("python tools/smoke_batch_recalculate_exe.py $readers[0].FullName")
 assert "FULL_SYNTHETIC_SUITE_REQUIRES_SOURCE_ONLY_MODE" in verify_ps, (
     "No alternate full-suite flag can skip production binary requirements")
 assert "BATCH_SOURCE_ONLY_CANNOT_APPROVE_RELEASE" in verify_ps, (

@@ -554,6 +554,98 @@ jobs:
             workbook_sha256 = (Get-FileHash -LiteralPath $book -Algorithm SHA256).Hash.ToLowerInvariant()
           }
           $runner | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $work 'release_runner.json') -Encoding UTF8
+      - name: Independent PC1 source-only full Excel acceptance (HOLD)
+        if: success()
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $work = Join-Path $env:RUNNER_TEMP ('furusato-' + $env:GITHUB_RUN_ID + '-' + $env:GITHUB_RUN_ATTEMPT)
+          $book = Join-Path $work 'review/Furusato_nouzei.xlsm'
+          $head = (git rev-parse HEAD).Trim()
+          $hash = (Get-FileHash -LiteralPath $book -Algorithm SHA256).Hash.ToLowerInvariant()
+          $receipt = Join-Path $work 'sourceonly_excel_acceptance.json'
+          & .\tools\verify_excel.ps1 -Workbook $book -BatchBridgeOnly -FullSyntheticSuite -SourceOnlyEvidencePath $receipt -SourceHead $head
+          if (-not $?) { throw 'PC1_SOURCE_ONLY_FULL_EXCEL_ACCEPTANCE_FAILED' }
+          if (-not (Test-Path -LiteralPath $receipt -PathType Leaf)) {
+            throw 'PC1_SOURCE_ONLY_RECEIPT_MISSING'
+          }
+          $report = Get-Content -LiteralPath $receipt -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($report.schema -cne 'furusato-excel-source-only-acceptance/v1' -or
+              $report.verdict -cne 'SOURCE_ONLY_PASS_RELEASE_HOLD' -or
+              $report.source_head -cne $head -or
+              $report.workbook_sha256 -cne $hash -or
+              $report.bundled_exe_executed -ne $false -or
+              $report.signed_product_accepted -ne $false -or
+              $report.release_approved -ne $false) {
+            throw 'PC1_SOURCE_ONLY_RECEIPT_NOT_SAFE_OR_NOT_PASSED'
+          }
+          'PC1 source-only synthetic Excel regression PASS. Product acceptance remains HOLD.' >> $env:GITHUB_STEP_SUMMARY
+      - name: Independent VBAUpdater sandbox project push (HOLD diagnostic)
+        if: success()
+        continue-on-error: true
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $work = Join-Path $env:RUNNER_TEMP ('furusato-' + $env:GITHUB_RUN_ID + '-' + $env:GITHUB_RUN_ATTEMPT)
+          $book = Join-Path $work 'review/Furusato_nouzei.xlsm'
+          $receipt = Get-Content -LiteralPath (Join-Path $work 'sourceonly_excel_acceptance.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+          $hash = (Get-FileHash -LiteralPath $book -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($receipt.verdict -cne 'SOURCE_ONLY_PASS_RELEASE_HOLD' -or
+              $receipt.workbook_sha256 -cne $hash) {
+            throw 'VBAUPDATER_DIAGNOSTIC_REQUIRES_SOURCE_ONLY_EXCEL_PASS'
+          }
+          $evidence = Join-Path $work 'vbaupdater_sourceonly_push.json'
+          & .\tools\verify_vbaupdater_bridge.ps1 -Workbook $book -StagingRoot (Join-Path $work 'sourceonly_vbaupdater_stage') -EvidencePath $evidence -PushInSandbox
+          if (-not $?) { throw 'VBAUPDATER_SANDBOX_DIAGNOSTIC_FAILED' }
+          $result = Get-Content -LiteralPath $evidence -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($result.status -cne 'STAGED_PUSH_EXCEL_PASS' -or
+              $result.original_preserved -ne $true -or
+              $result.project_push -cne 'PASS' -or
+              $result.post_push_diff -cne 'PASS' -or
+              $result.post_push_excel -cne 'PASS') {
+            throw 'VBAUPDATER_SANDBOX_INCOMPLETE_RELEASE_HOLD'
+          }
+          'VBAUpdater independent source-only disposable project-push PASS; release remains HOLD.' >> $env:GITHUB_STEP_SUMMARY
+      - name: Checkout exact pinned GAS PR #2 tax engine for independent parity
+        if: success()
+        uses: actions/checkout@v4
+        with:
+          ref: 347aae5756b90c05a10b2ffe6123b0ce09e3fc01
+          path: _gas_reference_v4183
+          persist-credentials: false
+      - name: Compare independent 41 Excel / GAS synthetic cases (HOLD diagnostic)
+        if: success()
+        continue-on-error: true
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $work = Join-Path $env:RUNNER_TEMP ('furusato-' + $env:GITHUB_RUN_ID + '-' + $env:GITHUB_RUN_ATTEMPT)
+          $book = Join-Path $work 'review/Furusato_nouzei.xlsm'
+          $receipt = Get-Content -LiteralPath (Join-Path $work 'sourceonly_excel_acceptance.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($receipt.verdict -cne 'SOURCE_ONLY_PASS_RELEASE_HOLD' -or
+              $receipt.workbook_sha256 -cne (Get-FileHash -LiteralPath $book -Algorithm SHA256).Hash.ToLowerInvariant()) {
+            throw 'GAS_SOURCE_ONLY_REQUIRES_MATCHING_EXCEL_RECEIPT'
+          }
+          $reference = Join-Path $env:GITHUB_WORKSPACE '_gas_reference_v4183'
+          $observations = Join-Path $work 'gas_sourceonly_observations.json'
+          $comparison = Join-Path $work 'gas_sourceonly_comparison.json'
+          & .\tools\run_excel_gas_41_v4183.ps1 -Workbook $book -GasCheckout $reference -OutputPath $observations
+          if (-not $?) { throw 'GAS_SOURCE_ONLY_EXCEL_OBSERVATIONS_FAILED' }
+          $outputLines = @(& node .\tools\compare_excel_gas_v4183.cjs $observations $reference 2>&1)
+          $exitCode = $LASTEXITCODE
+          $json = [string]::Join([Environment]::NewLine,[string[]]$outputLines)
+          [IO.File]::WriteAllText($comparison, $json, (New-Object Text.UTF8Encoding($false)))
+          if ($exitCode -ne 0) { throw 'GAS_SOURCE_ONLY_COMPARATOR_FAILED' }
+          $result = $json | ConvertFrom-Json
+          if ($result.numericVerdict -cne 'MATCH_41_OF_41' -or
+              $result.releaseVerdict -cne 'HOLD' -or
+              $result.matched -ne 41 -or
+              $result.mismatchCount -ne 0 -or
+              $result.calculationStateVerdict -cne 'DONE_41_OF_41' -or
+              $result.actualExcelCOM -ne $true) {
+            throw 'GAS_SOURCE_ONLY_PARITY_MISMATCH_RELEASE_HOLD'
+          }
+          'Independent source-only Excel vs pinned GAS: 41/41 match; release remains HOLD.' >> $env:GITHUB_STEP_SUMMARY
       - name: Complete Excel functional and tax update acceptance
         if: success()
         shell: powershell
@@ -698,13 +790,6 @@ jobs:
         shell: powershell
         run: |
           "FAIL: VBAUpdater sandbox project-push is a mandatory acceptance gate. Product distribution is HOLD. Original workbook remains preserved. See staged push evidence." >> $env:GITHUB_STEP_SUMMARY
-      - name: Checkout exact pinned GAS PR #2 tax engine (read-only)
-        if: success()
-        uses: actions/checkout@v4
-        with:
-          ref: 347aae5756b90c05a10b2ffe6123b0ce09e3fc01
-          path: _gas_reference_v4183
-          persist-credentials: false
       - name: Compare 41 synthetic cases in actual Excel vs pinned GAS engine
         if: success()
         shell: powershell
@@ -776,6 +861,10 @@ jobs:
           name: furusato-windows-logs-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/reader_launch_diagnostic.json
+            ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/sourceonly_excel_acceptance.json
+            ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/vbaupdater_sourceonly_push.json
+            ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/gas_sourceonly_observations.json
+            ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/gas_sourceonly_comparison.json
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/excel_acceptance.json
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/excel_open_probe.json
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/vbaupdater_bridge.json

@@ -5,6 +5,7 @@ param(
     [string]$ReaderExecutable = '',
     [switch]$BatchBridgeOnly,
     [switch]$FullSyntheticSuite,
+    [string]$SourceOnlyEvidencePath = '',
     [string]$EvidencePath = '',
     [string]$PdfEvidencePath = '',
     [ValidatePattern('^[a-f0-9]{40}$')][string]$SourceHead
@@ -17,6 +18,14 @@ if ($BatchBridgeOnly -and ($EvidencePath -or $PdfEvidencePath -or $ReaderExecuta
 }
 if ($FullSyntheticSuite -and -not $BatchBridgeOnly) {
     throw 'FULL_SYNTHETIC_SUITE_REQUIRES_SOURCE_ONLY_MODE'
+}
+if ($SourceOnlyEvidencePath) {
+    if (-not ($BatchBridgeOnly -and $FullSyntheticSuite) -or
+        -not $SourceHead -or
+        (Test-Path -LiteralPath $SourceOnlyEvidencePath) -or
+        -not (Test-Path -LiteralPath (Split-Path -Parent $SourceOnlyEvidencePath) -PathType Container)) {
+        throw 'SOURCE_ONLY_EVIDENCE_REQUIRES_ISOLATED_FULL_SUITE'
+    }
 }
 $Workbook = (Resolve-Path -LiteralPath $Workbook).Path
 $dir = Join-Path ([System.IO.Path]::GetTempPath()) ('FurusatoQA_' + [Guid]::NewGuid().ToString('N'))
@@ -2814,6 +2823,36 @@ try {
     }
     try { Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction Stop }
     catch { Write-Warning ('QA temporary folder cleanup failed: ' + $_.Exception.Message) }
+    # Source-only evidence never doubles as the release acceptance artifact.
+    # It is written even on a partial failure for PC1 root-cause analysis.
+    if (-not [string]::IsNullOrWhiteSpace($SourceOnlyEvidencePath)) {
+        try {
+            $sourceOnlyResult = [ordered]@{
+                schema = 'furusato-excel-source-only-acceptance/v1'
+                verdict = if ($passed) { 'SOURCE_ONLY_PASS_RELEASE_HOLD' } else { 'SOURCE_ONLY_FAIL_RELEASE_HOLD' }
+                source_head = $SourceHead
+                workbook_sha256 = $sourceSha256.ToLowerInvariant()
+                excel_version = $excelVersion
+                started_utc = $startedUtc
+                finished_utc = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
+                last_stage = $script:qaStage
+                failed_stage = if ($passed) { '' } else { $script:qaStage }
+                tested = @('Excel 52 synthetic regression fixtures',
+                           '2025/2026 independent tax calculation',
+                           'batch editor -> Python source -> Excel import',
+                           'synthetic VBA tax-law update and recovery',
+                           'isolated case storage and PDF export')
+                bundled_exe_executed = $false
+                signed_product_accepted = $false
+                release_approved = $false
+            }
+            $json = $sourceOnlyResult | ConvertTo-Json -Depth 5
+            [IO.File]::WriteAllText($SourceOnlyEvidencePath, $json,
+                (New-Object System.Text.UTF8Encoding($false)))
+        } catch {
+            Write-Warning 'Source-only PC1 evidence could not be written'
+        }
+    }
     # Only synthetic test identifiers are recorded. Do not log machine names,
     # local user names, case contents, registration tokens or environment secrets.
     if (-not [string]::IsNullOrWhiteSpace($EvidencePath)) {
