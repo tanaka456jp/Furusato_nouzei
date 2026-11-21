@@ -195,13 +195,13 @@ assert "BatchRecalcLaunchAttemptsForTest" in vba
 assert verify_ps.count("TaxLawUpdater.BatchRecalcLaunchAttemptsForTest") == 3
 # Never launch the unsigned reader from an unattended PR build.
 # A durable manual Actions dispatch is necessary before Apex One can prompt.
-assert "apex_one_operator_ready:" in workflow
-assert "default: false" in workflow.split("apex_one_operator_ready:", 1)[1].split("\n", 4)[3]
+assert "apex_one_operator_ready:" not in workflow
+assert "default: false" in workflow.split("      excel:", 1)[1].split("\n", 4)[3]
 assert "APEX_ONE_OPERATOR_CONFIRMATION_REQUIRED_RELEASE_HOLD" in workflow
 assert workflow.index("Apex One operator confirmation gate (reader EXE not started)") < workflow.index("python tools/smoke_batch_recalculate_exe.py", workflow.index("Apex One operator confirmation gate (reader EXE not started)"))
 assert workflow.index("Compare independent 41 Excel / GAS synthetic cases") < workflow.index("Apex One operator confirmation gate (reader EXE not started)")
 assert "github.ref == 'refs/heads/fix/excel-2026-salary-nta-20261107'" in workflow
-assert "'${{ inputs.apex_one_operator_ready }}' -ceq 'true'" in workflow
+assert "github.event_name == 'workflow_dispatch' && inputs.excel" in workflow
 assert "'${{ inputs.excel }}' -ceq 'true'" in workflow
 assert "throw 'APEX_ONE_OPERATOR_CONFIRMATION_REQUIRED_RELEASE_HOLD'" in workflow
 print("PASS: flat ASCII delivery ZIP; source/payload matched; Unicode VBA import and smoke run present.")

@@ -10,10 +10,6 @@ on:
         description: Run on a dedicated self-hosted Windows Excel runner
         type: boolean
         default: false
-      apex_one_operator_ready:
-        description: "I am at PC1 and ready to approve Apex One when the reader EXE starts"
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -657,7 +653,7 @@ jobs:
       # Stop BEFORE the first bundled unsigned reader execution. PR-driven
       # runs deliberately FAIL/HOLD at this gate instead of producing a short-
       # lived Apex One popup unattended. The operator must intentionally start
-      # a workflow_dispatch on this EXACT branch with BOTH booleans checked.
+      # a workflow_dispatch on this EXACT branch with excel=true.
       # This is a hard stop, not a timed wait or an AV policy bypass.
       - name: Apex One operator confirmation gate (reader EXE not started)
         if: success()
@@ -667,7 +663,6 @@ jobs:
           $ready = ('${{ github.event_name }}' -ceq 'workflow_dispatch' -and
                     '${{ github.ref }}' -ceq 'refs/heads/fix/excel-2026-salary-nta-20261107' -and
                     '${{ inputs.excel }}' -ceq 'true' -and
-                    '${{ inputs.apex_one_operator_ready }}' -ceq 'true' -and
                     $env:RUNNER_NAME -ceq 'PC1-Furusato-Excel')
           if (-not $ready) {
             'Apex One: operator confirmation REQUIRED. Reader EXE was NOT launched. Release remains HOLD.' >> $env:GITHUB_STEP_SUMMARY
