@@ -192,5 +192,5 @@ assert "mBatchRecalcLastLaunchAttempts = 2" in retry
 assert "Application.Wait Now + TimeSerial(0, 0, 1)" in retry
 assert "Err.Raise firstError" in retry
 assert "BatchRecalcLaunchAttemptsForTest" in vba
-assert verify.count("TaxLawUpdater.BatchRecalcLaunchAttemptsForTest") == 3
+assert verify_ps.count("TaxLawUpdater.BatchRecalcLaunchAttemptsForTest") == 3
 print("PASS: flat ASCII delivery ZIP; source/payload matched; Unicode VBA import and smoke run present.")
