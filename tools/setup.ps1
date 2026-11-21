@@ -118,7 +118,10 @@ try {
         throw [System.Exception]::new('VBAプロジェクトへのアクセスが拒否されました。Excel [ファイル]→[オプション]→[トラストセンター]→[トラストセンターの設定]→[マクロの設定]→[VBAプロジェクト オブジェクトモデルへのアクセスを信頼する] を確認してください。組織で禁止されている場合は管理者に相談してください。内部エラー: ' + $_.Exception.Message)
     }
     $phase = '一時xlsm保存'
-    $tempBook = Join-Path $folder ('_furusato_build_' + [Guid]::NewGuid().ToString('N') + '.xlsm')
+    # Preserve the FINAL workbook basename already inside the isolated temp folder.
+    # Excel may rewrite Forms OnAction bindings to its SaveAs name. Using an
+    # anonymous filename here left stale button macro references after moving.
+    $tempBook = Join-Path $stagingDir 'Furusato_nouzei.xlsm'
     $workbook.SaveAs($tempBook, 52)
     Assert (Test-Path -LiteralPath $tempBook -PathType Leaf) 'Excelの.xlsm保存に失敗しました。'
     $phase = 'VBA Unicodeモジュール登録'
@@ -227,7 +230,58 @@ End Sub
     Log 'マクロ付きブックを保存します。'
     $workbook.Save()
     $workbook.Close($false)
+    $workbook = $null
     Assert ((Test-Path -LiteralPath $tempBook -PathType Leaf)) '一時ブックがありません。'
+    # Read-only, macros-disabled reopen of the SAVED bytes. The inspection
+    # must pass BEFORE moving the XLSM to the final user-visible location.
+    # Do not run BindButtons here; it would conceal an invalid saved action.
+    $phase = '保存済みボタン参照検証'
+    $workbook = $excel.Workbooks.Open($tempBook, 0, $true)
+    try {
+        $bindingChecks = @(
+            @{S='操作画面'; M='TaxLawUpdate'},
+            @{S='操作画面'; M='NewCase'},
+            @{S='操作画面'; M='SaveCase'},
+            @{S='操作画面'; M='ShowDetails'},
+            @{S='操作画面'; M='RecalculateCase'},
+            @{S='操作画面'; M='ShowAdvanced'},
+            @{S='操作画面'; M='ImportWithholding'},
+            @{S='操作画面'; M='ReviewWithholding'},
+            @{S='操作画面'; M='ImportWithholdingBatch'},
+            @{S='計算根拠'; M='ReturnHome'},
+            @{S='計算根拠'; M='PrintDetails'},
+            @{S='計算根拠'; M='ExportDetails'},
+            @{S='例外・分離課税'; M='ReturnFromAdvanced'},
+            @{S='一括計算一覧'; M='ClearBatchOverviewWithConfirm'},
+            @{S='一括計算一覧'; M='ExportAllBatchReferencePDFs'},
+            @{S='一括入力修正'; M='RecalculateBatchFromEditor'}
+        )
+        foreach ($entry in $bindingChecks) {
+            $buttonId = if ($entry.M -ceq 'RecalculateBatchFromEditor') {
+                'btnRecalculateBatchEdits'
+            } else { 'btn' + $entry.M }
+            $buttonName = $entry.M
+            $savedButton = $null
+            try {
+                $savedButton = $workbook.Worksheets.Item($entry.S).Buttons().Item($buttonId)
+                $actualAction = [string]$savedButton.OnAction
+                if ($actualAction -match "^'([^']+)'!(.+)$") {
+                    $actualAction = $Matches[1] + '!' + $Matches[2]
+                }
+                $expectedAction = 'Furusato_nouzei.xlsm!TaxLawUpdater.' + $buttonName
+                Assert ($actualAction -ceq $expectedAction) (
+                    '保存済みボタンの参照が異なります: ' + $buttonName)
+            } finally {
+                if ($null -ne $savedButton) {
+                    [void][Runtime.InteropServices.Marshal]::ReleaseComObject($savedButton)
+                }
+            }
+        }
+        Log '保存済み全16ボタンのマクロ参照: PASS'
+    } finally {
+        $workbook.Close($false)
+        $workbook = $null
+    }
     Assert ((Get-Item -LiteralPath $tempBook).Length -gt 20000) '一時ブックのサイズが不正です。'
     $phase = 'xlsm構造確認'
     Add-Type -AssemblyName System.IO.Compression.FileSystem

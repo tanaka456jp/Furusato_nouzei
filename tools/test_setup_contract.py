@@ -42,6 +42,13 @@ assert installer_version.group(1) == workbook_version.group(0), (
 )
 
 assert "VBComponents.Add(1)" in ps, "Setup must register a standard VBA module"
+assert "$tempBook = Join-Path $stagingDir 'Furusato_nouzei.xlsm'" in ps, (
+    "Staged XLSM must use the final workbook filename before Excel serializes Forms OnAction")
+assert "Workbooks.Open($tempBook, 0, $true)" in ps, (
+    "Saved Forms OnAction references must be inspected without running macros")
+assert "保存済み全16ボタンのマクロ参照: PASS" in ps
+assert ps.index("保存済み全16ボタンのマクロ参照: PASS") < ps.index("[System.IO.File]::Move($tempBook, $final)"), (
+    "Reject misbound buttons BEFORE final workbook publication")
 assert "CodeModule.AddFromString($sourceBody)" in ps, "VBA Unicode registration missing"
 assert "GetBytes($sourceVba)" not in ps, "Installer still depends on local ANSI code page"
 assert "VBComponents.Import($tempBas)" not in ps, "Installer still imports locale-sensitive ANSI BAS"
