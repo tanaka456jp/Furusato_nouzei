@@ -4,6 +4,7 @@ param(
     [Parameter(Mandatory=$true)][string]$Workbook,
     [string]$ReaderExecutable = '',
     [switch]$BatchBridgeOnly,
+    [switch]$FullSyntheticSuite,
     [string]$EvidencePath = '',
     [string]$PdfEvidencePath = '',
     [ValidatePattern('^[a-f0-9]{40}$')][string]$SourceHead
@@ -13,6 +14,9 @@ $ErrorActionPreference = 'Stop'
 # certificate: the unsigned reader EXE is still blocked by Windows.
 if ($BatchBridgeOnly -and ($EvidencePath -or $PdfEvidencePath -or $ReaderExecutable)) {
     throw 'BATCH_SOURCE_ONLY_CANNOT_APPROVE_RELEASE'
+}
+if ($FullSyntheticSuite -and -not $BatchBridgeOnly) {
+    throw 'FULL_SYNTHETIC_SUITE_REQUIRES_SOURCE_ONLY_MODE'
 }
 $Workbook = (Resolve-Path -LiteralPath $Workbook).Path
 $dir = Join-Path ([System.IO.Path]::GetTempPath()) ('FurusatoQA_' + [Guid]::NewGuid().ToString('N'))
@@ -439,9 +443,15 @@ try {
         Assert-Value $batchSheet.Range('J6').Value2 'HOLD／要確認' 'Family edit still holds stale source tax'
         Assert-Value $batchSheet.Range('B7').Value2 2 'Family edit leaves other taxpayer separate'
         QA-Stage 'batch-source-only-bridge-pass'
-        $passed = $true
         Write-Host 'QA_BATCH_SOURCE_BRIDGE_PASS_RELEASE_STILL_HOLD'
-        return
+        if (-not $FullSyntheticSuite) {
+            $passed = $true
+            return
+        }
+        # Continue the *same* isolated workbook through all independent
+        # 2025/2026 tax and VBA fixtures. Never imply that the blocked
+        # bundled EXE, signed distribution or real-customer release passed.
+        QA-Stage 'batch-source-full-synthetic-suite-continue'
     }
     if ($ReaderExecutable) {
         if (-not (Test-Path -LiteralPath $ReaderExecutable -PathType Leaf)) {
@@ -2762,7 +2772,11 @@ try {
     QA-Stage 'import-taxpayer-switch-isolation-pass'
     QA-Stage 'all-acceptance-checks-pass'
     $passed = $true
-    Write-Output 'PASS: Windows Excel 52 fixtures; 2025/2026 amounts; approved/rejected updates; persisted fault rollback; backup; VBA PDF/hidden UI/no-overwrite; isolated no-overwrite case-save; save/reopen; button wiring.'
+    if ($BatchBridgeOnly) {
+        Write-Host 'QA_SOURCE_ONLY_FULL_SYNTHETIC_SUITE_PASS_RELEASE_STILL_HOLD'
+    } else {
+        Write-Output 'PASS: Windows Excel 52 fixtures; 2025/2026 amounts; approved/rejected updates; persisted fault rollback; backup; VBA PDF/hidden UI/no-overwrite; isolated no-overwrite case-save; save/reopen; button wiring.'
+    }
 } catch {
     $failureSummary = $_.Exception.Message
     Write-Host ('QA_FAIL_AT_STAGE ' + $script:qaStage + ': ' + $failureSummary)

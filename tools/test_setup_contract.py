@@ -127,8 +127,12 @@ assert "reader_launch_diagnostic.json" in workflow
 assert "PC1_BATCH_READER_EXE_ACCESS_DENIED_RELEASE_HOLD" in workflow
 assert "WriteBatchEditorInputFile" in vba and "ExportBatchEditsForTest" in vba, (
     "PC1 source-only bridge must use production editor TSV serialization")
-assert "-BatchBridgeOnly" in workflow and "QA_BATCH_SOURCE_BRIDGE_PASS_RELEASE_STILL_HOLD" in verify_ps, (
-    "PC1 must test Excel edit handoff without executing blocked unsigned reader")
+assert "-BatchBridgeOnly -FullSyntheticSuite" in workflow and "QA_BATCH_SOURCE_BRIDGE_PASS_RELEASE_STILL_HOLD" in verify_ps, (
+    "PC1 must test full Excel VBA/tax fixtures using Python bridge without blocked unsigned EXE")
+assert "QA_SOURCE_ONLY_FULL_SYNTHETIC_SUITE_PASS_RELEASE_STILL_HOLD" in verify_ps, (
+    "Source-only acceptance cannot be called a release PASS")
+assert "FULL_SYNTHETIC_SUITE_REQUIRES_SOURCE_ONLY_MODE" in verify_ps, (
+    "No alternate full-suite flag can skip production binary requirements")
 assert "BATCH_SOURCE_ONLY_CANNOT_APPROVE_RELEASE" in verify_ps, (
     "A source-only Excel bridge must never create a full release acceptance receipt")
 assert "NoMatchingEventsFound" in (ROOT / "tools/probe_reader_launch_policy.ps1").read_text(encoding="utf-8"), (

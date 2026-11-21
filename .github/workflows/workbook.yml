@@ -577,7 +577,7 @@ jobs:
           # runner BEFORE invoking it from Excel COM. Synthetic values only.
           # Separate the Excel/VBA data handoff from Windows policy blocking the
           # unsigned PyInstaller EXE. This partial QA never approves a release.
-          & .\tools\verify_excel.ps1 -Workbook (Join-Path $work 'review/Furusato_nouzei.xlsm') -BatchBridgeOnly
+          & .\tools\verify_excel.ps1 -Workbook (Join-Path $work 'review/Furusato_nouzei.xlsm') -BatchBridgeOnly -FullSyntheticSuite
           if (-not $?) { throw 'PC1_EXCEL_SOURCE_BRIDGE_FAILED' }
           python tools/smoke_batch_recalculate_exe.py $readers[0].FullName
           if ($LASTEXITCODE -ne 0) {

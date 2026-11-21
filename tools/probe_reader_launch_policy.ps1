@@ -61,6 +61,36 @@ foreach ($log in $logs) {
         }
     }
 }
+# Additional read-only effective-policy indicators. Do not serialize rules,
+# security principals, signer identities or any private directories.
+$appLocker='NOT_AVAILABLE'
+$appLockerExeRuleCount=$null
+try {
+    if (Get-Command -Name Get-AppLockerPolicy -ErrorAction SilentlyContinue) {
+        $effective=Get-AppLockerPolicy -Effective -ErrorAction Stop
+        $collection=@($effective.RuleCollections | Where-Object { $_.RuleCollectionType -eq 'Exe' })
+        $appLockerExeRuleCount=[int]@($collection | ForEach-Object { $_.Count }).Count
+        $appLocker='QUERY_COMPLETED'
+    }
+} catch { $appLocker='QUERY_FAILED' }
+$deviceGuard='NOT_AVAILABLE'
+$deviceGuardEnforcement=$null
+try {
+    $dg=Get-CimInstance -Namespace 'root\Microsoft\Windows\DeviceGuard' -ClassName Win32_DeviceGuard -ErrorAction Stop
+    if ($null -ne $dg) {
+        $deviceGuard='QUERY_COMPLETED'
+        $deviceGuardEnforcement=[int]$dg.UsermodeCodeIntegrityPolicyEnforcementStatus
+    }
+} catch { $deviceGuard='QUERY_FAILED' }
+$defenderMode='NOT_AVAILABLE'
+$defenderRealTime=$null
+try {
+    if (Get-Command -Name Get-MpComputerStatus -ErrorAction SilentlyContinue) {
+        $mp=Get-MpComputerStatus -ErrorAction Stop
+        $defenderMode='QUERY_COMPLETED'
+        $defenderRealTime=[bool]$mp.RealTimeProtectionEnabled
+    }
+} catch { $defenderMode='QUERY_FAILED' }
 $record=[ordered]@{
     schema='furusato-reader-winerror5-diagnostic/v1'
     observed_failure='WINERROR_5_EXECUTION_DENIED'
@@ -70,6 +100,12 @@ $record=[ordered]@{
     acl_query=$acl
     event_scope='LAST_20_MINUTES_BASENAME_MATCH_INDICATIVE_ONLY'
     event_indicators=@($signals)
+    applocker_effective_query=$appLocker
+    applocker_exe_rule_collection_count=$appLockerExeRuleCount
+    device_guard_query=$deviceGuard
+    device_guard_usermode_ci_enforcement=$deviceGuardEnforcement
+    defender_status_query=$defenderMode
+    defender_realtime_enabled=$defenderRealTime
     policy_changed=$false
     private_paths_recorded=$false
     release_approved=$false
