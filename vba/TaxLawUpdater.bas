@@ -813,6 +813,89 @@ Private Function BatchEditedValue(ByVal cell As Range, _
     BatchEditedValue = s
 End Function
 
+
+' Shared serialiser: production and isolated PC1 QA use exactly the same
+' validation, field order, page isolation, and ASCII-only name encoding.
+' This function does NOT execute a program or accept user-provided formulas.
+Private Function WriteBatchEditorInputFile(ByVal outputPath As String) As Long
+    Dim editor As Worksheet, summary As Worksheet, fso As Object, file As Object
+    Dim index As Long, col As Long, total As Long, line As String
+    Dim failureNumber As Long, failureText As String
+    On Error GoTo Failed
+    Set editor = ThisWorkbook.Worksheets("一括入力修正")
+    Set summary = ThisWorkbook.Worksheets("一括計算一覧")
+    If Not BatchOverviewHasRecords() Then _
+        Err.Raise vbObjectError + 466, , "先に源泉票の一括取込をしてください。"
+    If ThisWorkbook.ReadOnly Or Len(ThisWorkbook.Path) = 0 Then _
+        Err.Raise vbObjectError + 467, , _
+            "書き込み可能なローカルのExcelブックが必要です。"
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    If fso.FileExists(outputPath) Then _
+        Err.Raise vbObjectError + 475, , "修正データファイルが既にあります。"
+    ' Fail closed on pre-existing or invalid rows before creating any input.
+    total = 0
+    For index = 1 To 100
+        If Len(CStr(summary.Cells(index + 5, 2).Value2)) = 0 Then Exit For
+        total = total + 1
+        If Not IsNumeric(summary.Cells(index + 5, 2).Value2) Or _
+           Not IsNumeric(editor.Cells(index + 5, 2).Value2) Then _
+            Err.Raise vbObjectError + 469, , "原票ページが数値ではありません。"
+        If CDbl(summary.Cells(index + 5, 2).Value2) <> CDbl(index) Or _
+           CDbl(editor.Cells(index + 5, 2).Value2) <> CDbl(index) Then _
+            Err.Raise vbObjectError + 469, , "原票ページと編集行が不一致です。"
+        If editor.Cells(index + 5, 1).HasFormula Then _
+            Err.Raise vbObjectError + 470, , "氏名に数式を入力できません。"
+    Next index
+    If total < 1 Then Err.Raise vbObjectError + 471, , "修正データがありません。"
+    For index = total + 1 To 100
+        If Len(CStr(editor.Cells(index + 5, 2).Value2)) > 0 Or _
+           Len(CStr(summary.Cells(index + 5, 2).Value2)) > 0 Then _
+            Err.Raise vbObjectError + 472, , "編集行の人数が不正です。"
+    Next index
+    Set file = fso.CreateTextFile(outputPath, False, False)
+    file.WriteLine "PAGE" & vbTab & "RECIPIENT_NAME_HEX" & vbTab & _
+                   BatchEditFieldHeader()
+    For index = 1 To total
+        line = CStr(index) & vbTab & _
+               EncodeRecipientForBatch(CStr(editor.Cells(index + 5, 1).Value2))
+        For col = 1 To 32
+            line = line & vbTab & _
+                   BatchEditedValue(editor.Cells(index + 5, col + 2), col)
+        Next col
+        file.WriteLine line
+    Next index
+    file.Close
+    Set file = Nothing
+    WriteBatchEditorInputFile = total
+    Exit Function
+Failed:
+    failureNumber = Err.Number
+    failureText = Err.Description
+    On Error Resume Next
+    If Not file Is Nothing Then file.Close
+    If Not fso Is Nothing Then
+        If fso.FileExists(outputPath) Then fso.DeleteFile outputPath, True
+    End If
+    On Error GoTo 0
+    Err.Raise failureNumber, "TaxLawUpdater.WriteBatchEditorInputFile", failureText
+End Function
+
+' Export exactly the same serialisation for the disposable QA workbook.
+' It is disabled in regular customer workbooks and cannot execute the reader.
+Public Function ExportBatchEditsForTest() As Long
+    Dim outputPath As String
+    On Error GoTo Failed
+    If StrComp(ThisWorkbook.Name, "FurusatoQA.xlsm", vbBinaryCompare) <> 0 _
+        Then Exit Function
+    If ThisWorkbook.ReadOnly Or Len(ThisWorkbook.Path) = 0 Then Exit Function
+    outputPath = ThisWorkbook.Path & Application.PathSeparator & _
+                 "synthetic-editor-input.tsv"
+    ExportBatchEditsForTest = WriteBatchEditorInputFile(outputPath)
+    Exit Function
+Failed:
+    ExportBatchEditsForTest = 0
+End Function
+
 ' Does not read/modify the single-taxpayer screen.  Only anonymous page
 ' identities and whitelisted values are sent to the offline bundled reader.
 ' Rebuilding from all rows is transactional: a failed CLI or TSV leaves
@@ -844,37 +927,8 @@ Public Function RecalculateBatchFromEditor( _
                                 fso.GetTempName & ".tsv")
     temporaryOut = fso.BuildPath(fso.GetSpecialFolder(2), _
                                  fso.GetTempName & ".tsv")
-    Set file = fso.CreateTextFile(temporaryIn, True, False)
-    file.WriteLine "PAGE" & vbTab & "RECIPIENT_NAME_HEX" & vbTab & _
-                    BatchEditFieldHeader()
-    total = 0
-    For index = 1 To 100
-        If Len(CStr(summary.Cells(index + 5, 2).Value2)) = 0 Then Exit For
-        total = total + 1
-        If CDbl(summary.Cells(index + 5, 2).Value2) <> CDbl(index) Or _
-           Not IsNumeric(editor.Cells(index + 5, 2).Value2) Then _
-            Err.Raise vbObjectError + 469, , "原票ページと編集行が不一致です。"
-        If CDbl(editor.Cells(index + 5, 2).Value2) <> CDbl(index) Then _
-            Err.Raise vbObjectError + 469, , "原票ページを変更しないでください。"
-        If editor.Cells(index + 5, 1).HasFormula Then _
-            Err.Raise vbObjectError + 470, , "氏名に数式を入力できません。"
-        line = CStr(index) & vbTab & _
-               EncodeRecipientForBatch(CStr(editor.Cells(index + 5, 1).Value2))
-        For col = 1 To 32
-            line = line & vbTab & _
-                   BatchEditedValue(editor.Cells(index + 5, col + 2), col)
-        Next col
-        file.WriteLine line
-    Next index
-    file.Close
-    Set file = Nothing
+    total = WriteBatchEditorInputFile(temporaryIn)
     mBatchRecalcLastStage = 3
-    If total < 1 Then Err.Raise vbObjectError + 471, , "修正データがありません。"
-    For index = total + 1 To 100
-        If Len(CStr(editor.Cells(index + 5, 2).Value2)) > 0 Or _
-           Len(CStr(summary.Cells(index + 5, 2).Value2)) > 0 Then _
-            Err.Raise vbObjectError + 472, , "編集行の人数が不正です。"
-    Next index
     Set shell = CreateObject("WScript.Shell")
     command = Chr$(34) & reader & Chr$(34) & _
               " --input " & Chr$(34) & temporaryIn & Chr$(34) & _

@@ -3,11 +3,17 @@
 param(
     [Parameter(Mandatory=$true)][string]$Workbook,
     [string]$ReaderExecutable = '',
+    [switch]$BatchBridgeOnly,
     [string]$EvidencePath = '',
     [string]$PdfEvidencePath = '',
     [ValidatePattern('^[a-f0-9]{40}$')][string]$SourceHead
 )
 $ErrorActionPreference = 'Stop'
+# An isolated source-only check must never produce a full Excel acceptance
+# certificate: the unsigned reader EXE is still blocked by Windows.
+if ($BatchBridgeOnly -and ($EvidencePath -or $PdfEvidencePath -or $ReaderExecutable)) {
+    throw 'BATCH_SOURCE_ONLY_CANNOT_APPROVE_RELEASE'
+}
 $Workbook = (Resolve-Path -LiteralPath $Workbook).Path
 $dir = Join-Path ([System.IO.Path]::GetTempPath()) ('FurusatoQA_' + [Guid]::NewGuid().ToString('N'))
 [void][IO.Directory]::CreateDirectory($dir)
@@ -387,6 +393,56 @@ try {
     Assert-Value $batchSheet.Range('F6').Value2 2871190 'Failed recalc kept derived total'
     Assert-Value $batchSheet.Range('T6').Value2 151000 'Failed recalc kept filing amount'
     Assert-Value $batchSheet.Range('B7').Value2 2 'Failed recalc kept other person'
+    if ($BatchBridgeOnly) {
+        QA-Stage 'batch-source-only-bridge-start'
+        $input = Join-Path $dir 'synthetic-editor-input.tsv'
+        $output = Join-Path $dir 'synthetic-editor-output.tsv'
+        $batchEditor.Range('K6').Value2 = 1000000
+        Assert-Value ([int]($excel.Run('TaxLawUpdater.ExportBatchEditsForTest'))) 2 'Excel shared editor export'
+        if (-not (Test-Path -LiteralPath $input -PathType Leaf)) {
+            throw 'BATCH_SOURCE_ONLY_INPUT_NOT_CREATED'
+        }
+        & python (Join-Path $PSScriptRoot 'withholding_reader.py') --input $input --output $output --batch-recalculate
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $output -PathType Leaf)) {
+            throw 'BATCH_SOURCE_ONLY_PYTHON_RECALC_FAILED'
+        }
+        if (-not [bool]($excel.Run('TaxLawUpdater.TryLoadBatchFromTsvForTest', $output))) {
+            throw ('BATCH_SOURCE_ONLY_EXCEL_IMPORT_REJECTED_CODE=' +
+                   [long]($excel.Run('TaxLawUpdater.BatchLastInnerErrorForTest')))
+        }
+        Assert-Value $batchSheet.Range('F6').Value2 1670000 'Excel roundtrip recalculated income deductions'
+        Assert-Value $batchSheet.Range('J6').Value2 '参考額（仮）' 'Excel roundtrip valid status'
+        Assert-Value $batchSheet.Range('B7').Value2 2 'Excel source bridge second taxpayer preserved'
+        Remove-Item -LiteralPath $input,$output -Force
+        $batchEditor.Range('K6').Value2 = 1100000
+        Assert-Value ([int]($excel.Run('TaxLawUpdater.ExportBatchEditsForTest'))) 2 'Excel re-export with changed deduction'
+        & python (Join-Path $PSScriptRoot 'withholding_reader.py') --input $input --output $output --batch-recalculate
+        if ($LASTEXITCODE -ne 0) { throw 'BATCH_SOURCE_ONLY_HOLD_RECALC_FAILED' }
+        if (-not [bool]($excel.Run('TaxLawUpdater.TryLoadBatchFromTsvForTest', $output))) {
+            throw 'BATCH_SOURCE_ONLY_HOLD_IMPORT_FAILED'
+        }
+        Assert-Value $batchSheet.Range('F6').Value2 1770000 'Edited deduction changes derived total'
+        Assert-Value $batchSheet.Range('J6').Value2 'HOLD／要確認' 'Stale source tax forces HOLD'
+        Assert-Value ([string]$batchSheet.Range('I6').Value2) '' 'HOLD masks one-stop'
+        Assert-Value ([string]$batchSheet.Range('T6').Value2) '' 'HOLD masks filing'
+        Assert-Value $batchSheet.Range('B7').Value2 2 'HOLD preserves other taxpayer'
+        Remove-Item -LiteralPath $input,$output -Force
+        $batchEditor.Range('AD6').Value2 = 1
+        $batchEditor.Range('AH6').Value2 = 0
+        Assert-Value ([int]($excel.Run('TaxLawUpdater.ExportBatchEditsForTest'))) 2 'Excel re-export with general dependent'
+        & python (Join-Path $PSScriptRoot 'withholding_reader.py') --input $input --output $output --batch-recalculate
+        if ($LASTEXITCODE -ne 0) { throw 'BATCH_SOURCE_ONLY_FAMILY_RECALC_FAILED' }
+        if (-not [bool]($excel.Run('TaxLawUpdater.TryLoadBatchFromTsvForTest', $output))) {
+            throw 'BATCH_SOURCE_ONLY_FAMILY_IMPORT_FAILED'
+        }
+        Assert-Value $batchSheet.Range('F6').Value2 2150000 'General dependent included in auto deduction total'
+        Assert-Value $batchSheet.Range('J6').Value2 'HOLD／要確認' 'Family edit still holds stale source tax'
+        Assert-Value $batchSheet.Range('B7').Value2 2 'Family edit leaves other taxpayer separate'
+        QA-Stage 'batch-source-only-bridge-pass'
+        $passed = $true
+        Write-Host 'QA_BATCH_SOURCE_BRIDGE_PASS_RELEASE_STILL_HOLD'
+        return
+    }
     if ($ReaderExecutable) {
         if (-not (Test-Path -LiteralPath $ReaderExecutable -PathType Leaf)) {
             throw 'BATCH_RECALC_TEST_READER_MISSING'

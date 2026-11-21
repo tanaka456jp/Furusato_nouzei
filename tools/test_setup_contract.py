@@ -125,6 +125,14 @@ workflow = (ROOT / ".github/workflows/workbook.yml").read_text(encoding="utf-8")
 assert "probe_reader_launch_policy.ps1" in workflow
 assert "reader_launch_diagnostic.json" in workflow
 assert "PC1_BATCH_READER_EXE_ACCESS_DENIED_RELEASE_HOLD" in workflow
+assert "WriteBatchEditorInputFile" in vba and "ExportBatchEditsForTest" in vba, (
+    "PC1 source-only bridge must use production editor TSV serialization")
+assert "-BatchBridgeOnly" in workflow and "QA_BATCH_SOURCE_BRIDGE_PASS_RELEASE_STILL_HOLD" in verify_ps, (
+    "PC1 must test Excel edit handoff without executing blocked unsigned reader")
+assert "BATCH_SOURCE_ONLY_CANNOT_APPROVE_RELEASE" in verify_ps, (
+    "A source-only Excel bridge must never create a full release acceptance receipt")
+assert "NoMatchingEventsFound" in (ROOT / "tools/probe_reader_launch_policy.ps1").read_text(encoding="utf-8"), (
+    "No recent Windows policy events must not be misreported as access denied")
 assert "BatchRecalcLastStageForTest" in vba and "BatchRecalcLastExitCodeForTest" in vba, (
     "Recalculation must expose numeric-only PC1 diagnostics")
 assert "BATCH_V5_RECALC_VALID_ROW_REJECTED stage=" in verify_ps, (

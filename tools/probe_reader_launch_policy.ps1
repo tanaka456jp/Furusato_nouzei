@@ -50,7 +50,15 @@ foreach ($log in $logs) {
             $signals+=@{category=$log.key;event_id=[int]$id;count=[int]$count}
         }
     } catch {
-        $signals+=@{category=$log.key;observation='NOT_AVAILABLE'}
+        # Get-WinEvent returns NoMatchingEventsFound when the channel can be
+        # read but no events exist in the 20-minute window. It must not be
+        # misreported as a channel permission failure.
+        $eventCode=[string]$_.FullyQualifiedErrorId
+        if ($eventCode -like '*NoMatchingEventsFound*') {
+            $signals+=@{category=$log.key;observation='NO_RECENT_EVENTS'}
+        } else {
+            $signals+=@{category=$log.key;observation='QUERY_FAILED'}
+        }
     }
 }
 $record=[ordered]@{
