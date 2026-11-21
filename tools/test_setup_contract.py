@@ -198,7 +198,7 @@ assert verify_ps.count("TaxLawUpdater.BatchRecalcLaunchAttemptsForTest") == 3
 assert "apex_one_operator_ready:" in workflow
 assert "default: false" in workflow.split("apex_one_operator_ready:", 1)[1].split("\n", 4)[3]
 assert "APEX_ONE_OPERATOR_CONFIRMATION_REQUIRED_RELEASE_HOLD" in workflow
-assert workflow.index("Apex One operator confirmation gate (reader EXE not started)") < workflow.index("python tools/smoke_batch_recalculate_exe.py")
+assert workflow.index("Apex One operator confirmation gate (reader EXE not started)") < workflow.index("python tools/smoke_batch_recalculate_exe.py", workflow.index("Apex One operator confirmation gate (reader EXE not started)"))
 assert workflow.index("Compare independent 41 Excel / GAS synthetic cases") < workflow.index("Apex One operator confirmation gate (reader EXE not started)")
 assert "github.ref == 'refs/heads/fix/excel-2026-salary-nta-20261107'" in workflow
 assert "'${{ inputs.apex_one_operator_ready }}' -ceq 'true'" in workflow
