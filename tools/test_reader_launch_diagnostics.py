@@ -37,6 +37,12 @@ class ReaderLaunchTest(unittest.TestCase):
                           "Set-MpPreference","Add-MpPreference","Set-AuthenticodeSignature"):
             self.assertNotIn(forbidden,script)
         self.assertIn("private_paths_recorded=$false",script)
+        self.assertIn("furusato-reader-winerror5-diagnostic/v2",script)
+        self.assertIn("trusted_windows_executable_launch",script)
+        self.assertIn("software_restriction_policy_presence",script)
+        self.assertIn("wdac_policy_file_presence",script)
+        self.assertIn("parent_acl_query",script)
+        self.assertIn("policy_changed=$false",script)
         self.assertIn("release_approved=$false",script)
 
 

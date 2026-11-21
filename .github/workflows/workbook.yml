@@ -671,11 +671,24 @@ jobs:
           # unsigned PyInstaller EXE. This partial QA never approves a release.
           & .\tools\verify_excel.ps1 -Workbook (Join-Path $work 'review/Furusato_nouzei.xlsm') -BatchBridgeOnly -FullSyntheticSuite
           if (-not $?) { throw 'PC1_EXCEL_SOURCE_BRIDGE_FAILED' }
-          python tools/smoke_batch_recalculate_exe.py $readers[0].FullName
-          if ($LASTEXITCODE -ne 0) {
-            # Windows security policy must NOT be bypassed by CI.
-            & .\tools\probe_reader_launch_policy.ps1 -ReaderExecutable $readers[0].FullName -EvidencePath (Join-Path $work 'reader_launch_diagnostic.json')
-            throw 'PC1_BATCH_READER_EXE_ACCESS_DENIED_RELEASE_HOLD'
+          # Only recognized, sanitized smoke error classes are passed to CI.
+          # Any nonzero exit used to be mislabeled as WinError 5.
+          $smokeText = @(& python tools/smoke_batch_recalculate_exe.py $readers[0].FullName 2>&1 |
+                         ForEach-Object { [string]$_ })
+          $smokeCode = $LASTEXITCODE
+          if ($smokeCode -ne 0) {
+            $known = @('READER_EXE_LAUNCH_ACCESS_DENIED', 'READER_EXE_LAUNCH_OS_ERROR',
+                       'READER_EXE_LAUNCH_TIMEOUT', 'READER_EXE_BATCH_RECALC_NONZERO_EXIT')
+            $observed = @($smokeText | Where-Object { $_ -in $known })
+            if ($observed -contains 'READER_EXE_LAUNCH_ACCESS_DENIED') {
+              # Read-only policy evidence: no ACL/policy/trust changes.
+              & .\tools\probe_reader_launch_policy.ps1 -ReaderExecutable $readers[0].FullName -EvidencePath (Join-Path $work 'reader_launch_diagnostic.json')
+              throw 'PC1_BATCH_READER_EXE_ACCESS_DENIED_RELEASE_HOLD'
+            }
+            if ($observed.Count -eq 1) {
+              throw ('PC1_BATCH_READER_' + $observed[0] + '_RELEASE_HOLD')
+            }
+            throw 'PC1_BATCH_READER_UNKNOWN_EXECUTION_FAILURE_RELEASE_HOLD'
           }
           & .\tools\verify_excel.ps1 -Workbook (Join-Path $work 'review/Furusato_nouzei.xlsm') -ReaderExecutable $readers[0].FullName -EvidencePath $evidence -PdfEvidencePath (Join-Path $work 'pdf_layout_evidence') -SourceHead (git rev-parse HEAD)
           if (-not $?) { throw 'Windows Excel acceptance failed' }

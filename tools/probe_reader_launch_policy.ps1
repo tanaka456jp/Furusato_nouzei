@@ -22,9 +22,62 @@ try {
     $zone=if ($streams.Count -gt 0) { 'PRESENT' } else { 'ABSENT' }
 } catch {}
 $acl='QUERY_FAILED'
+$parentAcl='QUERY_FAILED'
+$fileAttributes='QUERY_FAILED'
 try {
     $aclValue=Get-Acl -LiteralPath $exe -ErrorAction Stop
     if ($null -ne $aclValue) { $acl='READABLE' }
+} catch {}
+try {
+    $parentAclValue=Get-Acl -LiteralPath (Split-Path -Parent $exe) -ErrorAction Stop
+    if ($null -ne $parentAclValue) { $parentAcl='READABLE' }
+} catch {}
+try {
+    $attr=(Get-Item -LiteralPath $exe -ErrorAction Stop).Attributes
+    $fileAttributes=if (($attr -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        'REPARSE_POINT'
+    } elseif (($attr -band [IO.FileAttributes]::ReadOnly) -ne 0) {
+        'READONLY'
+    } else { 'ORDINARY' }
+} catch {}
+# A trusted Windows OS executable confirms that this runner can create
+# processes in general. It does NOT authorize or retry the blocked reader.
+# No process identity or user profile is emitted.
+$trustedExeLaunch='QUERY_FAILED'
+try {
+    $cmd=Join-Path $env:WINDIR 'System32\cmd.exe'
+    if (Test-Path -LiteralPath $cmd -PathType Leaf) {
+        $psi=New-Object Diagnostics.ProcessStartInfo
+        $psi.FileName=$cmd
+        $psi.Arguments='/d /c exit 0'
+        $psi.UseShellExecute=$false
+        $psi.CreateNoWindow=$true
+        $process=[Diagnostics.Process]::Start($psi)
+        try {
+            if (-not $process.WaitForExit(10000)) {
+                $trustedExeLaunch='TIMEOUT'
+                try { $process.Kill() } catch {}
+            } elseif ($process.ExitCode -eq 0) {
+                $trustedExeLaunch='LAUNCH_PASS'
+            } else { $trustedExeLaunch='NONZERO_EXIT' }
+        } finally { $process.Dispose() }
+    } else { $trustedExeLaunch='SYSTEM_EXECUTABLE_MISSING' }
+} catch { $trustedExeLaunch='LAUNCH_DENIED_OR_UNAVAILABLE' }
+# Presence only: no policy content, identity, path or sensitive rule data.
+$srpPresence='QUERY_FAILED'
+try {
+    $hklm=Test-Path -LiteralPath 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Safer\CodeIdentifiers'
+    $hkcu=Test-Path -LiteralPath 'HKCU:\SOFTWARE\Policies\Microsoft\Windows\Safer\CodeIdentifiers'
+    $srpPresence=if ($hklm -or $hkcu) { 'CONFIGURATION_PRESENT' } else { 'ABSENT' }
+} catch {}
+$wdacPresence='QUERY_FAILED'
+try {
+    $directory=Join-Path $env:WINDIR 'System32\CodeIntegrity\CiPolicies\Active'
+    $wdacPresence=if (Test-Path -LiteralPath $directory -PathType Container) {
+        if (@(Get-ChildItem -LiteralPath $directory -Filter '*.cip' -File -ErrorAction Stop).Count -gt 0) {
+            'ACTIVE_POLICY_FILE_PRESENT'
+        } else { 'NO_ACTIVE_POLICY_FILE' }
+    } else { 'NO_ACTIVE_POLICY_DIRECTORY' }
 } catch {}
 $leaf=[IO.Path]::GetFileName($exe)
 $since=(Get-Date).AddMinutes(-20)
@@ -92,12 +145,17 @@ try {
     }
 } catch { $defenderMode='QUERY_FAILED' }
 $record=[ordered]@{
-    schema='furusato-reader-winerror5-diagnostic/v1'
+    schema='furusato-reader-winerror5-diagnostic/v2'
     observed_failure='WINERROR_5_EXECUTION_DENIED'
     exe_sha256=(Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant()
     authenticode=$signature
     zone_identifier=$zone
     acl_query=$acl
+    parent_acl_query=$parentAcl
+    reader_file_attributes=$fileAttributes
+    trusted_windows_executable_launch=$trustedExeLaunch
+    software_restriction_policy_presence=$srpPresence
+    wdac_policy_file_presence=$wdacPresence
     event_scope='LAST_20_MINUTES_BASENAME_MATCH_INDICATIVE_ONLY'
     event_indicators=@($signals)
     applocker_effective_query=$appLocker
