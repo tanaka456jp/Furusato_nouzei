@@ -149,6 +149,14 @@ assert "BATCH_SOURCE_ONLY_CANNOT_APPROVE_RELEASE" in verify_ps, (
     "A source-only Excel bridge must never create a full release acceptance receipt")
 assert "NoMatchingEventsFound" in (ROOT / "tools/probe_reader_launch_policy.ps1").read_text(encoding="utf-8"), (
     "No recent Windows policy events must not be misreported as access denied")
+signing_ps = (ROOT / "tools/try_release_excel_signature.ps1").read_text(encoding="utf-8-sig")
+assert "EXISTING_SIGNING_IDENTITY_REQUIRES_CONFIGURATION" not in signing_ps
+assert "SIGNING_NOT_CONFIGURED" in signing_ps
+readiness_policy = (ROOT / "tools/release_readiness.py").read_text(encoding="utf-8")
+assert '"distribution_integrity_and_sha256"' in readiness_policy
+assert '"signed_distribution_and_sha256"' not in readiness_policy
+assert "UNSIGNED_CANDIDATE_NOT_IDENTICAL_TO_ACCEPTED_CI_BYTES" in (
+    ROOT / "tools/verify_excel_release_candidate.py").read_text(encoding="utf-8")
 assert "BatchRecalcLastStageForTest" in vba and "BatchRecalcLastExitCodeForTest" in vba, (
     "Recalculation must expose numeric-only PC1 diagnostics")
 assert "BATCH_V5_RECALC_VALID_ROW_REJECTED stage=" in verify_ps, (

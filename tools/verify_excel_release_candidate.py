@@ -102,33 +102,49 @@ def verify(head, run_id, version, archive, expected_hash, ci, manifest, signatur
                  len(assessment["checks"]) == len(REQUIRED) and
                  assessment["review_stage"] == "MANUAL_FINAL_AUDIT_REQUIRED",
                  "EXCEL_PRIVATE_REVIEWS_INCOMPLETE")
+    # Unsigned delivery is allowed, but actual XLSM and EXE bytes MUST match
+    # independently accepted CI hashes. A signature is never fabricated.
+    if signature is None:
+        _require(workbook_sha == ci.get("accepted_workbook_sha256") and
+                 reader_sha == ci.get("reader_sha256"),
+                 "UNSIGNED_CANDIDATE_NOT_IDENTICAL_TO_ACCEPTED_CI_BYTES")
+        try:
+            with ZipFile(io.BytesIO(workbook_bytes)) as unsigned_book:
+                parts = [info.filename.casefold() for info in unsigned_book.infolist()]
+                _require(not any("vbaprojectsignature" in name or
+                                 name.startswith("_xmlsignatures/")
+                                 for name in parts), "UNSIGNED_CANDIDATE_CONTAINS_SIGNATURE_PARTS")
+        except BadZipFile as exc:
+            raise ValueError("UNSIGNED_CANDIDATE_INVALID_XLSM") from exc
+    # Claimed signed builds still use strict Windows Office SIP evidence.
     # The Windows Office SIP/Authenticode verifier emits v2, not the old
     # v1 marker that explicitly *did not* validate signature cryptography.
     # Bind its asserted digests to the actual signed ZIP members, including
     # the VBA binary inside the signed XLSM. These checks validate evidence
     # consistency, NOT the provenance of a local report or human approval.
-    signed_fields = {
-        "schema", "archive_sha256", "signed_workbook_sha256",
-        "signed_vba_project_sha256", "reader_exe_sha256",
-        "reader_authenticode", "vba_certificate_thumbprint_verified",
-        "macro_workbook_signature", "office_vba_signed_property",
-        "timestamp_verified", "exact_release_members", "signature_gate",
-    }
-    _require(isinstance(signature, dict) and set(signature) == signed_fields and
-             signature.get("schema") == "furusato-signed-distribution-local/v2" and
-             signature.get("archive_sha256") == actual_hash and
-             signature.get("signed_workbook_sha256") == workbook_sha and
-             signature.get("reader_exe_sha256") == reader_sha and
-             signature.get("reader_authenticode") == "VALID_TRUSTED_EXPECTED_SIGNER" and
-             signature.get("vba_certificate_thumbprint_verified") is True and
-             signature.get("macro_workbook_signature") ==
-                 "OFFICE_SIP_CRYPTOGRAPHICALLY_VERIFIED" and
-             signature.get("office_vba_signed_property") ==
-                 "OFFICE_RECOGNIZED_SIGNED_PROJECT" and
-             signature.get("timestamp_verified") is True and
-             signature.get("exact_release_members") == "THREE_EXPECTED_FILES_ONLY" and
-             signature.get("signature_gate") == "PASS",
-             "SIGNED_ARCHIVE_LOCAL_EVIDENCE_INVALID")
+    if signature is not None:
+        signed_fields = {
+            "schema", "archive_sha256", "signed_workbook_sha256",
+            "signed_vba_project_sha256", "reader_exe_sha256",
+            "reader_authenticode", "vba_certificate_thumbprint_verified",
+            "macro_workbook_signature", "office_vba_signed_property",
+            "timestamp_verified", "exact_release_members", "signature_gate",
+        }
+        _require(isinstance(signature, dict) and set(signature) == signed_fields and
+                 signature.get("schema") == "furusato-signed-distribution-local/v2" and
+                 signature.get("archive_sha256") == actual_hash and
+                 signature.get("signed_workbook_sha256") == workbook_sha and
+                 signature.get("reader_exe_sha256") == reader_sha and
+                 signature.get("reader_authenticode") == "VALID_TRUSTED_EXPECTED_SIGNER" and
+                 signature.get("vba_certificate_thumbprint_verified") is True and
+                 signature.get("macro_workbook_signature") ==
+                     "OFFICE_SIP_CRYPTOGRAPHICALLY_VERIFIED" and
+                 signature.get("office_vba_signed_property") ==
+                     "OFFICE_RECOGNIZED_SIGNED_PROJECT" and
+                 signature.get("timestamp_verified") is True and
+                 signature.get("exact_release_members") == "THREE_EXPECTED_FILES_ONLY" and
+                 signature.get("signature_gate") == "PASS",
+                 "SIGNED_ARCHIVE_LOCAL_EVIDENCE_INVALID")
     try:
         with ZipFile(io.BytesIO(workbook_bytes)) as signed_xlsm:
             parts = [p for p in signed_xlsm.infolist()
@@ -142,11 +158,12 @@ def verify(head, run_id, version, archive, expected_hash, ci, manifest, signatur
                      "SIGNED_ARCHIVE_VBA_PROJECT_NOT_OLE")
     except (BadZipFile, KeyError) as exc:
         raise ValueError("SIGNED_ARCHIVE_VBA_PROJECT_INVALID") from exc
-    _require(isinstance(signature["signed_vba_project_sha256"], str) and
-             HASH_RE.fullmatch(signature["signed_vba_project_sha256"]) and
-             hashlib.sha256(vba_data).hexdigest() ==
-                 signature["signed_vba_project_sha256"],
-             "SIGNED_ARCHIVE_VBA_PROJECT_HASH_MISMATCH")
+    if signature is not None:
+        _require(isinstance(signature["signed_vba_project_sha256"], str) and
+                 HASH_RE.fullmatch(signature["signed_vba_project_sha256"]) and
+                 hashlib.sha256(vba_data).hexdigest() ==
+                     signature["signed_vba_project_sha256"],
+                 "SIGNED_ARCHIVE_VBA_PROJECT_HASH_MISMATCH")
     return {
         "schema": "furusato-excel-candidate-prepublication/v1",
         "product_scope": PRODUCT_SCOPE,
@@ -160,11 +177,14 @@ def verify(head, run_id, version, archive, expected_hash, ci, manifest, signatur
         "candidate_workbook_sha256": workbook_sha,
         "candidate_reader_sha256": reader_sha,
         "ci_review_zip_sha256": ci["review_zip_sha256"],
-        "ci_review_only_not_signed_payload": True,
+        "ci_review_only_not_signed_payload": signature is not None,
         "private_review_records": len(REQUIRED) - int(preprint_only),
-        "source_lineage_after_signing": "REQUIRES_HUMAN_REVIEW",
-        "office_vba_signed_property": "OFFICE_RECOGNIZED_SIGNED_PROJECT",
-        "office_vbe_signature": "LOCAL_SIP_CRYPTOGRAPHY_RECORDED_HUMAN_PROVENANCE_REVIEW_REQUIRED",
+        "source_lineage_after_signing": ("REQUIRES_HUMAN_REVIEW" if signature is not None
+                                         else "IDENTICAL_TO_CI_ACCEPTED_BYTES"),
+        "office_vba_signed_property": ("OFFICE_RECOGNIZED_SIGNED_PROJECT" if signature is not None
+                                       else "UNSIGNED_DISCLOSED_NOT_REQUIRED"),
+        "office_vbe_signature": ("LOCAL_SIP_CRYPTOGRAPHY_RECORDED_HUMAN_PROVENANCE_REVIEW_REQUIRED"
+                                 if signature is not None else "UNSIGNED_DISCLOSED_NOT_REQUIRED"),
         "physical_tax_and_print_evidence": "REQUIRES_HUMAN_AUTHENTICITY_REVIEW",
         "release_authorization": "REQUIRES_EXPLICIT_FINAL_HUMAN_APPROVAL",
         "release_decision": "HOLD",
@@ -180,7 +200,8 @@ def main():
     p.add_argument("--expected-archive-sha256", required=True)
     p.add_argument("--ci-receipt", type=Path, required=True)
     p.add_argument("--manifest", type=Path, required=True)
-    p.add_argument("--signature-evidence", type=Path, required=True)
+    p.add_argument("--signature-evidence", type=Path,
+                   help="Optional. Provide only for a signed candidate.")
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--preprint-only", action="store_true",
                    help="Allow ONLY the physical print gate to remain missing; still HOLD")
@@ -197,7 +218,8 @@ def main():
             return parse_evidence_json(path.read_text(encoding="utf-8-sig"))
         report = verify(a.head, a.run_id, a.version, a.archive,
                         a.expected_archive_sha256, read(a.ci_receipt),
-                        read(a.manifest), read(a.signature_evidence),
+                        read(a.manifest),
+                        read(a.signature_evidence) if a.signature_evidence else None,
                         preprint_only=a.preprint_only)
         output.parent.mkdir(parents=True, exist_ok=True)
         with output.open("x", encoding="utf-8") as result:

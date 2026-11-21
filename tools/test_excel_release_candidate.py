@@ -89,6 +89,37 @@ class ExcelPrepublicationTests(unittest.TestCase):
         x.update(overrides)
         return verify(**x)
 
+    def test_unsigned_candidate_requires_same_ci_binary_sha256(self):
+        ci = dict(self.ci,
+                  accepted_workbook_sha256=digest(self.book_bytes),
+                  reader_sha256=digest(self.reader))
+        result = self.run_check(ci=ci, signature=None)
+        self.assertEqual(result["release_decision"], "HOLD")
+        self.assertEqual(result["source_lineage_after_signing"],
+                         "IDENTICAL_TO_CI_ACCEPTED_BYTES")
+        self.assertEqual(result["office_vba_signed_property"],
+                         "UNSIGNED_DISCLOSED_NOT_REQUIRED")
+        for column in ("reader_sha256", "accepted_workbook_sha256"):
+            wrong = dict(ci, **{column: "f" * 64})
+            with self.subTest(column=column):
+                with self.assertRaisesRegex(ValueError,
+                                            "UNSIGNED_CANDIDATE_NOT_IDENTICAL"):
+                    self.run_check(ci=wrong, signature=None)
+
+    def test_unsigned_candidate_rejects_fake_signature_part(self):
+        ci = dict(self.ci, reader_sha256=digest(self.reader))
+        with ZipFile(self.archive, "w") as outer:
+            inner = BytesIO(self.book_bytes)
+            with ZipFile(inner, "a") as pkg:
+                pkg.writestr("xl/vbaProjectSignature.bin", b"NOT_A_REAL_SIGNATURE")
+            altered = inner.getvalue()
+            outer.writestr("Furusato_nouzei.xlsm", altered)
+            outer.writestr("FurusatoDocumentReader.exe", self.reader)
+            outer.writestr("README.txt", self.readme)
+        ci["accepted_workbook_sha256"] = digest(altered)
+        with self.assertRaisesRegex(ValueError, "UNSIGNED_CANDIDATE_CONTAINS_SIGNATURE"):
+            self.run_check(ci=ci, signature=None)
+
     def test_preprint_only_eight_gates_pass_and_paper_stays_pending(self):
         manifest = copy.deepcopy(self.manifest)
         del manifest["checks"]["physical_printer_preview_and_output"]
