@@ -22,11 +22,11 @@ python tools/make_excel_release_readme.py --version v4.18.36 --head <HEAD_SHA> -
 python tools/publish_excel_release.py --run-id <RUN_ID> --head <HEAD_SHA> --output <未作成の検証フォルダ>
 ```
 
-現在の同一HEAD受入候補は署名・表示環境・物理紙面・独立税務監査・最終承認の正式公開ゲートが残るため、事前検証は `CANDIDATE_VERIFIED_PUBLICATION_HOLD` と表示します。`--publish` を指定しても、VBAの信頼済み署名・読取EXEの有効なAuthenticode・他の2表示条件・物理紙面・2025/2026年独立税務監査・非公開の明示的最終承認が揃わなければ、GitHub APIアクセスより前に拒否します。現状のCI結果を手作業で `READY` と書き換えても公開できません。今後これらの証拠を実際に取得し、GitHubに秘密鍵や顧客情報を上げずに、別途正規の最終承認経路を実装してから公開判定します。公開スクリプトはタグやReleaseの上書きを拒否します。
+現在の同一HEAD受入候補はPC①のEXE起動拒否・表示環境・物理紙面・独立税務監査・最終承認の正式公開ゲートが残るため、事前検証は `CANDIDATE_VERIFIED_PUBLICATION_HOLD` と表示します。`--publish` を指定しても、PC①での読取EXE実行成功・同一HEADの配布ZIPのSHA-256一致・他の2表示条件・物理紙面・2025/2026年独立税務監査・非公開の明示的最終承認が揃わなければ、GitHub APIアクセスより前に拒否します。現状のCI結果を手作業で `READY` と書き換えても公開できません。今後これらの証拠を実際に取得し、GitHubに秘密鍵や顧客情報を上げずに、別途正規の最終承認経路を実装してから公開判定します。公開スクリプトはタグやReleaseの上書きを拒否します。
 
 詳細は[税務照合範囲](excel-v41836-tax-scope.md)をご確認ください。
 
-読取EXEの署名手順は[ローカルEXEのAuthenticode署名](sign-reader-exe.md)をご確認ください。署名には手動の明示的な実行が必要で、CIの署名禁止を解除しません。署名済みEXEだけを手作業で検証用ZIPに差し替えて公開することはできません。
+**署名は任意です。** 未署名のXLSM・読取EXEも配布対象ですが、署名済みとは表示せず、同一HEAD・SHA-256・PC①の実機EXE起動確認を必須とします。セキュリティ制限の自動解除は禁止します。任意に署名する場合のみ[署名手順](sign-reader-exe.md)を参照してください。
 
 ## 公開操作の追加安全ロック（署名済み最終ZIPの独立受入経路が未完成）
 

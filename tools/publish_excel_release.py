@@ -130,10 +130,8 @@ def publication_blockers(report):
     reviewed final-approval route is required in a later development cycle.
     """
     blockers = []
-    if report.get("signing_state") != "SIGNED":
-        blockers.append("VBA_TRUSTED_SIGNATURE_NOT_VERIFIED")
-    if report.get("reader_authenticode") != "VALID_TRUSTED_EXPECTED_SIGNER":
-        blockers.append("READER_AUTHENTICODE_NOT_VERIFIED")
+    # Code signing is optional. Exact-run SHA-256 and real PC1 execution
+    # remain independent distribution requirements; never claim it is signed.
     if report.get("unverified_display_modes") != []:
         blockers.append("DISPLAY_MODES_NOT_FULLY_VERIFIED")
     if report.get("physical_printer_tested") is not True:
@@ -151,12 +149,10 @@ def require_publication_clearance(report):
 
 
 def publish(out, report):
-    # Public CI artifacts can verify *unsigned* candidate integrity, but cannot
-    # establish the bytes or authority of an independently signed final package.
-    # None of the below publication code may run until a separate authenticated
-    # signed-asset + private human-approval route is implemented and tested.
-    # This unconditional gate cannot be bypassed with forged JSON status flags.
-    require(False, "PUBLICATION_HOLD:SIGNED_FINAL_PACKAGE_ROUTE_NOT_IMPLEMENTED")
+    # Signing is optional. Existing independent display, print, tax and final
+    # human-approval gates remain unresolved. Do not publish from public CI
+    # metadata or allow a forged approval flag to create a tag.
+    require(False, "PUBLICATION_HOLD:INDEPENDENT_FINAL_APPROVAL_ROUTE_NOT_IMPLEMENTED")
     # Must execute BEFORE any GitHub API call or a draft/tag can be created.
     require_publication_clearance(report)
     head = report["head_sha"]
@@ -209,7 +205,7 @@ def main():
     parser.add_argument("--run-id", required=True, type=int)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--publish", action="store_true",
-                        help="Reserved; always HOLD until signed-final independent approval route exists")
+                        help="Reserved; always HOLD until independent final approval route exists")
     a = parser.parse_args()
     try:
         report = pull_verified_candidate(a.run_id, a.head, a.output.resolve())

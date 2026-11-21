@@ -4,7 +4,7 @@ import json
 import re
 from pathlib import Path
 
-SCHEMA = "furusato-release-readiness/v4"
+SCHEMA = "furusato-release-readiness/v5"
 PRODUCT_SCOPE = "EXCEL_STANDALONE_NO_GAS_RUNTIME"
 REQUIRED = (
     "ci_exact_commit",
@@ -15,7 +15,7 @@ REQUIRED = (
     "screen_1920x1080_125pct",
     "screen_1366x768_150pct",
     "physical_printer_preview_and_output",
-    "signed_distribution_and_sha256",
+    "distribution_integrity_and_sha256",
 )
 
 
@@ -51,7 +51,7 @@ REVIEWER_ROLES = {
     "screen_1920x1080_125pct": ("qa_operator", "external_reviewer"),
     "screen_1366x768_150pct": ("qa_operator", "external_reviewer"),
     "physical_printer_preview_and_output": ("qa_operator", "external_reviewer"),
-    "signed_distribution_and_sha256": ("release_operator", "external_reviewer"),
+    "distribution_integrity_and_sha256": ("release_operator", "external_reviewer"),
 }
 
 
@@ -106,7 +106,7 @@ def evaluate(head_sha, manifest=None):
                          else "EVIDENCE_INCOMPLETE"),
         "checks": states,
         "blockers": sorted(set(blockers)),
-        "note": "A year-end-adjusted salary-only withholding slip can support an independently calculated donation ceiling without a resident-tax notice. Evidence of source-year tax, 2025-to-2026 independent resident deductions, independently reviewed tax-return and housing-credit reallocation, verified conditions, current Excel comparison, physical display/printing and trusted code signing remains necessary. Live GAS deployment acceptance belongs to the separate Web/GAS product.",
+        "note": "A year-end-adjusted salary-only withholding slip can support an independently calculated donation ceiling without a resident-tax notice. Evidence of source-year tax, 2025-to-2026 independent resident deductions, independently reviewed tax-return and housing-credit reallocation, verified conditions, current Excel comparison, physical display/printing, source-bound distribution integrity, executable operation and independent approval remain necessary. Code signing is optional and its status must be disclosed. Live GAS deployment acceptance belongs to the separate Web/GAS product.",
     }
 
 

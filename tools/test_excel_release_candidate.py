@@ -102,7 +102,7 @@ class ExcelPrepublicationTests(unittest.TestCase):
         self.assertEqual(receipt["release_decision"], "HOLD")
 
         # Preprint is not a generic override. All other gates are still required.
-        del manifest["checks"]["signed_distribution_and_sha256"]
+        del manifest["checks"]["distribution_integrity_and_sha256"]
         with self.assertRaisesRegex(ValueError, "PREPRINT_REQUIRES_ALL_EIGHT"):
             self.run_check(manifest=manifest, preprint_only=True)
         manifest = copy.deepcopy(self.manifest)

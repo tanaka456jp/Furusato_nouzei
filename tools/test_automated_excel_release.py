@@ -192,14 +192,16 @@ class ReleaseAutomationTest(unittest.TestCase):
             "tax_evidence_scope": "SYNTHETIC_2025_2026",
         }
         blockers = publication_blockers(report)
-        self.assertEqual(len(blockers), 6)
+        self.assertEqual(len(blockers), 4)
+        self.assertNotIn('VBA_TRUSTED_SIGNATURE_NOT_VERIFIED', blockers)
+        self.assertNotIn('READER_AUTHENTICODE_NOT_VERIFIED', blockers)
         self.assertIn("EXPLICIT_FINAL_RELEASE_APPROVAL_MISSING", blockers)
         with self.assertRaisesRegex(ValueError, "PUBLICATION_HOLD"):
             require_publication_clearance(report)
 
         independently_reviewed = dict(
-            report, signing_state="SIGNED",
-            reader_authenticode="VALID_TRUSTED_EXPECTED_SIGNER",
+            report, signing_state="UNSIGNED",
+            reader_authenticode="UNSIGNED",
             unverified_display_modes=[], physical_printer_tested=True,
             tax_evidence_scope="INDEPENDENT_2025_2026_REVIEW_APPROVED",
             manual_final_approval="PRIVATE_EXPLICIT_APPROVAL",
@@ -230,7 +232,7 @@ class ReleaseAutomationTest(unittest.TestCase):
              patch("publish_excel_release.api") as api, \
              patch("publish_excel_release.gh") as gh:
             with self.assertRaisesRegex(ValueError,
-                                        "PUBLICATION_HOLD:SIGNED_FINAL_PACKAGE_ROUTE_NOT_IMPLEMENTED"):
+                                        "PUBLICATION_HOLD:INDEPENDENT_FINAL_APPROVAL_ROUTE_NOT_IMPLEMENTED"):
                 publish(Path(temp), forged)
             approved.assert_not_called()
             get_release.assert_not_called()

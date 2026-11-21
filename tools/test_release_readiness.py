@@ -43,13 +43,13 @@ class ReleaseReadinessTest(unittest.TestCase):
         self.assertNotIn('scenario_approved = $measured', src)
 
 
-    def test_excel_offline_scope_excludes_live_gas_without_waiving_tax_and_signatures(self):
+    def test_excel_offline_scope_excludes_live_gas_without_waiving_tax_and_integrity(self):
         self.assertEqual(PRODUCT_SCOPE, "EXCEL_STANDALONE_NO_GAS_RUNTIME")
         self.assertNotIn("live_google_gas_independent_acceptance", REQUIRED)
         self.assertEqual(len(REQUIRED), 9)
         result = evaluate(HEAD)
         self.assertEqual(result["product_scope"], PRODUCT_SCOPE)
-        self.assertIn("MISSING_SIGNED_DISTRIBUTION_AND_SHA256", result["blockers"])
+        self.assertIn("MISSING_DISTRIBUTION_INTEGRITY_AND_SHA256", result["blockers"])
         old = evaluate(HEAD, {"schema": "furusato-release-readiness/v3",
                               "head_sha": HEAD, "checks": {
                                   "live_google_gas_independent_acceptance": {
@@ -67,7 +67,7 @@ class ReleaseReadinessTest(unittest.TestCase):
             REVIEWER_ROLES["prior_year_projection_independent_resident_deductions"],
             ("tax_professional", "external_reviewer"),
         )
-        self.assertEqual(SCHEMA, "furusato-release-readiness/v4")
+        self.assertEqual(SCHEMA, "furusato-release-readiness/v5")
         old_manifest={"schema":"furusato-release-readiness/v1",
                       "head_sha":HEAD,
                       "checks":{"real_tax_and_resident_notice_reconciliation":{
@@ -137,7 +137,7 @@ class ReleaseReadinessTest(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         documentation = (root / "docs/release-readiness.md").read_text(encoding="utf-8-sig")
         self.assertIn("Excel単体版の正式受入に必要な9条件", documentation)
-        self.assertIn("schema: furusato-release-readiness/v4", documentation)
+        self.assertIn("schema: furusato-release-readiness/v5", documentation)
         self.assertEqual(len(REQUIRED), 9)
         for key in REQUIRED:
             with self.subTest(check=key):
