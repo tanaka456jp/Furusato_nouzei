@@ -48,6 +48,9 @@ for token in (
     "book.Close($false)", "excel.Quit()",
 ):
     assert token in ps, f"Missing display safety invariant: {token}"
+# Regression: malformed replacement previously duplicated the PowerShell collector
+# and broke its native parser. Keep the source within the reviewed size.
+assert len(ps.splitlines()) < 470, "Display collector contains duplicated or malformed source"
 for forbidden in ("SetDisplayConfig", "ChangeDisplaySettings", "Set-DisplayResolution",
                   "GetDesktopWindow", "CopyFromScreen", "BitBlt(", "CAPTURED_PASS"):
     assert forbidden not in ps, f"Unreviewed desktop/screen mutation: {forbidden}"
