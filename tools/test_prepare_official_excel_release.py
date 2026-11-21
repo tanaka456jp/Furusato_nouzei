@@ -8,7 +8,7 @@ from prepare_official_excel_release import PRINT_SCHEMA, PRINT_FIELDS, check_pap
 def make_paper():
     return {
         "schema": PRINT_SCHEMA,
-        "signed_candidate_archive_sha256": "a" * 64,
+        "candidate_archive_sha256": "a" * 64,
         "printed_workbook_sha256": "b" * 64,
         "tax_year": 2026,
         "expected_limit_yen": 109000,
@@ -31,6 +31,16 @@ class OfficialStagingTest(unittest.TestCase):
         check_paper(p, "a" * 64, "b" * 64)
         self.assertEqual(p["release_decision"], "HOLD")
 
+    def test_unsigned_stage_uses_versioned_generic_paper_receipt(self):
+        from prepare_official_excel_release import PRINT_SCHEMA
+        self.assertEqual(PRINT_SCHEMA, "furusato-physical-paper-manual/v2")
+        self.assertIn("candidate_archive_sha256", PRINT_FIELDS)
+        self.assertNotIn("signed_candidate_archive_sha256", PRINT_FIELDS)
+        with self.assertRaisesRegex(ValueError, "PAPER_REVIEW_FIELDS_INVALID"):
+            check_paper(dict(make_paper(),
+                             signed_candidate_archive_sha256="a" * 64),
+                        "a" * 64, "b" * 64)
+
     def test_bad_paper_rejected(self):
         for key, value in (
             ("paper_physically_observed", False),
@@ -38,7 +48,7 @@ class OfficialStagingTest(unittest.TestCase):
             ("physical_printer_confirmed", False),
             ("manual_human_review", False),
             ("only_synthetic_data", False),
-            ("signed_candidate_archive_sha256", "c" * 64),
+            ("candidate_archive_sha256", "c" * 64),
             ("printed_workbook_sha256", "c" * 64),
             ("observed_limit_yen", 110000),
             ("reviewer_role", "release_operator"),

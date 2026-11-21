@@ -1,4 +1,4 @@
-"""Stage validated signed Excel release assets AFTER physical print review; never publish."""
+"""Stage checksum-verified Excel assets after physical print review; never publish."""
 import argparse
 import hashlib
 import json
@@ -9,9 +9,9 @@ from pathlib import Path
 from verify_excel_release_candidate import verify
 from release_readiness import PRODUCT_SCOPE, parse_evidence_json
 
-PRINT_SCHEMA = "furusato-physical-paper-manual/v1"
+PRINT_SCHEMA = "furusato-physical-paper-manual/v2"
 PRINT_FIELDS = {
-    "schema", "signed_candidate_archive_sha256", "printed_workbook_sha256",
+    "schema", "candidate_archive_sha256", "printed_workbook_sha256",
     "tax_year", "expected_limit_yen", "observed_limit_yen",
     "physical_printer_confirmed", "one_page_a4_checked",
     "paper_physically_observed", "paper_readability_reviewed",
@@ -36,9 +36,9 @@ def check_paper(record, archive_sha, workbook_sha):
     if not isinstance(record, dict) or set(record) != PRINT_FIELDS:
         raise ValueError("PAPER_REVIEW_FIELDS_INVALID")
     if (record["schema"] != PRINT_SCHEMA or
-            record["signed_candidate_archive_sha256"] != archive_sha or
+            record["candidate_archive_sha256"] != archive_sha or
             record["printed_workbook_sha256"] != workbook_sha):
-        raise ValueError("PAPER_REVIEW_WRONG_SIGNED_CANDIDATE")
+        raise ValueError("PAPER_REVIEW_WRONG_CANDIDATE_SHA256")
     if type(record["tax_year"]) is not int or record["tax_year"] not in (2025, 2026):
         raise ValueError("PAPER_REVIEW_TAX_YEAR_INVALID")
     if (type(record["expected_limit_yen"]) is not int or
@@ -80,7 +80,7 @@ def check_stage(head, run_id, version, candidate, expected_sha,
         "candidate_reader_sha256": preflight["candidate_reader_sha256"],
         "print_report_sha256": paper_digest,
         "private_gate_records": preflight["private_review_records"],
-        "code_lineage_and_office_vbe_signature": "HUMAN_AUTHENTICITY_REVIEW_REQUIRED",
+        "code_lineage_and_integrity": "HUMAN_AUTHENTICITY_REVIEW_REQUIRED",
         "publisher_authority_and_public_asset": "HUMAN_FINAL_APPROVAL_REQUIRED",
         "state": "STAGED_NOT_PUBLISHED",
         "release_decision": "HOLD",
@@ -121,9 +121,10 @@ def stage(candidate, output, version, report):
 def main():
     parser = argparse.ArgumentParser()
     for name in ("head", "version", "expected-sha256", "ci-receipt",
-                 "private-manifest", "signature-evidence",
-                 "physical-paper-review", "candidate", "output-folder"):
+                 "private-manifest", "physical-paper-review", "candidate", "output-folder"):
         parser.add_argument("--" + name, required=True)
+    parser.add_argument("--signature-evidence",
+                        help="Optional; supply only when claiming a signed candidate")
     parser.add_argument("--run-id", required=True, type=int)
     a = parser.parse_args()
     try:
@@ -131,7 +132,8 @@ def main():
         report = check_stage(
             a.head, a.run_id, a.version, Path(a.candidate), a.expected_sha256,
             read_private(a.ci_receipt), read_private(a.private_manifest),
-            read_private(a.signature_evidence), read_private(paper_file),
+            read_private(a.signature_evidence) if a.signature_evidence else None,
+            read_private(paper_file),
             digest(paper_file),
         )
         stage(a.candidate, a.output_folder, a.version, report)
@@ -140,7 +142,7 @@ def main():
         print("OFFICIAL_STAGING_REFUSED=" +
               (str(error) if isinstance(error, ValueError) else "PRIVATE_IO_ERROR"))
         return 2
-    print("SIGNED_CANDIDATE_STAGED_NOT_PUBLISHED RELEASE_HOLD")
+    print("CHECKSUM_VERIFIED_CANDIDATE_STAGED_NOT_PUBLISHED RELEASE_HOLD")
     return 0
 
 

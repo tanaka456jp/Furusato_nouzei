@@ -26,11 +26,11 @@ python tools/publish_excel_release.py --run-id <RUN_ID> --head <HEAD_SHA> --outp
 
 詳細は[税務照合範囲](excel-v41836-tax-scope.md)をご確認ください。
 
-**署名は任意です。** 未署名のXLSM・読取EXEも配布対象ですが、署名済みとは表示せず、同一HEAD・SHA-256・PC①の実機EXE起動確認を必須とします。セキュリティ制限の自動解除は禁止します。任意に署名する場合のみ[署名手順](sign-reader-exe.md)を参照してください。
+**署名は任意です。** 未署名のXLSM・読取EXEも配布対象ですが、署名済みとは表示せず、同一HEAD・SHA-256・PC①の実機EXE起動確認を必須とします。セキュリティ制限の自動解除は禁止します。任意に署名する場合のみ[署名手順](sign-reader-exe.md)を参照してください。ステージングは `--signature-evidence` 省略に対応し、紙面証拠は `furusato-physical-paper-manual/v2` と `candidate_archive_sha256` を用います。
 
-## 公開操作の追加安全ロック（署名済み最終ZIPの独立受入経路が未完成）
+## 公開操作の追加安全ロック（最終人手承認経路が未完成）
 
-現状の `publish_excel_release.py` はGitHub Actionsの受入候補を検証できるだけで、署名後の別ZIPを暗号学的に同定し、非公開の税務・実画面・実印刷・発行者承認と結び付けて公開する経路がありません。したがって **`--publish` は、署名状態や承認フラグを手動で全部合格に書き換えても必ず `PUBLICATION_HOLD:SIGNED_FINAL_PACKAGE_ROUTE_NOT_IMPLEMENTED` で拒否**します。これはGitHub APIによるタグ・Release作成より前に実行します。ステージング用 `prepare_official_excel_release.py` も従来どおり `HOLD` です。
+現状の `publish_excel_release.py` は受入候補のSHA-256照合を実行できますが、非公開の税務・実画面・紙面印刷・発行者の最終承認を独立検証して公開する経路は未完成です。したがって署名の有無にかかわらず、**`--publish` は必ず `PUBLICATION_HOLD:INDEPENDENT_FINAL_APPROVAL_ROUTE_NOT_IMPLEMENTED` で停止**します。GitHub APIによる新タグ・Release作成より前に拒否し、`prepare_official_excel_release.py` はあくまで隔離ステージング（HOLD）のみを行います。
 
 正式公開を可能にするには、独立した署名済みアーカイブと配布ハッシュの実体検証・承認者認証・発行対象の固定・非公開証拠の最終監査を実装してテストし、上記ロックを意図的に解除する別の開発・受入工程が必要です。現時点ではタグ `v4.18.36` を発行しません。
 
