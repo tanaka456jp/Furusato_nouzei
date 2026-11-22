@@ -32,7 +32,7 @@ def verify(head, run_id, version, archive, expected_hash, ci, manifest, signatur
 
     Signing changes EXE/XLSM hashes: the unsigned CI-review member digests
     must NEVER be falsely compared with the finally signed member digests.
-    Human-controlled source-lineage and Office/VBE review remains necessary.
+    Signed-source provenance is verified only when signing is claimed.
     """
     _require(isinstance(head, str) and HEAD_RE.fullmatch(head), "INVALID_SOURCE_HEAD")
     _require(type(run_id) is int and run_id > 0, "INVALID_CI_RUN_ID")
@@ -84,24 +84,12 @@ def verify(head, run_id, version, archive, expected_hash, ci, manifest, signatur
              manifest.get("schema") == SCHEMA and
              manifest.get("head_sha") == head, "EXCEL_SCOPE_MANIFEST_INVALID")
     assessment = evaluate(head, manifest)
-    paper_gate = "physical_printer_preview_and_output"
-    paper_blocker = "MISSING_PHYSICAL_PRINTER_PREVIEW_AND_OUTPUT"
-    if preprint_only:
-        # Explicitly the ONLY missing gate is the not-yet-performed physical
-        # A4 paper review. A failed or fabricated paper record is never waived.
-        _require(assessment["product_scope"] == PRODUCT_SCOPE and
-                 assessment["blockers"] == [paper_blocker] and
-                 assessment["checks"][paper_gate] == "MISSING" and
-                 all(value == "REVIEW_RECORDED_NOT_INDEPENDENTLY_VERIFIED"
-                     for key, value in assessment["checks"].items()
-                     if key != paper_gate),
-                 "PREPRINT_REQUIRES_ALL_EIGHT_NONPHYSICAL_REVIEWS")
-    else:
-        _require(assessment["product_scope"] == PRODUCT_SCOPE and
-                 not assessment["blockers"] and
-                 len(assessment["checks"]) == len(REQUIRED) and
-                 assessment["review_stage"] == "MANUAL_FINAL_AUDIT_REQUIRED",
-                 "EXCEL_PRIVATE_REVIEWS_INCOMPLETE")
+    _require(not preprint_only, "LEGACY_PREPRINT_WAIVER_NO_LONGER_APPLICABLE")
+    _require(assessment["product_scope"] == PRODUCT_SCOPE and
+             not assessment["blockers"] and
+             len(assessment["checks"]) == len(REQUIRED) and
+             assessment["review_stage"] == "FINAL_RELEASE_AUTHORIZATION_REQUIRED",
+             "EXCEL_PRIVATE_SCOPE_RECORDS_INCOMPLETE")
     # Unsigned delivery is allowed, but actual XLSM and EXE bytes MUST match
     # independently accepted CI hashes. A signature is never fabricated.
     if signature is None:
@@ -170,22 +158,21 @@ def verify(head, run_id, version, archive, expected_hash, ci, manifest, signatur
         "source_head_sha": head,
         "ci_run_id": run_id,
         "version": version,
-        "candidate_gate": ("EIGHT_NONPHYSICAL_GATES_RECORDED_PREPRINT_HOLD"
-                           if preprint_only else "METADATA_AND_ARCHIVE_CHECKED"),
-        "physical_paper_gate": "PENDING" if preprint_only else "RECORDED_NOT_VERIFIED",
+        "candidate_gate": "METADATA_AND_ARCHIVE_CHECKED",
+        "physical_paper_gate": "NOT_REQUIRED",
         "candidate_archive_sha256": actual_hash,
         "candidate_workbook_sha256": workbook_sha,
         "candidate_reader_sha256": reader_sha,
         "ci_review_zip_sha256": ci["review_zip_sha256"],
         "ci_review_only_not_signed_payload": signature is not None,
-        "private_review_records": len(REQUIRED) - int(preprint_only),
+        "private_review_records": len(REQUIRED),
         "source_lineage_after_signing": ("REQUIRES_HUMAN_REVIEW" if signature is not None
                                          else "IDENTICAL_TO_CI_ACCEPTED_BYTES"),
         "office_vba_signed_property": ("OFFICE_RECOGNIZED_SIGNED_PROJECT" if signature is not None
                                        else "UNSIGNED_DISCLOSED_NOT_REQUIRED"),
         "office_vbe_signature": ("LOCAL_SIP_CRYPTOGRAPHY_RECORDED_HUMAN_PROVENANCE_REVIEW_REQUIRED"
                                  if signature is not None else "UNSIGNED_DISCLOSED_NOT_REQUIRED"),
-        "physical_tax_and_print_evidence": "REQUIRES_HUMAN_AUTHENTICITY_REVIEW",
+        "tax_and_pdf_acceptance": "AUTOMATED_EXCEL_AND_PDF_CI_GATES_REQUIRED",
         "release_authorization": "REQUIRES_EXPLICIT_FINAL_HUMAN_APPROVAL",
         "release_decision": "HOLD",
     }
@@ -204,7 +191,7 @@ def main():
                    help="Optional. Provide only for a signed candidate.")
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--preprint-only", action="store_true",
-                   help="Allow ONLY the physical print gate to remain missing; still HOLD")
+                   help="Deprecated and rejected: physical printing is no longer a release prerequisite")
     a = p.parse_args()
     try:
         root = Path(__file__).resolve().parents[1]

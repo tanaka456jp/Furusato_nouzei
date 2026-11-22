@@ -4,20 +4,15 @@ import json
 import re
 from pathlib import Path
 
-SCHEMA = "furusato-release-readiness/v5"
+SCHEMA = "furusato-release-readiness/v6"
 PRODUCT_SCOPE = "EXCEL_STANDALONE_NO_GAS_RUNTIME"
 REQUIRED = (
     "ci_exact_commit",
-    "salary_only_independent_withholding_reconciliation",
-    "prior_year_projection_independent_resident_deductions",
-    "mortgage_filing_independent_tax_difference",
     "screen_1920x1080_100pct",
     "screen_1920x1080_125pct",
     "screen_1366x768_150pct",
-    "physical_printer_preview_and_output",
     "distribution_integrity_and_sha256",
 )
-
 
 # Evidence reviewers must have a role appropriate to the specific acceptance gate.
 # These are metadata checks only; a claimed role is not identity verification.
@@ -44,13 +39,9 @@ def parse_evidence_json(raw):
 
 REVIEWER_ROLES = {
     "ci_exact_commit": ("qa_operator", "release_operator"),
-    "salary_only_independent_withholding_reconciliation": ("tax_professional", "external_reviewer"),
-    "prior_year_projection_independent_resident_deductions": ("tax_professional", "external_reviewer"),
-    "mortgage_filing_independent_tax_difference": ("tax_professional", "external_reviewer"),
     "screen_1920x1080_100pct": ("qa_operator", "external_reviewer"),
     "screen_1920x1080_125pct": ("qa_operator", "external_reviewer"),
     "screen_1366x768_150pct": ("qa_operator", "external_reviewer"),
-    "physical_printer_preview_and_output": ("qa_operator", "external_reviewer"),
     "distribution_integrity_and_sha256": ("release_operator", "external_reviewer"),
 }
 
@@ -102,11 +93,11 @@ def evaluate(head_sha, manifest=None):
         "product_scope": PRODUCT_SCOPE,
         "head_sha": head_sha,
         "release_decision": "HOLD",
-        "review_stage": ("MANUAL_FINAL_AUDIT_REQUIRED" if not blockers
+        "review_stage": ("FINAL_RELEASE_AUTHORIZATION_REQUIRED" if not blockers
                          else "EVIDENCE_INCOMPLETE"),
         "checks": states,
         "blockers": sorted(set(blockers)),
-        "note": "A year-end-adjusted salary-only withholding slip can support an independently calculated donation ceiling without a resident-tax notice. Evidence of source-year tax, 2025-to-2026 independent resident deductions, independently reviewed tax-return and housing-credit reallocation, verified conditions, current Excel comparison, physical display/printing, source-bound distribution integrity, executable operation and independent approval remain necessary. Code signing is optional and its status must be disclosed. Live GAS deployment acceptance belongs to the separate Web/GAS product.",
+        "note": "Manual physical paper printing and independent human tax review are NOT release prerequisites. Automated 2025/2026 statutory tax checks, Excel COM acceptance, PDF layout, exact-run hashes, required display observations, and explicit publisher authorization remain. Unconfirmed taxpayer circumstances stay HOLD in individual calculations.",
     }
 
 

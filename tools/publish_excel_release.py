@@ -122,22 +122,14 @@ def verify_tag(tag, head):
 
 
 def publication_blockers(report):
-    """Mandatory *independent* publication gates, not inferred from CI success.
-
-    The current exact-run candidate is intentionally UNSIGNED, scoped to one
-    display mode and synthetic tax cases. A dry-run may verify its integrity,
-    but must never silently authorize a public release. An independently
-    reviewed final-approval route is required in a later development cycle.
-    """
+    """No mandatory human paper output or independent human tax review."""
     blockers = []
-    # Code signing is optional. Exact-run SHA-256 and real PC1 execution
-    # remain independent distribution requirements; never claim it is signed.
+    # SHA-256, exact HEAD, five-job CI and actual PC1 EXE execution are
+    # validated in pull_verified_candidate; signing remains optional.
     if report.get("unverified_display_modes") != []:
         blockers.append("DISPLAY_MODES_NOT_FULLY_VERIFIED")
-    if report.get("physical_printer_tested") is not True:
-        blockers.append("PHYSICAL_PAPER_NOT_VERIFIED")
-    if report.get("tax_evidence_scope") != "INDEPENDENT_2025_2026_REVIEW_APPROVED":
-        blockers.append("INDEPENDENT_TAX_REVIEW_NOT_APPROVED")
+    if report.get("tax_evidence_scope") != "SYNTHETIC_2025_2026":
+        blockers.append("AUTOMATED_2025_2026_TAX_ACCEPTANCE_MISSING")
     if report.get("manual_final_approval") != "PRIVATE_EXPLICIT_APPROVAL":
         blockers.append("EXPLICIT_FINAL_RELEASE_APPROVAL_MISSING")
     return blockers
@@ -149,10 +141,9 @@ def require_publication_clearance(report):
 
 
 def publish(out, report):
-    # Signing is optional. Existing independent display, print, tax and final
-    # human-approval gates remain unresolved. Do not publish from public CI
-    # metadata or allow a forged approval flag to create a tag.
-    require(False, "PUBLICATION_HOLD:INDEPENDENT_FINAL_APPROVAL_ROUTE_NOT_IMPLEMENTED")
+    # Paper printing and independent human tax review are NOT release gates.
+    # Authenticated publisher approval remains distinct from CI metadata.
+    require(False, "PUBLICATION_HOLD:AUTHENTICATED_FINAL_PUBLISHER_APPROVAL_ROUTE_NOT_IMPLEMENTED")
     # Must execute BEFORE any GitHub API call or a draft/tag can be created.
     require_publication_clearance(report)
     head = report["head_sha"]

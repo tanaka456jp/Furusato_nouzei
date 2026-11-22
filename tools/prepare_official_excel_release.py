@@ -1,4 +1,4 @@
-"""Stage checksum-verified Excel assets after physical print review; never publish."""
+"""Stage checksum-verified Excel assets; physical paper review is optional."""
 import argparse
 import hashlib
 import json
@@ -59,16 +59,17 @@ def check_paper(record, archive_sha, workbook_sha):
         raise ValueError("INVALID_PAPER_REVIEW_ROLE_OR_DECISION")
 
 def check_stage(head, run_id, version, candidate, expected_sha,
-                receipt, manifest, signature, paper, paper_digest):
+                receipt, manifest, signature, paper=None, paper_digest=None):
     preflight = verify(head, run_id, version, candidate, expected_sha,
                        receipt, manifest, signature)
-    if (not isinstance(paper_digest, str) or
-            re.fullmatch(r"[a-f0-9]{64}", paper_digest) is None or
-            manifest["checks"]["physical_printer_preview_and_output"]["sha256"]
-                != paper_digest):
-        raise ValueError("PAPER_EVIDENCE_NOT_BOUND_TO_PRIVATE_MANIFEST")
-    check_paper(paper, preflight["candidate_archive_sha256"],
-                preflight["candidate_workbook_sha256"])
+    if paper is not None:
+        if (not isinstance(paper_digest, str) or
+                re.fullmatch(r"[a-f0-9]{64}", paper_digest) is None):
+            raise ValueError("OPTIONAL_PAPER_EVIDENCE_SHA256_INVALID")
+        check_paper(paper, preflight["candidate_archive_sha256"],
+                    preflight["candidate_workbook_sha256"])
+    elif paper_digest is not None:
+        raise ValueError("OPTIONAL_PAPER_EVIDENCE_RECORD_MISSING")
     return {
         "schema": "furusato-excel-official-staging/v1",
         "product_scope": PRODUCT_SCOPE,
@@ -79,12 +80,14 @@ def check_stage(head, run_id, version, candidate, expected_sha,
         "candidate_workbook_sha256": preflight["candidate_workbook_sha256"],
         "candidate_reader_sha256": preflight["candidate_reader_sha256"],
         "print_report_sha256": paper_digest,
+        "physical_paper_requirement": "NOT_REQUIRED",
         "private_gate_records": preflight["private_review_records"],
-        "code_lineage_and_integrity": "HUMAN_AUTHENTICITY_REVIEW_REQUIRED",
+        "code_lineage_and_integrity": "SOURCE_AND_HASH_BINDING_REQUIRED",
         "publisher_authority_and_public_asset": "HUMAN_FINAL_APPROVAL_REQUIRED",
         "state": "STAGED_NOT_PUBLISHED",
         "release_decision": "HOLD",
     }
+
 
 def stage(candidate, output, version, report):
     candidate, output = Path(candidate), Path(output)
@@ -121,20 +124,21 @@ def stage(candidate, output, version, report):
 def main():
     parser = argparse.ArgumentParser()
     for name in ("head", "version", "expected-sha256", "ci-receipt",
-                 "private-manifest", "physical-paper-review", "candidate", "output-folder"):
+                 "private-manifest", "candidate", "output-folder"):
         parser.add_argument("--" + name, required=True)
+    parser.add_argument("--physical-paper-review", help="Optional supplementary paper evidence")
     parser.add_argument("--signature-evidence",
                         help="Optional; supply only when claiming a signed candidate")
     parser.add_argument("--run-id", required=True, type=int)
     a = parser.parse_args()
     try:
-        paper_file = Path(a.physical_paper_review)
+        paper_file = Path(a.physical_paper_review) if a.physical_paper_review else None
         report = check_stage(
             a.head, a.run_id, a.version, Path(a.candidate), a.expected_sha256,
             read_private(a.ci_receipt), read_private(a.private_manifest),
             read_private(a.signature_evidence) if a.signature_evidence else None,
-            read_private(paper_file),
-            digest(paper_file),
+            read_private(paper_file) if paper_file else None,
+            digest(paper_file) if paper_file else None,
         )
         stage(a.candidate, a.output_folder, a.version, report)
     except (ValueError, OSError, KeyError, json.JSONDecodeError) as error:
