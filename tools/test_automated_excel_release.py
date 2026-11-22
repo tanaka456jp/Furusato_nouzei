@@ -2,12 +2,15 @@ import copy
 import tempfile
 import unittest
 from pathlib import Path
+import json
+import os
 from unittest.mock import patch
 from zipfile import ZipFile, ZipInfo
 
 from publish_excel_release import (
-    inspect_draft_assets, publish, release_body, publication_blockers,
-    require_publication_clearance,
+    PublisherApproval, apply_private_display_and_scope,
+    authenticate_private_publisher, inspect_draft_assets, publish,
+    release_body, publication_blockers, require_publication_clearance,
 )
 from record_ci_acceptance import digest_file
 from release_readiness import (
@@ -192,7 +195,7 @@ class ReleaseAutomationTest(unittest.TestCase):
             "tax_evidence_scope": "SYNTHETIC_2025_2026",
         }
         blockers = publication_blockers(report)
-        self.assertEqual(len(blockers), 2)
+        self.assertGreaterEqual(len(blockers), 2)
         self.assertNotIn('VBA_TRUSTED_SIGNATURE_NOT_VERIFIED', blockers)
         self.assertNotIn('READER_AUTHENTICODE_NOT_VERIFIED', blockers)
         self.assertIn("EXPLICIT_FINAL_RELEASE_APPROVAL_MISSING", blockers)
@@ -208,7 +211,14 @@ class ReleaseAutomationTest(unittest.TestCase):
             tax_evidence_scope="SYNTHETIC_2025_2026",
             manual_final_approval="PRIVATE_EXPLICIT_APPROVAL",
         )
-        self.assertEqual(publication_blockers(independently_reviewed), [])
+        independently_reviewed.update(
+            candidate_verified=True, required_jobs={job: "success" for job in RELEASE_JOBS},
+            private_display_acceptance="PASS_TWO_MODES_SAME_HEAD_AND_BOOK",
+            private_manifest_v6_checked=True, head_sha=HEAD, archive_sha256=BOOK)
+        approval = PublisherApproval(VERSION, HEAD, BOOK, "publisher", "admin")
+        self.assertEqual(publication_blockers(independently_reviewed, approval), [])
+        self.assertIn("EXPLICIT_FINAL_RELEASE_APPROVAL_MISSING",
+                      publication_blockers(independently_reviewed))
         independently_reviewed["tax_evidence_scope"] = "INDEPENDENT_2025_2026_REVIEW_APPROVED"
         self.assertIn("AUTOMATED_2025_2026_TAX_ACCEPTANCE_MISSING",
                       publication_blockers(independently_reviewed))
@@ -231,20 +241,72 @@ class ReleaseAutomationTest(unittest.TestCase):
             "tax_evidence_scope": "SYNTHETIC_2025_2026",
             "manual_final_approval": "PRIVATE_EXPLICIT_APPROVAL",
         }
-        self.assertEqual(publication_blockers(forged), [])
+        self.assertIn('EXPLICIT_FINAL_RELEASE_APPROVAL_MISSING', publication_blockers(forged))
         with tempfile.TemporaryDirectory() as temp, \
              patch("publish_excel_release.approved_head") as approved, \
              patch("publish_excel_release.release_for_version") as get_release, \
              patch("publish_excel_release.api") as api, \
              patch("publish_excel_release.gh") as gh:
             with self.assertRaisesRegex(ValueError,
-                                        "PUBLICATION_HOLD:AUTHENTICATED_FINAL_PUBLISHER_APPROVAL_ROUTE_NOT_IMPLEMENTED"):
+                                        "PUBLICATION_HOLD:EXACT_HEAD_FIVE_JOB_CANDIDATE_NOT_VERIFIED"):
                 publish(Path(temp), forged)
             approved.assert_not_called()
             get_release.assert_not_called()
             api.assert_not_called()
             gh.assert_not_called()
             self.assertEqual(list(Path(temp).iterdir()), [])
+
+    def test_local_publisher_authentication_rejects_ci_and_wrong_consent(self):
+        report = {"head_sha": HEAD, "archive_sha256": BOOK}
+        with patch("publish_excel_release.local_interactive", return_value=False), \
+             patch("publish_excel_release.gh") as gh:
+            with self.assertRaisesRegex(ValueError, "INTERACTIVE_LOCAL_PUBLISHER_REQUIRED"):
+                authenticate_private_publisher(report)
+            gh.assert_not_called()
+        with patch.dict(os.environ, {"CI": "", "GITHUB_ACTIONS": ""}), \
+             patch("publish_excel_release.local_interactive", return_value=True), \
+             patch("publish_excel_release.gh", return_value=json.dumps({"login": "publisher"})), \
+             patch("publish_excel_release.api", return_value={"permission": "maintain"}):
+            answers = iter((VERSION, HEAD, BOOK, "PUBLISH " + VERSION))
+            approved = authenticate_private_publisher(report, prompt=lambda _: next(answers))
+            self.assertEqual(approved, PublisherApproval(VERSION, HEAD, BOOK,
+                                                         "publisher", "maintain"))
+            incorrect = iter((VERSION, HEAD, "0" * 64))
+            with self.assertRaisesRegex(ValueError, "EXACT_RELEASE_CONFIRMATION_MISMATCH"):
+                authenticate_private_publisher(report, prompt=lambda _: next(incorrect))
+        with patch.dict(os.environ, {"CI": "", "GITHUB_ACTIONS": ""}), \
+             patch("publish_excel_release.local_interactive", return_value=True), \
+             patch("publish_excel_release.gh", return_value=json.dumps({"login": "publisher"})), \
+             patch("publish_excel_release.api", return_value={"permission": "read"}):
+            with self.assertRaisesRegex(ValueError, "MAINTAIN_PERMISSION_REQUIRED"):
+                authenticate_private_publisher(report, prompt=lambda _: "unused")
+
+    def test_private_display_receipts_reject_wrong_schema_or_ci_identity(self):
+        record = {"candidate_verified": True, "display_modes": ["1920x1080@125"],
+                  "unverified_display_modes": ["1920x1080@100", "1366x768@150"],
+                  "head_sha": HEAD, "workbook_sha256": BOOK}
+        from release_readiness import REQUIRED, REVIEWER_ROLES, SCHEMA
+        checks = {key: {"status": "REVIEWED", "sha256": "f" * 64,
+                        "reviewer_role": REVIEWER_ROLES[key][0], "head_sha": HEAD}
+                  for key in REQUIRED}
+        manifest = {"schema": SCHEMA, "head_sha": HEAD, "checks": checks}
+        accepted = {"status": "PASS", "verified_modes": ["1920x1080@100", "1366x768@150"],
+                    "image_count": 8}
+        with patch("publish_excel_release.inspect_display_matrix", return_value=accepted) as verify:
+            apply_private_display_and_scope(record, "synthetic100", "synthetic150", manifest)
+            verify.assert_called_once_with(
+                ["synthetic100", "synthetic150"], BOOK, HEAD,
+                modes=("1920x1080@100", "1366x768@150"))
+        self.assertEqual(record["unverified_display_modes"], [])
+        self.assertTrue(record["private_manifest_v6_checked"])
+        record["unverified_display_modes"] = ["1920x1080@100"]
+        with self.assertRaisesRegex(ValueError, "UNMODIFIED_EXACT_CI_CANDIDATE"):
+            apply_private_display_and_scope(record, "synthetic100", "synthetic150", manifest)
+        record["unverified_display_modes"] = ["1920x1080@100", "1366x768@150"]
+        manifest["schema"] = "furusato-release-readiness/v5"
+        with self.assertRaisesRegex(ValueError, "PRIVATE_V6_SCOPE_MANIFEST_INCOMPLETE"):
+            apply_private_display_and_scope(record, "synthetic100", "synthetic150", manifest)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

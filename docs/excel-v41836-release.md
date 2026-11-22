@@ -49,10 +49,20 @@ $book = '<同一RunのZIPから展開した合成Furusato_nouzei.xlsmの絶対�
 
 両フォルダを `tools/verify_release_display_matrix.py` に渡し、CIの125%受入と同じHEAD・XLSMハッシュの証跡をローカル照合してください。単なる自己申告・OSの推定画素では合格にしません。`physical_resolution_verified=false` はパネル固有の物理解像度を認定した意味ではありません。
 
+## 安全なローカル公開手順（全5ジョブSUCCESSかつ発行者の明示承認が必要）
+
+次の例は**動作検証のための構成例であり、実際に公開済みであることを意味しません**。コード修正後の最新HEADのCIに生成されたZIPと、同一XLSM/HEADで採取した2画面の証拠が必要です。v6マニフェストの5項目はすべて記録し、旧9項目は要求しません。
+
+\`\`\`powershell
+python tools/publish_excel_release.py --head <最新HEAD40桁> --run-id <同一HEADの成功Run番号> --output "<非公開の新規出力フォルダ>" --display-100 "<screen-100フォルダ>" --display-150 "<screen-150フォルダ>" --manifest-v6 "<非公開のv6マニフェスト.json>"
+\`\`\`
+
+上記は**候補検証のみ**で、公開しません。最終発行者による公開操作では、新しい出力フォルダを指定し、同じ引数へ \`--publish\` を追加してください。GitHub CLIのログイン権限と実際の対話端末を確認し、バージョン、HEAD、ZIP SHA-256、確認語句を手入力して一致した場合のみGitHubへの書込みへ進みます。入力ファイルは非公開フォルダに保管し、発行秘密鍵・承認記録をGitHub公開CIに送信しません。
+
 ## 現在の公開状態
 
 2026年11月22日までに、旧HEAD `706212d42e954c82ae5f23c347e05303dd7b43d3` の [Run #44969615866](https://github.com/tanaka456jp/Furusato_nouzei/actions/runs/44969615866) は5/5 SUCCESSでした。**配布要件を修正した新HEADでは、改めて同一HEADの自動受入が必要**です。
 
-残りの2画面条件や発行者の最終承認経路が未確認の間は、`tools/publish_excel_release.py --publish` が `PUBLICATION_HOLD:AUTHENTICATED_FINAL_PUBLISHER_APPROVAL_ROUTE_NOT_IMPLEMENTED` で停止します。現行のロックを都合よく解除せず、発行認証の実装後にテストします。v4.18.36の正式タグ未発行、v4.18.36-rc.1/rc.2は旧コミットのプレリリースです。v4.18.35は変更しません。
+残りの2画面条件や発行者の最終承認が未確認の間は正式公開をHOLDとします。`tools/publish_excel_release.py` は同一Runの5ジョブ、ZIP、追加の2画面証跡、非公開v6マニフェストを照合し、ローカルの対話型GitHub認証（maintain/admin権限）とバージョン・HEAD・ZIP SHA-256の明示入力が揃った場合だけ公開処理へ進む設計です。CIや非対話環境では拒否し、秘密鍵・最終承認内容・プライベート画面キャプチャをCIに送信しません。実際の最終承認は未実施です。v4.18.36の正式タグ未発行、v4.18.36-rc.1/rc.2は旧コミットのプレリリースです。v4.18.35は変更しません。
 
 税額・機能の対応範囲は [税務照合範囲](excel-v41836-tax-scope.md) を参照。実顧客PDF、氏名、住所、金額、秘密鍵、非公開証跡をGitHub/CIへ送信しません。

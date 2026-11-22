@@ -2,18 +2,89 @@
 
 import argparse
 import json
+import os
 import subprocess
+import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 from collect_reader_notices import NOTICE_LIMIT, NOTICE_NAME
 from record_ci_acceptance import digest_file
 from release_readiness import (
     BRANCH, RELEASE_ARTIFACT, RELEASE_PR, RELEASE_ZIP, REPOSITORY, VERSION,
-    read_evidence, require, validate_candidate_report, validate_github, valid_sha,
+    REQUIRED, SCHEMA, evaluate, read_evidence, require,
+    validate_candidate_report, validate_github, valid_sha,
 )
 from verify_excel_release_candidate import verify_distribution
+from verify_release_display_matrix import inspect_display_matrix
 
 SUMS = "SHA256SUMS.txt"
+
+
+@dataclass(frozen=True)
+class PublisherApproval:
+    """Local, in-process approval. No identity or confirmation is uploaded to CI."""
+    version: str
+    head_sha: str
+    archive_sha256: str
+    login: str
+    permission: str
+
+
+def local_interactive():
+    return sys.stdin.isatty() and sys.stdout.isatty()
+
+
+def apply_private_display_and_scope(report, folder_100, folder_150, manifest):
+    """Accept two observed local modes for the exact previously accepted CI XLSM."""
+    require(report.get("candidate_verified") is True
+            and report.get("display_modes") == ["1920x1080@125"]
+            and report.get("unverified_display_modes") ==
+                ["1920x1080@100", "1366x768@150"],
+            "PRIVATE_DISPLAY_REQUIRES_UNMODIFIED_EXACT_CI_CANDIDATE")
+    assessment = evaluate(report["head_sha"], manifest)
+    require(assessment["schema"] == SCHEMA and not assessment["blockers"]
+            and set(assessment["checks"]) == set(REQUIRED)
+            and assessment["review_stage"] == "FINAL_RELEASE_AUTHORIZATION_REQUIRED",
+            "PRIVATE_V6_SCOPE_MANIFEST_INCOMPLETE")
+    summary = inspect_display_matrix(
+        [folder_100, folder_150], report["workbook_sha256"], report["head_sha"],
+        modes=("1920x1080@100", "1366x768@150"))
+    require(summary["status"] == "PASS"
+            and summary["verified_modes"] == ["1920x1080@100", "1366x768@150"]
+            and summary["image_count"] == 8,
+            "PRIVATE_TWO_DISPLAY_MODES_INCOMPLETE")
+    report["unverified_display_modes"] = []
+    report["private_display_acceptance"] = "PASS_TWO_MODES_SAME_HEAD_AND_BOOK"
+    report["private_manifest_v6_checked"] = True
+    return summary
+
+
+def authenticate_private_publisher(report, prompt=None):
+    """Require interactive, authenticated GitHub maintain/admin and full-byte consent."""
+    require(not os.environ.get("CI") and not os.environ.get("GITHUB_ACTIONS")
+            and local_interactive(), "PUBLICATION_HOLD:INTERACTIVE_LOCAL_PUBLISHER_REQUIRED")
+    username = json.loads(gh("api", "user")).get("login")
+    require(isinstance(username, str) and username
+            and all(c.isascii() and (c.isalnum() or c == "-") for c in username),
+            "PUBLICATION_HOLD:AUTHENTICATED_GITHUB_USER_MISSING")
+    permission = api(f"collaborators/{username}/permission").get("permission")
+    require(permission in ("admin", "maintain"),
+            "PUBLICATION_HOLD:GITHUB_PUBLISHER_MAINTAIN_PERMISSION_REQUIRED")
+    ask = input if prompt is None else prompt
+    print(f"LOCAL_PUBLISHER_CONFIRMATION: {VERSION} HEAD={report['head_sha']} "
+          f"ZIP_SHA256={report['archive_sha256']}")
+    challenges = (
+        ("Version: ", VERSION),
+        ("Full 40-character HEAD: ", report["head_sha"]),
+        ("Full 64-character ZIP SHA-256: ", report["archive_sha256"]),
+        ("Final confirmation phrase: ", "PUBLISH " + VERSION),
+    )
+    for label, expected in challenges:
+        require(ask(label).strip() == expected,
+                "PUBLICATION_HOLD:EXPLICIT_EXACT_RELEASE_CONFIRMATION_MISMATCH")
+    return PublisherApproval(VERSION, report["head_sha"], report["archive_sha256"],
+                             username, permission)
 
 
 def gh(*arguments):
@@ -101,7 +172,7 @@ def release_body(report):
         f"# Furusato_nouzei Excel {VERSION}\n\n"
         f"- Excel VBA署名 {report['signing_state']}。同梱EXEのAuthenticodeは{report.get('reader_authenticode', 'UNVERIFIED')}。\n"
         "- 所得年2025年・2026年。対応条件とマクロの扱いは同梱READMEに記載。\n"
-        "- PC① Windows Excel 365で、1920×1080・125%と合成A4 PDFを検証。\n"
+        "- PC① Excel 365で1920×1080・125%、同一HEAD・XLSMのローカル検証で1920×1080・100%および1366×768・150%を検証。合成A4 PDFも検証。\n"
         f"- SHA-256 `{report['archive_sha256']}`\n"
         f"- ソースコミット `{report['head_sha']}`\n"
         f"- [GitHub Actionsの実機受入]({report['github_run_url']})\n"
@@ -121,31 +192,44 @@ def verify_tag(tag, head):
             and tag["object"].get("sha") == head, "RELEASE_TAG_SHA_MISMATCH")
 
 
-def publication_blockers(report):
-    """No mandatory human paper output or independent human tax review."""
+def publication_blockers(report, approval=None):
+    """Neither CI nor a private JSON flag can manufacture publisher approval."""
     blockers = []
-    # SHA-256, exact HEAD, five-job CI and actual PC1 EXE execution are
-    # validated in pull_verified_candidate; signing remains optional.
-    if report.get("unverified_display_modes") != []:
+    if report.get("candidate_verified") is not True or report.get("required_jobs") != {
+            "static": "success", "windows_compat": "success",
+            "document_reader": "success", "excel": "success",
+            "ready_to_use_review": "success"}:
+        blockers.append("EXACT_HEAD_FIVE_JOB_CANDIDATE_NOT_VERIFIED")
+    if (report.get("unverified_display_modes") != [] or
+            report.get("private_display_acceptance") != "PASS_TWO_MODES_SAME_HEAD_AND_BOOK"):
         blockers.append("DISPLAY_MODES_NOT_FULLY_VERIFIED")
+    if report.get("private_manifest_v6_checked") is not True:
+        blockers.append("PRIVATE_V6_SCOPE_MANIFEST_INCOMPLETE")
     if report.get("tax_evidence_scope") != "SYNTHETIC_2025_2026":
         blockers.append("AUTOMATED_2025_2026_TAX_ACCEPTANCE_MISSING")
-    if report.get("manual_final_approval") != "PRIVATE_EXPLICIT_APPROVAL":
+    if (not isinstance(approval, PublisherApproval) or approval.version != VERSION
+            or approval.head_sha != report.get("head_sha")
+            or approval.archive_sha256 != report.get("archive_sha256")
+            or approval.permission not in ("admin", "maintain") or not approval.login):
         blockers.append("EXPLICIT_FINAL_RELEASE_APPROVAL_MISSING")
     return blockers
 
 
-def require_publication_clearance(report):
-    blockers = publication_blockers(report)
+def require_publication_clearance(report, approval=None):
+    blockers = publication_blockers(report, approval)
     require(not blockers, "PUBLICATION_HOLD:" + ",".join(blockers))
 
 
-def publish(out, report):
-    # Paper printing and independent human tax review are NOT release gates.
-    # Authenticated publisher approval remains distinct from CI metadata.
-    require(False, "PUBLICATION_HOLD:AUTHENTICATED_FINAL_PUBLISHER_APPROVAL_ROUTE_NOT_IMPLEMENTED")
-    # Must execute BEFORE any GitHub API call or a draft/tag can be created.
-    require_publication_clearance(report)
+def publish(out, report, approval=None):
+    # Paper printing and human tax review are not gates. Explicit issuer consent is.
+    # No GitHub write may precede exact authorization and the five automated gates.
+    require_publication_clearance(report, approval)
+    require(digest_file(out / RELEASE_ZIP) == report["archive_sha256"]
+            and digest_file(out / NOTICE_NAME) == report["third_party_notices_sha256"]
+            and (out / SUMS).read_text(encoding="ascii") ==
+                (f'{report["archive_sha256"]}  {RELEASE_ZIP}\n'
+                 f'{report["third_party_notices_sha256"]}  {NOTICE_NAME}\n'),
+            "PUBLICATION_HOLD:APPROVED_ZIP_OR_CHECKSUM_CHANGED")
     head = report["head_sha"]
     approved_head(head)
     refs = api(f"git/matching-refs/tags/{VERSION}")
@@ -196,12 +280,38 @@ def main():
     parser.add_argument("--run-id", required=True, type=int)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--publish", action="store_true",
-                        help="Reserved; always HOLD until independent final approval route exists")
+                        help="Local authenticated publisher only; never run in CI")
+    parser.add_argument("--display-100", type=Path, help="Private 1920x1080@100 evidence folder")
+    parser.add_argument("--display-150", type=Path, help="Private 1366x768@150 evidence folder")
+    parser.add_argument("--manifest-v6", type=Path, help="Private five-check v6 scope manifest")
     a = parser.parse_args()
     try:
-        report = pull_verified_candidate(a.run_id, a.head, a.output.resolve())
         if a.publish:
-            print("PUBLISHED", publish(a.output.resolve(), report), report["archive_sha256"])
+            require(not os.environ.get("CI") and not os.environ.get("GITHUB_ACTIONS")
+                    and local_interactive(), "PUBLICATION_HOLD:INTERACTIVE_LOCAL_PUBLISHER_REQUIRED")
+        present = [a.display_100 is not None, a.display_150 is not None,
+                   a.manifest_v6 is not None]
+        require(all(present) or not any(present),
+                "PUBLICATION_HOLD:ALL_PRIVATE_SCREEN_AND_V6_INPUTS_REQUIRED")
+        require(not a.publish or all(present),
+                "PUBLICATION_HOLD:PRIVATE_SCREEN_AND_V6_INPUTS_REQUIRED")
+        if all(present):
+            root = Path(__file__).resolve().parents[1]
+            for private_path in (a.display_100, a.display_150, a.manifest_v6):
+                real = private_path.resolve()
+                require(real != root and root not in real.parents,
+                        "PUBLICATION_HOLD:PRIVATE_EVIDENCE_INSIDE_PUBLIC_REPOSITORY")
+        report = pull_verified_candidate(a.run_id, a.head, a.output.resolve())
+        if all(present):
+            apply_private_display_and_scope(
+                report, a.display_100, a.display_150, read_evidence(a.manifest_v6))
+        if a.publish:
+            pending = [item for item in publication_blockers(report)
+                       if item != "EXPLICIT_FINAL_RELEASE_APPROVAL_MISSING"]
+            require(not pending, "PUBLICATION_HOLD:" + ",".join(pending))
+            approval = authenticate_private_publisher(report)
+            print("PUBLISHED", publish(a.output.resolve(), report, approval),
+                  report["archive_sha256"])
         else:
             print("CANDIDATE_VERIFIED_PUBLICATION_HOLD",
                   ",".join(publication_blockers(report)), report["archive_sha256"])
