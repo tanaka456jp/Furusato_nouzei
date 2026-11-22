@@ -250,11 +250,19 @@ try {
             $report.stage_post_push_sha256 = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash
             # The existing independent QA tests tax amounts, update rollback,
             # macros, PDF, case save/reopen and data/formula preservation.
-            $qaEvidence = Join-Path (Split-Path -Parent $EvidencePath) 'vbaupdater_excel_acceptance.json'
+            # Do not share a QA receipt between the preliminary source-only
+            # push and the mandatory full push. The first receipt may remain
+            # memory-mapped by the AV scanner; a second WriteAllText can fail,
+            # leaving a stale, otherwise PASS-looking receipt behind.
+            $receiptName = [IO.Path]::GetFileNameWithoutExtension($EvidencePath) + '_excel_acceptance.json'
+            $qaEvidence = Join-Path (Split-Path -Parent $EvidencePath) $receiptName
+            if (Test-Path -LiteralPath $qaEvidence) {
+                throw 'VBAUPDATER_QA_EVIDENCE_ALREADY_EXISTS'
+            }
             & (Join-Path $root 'tools/verify_excel.ps1') -Workbook $target -EvidencePath $qaEvidence
             if (-not $?) { throw 'Updated sandbox XLSM failed independent Excel QA' }
             if (-not (Test-Path -LiteralPath $qaEvidence -PathType Leaf)) {
-                throw 'Updated sandbox XLSM has no Excel acceptance evidence'
+                throw 'Updated sandbox XLSM has no fresh Excel acceptance evidence'
             }
             $qa = Get-Content -LiteralPath $qaEvidence -Raw -Encoding UTF8 | ConvertFrom-Json
             if ($qa.status -ne 'PASS') { throw 'Updated sandbox XLSM Excel QA did not PASS' }
