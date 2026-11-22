@@ -49,6 +49,14 @@ $book = '<同一RunのZIPから展開した合成Furusato_nouzei.xlsmの絶対�
 
 両フォルダを `tools/verify_release_display_matrix.py` に渡し、CIの125%受入と同じHEAD・XLSMハッシュの証跡をローカル照合してください。単なる自己申告・OSの推定画素では合格にしません。`physical_resolution_verified=false` はパネル固有の物理解像度を認定した意味ではありません。
 
+## Apex One確認後の手動実機受入（正式公開ではない）
+
+PRの通常CIは読取EXE起動前にApex Oneの操作担当者確認ゲートで**意図的にFAIL/HOLD**になります。これは保護を無効化する理由ではなく、ユーザーがPC①の保護画面を確認してから手動Runを明示的に実行するための安全設計です。安全性未確認のEXE起動や、Apex Oneルールの無断変更は行わないでください。
+
+操作担当者がPC①に立ち会えるとき、[Actions → Workbook checks](https://github.com/tanaka456jp/Furusato_nouzei/actions/workflows/workbook.yml) の **Run workflow** からブランチ `fix/excel-2026-salary-nta-20261107` を選択し、`excel` にチェックを入れて手動起動します。実機の保護ソフトから確認が求められた場合には、実際の対象バイナリと発行元を確認して操作担当者が判断してください。実際に確認していない状態で承認したと仮定しないでください。
+
+正式配布の検査では、PR通常Runの成功を認めません。GitHubが記録する手動起動 `workflow_dispatch`、PR #5との関連、同一HEAD、5ジョブSUCCESSに加え、PC①でのApex Oneゲート・実機検証・PDF出力・VBAUpdater受入の個別ステップが成功していることを照合します。最終公開承認は、この手動起動とは**別**に、ZIPのSHA-256等を確認して行います。
+
 ## 安全なローカル公開手順（全5ジョブSUCCESSかつ発行者の明示承認が必要）
 
 次の例は**動作検証のための構成例であり、実際に公開済みであることを意味しません**。コード修正後の最新HEADのCIに生成されたZIPと、同一XLSM/HEADで採取した2画面の証拠が必要です。v6マニフェストの5項目はすべて記録し、旧9項目は要求しません。

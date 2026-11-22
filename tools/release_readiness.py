@@ -125,6 +125,22 @@ BRANCH = "fix/excel-2026-salary-nta-20261107"
 VERSION = "v4.18.36"
 RELEASE_PR = 5
 RELEASE_JOBS = ("static", "windows_compat", "document_reader", "excel", "ready_to_use_review")
+# Require actual success of the security approval step and all final Excel
+# acceptance steps. A job-level success cannot replace skipped validation.
+EXCEL_RELEASE_STEPS = (
+    "Build, install and verify stale-results safety (isolated Excel)",
+    "Compile the source project and select a verified VBA signing route",
+    "Independent PC1 source-only full Excel acceptance (HOLD)",
+    "Independent VBAUpdater sandbox project push (HOLD diagnostic)",
+    "Compare independent 41 Excel / GAS synthetic cases (HOLD diagnostic)",
+    "Apex One operator confirmation gate (reader EXE not started)",
+    "Complete Excel functional and tax update acceptance",
+    "Capture isolated desktop Excel window and observed DPI",
+    "Verify synthetic Excel PDF layout and render evidence",
+    "VBAUpdater isolated read-only preflight and diff",
+    "VBAUpdater staged project-push (mandatory acceptance)",
+    "Compare 41 synthetic cases in actual Excel vs pinned GAS engine",
+)
 PC1 = "PC1-Furusato-Excel"
 VERIFIED_DISPLAY_MODES = ["1920x1080@125"]
 UNVERIFIED_DISPLAY_MODES = ["1920x1080@100", "1366x768@150"]
@@ -240,14 +256,25 @@ def validate_github(run, jobs, head, run_id):
     """Use live GitHub Actions metadata. A candidate receipt cannot certify its own job."""
     require(valid_sha(head, 40) and type(run_id) is int and run_id > 0,
             "INVALID_RELEASE_REFERENCE")
+    # PR CI must fail at the Apex One gate before running an unsigned EXE.
+    # Only the intentionally operator-dispatched run can finish all five jobs.
     require(run.get("id") == run_id and run.get("head_sha") == head
-            and run.get("head_branch") == BRANCH and run.get("event") == "pull_request"
+            and run.get("head_branch") == BRANCH
+            and run.get("event") == "workflow_dispatch"
             and run.get("path") == ".github/workflows/workbook.yml"
             and run.get("status") == "completed" and run.get("conclusion") == "success"
             and (run.get("repository") or {}).get("full_name") == REPOSITORY
             and (run.get("head_repository") or {}).get("full_name") == REPOSITORY,
-            "GITHUB_RUN_NOT_SUCCESSFUL_FOR_EXACT_HEAD")
-    require(any(pr.get("number") == RELEASE_PR and (pr.get("head") or {}).get("sha") == head
+            "GITHUB_RUN_NOT_MANUAL_DISPATCH_SUCCESS_FOR_EXACT_HEAD")
+    actor = run.get("actor") or {}
+    triggering_actor = run.get("triggering_actor") or {}
+    require(actor.get("type") == "User" and triggering_actor.get("type") == "User"
+            and isinstance(actor.get("login"), str) and actor["login"]
+            and isinstance(triggering_actor.get("login"), str) and triggering_actor["login"],
+            "GITHUB_MANUAL_OPERATOR_IDENTITY_MISSING")
+    require(any(pr.get("number") == RELEASE_PR
+                and (pr.get("head") or {}).get("ref") == BRANCH
+                and ((pr.get("head") or {}).get("repo") or {}).get("name") == "Furusato_nouzei"
                 for pr in run.get("pull_requests", [])), "GITHUB_RUN_NOT_FROM_PR5")
     require(len(jobs) == len(RELEASE_JOBS)
             and {job.get("name") for job in jobs} == set(RELEASE_JOBS)
@@ -260,6 +287,14 @@ def validate_github(run, jobs, head, run_id):
     require(excel.get("runner_name") == PC1
             and set(excel.get("labels", ())) == {"self-hosted", "Windows", "furusato-excel"},
             "GITHUB_EXCEL_JOB_NOT_ON_PC1")
+    steps = excel.get("steps")
+    require(isinstance(steps, list) and
+            all(sum(step.get("name") == name and
+                    step.get("status") == "completed" and
+                    step.get("conclusion") == "success"
+                    for step in steps if isinstance(step, dict)) == 1
+                for name in EXCEL_RELEASE_STEPS),
+            "GITHUB_MANUAL_OPERATOR_OR_EXCEL_MANDATORY_STEP_INCOMPLETE")
     return {job: "success" for job in RELEASE_JOBS}
 
 def read_evidence(path):

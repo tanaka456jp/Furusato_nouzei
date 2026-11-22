@@ -14,7 +14,7 @@ from publish_excel_release import (
 )
 from record_ci_acceptance import digest_file
 from release_readiness import (
-    BRANCH, PC1, RELEASE_JOBS, RELEASE_ZIP, REPOSITORY, VERSION,
+    BRANCH, PC1, RELEASE_JOBS, RELEASE_ZIP, REPOSITORY, VERSION, EXCEL_RELEASE_STEPS,
     validate_github, validate_runner,
 )
 from verify_excel_release_candidate import verify_distribution
@@ -63,18 +63,42 @@ def runner_records():
 class ReleaseAutomationTest(unittest.TestCase):
     def test_live_all_five_jobs_and_no_wrong_sha_or_pc(self):
         run = {
-            "id": RUN_ID, "run_attempt": 1, "head_sha": HEAD, "head_branch": BRANCH, "event": "pull_request",
+            "id": RUN_ID, "run_attempt": 1, "head_sha": HEAD, "head_branch": BRANCH,
+            "event": "workflow_dispatch",
             "path": ".github/workflows/workbook.yml", "status": "completed", "conclusion": "success",
             "repository": {"full_name": REPOSITORY}, "head_repository": {"full_name": REPOSITORY},
-            "pull_requests": [{"number": 5, "head": {"sha": HEAD}}],
+            "actor": {"type": "User", "login": "operator"},
+            "triggering_actor": {"type": "User", "login": "operator"},
+            "pull_requests": [{"number": 5,
+                               "head": {"ref": BRANCH, "repo": {"name": "Furusato_nouzei"}}}],
         }
         jobs = [
             {"name": name, "run_id": RUN_ID, "run_attempt": 1, "head_sha": HEAD, "conclusion": "success"}
             for name in RELEASE_JOBS
         ]
         excel = next(job for job in jobs if job["name"] == "excel")
-        excel.update(runner_name=PC1, labels=["Windows", "furusato-excel", "self-hosted"])
+        excel.update(
+            runner_name=PC1, labels=["Windows", "furusato-excel", "self-hosted"],
+            steps=[{"name": name, "status": "completed", "conclusion": "success"}
+                   for name in EXCEL_RELEASE_STEPS])
         self.assertEqual(len(validate_github(run, jobs, HEAD, RUN_ID)), 5)
+        with self.assertRaisesRegex(ValueError, "MANUAL_DISPATCH"):
+            validate_github({**run, "event": "pull_request"}, jobs, HEAD, RUN_ID)
+        with self.assertRaisesRegex(ValueError, "MANUAL_OPERATOR_IDENTITY"):
+            validate_github({**run, "actor": {"type": "Bot", "login": "bot"}},
+                            jobs, HEAD, RUN_ID)
+        missing_gate = copy.deepcopy(jobs)
+        gate = next(x for x in missing_gate if x["name"] == "excel")
+        gate["steps"] = [s for s in gate["steps"]
+                         if s["name"] != "Apex One operator confirmation gate (reader EXE not started)"]
+        with self.assertRaisesRegex(ValueError, "MANDATORY_STEP"):
+            validate_github(run, missing_gate, HEAD, RUN_ID)
+        skipped_gate = copy.deepcopy(jobs)
+        gate = next(x for x in skipped_gate if x["name"] == "excel")
+        next(s for s in gate["steps"]
+             if s["name"] == "Apex One operator confirmation gate (reader EXE not started)")["conclusion"] = "skipped"
+        with self.assertRaisesRegex(ValueError, "MANDATORY_STEP"):
+            validate_github(run, skipped_gate, HEAD, RUN_ID)
         for mutation in ("failure", "cancelled", "skipped"):
             bad = copy.deepcopy(jobs)
             bad[-1]["conclusion"] = mutation
