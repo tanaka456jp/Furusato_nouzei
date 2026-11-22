@@ -134,6 +134,7 @@ EXCEL_RELEASE_STEPS = (
     "Independent VBAUpdater sandbox project push (HOLD diagnostic)",
     "Compare independent 41 Excel / GAS synthetic cases (HOLD diagnostic)",
     "Apex One operator confirmation gate (reader EXE not started)",
+    "Notify PC1 operator and require fresh pre-EXE readiness acknowledgment",
     "Complete Excel functional and tax update acceptance",
     "Capture isolated desktop Excel window and observed DPI",
     "Verify synthetic Excel PDF layout and render evidence",

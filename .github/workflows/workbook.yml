@@ -74,6 +74,7 @@ jobs:
           python tools/test_shared_runner_contract.py
           python tools/test_open_probe_launcher.py
           python tools/test_vbaupdater_bridge.py
+          python tools/test_pc1_reader_operator_gate.py
           python tools/test_withholding_reader.py
           python tools/test_automatic_slip_reference.py
           python tools/test_batch_manual_edit.py
@@ -98,6 +99,14 @@ jobs:
           $file=(Resolve-Path ./tools/probe_display_layout_local.ps1).Path
           [System.Management.Automation.Language.Parser]::ParseFile($file,[ref]$tokens,[ref]$errors) | Out-Null
           if ($errors.Count -gt 0) { throw ($errors | Out-String) }
+      - name: Parse PC1 operator pre-EXE notification gate (syntax only)
+        shell: pwsh
+        run: |
+          $t=$null; $e=$null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path ./tools/pc1_reader_operator_gate.ps1).Path,
+            [ref]$t, [ref]$e) | Out-Null
+          if ($e.Count -gt 0) { throw ($e | Out-String) }
       - name: Parse local signed-release verifier (syntax only)
         shell: pwsh
         run: |
@@ -461,6 +470,10 @@ jobs:
     # their existing runners. Accept only the Furusato Excel runner label.
     # Normally start PC1; start PC2 when PC1 is unavailable.
     runs-on: [self-hosted, Windows, furusato-excel]
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
     concurrency:
       group: furusato-excel-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
@@ -670,6 +683,16 @@ jobs:
             throw 'APEX_ONE_OPERATOR_CONFIRMATION_REQUIRED_RELEASE_HOLD'
           }
           'Apex One operator ready on PC1. Start same-run reader EXE acceptance; no AV policy changes.' >> $env:GITHUB_STEP_SUMMARY
+      # On a manual PC1 run, request a fresh GitHub comment ACK
+      # immediately before launching the unsigned reader EXE.
+      - name: Notify PC1 operator and require fresh pre-EXE readiness acknowledgment
+        if: success()
+        shell: powershell
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          & .\tools\pc1_reader_operator_gate.ps1 -SourceHead (git rev-parse HEAD).Trim()
+          if (-not $?) { throw 'PC1_OPERATOR_READY_EXE_GATE_FAILED_RELEASE_HOLD' }
       - name: Complete Excel functional and tax update acceptance
         if: success()
         shell: powershell

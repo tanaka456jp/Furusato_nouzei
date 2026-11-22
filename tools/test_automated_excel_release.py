@@ -99,6 +99,11 @@ class ReleaseAutomationTest(unittest.TestCase):
              if s["name"] == "Apex One operator confirmation gate (reader EXE not started)")["conclusion"] = "skipped"
         with self.assertRaisesRegex(ValueError, "MANDATORY_STEP"):
             validate_github(run, skipped_gate, HEAD, RUN_ID)
+        missing_readiness = copy.deepcopy(jobs)
+        gate = next(x for x in missing_readiness if x["name"] == "excel")
+        next(s for s in gate["steps"] if s["name"].startswith("Notify PC1 operator"))["conclusion"] = "skipped"
+        with self.assertRaisesRegex(ValueError, "MANDATORY_STEP"):
+            validate_github(run, missing_readiness, HEAD, RUN_ID)
         for mutation in ("failure", "cancelled", "skipped"):
             bad = copy.deepcopy(jobs)
             bad[-1]["conclusion"] = mutation
