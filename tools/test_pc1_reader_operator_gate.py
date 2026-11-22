@@ -37,6 +37,21 @@ class GateContractTest(unittest.TestCase):
         for unsafe in ("Set-MpPreference", "Unblock-File", "DisableRealtimeMonitoring"):
             self.assertNotIn(unsafe, self.gate)
 
+    def test_github_403_falls_back_to_explicit_local_pc1_ack(self):
+        # A denied PR comment must neither be misreported as a sent
+        # notification nor automatically pass the EXE release gate.
+        self.assertIn("catch {", self.gate)
+        self.assertIn("PC1_GITHUB_PR_COMMENT_REJECTED_USING_LOCAL_OPERATOR_DIALOG", self.gate)
+        self.assertIn("[Environment]::UserInteractive", self.gate)
+        self.assertIn("$currentSession -eq 0", self.gate)
+        self.assertIn("PC1_OPERATOR_DIALOG_UNAVAILABLE_NO_EXE_EXECUTION_RELEASE_HOLD", self.gate)
+        self.assertIn("[System.Windows.Forms.MessageBox]::Show", self.gate)
+        self.assertIn("[System.Windows.Forms.MessageBoxDefaultButton]::Button2", self.gate)
+        self.assertIn("$answer -ne [System.Windows.Forms.DialogResult]::Yes", self.gate)
+        self.assertIn("PC1_OPERATOR_DECLINED_NO_EXE_EXECUTION_RELEASE_HOLD", self.gate)
+        self.assertIn("Start-Sleep -Seconds 30", self.gate)
+        self.assertIn("Assert-PRHead", self.gate)
+
     def test_token_scope(self):
         block = self.workflow.split("\n  excel:", 1)[1].split("\n  ready_to_use_review:", 1)[0]
         self.assertIn("      issues: write", block)

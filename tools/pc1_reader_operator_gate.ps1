@@ -51,7 +51,39 @@ $message = "@$owner PC1 reader EXE is PAUSED immediately before launch for run $
     "`nOnly when physically ready at PC1, reply to this PR with EXACT text: $command" +
     "`nThe EXE will NOT start without a NEW comment from the repository owner." +
     "`nThis is not approval of the software release or any security-policy change."
-$notice = Post-Notice $message
+# A repository may advertise Issues:write in the runner job but still
+# reject GitHub Actions comment creation with 403. In that case, fail closed
+# to a *local* interactive consent dialog, rather than silently launching
+# the EXE or treating the GitHub notification as delivered.
+$notice = $null
+try {
+    $notice = Post-Notice $message
+} catch {
+    Write-Warning 'PC1_GITHUB_PR_COMMENT_REJECTED_USING_LOCAL_OPERATOR_DIALOG'
+    # Session 0 and noninteractive services must never claim that a visible
+    # alert was delivered. No background/automatic consent is permitted.
+    $currentSession = (Get-Process -Id $PID).SessionId
+    if (-not [Environment]::UserInteractive -or $currentSession -eq 0) {
+        throw 'PC1_OPERATOR_DIALOG_UNAVAILABLE_NO_EXE_EXECUTION_RELEASE_HOLD'
+    }
+    Add-Type -AssemblyName System.Windows.Forms
+    $title = 'Furusato PC1 - Reader EXE readiness'
+    $caption = "PC1 reader EXE will start after 30 seconds only if you explicitly choose YES.`nRun: $runId (attempt $attempt)`nHEAD: $SourceHead`n`nKeep Apex One enabled. Examine any subsequent security prompt and approve only the expected reader EXE.`n`nThis does not approve a software release. Select NO to stop safely."
+    $answer = [System.Windows.Forms.MessageBox]::Show(
+        $caption, $title,
+        [System.Windows.Forms.MessageBoxButtons]::YesNo,
+        [System.Windows.Forms.MessageBoxIcon]::Warning,
+        [System.Windows.Forms.MessageBoxDefaultButton]::Button2)
+    if ($answer -ne [System.Windows.Forms.DialogResult]::Yes) {
+        throw 'PC1_OPERATOR_DECLINED_NO_EXE_EXECUTION_RELEASE_HOLD'
+    }
+    Assert-PRHead
+    Write-Host 'PC1_LOCAL_OPERATOR_READY_CONFIRMED_START_AFTER_30_SECONDS'
+    Start-Sleep -Seconds 30
+    Assert-PRHead
+    Write-Host 'PC1_LOCAL_OPERATOR_DIALOG_PASS_NEXT_STEP_MAY_START_READER_EXE'
+    return
+}
 $afterId = [long]$notice.id
 $since = [uri]::EscapeDataString(([DateTimeOffset]::Parse([string]$notice.created_at)).ToString('yyyy-MM-ddTHH:mm:ssZ'))
 Write-Host 'PC1_READER_NOTIFICATION_POSTED_WAITING_FOR_OPERATOR'
