@@ -51,6 +51,9 @@ $book = '<同一RunのZIPから展開した合成Furusato_nouzei.xlsmの絶対�
 
 ## Apex One確認後の手動実機受入（正式公開ではない）
 
+2026-11-23運用変更：PC①手動Run #45042760144では、**操作者準備確認、Apex One保護画面の手動承認、Excel実機52ケース、画面証跡・PDF監査まで進み、VBAUpdaterの最終書戻しの途中でジョブの40分制限によりCANCELLED**となりました。確認待ち19分余りも40分に含まれていました。したがって、**PC① Excelジョブの上限を90分に拡張**して人手の承認待ちと最終書戻しの余裕を確保しました。これはEXE起動の自動許可ではなく、手動承認・同一HEAD確認・安全停止の条件は従来どおり必須です。同一HEADの全5ジョブSUCCESSまでは正式配布HOLDです。
+
+
 PRの通常CIは読取EXE起動前にApex Oneの操作担当者確認ゲートで**意図的にFAIL/HOLD**になります。これは保護を無効化する理由ではなく、ユーザーがPC①の保護画面を確認してから手動Runを明示的に実行するための安全設計です。安全性未確認のEXE起動や、Apex Oneルールの無断変更は行わないでください。
 
 操作担当者がPC①に立ち会えるとき、[Actions → Workbook checks](https://github.com/tanaka456jp/Furusato_nouzei/actions/workflows/workbook.yml) の **Run workflow** からブランチ `fix/excel-2026-salary-nta-20261107` を選択して手動起動します。GitHub Mobileのboolean切替がON表示でもfalseを送信しPC①ジョブがSKIPPEDとなる事象のため、切替欄を廃止しました。**この開発ブランチを選択して手動起動すること自体がPC①受入の明示的な選択**です。ほかのブランチの手動RunはPC①を起動しません。実機の保護ソフトから確認が求められた場合には、実際の対象バイナリと発行元を確認して操作担当者が判断してください。実際に確認していない状態で承認したと仮定しないでください。

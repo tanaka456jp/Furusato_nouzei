@@ -22,6 +22,18 @@ class GateContractTest(unittest.TestCase):
         self.assertIn(
             "'${{ github.ref }}' -ceq 'refs/heads/fix/excel-2026-salary-nta-20261107'",
             self.workflow)
+    def test_excel_total_budget_includes_operator_and_staged_push(self):
+        # Run 45042760144 exhausted the old 40-minute limit after
+        # the Excel tax suite passed, while mandatory VBAUpdater staging
+        # was still active. Consent must NEVER be removed to save time.
+        block = self.workflow.split("\n  excel:", 1)[1].split("\n  ready_to_use_review:", 1)[0]
+        self.assertEqual(block.count("    timeout-minutes: 90"), 1)
+        self.assertNotIn("    timeout-minutes: 40", block)
+        self.assertLess(block.index("Notify PC1 operator and require fresh pre-EXE readiness acknowledgment"),
+                        block.index("VBAUpdater staged project-push (mandatory acceptance)"))
+        self.assertLess(block.index("Complete Excel functional and tax update acceptance"),
+                        block.index("VBAUpdater staged project-push (mandatory acceptance)"))
+
     def test_notice_strictly_before_exe(self):
         check = "- name: Apex One operator confirmation gate (reader EXE not started)"
         notice = "- name: Notify PC1 operator and require fresh pre-EXE readiness acknowledgment"

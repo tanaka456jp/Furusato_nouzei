@@ -474,8 +474,11 @@ jobs:
     concurrency:
       group: furusato-excel-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
-    # Bound the two full COM acceptance passes, including exact split limits and staged VBA.
-    timeout-minutes: 40
+    # This limit includes the operator's interactive Apex One readiness gate.
+    # Run 45042760144 exhausted 40 min AFTER the 52-case Excel acceptance PASSED,
+    # while mandatory disposable VBAUpdater push had not yet completed.
+    # Keep a finite, fail-closed total budget without shortening human approval.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
         with:
