@@ -17,7 +17,7 @@ class GateContractTest(unittest.TestCase):
         self.assertEqual(self.workflow.count(notice), 1)
         self.assertLess(self.workflow.index(check), self.workflow.index(notice))
         self.assertLess(self.workflow.index(notice), self.workflow.index(execute))
-        self.assertIn(notice[2:], self.release)
+        self.assertIn("Notify PC1 operator and require fresh pre-EXE readiness acknowledgment", self.release)
 
     def test_owner_freshness_head_and_timeout(self):
         for phrase in (
