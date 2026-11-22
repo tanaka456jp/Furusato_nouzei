@@ -29,7 +29,7 @@ if (Test-Path -LiteralPath $EvidenceDirectory) {
     throw 'DISPLAY_EVIDENCE_DIRECTORY_ALREADY_EXISTS'
 }
 $length = (Get-Item -LiteralPath $source).Length
-if ($length -lt 100000 -or $length -gt 100000000) {
+if ($length -lt 32768 -or $length -gt 100000000) {
     throw 'PRIVATE_DISPLAY_SOURCE_SIZE_OUT_OF_SCOPE'
 }
 $sourceHash = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash

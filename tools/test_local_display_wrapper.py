@@ -11,6 +11,7 @@ class LocalDisplayWrapperContract(unittest.TestCase):
             "SourceHead", "ExpectedMode",
             "ValidateSet('1920x1080@100','1920x1080@125','1366x768@150')",
             "-SourceHead $SourceHead", "LOCAL_DISPLAY_WRONG_HEAD_HASH_OR_MODE",
+            "$length -lt 32768",
             "LOCAL_DISPLAY_REVIEW_REQUIRES_INTERACTIVE_OPERATOR",
             "EXPLICIT_ANONYMOUS_SYNTHETIC_WORKBOOK_REVIEW_REQUIRED",
             "$env:CI", "$env:GITHUB_ACTIONS", "[Environment]::UserInteractive",
