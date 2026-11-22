@@ -53,7 +53,7 @@ $book = '<同一RunのZIPから展開した合成Furusato_nouzei.xlsmの絶対�
 
 PRの通常CIは読取EXE起動前にApex Oneの操作担当者確認ゲートで**意図的にFAIL/HOLD**になります。これは保護を無効化する理由ではなく、ユーザーがPC①の保護画面を確認してから手動Runを明示的に実行するための安全設計です。安全性未確認のEXE起動や、Apex Oneルールの無断変更は行わないでください。
 
-操作担当者がPC①に立ち会えるとき、[Actions → Workbook checks](https://github.com/tanaka456jp/Furusato_nouzei/actions/workflows/workbook.yml) の **Run workflow** からブランチ `fix/excel-2026-salary-nta-20261107` を選択し、`excel` にチェックを入れて手動起動します。実機の保護ソフトから確認が求められた場合には、実際の対象バイナリと発行元を確認して操作担当者が判断してください。実際に確認していない状態で承認したと仮定しないでください。
+操作担当者がPC①に立ち会えるとき、[Actions → Workbook checks](https://github.com/tanaka456jp/Furusato_nouzei/actions/workflows/workbook.yml) の **Run workflow** からブランチ `fix/excel-2026-salary-nta-20261107` を選択して手動起動します。GitHub Mobileのboolean切替がON表示でもfalseを送信しPC①ジョブがSKIPPEDとなる事象のため、切替欄を廃止しました。**この開発ブランチを選択して手動起動すること自体がPC①受入の明示的な選択**です。ほかのブランチの手動RunはPC①を起動しません。実機の保護ソフトから確認が求められた場合には、実際の対象バイナリと発行元を確認して操作担当者が判断してください。実際に確認していない状態で承認したと仮定しないでください。
 
 短時間で消えるApex Oneの承認を見逃さないよう、**読取EXEを呼び出す直前にGitHubで準備完了の確認を追加**しました。手動RunのPC①で、PR #5に `@tanaka456jp` 宛のコメントが投稿されます。PC①に戻れる準備ができたら、そのPRに `START EXE <Run番号>-<Attempt番号>` と正確にコメントしてください。GitHub上の認証済み所有者による**通知後の新規コメント**が来るまで、最大10分間EXEを起動しません。応答がなければHOLD停止します。準備完了が確認されると、再度通知したうえで30秒後にEXEの検証を開始します。
 

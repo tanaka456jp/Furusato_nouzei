@@ -10,6 +10,18 @@ class GateContractTest(unittest.TestCase):
         cls.gate = (ROOT / "tools/pc1_reader_operator_gate.ps1").read_text(encoding="utf-8-sig")
         cls.release = (ROOT / "tools/release_readiness.py").read_text(encoding="utf-8")
 
+    def test_exact_branch_dispatch_does_not_depend_on_mobile_boolean(self):
+        # Manual dispatch on the selected development branch must queue PC1.
+        self.assertIn('workflow_dispatch:', self.workflow)
+        self.assertNotIn('inputs.excel', self.workflow)
+        self.assertNotIn('      excel:\n', self.workflow.split('permissions:', 1)[0])
+        self.assertIn(
+            "github.event_name == 'workflow_dispatch' &&\n"
+            "       github.ref == 'refs/heads/fix/excel-2026-salary-nta-20261107'",
+            self.workflow)
+        self.assertIn(
+            "'${{ github.ref }}' -ceq 'refs/heads/fix/excel-2026-salary-nta-20261107'",
+            self.workflow)
     def test_notice_strictly_before_exe(self):
         check = "- name: Apex One operator confirmation gate (reader EXE not started)"
         notice = "- name: Notify PC1 operator and require fresh pre-EXE readiness acknowledgment"
