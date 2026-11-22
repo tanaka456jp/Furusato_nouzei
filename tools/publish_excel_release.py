@@ -35,7 +35,7 @@ def local_interactive():
     return sys.stdin.isatty() and sys.stdout.isatty()
 
 
-def apply_private_display_and_scope(report, folder_100, folder_150, manifest):
+def apply_private_display_and_scope(report, folder_100, folder_150, manifest, candidate_folder):
     """Accept two observed local modes for the exact previously accepted CI XLSM."""
     require(report.get("candidate_verified") is True
             and report.get("display_modes") == ["1920x1080@125"]
@@ -54,6 +54,25 @@ def apply_private_display_and_scope(report, folder_100, folder_150, manifest):
             and summary["verified_modes"] == ["1920x1080@100", "1366x768@150"]
             and summary["image_count"] == 8,
             "PRIVATE_TWO_DISPLAY_MODES_INCOMPLETE")
+    # A v6 REVIEWED SHA is not itself evidence. Rehash the *actual*
+    # private screens and exact-run candidate ZIP, never trust a typed digest.
+    candidate_folder = Path(candidate_folder)
+    receipt_sha = digest_file(candidate_folder / "candidate.json")
+    expected_hashes = {
+        "ci_exact_commit": receipt_sha,
+        "screen_1920x1080_100pct": digest_file(Path(folder_100) / "display_review.json"),
+        # The accepted CI candidate binds the PC1 125%-mode result to the
+        # exact 5-job workflow; the same byte-for-byte receipt is its record.
+        "screen_1920x1080_125pct": receipt_sha,
+        "screen_1366x768_150pct": digest_file(Path(folder_150) / "display_review.json"),
+        "distribution_integrity_and_sha256": digest_file(candidate_folder / RELEASE_ZIP),
+    }
+    require(expected_hashes["distribution_integrity_and_sha256"] ==
+            report.get("archive_sha256"),
+            "PRIVATE_V6_DISTRIBUTION_NOT_SAME_ACCEPTED_ZIP")
+    require(all(manifest["checks"][gate]["sha256"] == actual
+                for gate, actual in expected_hashes.items()),
+            "PRIVATE_V6_MANIFEST_HASH_NOT_BOUND_TO_ACTUAL_EVIDENCE")
     report["unverified_display_modes"] = []
     report["private_display_acceptance"] = "PASS_TWO_MODES_SAME_HEAD_AND_BOOK"
     report["private_manifest_v6_checked"] = True
@@ -316,7 +335,8 @@ def main():
         report = pull_verified_candidate(a.run_id, a.head, a.output.resolve())
         if all(present):
             apply_private_display_and_scope(
-                report, a.display_100, a.display_150, read_evidence(a.manifest_v6))
+                report, a.display_100, a.display_150, read_evidence(a.manifest_v6),
+                a.output.resolve())
         if a.publish:
             pending = [item for item in publication_blockers(report)
                        if item != "EXPLICIT_FINAL_RELEASE_APPROVAL_MISSING"]

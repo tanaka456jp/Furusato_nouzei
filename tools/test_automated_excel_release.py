@@ -299,30 +299,72 @@ class ReleaseAutomationTest(unittest.TestCase):
                 authenticate_private_publisher(report, prompt=lambda _: "unused")
 
     def test_private_display_receipts_reject_wrong_schema_or_ci_identity(self):
-        record = {"candidate_verified": True, "display_modes": ["1920x1080@125"],
-                  "unverified_display_modes": ["1920x1080@100", "1366x768@150"],
-                  "head_sha": HEAD, "workbook_sha256": BOOK}
         from release_readiness import REQUIRED, REVIEWER_ROLES, SCHEMA
-        checks = {key: {"status": "REVIEWED", "sha256": "f" * 64,
-                        "reviewer_role": REVIEWER_ROLES[key][0], "head_sha": HEAD}
-                  for key in REQUIRED}
-        manifest = {"schema": SCHEMA, "head_sha": HEAD, "checks": checks}
-        accepted = {"status": "PASS", "verified_modes": ["1920x1080@100", "1366x768@150"],
-                    "image_count": 8}
-        with patch("publish_excel_release.inspect_display_matrix", return_value=accepted) as verify:
-            apply_private_display_and_scope(record, "synthetic100", "synthetic150", manifest)
-            verify.assert_called_once_with(
-                ["synthetic100", "synthetic150"], BOOK, HEAD,
-                modes=("1920x1080@100", "1366x768@150"))
-        self.assertEqual(record["unverified_display_modes"], [])
-        self.assertTrue(record["private_manifest_v6_checked"])
-        record["unverified_display_modes"] = ["1920x1080@100"]
-        with self.assertRaisesRegex(ValueError, "UNMODIFIED_EXACT_CI_CANDIDATE"):
-            apply_private_display_and_scope(record, "synthetic100", "synthetic150", manifest)
-        record["unverified_display_modes"] = ["1920x1080@100", "1366x768@150"]
-        manifest["schema"] = "furusato-release-readiness/v5"
-        with self.assertRaisesRegex(ValueError, "PRIVATE_V6_SCOPE_MANIFEST_INCOMPLETE"):
-            apply_private_display_and_scope(record, "synthetic100", "synthetic150", manifest)
+        with tempfile.TemporaryDirectory() as temp:
+            out = Path(temp)
+            candidate_dir = out / "candidate"
+            folder100 = out / "screen100"
+            folder150 = out / "screen150"
+            for folder in (candidate_dir, folder100, folder150):
+                folder.mkdir()
+            (candidate_dir / "candidate.json").write_text('{"synthetic":"ci"}')
+            (candidate_dir / RELEASE_ZIP).write_bytes(b"synthetic-release-zip")
+            (folder100 / "display_review.json").write_text('{"synthetic":"100"}')
+            (folder150 / "display_review.json").write_text('{"synthetic":"150"}')
+            actual = {
+                "ci_exact_commit": digest_file(candidate_dir / "candidate.json"),
+                "screen_1920x1080_100pct": digest_file(folder100 / "display_review.json"),
+                "screen_1920x1080_125pct": digest_file(candidate_dir / "candidate.json"),
+                "screen_1366x768_150pct": digest_file(folder150 / "display_review.json"),
+                "distribution_integrity_and_sha256": digest_file(candidate_dir / RELEASE_ZIP),
+            }
+            checks = {key: {"status": "REVIEWED", "sha256": actual[key],
+                            "reviewer_role": REVIEWER_ROLES[key][0], "head_sha": HEAD}
+                      for key in REQUIRED}
+            manifest = {"schema": SCHEMA, "head_sha": HEAD, "checks": checks}
+            accepted = {"status": "PASS",
+                        "verified_modes": ["1920x1080@100", "1366x768@150"],
+                        "image_count": 8}
+            def original():
+                return {"candidate_verified": True,
+                        "display_modes": ["1920x1080@125"],
+                        "unverified_display_modes": ["1920x1080@100", "1366x768@150"],
+                        "head_sha": HEAD, "workbook_sha256": BOOK,
+                        "archive_sha256": actual["distribution_integrity_and_sha256"]}
+            with patch("publish_excel_release.inspect_display_matrix",
+                       return_value=accepted) as verify:
+                report = original()
+                apply_private_display_and_scope(
+                    report, folder100, folder150, manifest, candidate_dir)
+                verify.assert_called_once_with(
+                    [folder100, folder150], BOOK, HEAD,
+                    modes=("1920x1080@100", "1366x768@150"))
+                self.assertEqual(report["unverified_display_modes"], [])
+                self.assertTrue(report["private_manifest_v6_checked"])
+                bad = original()
+                bad["unverified_display_modes"] = ["1920x1080@100"]
+                with self.assertRaisesRegex(ValueError, "UNMODIFIED_EXACT_CI_CANDIDATE"):
+                    apply_private_display_and_scope(
+                        bad, folder100, folder150, manifest, candidate_dir)
+                manifest["schema"] = "furusato-release-readiness/v5"
+                with self.assertRaisesRegex(ValueError, "PRIVATE_V6_SCOPE_MANIFEST_INCOMPLETE"):
+                    apply_private_display_and_scope(
+                        original(), folder100, folder150, manifest, candidate_dir)
+                manifest["schema"] = SCHEMA
+                checks["screen_1920x1080_100pct"]["sha256"] = "f" * 64
+                with self.assertRaisesRegex(ValueError, "MANIFEST_HASH_NOT_BOUND"):
+                    apply_private_display_and_scope(
+                        original(), folder100, folder150, manifest, candidate_dir)
+                checks["screen_1920x1080_100pct"]["sha256"] = actual["screen_1920x1080_100pct"]
+                forged = original()
+                forged["archive_sha256"] = "c" * 64
+                with self.assertRaisesRegex(ValueError, "DISTRIBUTION_NOT_SAME_ACCEPTED_ZIP"):
+                    apply_private_display_and_scope(
+                        forged, folder100, folder150, manifest, candidate_dir)
+                (folder150 / "display_review.json").write_text('{"tampered":true}')
+                with self.assertRaisesRegex(ValueError, "MANIFEST_HASH_NOT_BOUND"):
+                    apply_private_display_and_scope(
+                        original(), folder100, folder150, manifest, candidate_dir)
 
 
 if __name__ == "__main__":

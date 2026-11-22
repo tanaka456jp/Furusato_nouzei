@@ -57,7 +57,19 @@ $book = '<同一RunのZIPから展開した合成Furusato_nouzei.xlsmの絶対�
 python tools/publish_excel_release.py --head <最新HEAD40桁> --run-id <同一HEADの成功Run番号> --output "<非公開の新規出力フォルダ>" --display-100 "<screen-100フォルダ>" --display-150 "<screen-150フォルダ>" --manifest-v6 "<非公開のv6マニフェスト.json>"
 ```
 
-上記は**候補検証のみ**で、公開しません。最終発行者による公開操作では、新しい出力フォルダを指定し、同じ引数へ `--publish` を追加してください。GitHub CLIのログイン権限と実際の対話端末を確認し、バージョン、HEAD、ZIP SHA-256、確認語句を手入力して一致した場合のみGitHubへの書込みへ進みます。入力ファイルは非公開フォルダに保管し、発行秘密鍵・承認記録をGitHub公開CIに送信しません。
+**非公開v6マニフェストの5キーに記録する証拠ファイル**は、次のとおりです。先に `--publish` を付けず、画面・マニフェストのオプションも省略して同一Runの候補を非公開フォルダへ取得してください。保存された `candidate.json` と配布ZIPを確認します。
+
+| v6キー | `collect_local_release_evidence.py record --evidence` に指定するファイル |
+| --- | --- |
+| `ci_exact_commit` | 同一Run取得の `candidate.json` |
+| `screen_1920x1080_100pct` | 100%画面の `display_review.json` |
+| `screen_1920x1080_125pct` | 同一Runの `candidate.json`（PC① CIの125%受入を含む） |
+| `screen_1366x768_150pct` | 150%画面の `display_review.json` |
+| `distribution_integrity_and_sha256` | 同一Runの `Furusato_nouzei_v4.18.36_ReadyToUse.zip` |
+
+`create` で `furusato-release-readiness/v6` の非公開マニフェストを作成し、各証拠を担当者が確認後、`record --explicitly-reviewed` で5キーのSHA-256を記録します。100%/125%/150%の画面については`qa_operator`、配布ZIPについては`release_operator`等、既存の許可済みロールを使用します。正式公開CLIはこれら5項目のハッシュを**再計算**し、実際の同一HEAD画面証拠と候補ZIPと一致しない記録を拒否します。v6は独立税務レビュー・実紙印刷を要求しません。
+
+上記の候補検証コマンドは**公開しません**。最終発行者による公開操作では、新しい出力フォルダを指定し、同じ引数へ `--publish` を追加してください。GitHub CLIのログイン権限と実際の対話端末を確認し、バージョン、HEAD、ZIP SHA-256、確認語句を手入力して一致した場合のみGitHubへの書込みへ進みます。入力ファイルは非公開フォルダに保管し、発行秘密鍵・承認記録をGitHub公開CIに送信しません。
 
 ## 現在の公開状態
 
