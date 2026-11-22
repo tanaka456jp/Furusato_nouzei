@@ -17,6 +17,14 @@
 5. A4合成PDFの5ページとExcelの金額表示を自動検証。**実紙印刷は任意**。
 6. 権限ある発行者による、公開するv4.18.36のHEAD・ZIP SHA-256を特定した最終承認と、安全なGitHub公開経路。
 
+## 非公開の配布候補README生成（正式公開操作ではない）
+
+現在の次期版用の版数を必ず明示してください。これはレビュー用コマンド例であり公開処理ではありません。
+
+```powershell
+python tools/make_excel_release_readme.py --version v4.18.36 --head <PR_HEAD_SHA> --output "<非公開フォルダ>/README.txt"
+```
+
 ## 非公開スコープマニフェスト
 
 形式は `furusato-release-readiness/v6`。必須記録は次の5キーだけです：
