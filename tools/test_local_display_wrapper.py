@@ -8,6 +8,9 @@ class LocalDisplayWrapperContract(unittest.TestCase):
         source=(ROOT/"tools/probe_display_layout_local.ps1").read_text(encoding="utf-8")
         for token in (
             "SyntheticDataReviewed",
+            "SourceHead", "ExpectedMode",
+            "ValidateSet('1920x1080@100','1920x1080@125','1366x768@150')",
+            "-SourceHead $SourceHead", "LOCAL_DISPLAY_WRONG_HEAD_HASH_OR_MODE",
             "LOCAL_DISPLAY_REVIEW_REQUIRES_INTERACTIVE_OPERATOR",
             "EXPLICIT_ANONYMOUS_SYNTHETIC_WORKBOOK_REVIEW_REQUIRED",
             "$env:CI", "$env:GITHUB_ACTIONS", "[Environment]::UserInteractive",

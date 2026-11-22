@@ -32,6 +32,23 @@ python tools/make_excel_release_readme.py --version v4.18.36 --head <PR_HEAD_SHA
 
 旧v5の「給与源泉票の独立税務レビュー」「前年→翌年の独立税務レビュー」「住宅ローンと確定申告の独立税務レビュー」「物理紙面印刷」の4キーは正式配布の必須条件から除きました。旧v5マニフェストの流用は拒否します。スコープの記録自体は公開承認を意味しません。
 
+## 未検証の2画面条件をローカル採取する手順（合成データのみ）
+
+同じCI Runで合格した配布ZIPから **合成データのXLSM** を私的作業フォルダへ展開し、Windows画面を操作者が所定モードに設定してから次を実行します。**実際の顧客データ・源泉徴収票を含むブックを使用しないでください。** このスクリプトは画面解像度や拡大率を変更しません。
+
+```powershell
+$head = '<合格したPRの40桁HEAD>'
+$book = '<同一RunのZIPから展開した合成Furusato_nouzei.xlsmの絶対パス>'
+# 画面を 1920×1080・100% に設定した状態で実行
+.\tools\probe_display_layout_local.ps1 -Workbook $book -SourceHead $head -ExpectedMode '1920x1080@100' -EvidenceDirectory '<非公開フォルダ>\screen-100' -SyntheticDataReviewed
+# 画面を 1366×768・150% に設定した状態で、別フォルダへ採取
+.\tools\probe_display_layout_local.ps1 -Workbook $book -SourceHead $head -ExpectedMode '1366x768@150' -EvidenceDirectory '<非公開フォルダ>\screen-150' -SyntheticDataReviewed
+```
+
+`-SourceHead` は記録に必要で、省略すると従来の採取器の `source_head` が空欄になり、正式受入できません。各記録の実測モード、HEAD、XLSMのSHA-256を採取時にも検査します。CI上での操作やWindowsの保護機能変更は拒否します。元ファイルは変更せず、スクリーンショットはGitHubにアップロードしません。
+
+両フォルダを `tools/verify_release_display_matrix.py` に渡し、CIの125%受入と同じHEAD・XLSMハッシュの証跡をローカル照合してください。単なる自己申告・OSの推定画素では合格にしません。`physical_resolution_verified=false` はパネル固有の物理解像度を認定した意味ではありません。
+
 ## 現在の公開状態
 
 2026年11月22日までに、旧HEAD `706212d42e954c82ae5f23c347e05303dd7b43d3` の [Run #44969615866](https://github.com/tanaka456jp/Furusato_nouzei/actions/runs/44969615866) は5/5 SUCCESSでした。**配布要件を修正した新HEADでは、改めて同一HEADの自動受入が必要**です。

@@ -8,7 +8,9 @@ Never changes resolution or screen scale.
 param(
     [Parameter(Mandatory=$true)][string]$Workbook,
     [Parameter(Mandatory=$true)][string]$EvidenceDirectory,
-    [switch]$SyntheticDataReviewed
+    [switch]$SyntheticDataReviewed,
+    [Parameter(Mandatory=$true)][ValidatePattern('^[a-f0-9]{40}$')][string]$SourceHead,
+    [Parameter(Mandatory=$true)][ValidateSet('1920x1080@100','1920x1080@125','1366x768@150')][string]$ExpectedMode
 )
 $ErrorActionPreference = 'Stop'
 if ($env:CI -or $env:GITHUB_ACTIONS -or -not [Environment]::UserInteractive) {
@@ -44,7 +46,7 @@ try {
     # the CI-only collector retains all its own safety guards and remains
     # restricted to the isolated location below.
     $env:RUNNER_TEMP = $root
-    & (Join-Path $PSScriptRoot 'probe_display_layout.ps1') -Workbook $isolatedWorkbook -EvidenceDirectory $EvidenceDirectory
+    & (Join-Path $PSScriptRoot 'probe_display_layout.ps1') -Workbook $isolatedWorkbook -EvidenceDirectory $EvidenceDirectory -SourceHead $SourceHead
     if (-not $?) {
         throw 'LOCAL_DISPLAY_CAPTURE_FAILED'
     }
@@ -52,6 +54,11 @@ try {
     $report = Get-Content -LiteralPath $reportPath -Raw -Encoding UTF8 | ConvertFrom-Json
     if ($report.schema -cne 'furusato-display-review/v2' -or $report.status -cne 'MEASURED') {
         throw ('LOCAL_DISPLAY_CAPTURE_UNVERIFIED_' + [string]$report.failure_category)
+    }
+    if ($report.source_head -cne $SourceHead -or
+        $report.workbook_sha256 -cne $sourceHash.ToLowerInvariant() -or
+        $report.mode -cne $ExpectedMode) {
+        throw 'LOCAL_DISPLAY_WRONG_HEAD_HASH_OR_MODE'
     }
     if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -cne $sourceHash) {
         throw 'PRIVATE_DISPLAY_SOURCE_CHANGED_DURING_CAPTURE'
