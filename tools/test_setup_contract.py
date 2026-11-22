@@ -196,12 +196,17 @@ assert verify_ps.count("TaxLawUpdater.BatchRecalcLaunchAttemptsForTest") == 3
 # Never launch the unsigned reader from an unattended PR build.
 # A durable manual Actions dispatch is necessary before Apex One can prompt.
 assert "apex_one_operator_ready:" not in workflow
-assert "default: false" in workflow.split("      excel:", 1)[1].split("\n", 4)[3]
+# GitHub Mobile optional boolean has twice silently SKIPPED manual Excel runs.
+# Manual dispatch on the exact development branch now explicitly opts into PC1.
+assert "workflow_dispatch:" in workflow
+assert "inputs:" not in workflow.split("\npermissions:", 1)[0]
+assert "inputs.excel" not in workflow
+assert "github.event_name == 'workflow_dispatch' &&" in workflow
+assert "'${{ github.event_name }}' -ceq 'workflow_dispatch'" in workflow
+assert "'${{ github.ref }}' -ceq 'refs/heads/fix/excel-2026-salary-nta-20261107'" in workflow
 assert "APEX_ONE_OPERATOR_CONFIRMATION_REQUIRED_RELEASE_HOLD" in workflow
 assert workflow.index("Apex One operator confirmation gate (reader EXE not started)") < workflow.index("python tools/smoke_batch_recalculate_exe.py", workflow.index("Apex One operator confirmation gate (reader EXE not started)"))
 assert workflow.index("Compare independent 41 Excel / GAS synthetic cases") < workflow.index("Apex One operator confirmation gate (reader EXE not started)")
 assert "github.ref == 'refs/heads/fix/excel-2026-salary-nta-20261107'" in workflow
-assert "github.event_name == 'workflow_dispatch' && inputs.excel" in workflow
-assert "'${{ inputs.excel }}' -ceq 'true'" in workflow
 assert "throw 'APEX_ONE_OPERATOR_CONFIRMATION_REQUIRED_RELEASE_HOLD'" in workflow
 print("PASS: flat ASCII delivery ZIP; source/payload matched; Unicode VBA import and smoke run present.")
