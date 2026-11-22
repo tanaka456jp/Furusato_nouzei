@@ -149,15 +149,32 @@ class ReleaseAutomationTest(unittest.TestCase):
             folder = Path(temp)
             for name in (RELEASE_ZIP, "SHA256SUMS.txt", "THIRD_PARTY_NOTICES.txt"):
                 (folder / name).write_text("synthetic")
+            report = {
+                "head_sha": HEAD,
+                "archive_sha256": digest_file(folder / RELEASE_ZIP),
+                "third_party_notices_sha256": digest_file(folder / "THIRD_PARTY_NOTICES.txt"),
+            }
+            (folder / "SHA256SUMS.txt").write_text(
+                f'{report["archive_sha256"]}  {RELEASE_ZIP}\n'
+                f'{report["third_party_notices_sha256"]}  THIRD_PARTY_NOTICES.txt\n')
             draft = {
                 "tag_name": VERSION, "draft": True, "target_commitish": HEAD,
                 "assets": [{"name": item.name, "state": "uploaded", "size": item.stat().st_size,
                             "digest": "sha256:" + digest_file(item)} for item in folder.iterdir()],
             }
-            self.assertEqual(len(inspect_draft_assets(draft, folder, {"head_sha": HEAD})), 3)
+            self.assertEqual(len(inspect_draft_assets(draft, folder, report)), 3)
             draft["assets"][0]["digest"] = "sha256:" + "f" * 64
             with self.assertRaisesRegex(ValueError, "ASSET_SHA256_MISMATCH"):
-                inspect_draft_assets(draft, folder, {"head_sha": HEAD})
+                inspect_draft_assets(draft, folder, report)
+            # Even a draft containing matching new bytes must not be published
+            # if those bytes changed after the operator approved the old ZIP.
+            (folder / RELEASE_ZIP).write_text("tampered after consent")
+            for asset in draft["assets"]:
+                if asset["name"] == RELEASE_ZIP:
+                    asset["size"] = (folder / RELEASE_ZIP).stat().st_size
+                    asset["digest"] = "sha256:" + digest_file(folder / RELEASE_ZIP)
+            with self.assertRaisesRegex(ValueError, "APPROVED_ASSET_SNAPSHOT_CHANGED"):
+                inspect_draft_assets(draft, folder, report)
 
     def test_unsigned_exact_run_cannot_resume_or_publish_existing_draft(self):
         with tempfile.TemporaryDirectory() as temp:

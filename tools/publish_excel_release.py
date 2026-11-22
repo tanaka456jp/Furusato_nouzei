@@ -152,12 +152,23 @@ def pull_verified_candidate(run_id, head, out):
     return report
 
 
+def verify_approved_release_snapshot(expected, out, report):
+    """Recheck immutable operator-approved asset identity after draft upload."""
+    require(expected.get(RELEASE_ZIP) == report.get("archive_sha256")
+            and expected.get(NOTICE_NAME) == report.get("third_party_notices_sha256")
+            and (out / SUMS).read_text(encoding="ascii") ==
+                (f'{report["archive_sha256"]}  {RELEASE_ZIP}\n'
+                 f'{report["third_party_notices_sha256"]}  {NOTICE_NAME}\n'),
+            "PUBLICATION_HOLD:APPROVED_ASSET_SNAPSHOT_CHANGED")
+
+
 def inspect_draft_assets(draft, out, report):
     require(draft.get("tag_name") == VERSION and draft.get("draft") is True
             and draft.get("target_commitish") == report["head_sha"],
             "GITHUB_RELEASE_DRAFT_IDENTITY_MISMATCH")
     assets = draft.get("assets", [])
     expected = {name: digest_file(out / name) for name in (RELEASE_ZIP, SUMS, NOTICE_NAME)}
+    verify_approved_release_snapshot(expected, out, report)
     require(len(assets) == len(expected) and
             {asset.get("name") for asset in assets} == set(expected) and
             all(asset.get("state") == "uploaded" and
@@ -263,6 +274,7 @@ def publish(out, report, approval=None):
                         "-F", "draft=false", "-f", "make_latest=true")
     else:
         expected = {name: digest_file(out / name) for name in (RELEASE_ZIP, SUMS, NOTICE_NAME)}
+        verify_approved_release_snapshot(expected, out, report)
         published = current
     require(published.get("draft") is False and published.get("prerelease") is False
             and published.get("tag_name") == VERSION, "GITHUB_RELEASE_PUBLISH_STATE_UNVERIFIED")
