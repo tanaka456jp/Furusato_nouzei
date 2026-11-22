@@ -3,7 +3,8 @@ import hashlib
 import tempfile
 import unittest
 from pathlib import Path
-from prepare_official_excel_release import PRINT_SCHEMA, PRINT_FIELDS, check_paper, stage, read_private
+from prepare_official_excel_release import PRINT_SCHEMA, PRINT_FIELDS, check_paper, check_stage, stage, read_private
+from unittest.mock import patch
 
 def make_paper():
     return {
@@ -72,6 +73,25 @@ class OfficialStagingTest(unittest.TestCase):
             source.write_text('{"tax_year":NaN}', encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "NONFINITE_RELEASE_EVIDENCE_JSON"):
                 read_private(source)
+
+    def test_paper_is_optional_for_offline_staging(self):
+        expected = {"candidate_archive_sha256": "a" * 64,
+                    "candidate_workbook_sha256": "b" * 64,
+                    "candidate_reader_sha256": "c" * 64,
+                    "private_review_records": 5}
+        with patch("prepare_official_excel_release.verify", return_value=expected) as verifier:
+            report = check_stage("a" * 40, 123, "v4.18.36", Path("synthetic.zip"),
+                                 "a" * 64, {}, {}, None)
+            self.assertEqual(report["physical_paper_requirement"], "NOT_REQUIRED")
+            self.assertIsNone(report["print_report_sha256"])
+            self.assertEqual(report["release_decision"], "HOLD")
+            verifier.assert_called_once()
+            with self.assertRaisesRegex(ValueError, "OPTIONAL_PAPER_EVIDENCE_RECORD_MISSING"):
+                check_stage("a" * 40, 123, "v4.18.36", Path("synthetic.zip"),
+                            "a" * 64, {}, {}, None, paper_digest="d" * 64)
+            with self.assertRaisesRegex(ValueError, "OPTIONAL_PAPER_EVIDENCE_SHA256_INVALID"):
+                check_stage("a" * 40, 123, "v4.18.36", Path("synthetic.zip"),
+                            "a" * 64, {}, {}, None, paper=make_paper(), paper_digest="bad")
 
     def test_staging_is_exact_and_cannot_publish(self):
         with tempfile.TemporaryDirectory() as d:

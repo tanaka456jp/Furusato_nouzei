@@ -192,10 +192,12 @@ class ReleaseAutomationTest(unittest.TestCase):
             "tax_evidence_scope": "SYNTHETIC_2025_2026",
         }
         blockers = publication_blockers(report)
-        self.assertEqual(len(blockers), 4)
+        self.assertEqual(len(blockers), 2)
         self.assertNotIn('VBA_TRUSTED_SIGNATURE_NOT_VERIFIED', blockers)
         self.assertNotIn('READER_AUTHENTICODE_NOT_VERIFIED', blockers)
         self.assertIn("EXPLICIT_FINAL_RELEASE_APPROVAL_MISSING", blockers)
+        self.assertNotIn("PHYSICAL_PAPER_NOT_VERIFIED", blockers)
+        self.assertNotIn("INDEPENDENT_TAX_REVIEW_NOT_APPROVED", blockers)
         with self.assertRaisesRegex(ValueError, "PUBLICATION_HOLD"):
             require_publication_clearance(report)
 
@@ -203,10 +205,14 @@ class ReleaseAutomationTest(unittest.TestCase):
             report, signing_state="UNSIGNED",
             reader_authenticode="UNSIGNED",
             unverified_display_modes=[], physical_printer_tested=True,
-            tax_evidence_scope="INDEPENDENT_2025_2026_REVIEW_APPROVED",
+            tax_evidence_scope="SYNTHETIC_2025_2026",
             manual_final_approval="PRIVATE_EXPLICIT_APPROVAL",
         )
         self.assertEqual(publication_blockers(independently_reviewed), [])
+        independently_reviewed["tax_evidence_scope"] = "INDEPENDENT_2025_2026_REVIEW_APPROVED"
+        self.assertIn("AUTOMATED_2025_2026_TAX_ACCEPTANCE_MISSING",
+                      publication_blockers(independently_reviewed))
+        independently_reviewed["tax_evidence_scope"] = "SYNTHETIC_2025_2026"
         independently_reviewed["manual_final_approval"] = "CI_SUCCESS"
         self.assertIn("EXPLICIT_FINAL_RELEASE_APPROVAL_MISSING",
                       publication_blockers(independently_reviewed))
@@ -222,7 +228,7 @@ class ReleaseAutomationTest(unittest.TestCase):
             "reader_authenticode": "VALID_TRUSTED_EXPECTED_SIGNER",
             "unverified_display_modes": [],
             "physical_printer_tested": True,
-            "tax_evidence_scope": "INDEPENDENT_2025_2026_REVIEW_APPROVED",
+            "tax_evidence_scope": "SYNTHETIC_2025_2026",
             "manual_final_approval": "PRIVATE_EXPLICIT_APPROVAL",
         }
         self.assertEqual(publication_blockers(forged), [])
@@ -232,7 +238,7 @@ class ReleaseAutomationTest(unittest.TestCase):
              patch("publish_excel_release.api") as api, \
              patch("publish_excel_release.gh") as gh:
             with self.assertRaisesRegex(ValueError,
-                                        "PUBLICATION_HOLD:INDEPENDENT_FINAL_APPROVAL_ROUTE_NOT_IMPLEMENTED"):
+                                        "PUBLICATION_HOLD:AUTHENTICATED_FINAL_PUBLISHER_APPROVAL_ROUTE_NOT_IMPLEMENTED"):
                 publish(Path(temp), forged)
             approved.assert_not_called()
             get_release.assert_not_called()

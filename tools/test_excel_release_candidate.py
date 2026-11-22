@@ -120,35 +120,26 @@ class ExcelPrepublicationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "UNSIGNED_CANDIDATE_CONTAINS_SIGNATURE"):
             self.run_check(ci=ci, signature=None)
 
-    def test_preprint_only_eight_gates_pass_and_paper_stays_pending(self):
-        manifest = copy.deepcopy(self.manifest)
-        del manifest["checks"]["physical_printer_preview_and_output"]
-        with self.assertRaisesRegex(ValueError, "EXCEL_PRIVATE_REVIEWS_INCOMPLETE"):
-            self.run_check(manifest=manifest)
-        receipt = self.run_check(manifest=manifest, preprint_only=True)
-        self.assertEqual(receipt["candidate_gate"],
-                         "EIGHT_NONPHYSICAL_GATES_RECORDED_PREPRINT_HOLD")
-        self.assertEqual(receipt["physical_paper_gate"], "PENDING")
-        self.assertEqual(receipt["private_review_records"], 8)
-        self.assertEqual(receipt["release_decision"], "HOLD")
-
-        # Preprint is not a generic override. All other gates are still required.
-        del manifest["checks"]["distribution_integrity_and_sha256"]
-        with self.assertRaisesRegex(ValueError, "PREPRINT_REQUIRES_ALL_EIGHT"):
-            self.run_check(manifest=manifest, preprint_only=True)
-        manifest = copy.deepcopy(self.manifest)
-        manifest["checks"]["physical_printer_preview_and_output"]["status"] = "INVALID"
-        with self.assertRaisesRegex(ValueError, "PREPRINT_REQUIRES_ALL_EIGHT"):
-            self.run_check(manifest=manifest, preprint_only=True)
-        with self.assertRaisesRegex(ValueError, "PREPRINT_REQUIRES_ALL_EIGHT"):
+    def test_physical_paper_not_required_and_legacy_preprint_waiver_rejected(self):
+        result = self.run_check()
+        self.assertEqual(result["candidate_gate"], "METADATA_AND_ARCHIVE_CHECKED")
+        self.assertEqual(result["physical_paper_gate"], "NOT_REQUIRED")
+        self.assertEqual(result["private_review_records"], 5)
+        self.assertEqual(result["tax_and_pdf_acceptance"], "AUTOMATED_EXCEL_AND_PDF_CI_GATES_REQUIRED")
+        self.assertEqual(result["release_decision"], "HOLD")
+        with self.assertRaisesRegex(ValueError, "LEGACY_PREPRINT_WAIVER_NO_LONGER_APPLICABLE"):
             self.run_check(preprint_only=True)
+        manifest = copy.deepcopy(self.manifest)
+        del manifest["checks"]["distribution_integrity_and_sha256"]
+        with self.assertRaisesRegex(ValueError, "EXCEL_PRIVATE_SCOPE_RECORDS_INCOMPLETE"):
+            self.run_check(manifest=manifest)
 
     def test_all_claims_still_hold_and_web_is_separate(self):
         result = self.run_check()
         self.assertEqual(result["candidate_gate"], "METADATA_AND_ARCHIVE_CHECKED")
         self.assertEqual(result["release_decision"], "HOLD")
         self.assertEqual(result["product_scope"], PRODUCT_SCOPE)
-        self.assertEqual(result["private_review_records"], 9)
+        self.assertEqual(result["private_review_records"], 5)
         self.assertIn("REQUIRES_HUMAN", result["source_lineage_after_signing"])
         self.assertEqual(result["office_vba_signed_property"],
                          "OFFICE_RECOGNIZED_SIGNED_PROJECT")
@@ -173,8 +164,8 @@ class ExcelPrepublicationTests(unittest.TestCase):
 
     def test_gas_only_or_stale_manifest_cannot_pass(self):
         manifest = copy.deepcopy(self.manifest)
-        manifest["checks"].pop("mortgage_filing_independent_tax_difference")
-        with self.assertRaisesRegex(ValueError, "REVIEWS_INCOMPLETE"):
+        manifest["checks"].pop("distribution_integrity_and_sha256")
+        with self.assertRaisesRegex(ValueError, "SCOPE_RECORDS_INCOMPLETE"):
             self.run_check(manifest=manifest)
         manifest = copy.deepcopy(self.manifest)
         manifest["schema"] = "furusato-release-readiness/v3"
