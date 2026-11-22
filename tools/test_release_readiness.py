@@ -46,7 +46,7 @@ class ReleaseReadinessTest(unittest.TestCase):
     def test_excel_offline_scope_excludes_live_gas_without_waiving_tax_and_integrity(self):
         self.assertEqual(PRODUCT_SCOPE, "EXCEL_STANDALONE_NO_GAS_RUNTIME")
         self.assertNotIn("live_google_gas_independent_acceptance", REQUIRED)
-        self.assertEqual(len(REQUIRED), 9)
+        self.assertEqual(len(REQUIRED), 5)
         result = evaluate(HEAD)
         self.assertEqual(result["product_scope"], PRODUCT_SCOPE)
         self.assertIn("MISSING_DISTRIBUTION_INTEGRITY_AND_SHA256", result["blockers"])
@@ -58,87 +58,37 @@ class ReleaseReadinessTest(unittest.TestCase):
         self.assertIn("SCHEMA_MISSING_OR_UNSUPPORTED", old["blockers"])
         self.assertIn("UNKNOWN_CHECK_KEYS", old["blockers"])
 
-    def test_resident_notice_is_never_a_required_gate(self):
-        self.assertNotIn("real_tax_and_resident_notice_reconciliation",REQUIRED)
-        self.assertIn("salary_only_independent_withholding_reconciliation",REQUIRED)
-        self.assertIn("prior_year_projection_independent_resident_deductions",REQUIRED)
-        self.assertIn("mortgage_filing_independent_tax_difference", REQUIRED)
-        self.assertEqual(
-            REVIEWER_ROLES["prior_year_projection_independent_resident_deductions"],
-            ("tax_professional", "external_reviewer"),
+    def test_human_tax_review_and_physical_print_are_not_release_requirements(self):
+        self.assertEqual(SCHEMA, "furusato-release-readiness/v6")
+        self.assertNotIn("real_tax_and_resident_notice_reconciliation", REQUIRED)
+        excluded = (
+            "salary_only_independent_withholding_reconciliation",
+            "prior_year_projection_independent_resident_deductions",
+            "mortgage_filing_independent_tax_difference",
+            "physical_printer_preview_and_output",
         )
-        self.assertEqual(SCHEMA, "furusato-release-readiness/v5")
-        old_manifest={"schema":"furusato-release-readiness/v1",
-                      "head_sha":HEAD,
-                      "checks":{"real_tax_and_resident_notice_reconciliation":{
-                          "status":"REVIEWED","sha256":"f"*64,
-                          "reviewer_role":"tax_professional","head_sha":HEAD}}}
-        old=evaluate(HEAD,old_manifest)
-        self.assertEqual(old["release_decision"],"HOLD")
-        self.assertIn("SCHEMA_MISSING_OR_UNSUPPORTED",old["blockers"])
-        self.assertIn("UNKNOWN_CHECK_KEYS",old["blockers"])
+        for name in excluded:
+            with self.subTest(excluded=name):
+                self.assertNotIn(name, REQUIRED)
+                self.assertNotIn(name, REVIEWER_ROLES)
+        self.assertIn("distribution_integrity_and_sha256", REQUIRED)
+        self.assertIn("screen_1366x768_150pct", REQUIRED)
+        legacy = evaluate(HEAD, {"schema": "furusato-release-readiness/v5",
+                                 "head_sha": HEAD, "checks": {
+                                     "physical_printer_preview_and_output": {
+                                         "status": "REVIEWED", "sha256": "f" * 64,
+                                         "reviewer_role": "qa_operator", "head_sha": HEAD}}})
+        self.assertIn("SCHEMA_MISSING_OR_UNSUPPORTED", legacy["blockers"])
+        self.assertIn("UNKNOWN_CHECK_KEYS", legacy["blockers"])
 
-    def test_older_evidence_manifest_does_not_bypass_projection_gate(self):
-        old_checks = {
-            key: {"status": "REVIEWED", "sha256": "f" * 64,
-                  "reviewer_role": REVIEWER_ROLES[key][0], "head_sha": HEAD}
-            for key in REQUIRED
-            if key != "prior_year_projection_independent_resident_deductions"
-        }
-        report = evaluate(HEAD, {
-            "schema": SCHEMA, "head_sha": HEAD, "checks": old_checks,
-        })
-        self.assertEqual(report["release_decision"], "HOLD")
-        self.assertIn(
-            "MISSING_PRIOR_YEAR_PROJECTION_INDEPENDENT_RESIDENT_DEDUCTIONS",
-            report["blockers"],
-        )
-
-    def test_mortgage_filing_tax_review_is_mandatory_and_role_limited(self):
-        self.assertEqual(
-            REVIEWER_ROLES["mortgage_filing_independent_tax_difference"],
-            ("tax_professional", "external_reviewer"),
-        )
-        old_checks = {
-            key: {"status": "REVIEWED", "sha256": "f" * 64,
-                  "reviewer_role": REVIEWER_ROLES[key][0], "head_sha": HEAD}
-            for key in REQUIRED if key != "mortgage_filing_independent_tax_difference"
-        }
-        incomplete = evaluate(HEAD, {
-            "schema": SCHEMA, "head_sha": HEAD, "checks": old_checks,
-        })
-        self.assertEqual(incomplete["release_decision"], "HOLD")
-        self.assertIn(
-            "MISSING_MORTGAGE_FILING_INDEPENDENT_TAX_DIFFERENCE",
-            incomplete["blockers"],
-        )
-        recorded = dict(old_checks)
-        recorded["mortgage_filing_independent_tax_difference"] = {
-            "status": "REVIEWED", "sha256": "f" * 64,
-            "reviewer_role": "qa_operator", "head_sha": HEAD,
-        }
-        unauthorized = evaluate(HEAD, {
-            "schema": SCHEMA, "head_sha": HEAD, "checks": recorded,
-        })
-        self.assertEqual(
-            unauthorized["checks"]["mortgage_filing_independent_tax_difference"],
-            "INVALID",
-        )
-        self.assertEqual(unauthorized["release_decision"], "HOLD")
-        old_format = evaluate(HEAD, {
-            "schema": "furusato-release-readiness/v2",
-            "head_sha": HEAD, "checks": recorded,
-        })
-        self.assertIn("SCHEMA_MISSING_OR_UNSUPPORTED", old_format["blockers"])
-        self.assertEqual(old_format["release_decision"], "HOLD")
 
     def test_release_gate_documentation_matches_required_v4_excel_scope(self):
         from pathlib import Path
         root = Path(__file__).resolve().parents[1]
         documentation = (root / "docs/release-readiness.md").read_text(encoding="utf-8-sig")
-        self.assertIn("Excel単体版の正式受入に必要な9条件", documentation)
-        self.assertIn("schema: furusato-release-readiness/v5", documentation)
-        self.assertEqual(len(REQUIRED), 9)
+        self.assertIn("Excel単体版の正式受入に必要な5条件", documentation)
+        self.assertIn("schema: furusato-release-readiness/v6", documentation)
+        self.assertEqual(len(REQUIRED), 5)
         for key in REQUIRED:
             with self.subTest(check=key):
                 self.assertIn("| `" + key + "` |", documentation)
@@ -251,29 +201,29 @@ class ReleaseReadinessTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             evaluate("not-a-commit")
 
-    def test_tax_gate_cannot_be_signed_off_by_release_operator(self):
-        entry = {"status": "REVIEWED", "sha256": "f" * 64,
-                 "reviewer_role": "release_operator", "head_sha": HEAD}
+    def test_removed_human_review_keys_are_not_formal_release_gates(self):
+        record = {"status": "REVIEWED", "sha256": "f" * 64,
+                  "reviewer_role": "tax_professional", "head_sha": HEAD}
         report = evaluate(HEAD, {"schema": SCHEMA, "head_sha": HEAD,
-                                 "checks": {"salary_only_independent_withholding_reconciliation": entry}})
-        self.assertEqual(report["checks"]["salary_only_independent_withholding_reconciliation"], "INVALID")
-        self.assertIn("INVALID_SALARY_ONLY_INDEPENDENT_WITHHOLDING_RECONCILIATION", report["blockers"])
+                                 "checks": {"mortgage_filing_independent_tax_difference": record}})
+        self.assertIn("UNKNOWN_CHECK_KEYS", report["blockers"])
+        self.assertNotIn("mortgage_filing_independent_tax_difference", report["checks"])
         self.assertEqual(report["release_decision"], "HOLD")
 
     def test_malformed_evidence_never_counts_as_reviewed(self):
         base = {"status": "REVIEWED", "sha256": "f" * 64,
-                "reviewer_role": "tax_professional", "head_sha": HEAD}
+                "reviewer_role": "release_operator", "head_sha": HEAD}
         bad_cases = (
             {"status": "APPROVED"},
             {"sha256": "0" * 64},
             {"sha256": "F" * 64},
             {"sha256": "not-a-hash"},
             {"head_sha": "b" * 40},
-            {"reviewer_role": "release_operator"},
+            {"reviewer_role": "tax_professional"},
             {"reviewer_role": ["tax_professional"]},
             {"taxpayer_name": "PRIVATE_DO_NOT_EMIT"},
         )
-        gate = "salary_only_independent_withholding_reconciliation"
+        gate = "distribution_integrity_and_sha256"
         for change in bad_cases:
             with self.subTest(change=repr(change)):
                 evidence = dict(base, **change)
@@ -301,7 +251,7 @@ class ReleaseReadinessTest(unittest.TestCase):
             "schema": SCHEMA, "head_sha": HEAD,
             "checks": checks})
         self.assertEqual(report["blockers"], [])
-        self.assertEqual(report["review_stage"], "MANUAL_FINAL_AUDIT_REQUIRED")
+        self.assertEqual(report["review_stage"], "FINAL_RELEASE_AUTHORIZATION_REQUIRED")
         self.assertEqual(report["release_decision"], "HOLD")
         self.assertTrue(all("NOT_INDEPENDENTLY_VERIFIED" in x
                             for x in report["checks"].values()))

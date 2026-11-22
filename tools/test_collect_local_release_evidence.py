@@ -35,24 +35,24 @@ class LocalEvidenceIntakeTest(unittest.TestCase):
             create_local_manifest(self.root / "bad.json", "not-head")
 
     def test_explicit_review_role_required(self):
-        gate = "mortgage_filing_independent_tax_difference"
+        gate = "distribution_integrity_and_sha256"
         with self.assertRaisesRegex(ValueError, "EXPLICIT_HUMAN_REVIEW"):
             record_local_evidence(
-                self.manifest, gate, self.sample, "tax_professional")
+                self.manifest, gate, self.sample, "release_operator")
         with self.assertRaisesRegex(ValueError, "UNAUTHORIZED_REVIEWER_ROLE"):
             record_local_evidence(
-                self.manifest, gate, self.sample, "qa_operator",
+                self.manifest, gate, self.sample, "tax_professional",
                 explicitly_reviewed=True)
         with self.assertRaisesRegex(ValueError, "UNKNOWN_GATE_KEY"):
             record_local_evidence(
-                self.manifest, "unexpected", self.sample, "tax_professional",
+                self.manifest, "unexpected", self.sample, "release_operator",
                 explicitly_reviewed=True)
         self.assertNotIn(gate, json.loads(self.manifest.read_text())["checks"])
 
     def test_record_only_hash_and_role_without_private_data(self):
-        gate = "mortgage_filing_independent_tax_difference"
+        gate = "distribution_integrity_and_sha256"
         result = record_local_evidence(
-            self.manifest, gate, self.sample, "tax_professional",
+            self.manifest, gate, self.sample, "release_operator",
             explicitly_reviewed=True)
         self.assertEqual(result["release_decision"], "HOLD")
         self.assertEqual(result["checks"][gate],
@@ -65,17 +65,17 @@ class LocalEvidenceIntakeTest(unittest.TestCase):
             len(json.loads(manifest_text)["checks"][gate]["sha256"]), 64)
         with self.assertRaisesRegex(ValueError, "GATE_ALREADY_RECORDED"):
             record_local_evidence(
-                self.manifest, gate, self.sample, "tax_professional",
+                self.manifest, gate, self.sample, "release_operator",
                 explicitly_reviewed=True)
 
-    def test_all_nine_excel_reviews_still_hold_and_head_change_invalidates(self):
+    def test_all_five_scope_records_still_hold_and_head_change_invalidates(self):
         for gate in REQUIRED:
             record_local_evidence(
                 self.manifest, gate, self.sample, REVIEWER_ROLES[gate][0],
                 explicitly_reviewed=True)
         fresh = check_local_manifest(self.manifest, HEAD)
         self.assertEqual(fresh["blockers"], [])
-        self.assertEqual(fresh["review_stage"], "MANUAL_FINAL_AUDIT_REQUIRED")
+        self.assertEqual(fresh["review_stage"], "FINAL_RELEASE_AUTHORIZATION_REQUIRED")
         self.assertEqual(fresh["release_decision"], "HOLD")
         changed = check_local_manifest(self.manifest, OTHER_HEAD)
         self.assertIn("EVIDENCE_SHA_NOT_CURRENT", changed["blockers"])
@@ -114,8 +114,8 @@ class LocalEvidenceIntakeTest(unittest.TestCase):
             check_local_manifest(self.manifest, HEAD)
         with self.assertRaisesRegex(ValueError, "INVALID_PRIVATE_MANIFEST"):
             record_local_evidence(
-                self.manifest, "mortgage_filing_independent_tax_difference",
-                self.sample, "tax_professional", explicitly_reviewed=True)
+                self.manifest, "distribution_integrity_and_sha256",
+                self.sample, "release_operator", explicitly_reviewed=True)
         self.assertEqual(self.manifest.read_text(encoding="utf-8"), duplicate)
 
     def test_stale_or_extra_manifest_fields_refused(self):
