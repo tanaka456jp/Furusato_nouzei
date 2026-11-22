@@ -1,3 +1,5 @@
+> **2026-11-22 現行方針：5条件。** 人による実紙印刷・専門家／外部担当者の独立税務レビューを正式配布要件から除外しました。法令に基づく自動税額検算、合成PDF、同一HEAD実機・配布ZIPの照合は維持します。以下の旧9条件の記述は歴史的説明です。現行基準は [Excel v4.18.36正式配布基準](excel-v41836-release.md) を参照してください。
+
 > **旧手動判定の記録**。以下は履歴です。Excel v4.18.35の現行手順は[自動受入と正式配布](excel-v41835-automated-release.md)を参照してください。
 
 # 次期正式版：実証証跡・配布判定（2026-11-17、Draft PR #5）
@@ -6,22 +8,19 @@
 
 `python tools/release_readiness.py --head <HEADの40文字SHA> --output release_readiness_hold.json` で、実データや氏名を送信せずに未完了条件を列挙できます。住民税決定通知書を受入条件に含めません。CIは証拠未提出として常に `release_decision=HOLD` のレポートを出力し、Artifactに添付します。個人情報や顧客原票はGitHub/CIにアップロードしないでください。
 
-## Excel単体版の正式受入に必要な9条件
+## Excel単体版の正式受入に必要な5条件
+
+現行スキーマ：`schema: furusato-release-readiness/v6`。
 
 | 証拠の種類 | 内容 |
 |---|---|
-| `ci_exact_commit` | 出荷する正確なSHAで静的/Windows/Reader/PC① Excelの全ジョブPASS、ブックSHA256整合 |
-| `salary_only_independent_withholding_reconciliation` | 年末調整済み・給与所得のみの源泉徴収票から住民税所得割・寄附限度額を法令どおり独立算出し、同年分のExcel結果と照合。住民税決定通知書は要求しない。本人・控除・申告方法など原票外の条件は明示確認 |\n| `prior_year_projection_independent_resident_deductions` | 令和7年源泉票から令和8年を試算する際、当年の給与・社会保険・扶養・所得控除・住民税所得割を前年と独立に再構築し、前年の住宅ローン控除額を無確認で流用しない |\n| `mortgage_filing_independent_tax_difference` | 住宅ローン控除と確定申告を併用する場合、寄附前後の所得税・復興特別所得税・住民税の差額、住宅ローン控除の国税適用額・住民税移行額を独立照合。税務専門家または外部レビュアーの確認が必要 |
-| `screen_1920x1080_100pct` | 1920×1080・100%の実Windows画面 |
-| `screen_1920x1080_125pct` | 1920×1080・125%の実Windows画面 |
-| `screen_1366x768_150pct` | 1366×768・150%の実Windows画面 |
-| `physical_printer_preview_and_output` | 印刷プレビューと実プリンタの紙面出力 |
-| `distribution_integrity_and_sha256` | 次期版の配布物（未署名可）とSHA256、同一HEADのEXE実機起動と改ざん防止検証 |
+| `ci_exact_commit` | 同一HEADの全5 CI・PC① Excel/読取EXE/VBAUpdater・法令自動税額検算・A4 PDFがPASS |
+| `screen_1920x1080_100pct` | 1920×1080・100%の画面検証 |
+| `screen_1920x1080_125pct` | 1920×1080・125%の画面検証 |
+| `screen_1366x768_150pct` | 1366×768・150%の画面検証 |
+| `distribution_integrity_and_sha256` | 公開予定ZIPとXLSM/EXEの同一HEAD・SHA-256・改ざん防止検証 |
 
-外部保管したレビュー済証拠を整理する場合だけ、`--manifest <ローカルJSON>`を用います。形式は `schema: furusato-release-readiness/v5`、`head_sha`、上記9キーを持つ `checks` で、各キーは `{"status":"REVIEWED","sha256":"64桁小文字hex","reviewer_role":"tax_professional","head_sha":"同じHEADの40桁SHA"}` です。役割欄は用途に応じた `qa_operator`、`release_operator`、`external_reviewer` も可能。**本人の氏名・住所・税額・証拠そのものは書かないこと。**
-
-この形式だけでは証拠の真正性は立証されないため、全ての欄を記入しても結果は `MANUAL_FINAL_AUDIT_REQUIRED`／`HOLD` に留まります。別途、真正な現物、法令、署名者、同年度税額とリリース承認を確認してください。既存の正式v4.18.2、main、本番GAS、Web PR #6には影響させません。
-
+**配布条件から除外：** 実紙印刷と人による独立税務レビュー3項目。住民税決定通知書も不要。独立した**自動**税額検算は省略せず、個別適用条件が不明な場合は安全停止します。非公開マニフェストは上記5キーのみで、旧v5は非対応です。5項目の記録だけでは公開権限の最終認証に代わりません。
 
 ### PC①実ディスプレイ出力モードの証拠を改善（2026-11-16）
 
