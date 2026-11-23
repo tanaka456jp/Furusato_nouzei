@@ -10,7 +10,9 @@ from audit_salary_donation_limit import (
     independent_salary_ceiling, independent_one_stop_after_housing,
     independent_nta_fifth_table_salary_income,
 )
-from audit_mortgage_filing import independent_mortgage_filing_ceiling
+from audit_mortgage_filing import (
+    independent_mortgage_filing_ceiling, calculate_mortgage_filing_case,
+)
 from audit_withholding_reconciliation import progressive_income_tax, reconcile
 from batch_source_deductions import MortgageDeductionError, reconcile_mortgage_deductions
 from fractions import Fraction
@@ -23,7 +25,7 @@ class MortgageBatchScopeError(ValueError):
 def compare_mortgage_modes(*, evidence, source_year, target_year,
                            salary_income, national_deductions,
                            resident_deductions, national_basic,
-                           municipality_class):
+                           municipality_class, trial_donation=None):
     """Return conservative per-mode references; no filing recommendation.
 
     Filing comparison is emitted only if every tested resident-tax split
@@ -129,6 +131,31 @@ def compare_mortgage_modes(*, evidence, source_year, target_year,
         )["one_stop_effective_thousand_yen_reference"]
         scenarios.append((municipality, one_stop))
     selected_municipality, conservative = min(scenarios, key=lambda x: x[1])
+    # A selectable donation is an independent *comparison*, never a new
+    # strict-2,000-yen ceiling. Defaults to the conservative one-stop amount.
+    # No private document contents or identifying text are returned.
+    trial = conservative if trial_donation is None else trial_donation
+    if (type(trial) is not int or trial < 2_000 or
+            trial > salary_income * 3 // 10 or trial % 1_000):
+        raise MortgageBatchScopeError("FILING_TRIAL_DONATION_INVALID")
+    trial_burden = None
+    trial_total_saving = None
+    try:
+        compared = [calculate_mortgage_filing_case(
+            year=target_year, salary_income=salary_income,
+            national_deductions=national_deductions,
+            resident_deductions=resident_deductions,
+            mortgage_possible=possible, occupancy_year=occupancy,
+            donation=trial, personal_difference=d["personal_difference"],
+            municipality=place,
+        ) for place in municipalities]
+        # Unknown municipality is never optimistically assumed: use the
+        # highest possible burden across the two supported city splits.
+        trial_burden = max(x["estimated_personal_burden"] for x in compared)
+        trial_total_saving = trial - trial_burden
+    except (ValueError, TypeError):
+        pass
+
     higher_filing = None
     filing_limit = None
     # A tax-return comparator never alters the default one-stop number.
@@ -160,6 +187,9 @@ def compare_mortgage_modes(*, evidence, source_year, target_year,
             "selected_municipality": selected_municipality,
             "filing_higher_limit": higher_filing,
             "filing_limit": filing_limit,
+            "filing_trial_donation": trial if trial_burden is not None else None,
+            "filing_trial_burden": trial_burden,
+            "filing_trial_tax_saving": trial_total_saving,
             "mortgage_applied_national": target_used,
             "mortgage_resident_transfer": min(
                 possible - target_used, 97500,
