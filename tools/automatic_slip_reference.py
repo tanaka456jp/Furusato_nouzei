@@ -19,7 +19,7 @@ FATAL_WARNINGS = ("INVALID_", "CONFLICT_", "AMBIGUOUS_", "UNSUPPORTED_",
                   "YEAR_NOT_APPROVED")
 
 
-def make_automatic_reference(extracted, target_year):
+def make_automatic_reference(extracted, target_year, filing_trial_donation=None):
     """Return only a safe numeric hypothetical or a no-number HOLD code."""
     def hold(reason):
         return {"status": "HOLD", "reason": reason}
@@ -146,6 +146,8 @@ def make_automatic_reference(extracted, target_year):
     # housing-credit slip must never silently receive the no-credit amount.
     filing_higher = None
     filing_limit = None
+    filing_trial_amount = None
+    filing_trial_burden = None
     if not mortgage_present and model is not None:
         # Compute the tax-return pathway independently, not by copying I.
         # A source-year income-tax match and reconciled target-year resident
@@ -186,7 +188,8 @@ def make_automatic_reference(extracted, target_year):
                 resident_deductions=resident_deductions,
                 national_basic=mortgage_deductions["target_basic"],
                 municipality_class=(extracted.get("municipality_hint")
-                                    or {}).get("class", "UNCERTAIN"))
+                                    or {}).get("class", "UNCERTAIN"),
+                trial_donation=filing_trial_donation)
         except MortgageBatchScopeError as exc:
             # Only immutable, reviewed reason codes can travel to the Excel
             # bridge; never carry document text or personal identifiers.
@@ -207,11 +210,15 @@ def make_automatic_reference(extracted, target_year):
         amount = comparison["one_stop_limit"]
         filing_higher = comparison["filing_higher_limit"]
         filing_limit = comparison["filing_limit"]
+        filing_trial_amount = comparison["filing_trial_donation"]
+        filing_trial_burden = comparison["filing_trial_burden"]
         # The independent minimum after housing must use the corresponding
         # locality's *same* levy and rate trace.
         scenario_key = comparison["selected_municipality"]
         model = next(s for place, s in zip(places, scenarios)
                      if place == scenario_key)
+    if filing_trial_donation is not None and not mortgage_present:
+        return hold("FILING_TRIAL_REQUIRES_MORTGAGE_REVIEW")
     if type(amount) is not int or not 0 <= amount <= 10**9:
         return hold("ESTIMATE_INVALID")
     caveats = ["SALARY_ONLY_ASSUMED", "LOCAL_TAX_RESIDENCE_UNCONFIRMED",
@@ -266,6 +273,9 @@ def make_automatic_reference(extracted, target_year):
                           if model is not None else 0),
         "R_MODEL_LOCALITY": model_locality,
     }
-    return {"status": "AUTO_REFERENCE", "limit": amount, "filing_higher_limit": filing_higher, "filing_limit": filing_limit, "mortgage_mode": mortgage_present, "target_year": target_year,
+    return {"status": "AUTO_REFERENCE", "limit": amount, "filing_higher_limit": filing_higher, "filing_limit": filing_limit,
+            "filing_trial_donation": filing_trial_amount,
+            "filing_trial_burden": filing_trial_burden,
+            "mortgage_mode": mortgage_present, "target_year": target_year,
             "salary_income": projected_salary, "reason": ";".join(caveats),
             "report_trace": trace}
