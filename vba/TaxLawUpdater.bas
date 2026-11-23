@@ -348,11 +348,11 @@ End Function
 Public Sub ClearBatchOverview()
     With ThisWorkbook.Worksheets("一括計算一覧")
         .Unprotect
-        .Range("A6:T105").ClearContents
+        .Range("A6:V105").ClearContents
         .Rows("6:105").RowHeight = 21
         .Protect AllowFiltering:=True, UserInterfaceOnly:=True
     End With
-    ThisWorkbook.Worksheets("一括入力修正").Range("A6:AC105").ClearContents
+    ThisWorkbook.Worksheets("一括入力修正").Range("A6:AI105").ClearContents
     ' Do not leave the final exported taxpayer in the hidden report sheet
     ' after clearing/saving another case.
     With ThisWorkbook.Worksheets("自動試算根拠")
@@ -498,10 +498,17 @@ Private Sub PopulateBatchReferenceSheet(ByVal index As Long, _
         report.Range("B22").Value2 = "住民税所得割×20%が特例控除の上限"
         report.Range("B23").Value2 = "ワンストップ：" & _
             Format$(CDbl(source.Cells(rowNo, 9).Value2), "#,##0") & _
-            "円／確定申告：" & _
+            "円／確定申告・自己負担2千円以内：" & _
             IIf(Len(CStr(source.Cells(rowNo, 20).Value2)) = 0, _
                 "要確認", _
                 Format$(Val(CStr(source.Cells(rowNo, 20).Value2)), "#,##0") & "円")
+        If IsNumeric(source.Cells(rowNo, 21).Value2) And _
+           IsNumeric(source.Cells(rowNo, 22).Value2) Then
+            report.Range("B23").Value2 = CStr(report.Range("B23").Value2) & _
+                "／" & Format$(CDbl(source.Cells(rowNo, 21).Value2), "#,##0") & _
+                "円寄附を確定申告した場合の実質負担（仮）：" & _
+                Format$(CDbl(source.Cells(rowNo, 22).Value2), "#,##0") & "円"
+        End If
 
     End If
 End Sub
@@ -855,11 +862,11 @@ Private Function WriteBatchEditorInputFile(ByVal outputPath As String) As Long
     Next index
     Set file = fso.CreateTextFile(outputPath, False, False)
     file.WriteLine "PAGE" & vbTab & "RECIPIENT_NAME_HEX" & vbTab & _
-                   BatchEditFieldHeader()
+                   BatchEditFieldHeaderTrial()
     For index = 1 To total
         line = CStr(index) & vbTab & _
                EncodeRecipientForBatch(CStr(editor.Cells(index + 5, 1).Value2))
-        For col = 1 To 32
+        For col = 1 To 33
             line = line & vbTab & _
                    BatchEditedValue(editor.Cells(index + 5, col + 2), col)
         Next col
@@ -1048,6 +1055,11 @@ Private Function BatchEditFieldHeader() As String
         "EDIT_UNDER23_LIFE_ELIGIBLE_FLAG"), vbTab)
 End Function
 
+Private Function BatchEditFieldHeaderTrial() As String
+    BatchEditFieldHeaderTrial = BatchEditFieldHeader() & vbTab & _
+                               "EDIT_TRIAL_DONATION"
+End Function
+
 Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
     Dim fso As Object, inputFile As Object, target As Worksheet
     Dim rows As Collection, pieces As Variant, record As Variant
@@ -1058,6 +1070,7 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
     Dim header As String, reportHeader As String, withReport As Boolean
     Dim nameHeader As String, withName As Boolean
     Dim filingHeader As String, withFiling As Boolean
+    Dim trialEditHeader As String, withTrial As Boolean
     Dim editHeader As String, legacyEditHeader As String, withEdit As Boolean
     Dim editFieldCount As Long
     Dim editor As Worksheet, oldEdit As Variant
@@ -1082,16 +1095,21 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
     filingHeader = nameHeader & vbTab & "FILING_LIMIT"
     legacyEditHeader = filingHeader & vbTab & BatchEditFieldHeaderLegacy()
     editHeader = filingHeader & vbTab & BatchEditFieldHeader()
+    trialEditHeader = filingHeader & vbTab & BatchEditFieldHeaderTrial() & _
+                      vbTab & "FILING_TRIAL_DONATION" & _
+                      vbTab & "FILING_TRIAL_BURDEN"
     Set inputFile = fso.OpenTextFile(tsvPath, 1, False, 0)
     If inputFile.AtEndOfStream Then Err.Raise vbObjectError + 348, , "一覧データが空です。"
     header = inputFile.ReadLine
     If header <> requiredHeader And header <> reportHeader And _
        header <> nameHeader And header <> filingHeader And _
-       header <> legacyEditHeader And header <> editHeader Then
+       header <> legacyEditHeader And header <> editHeader And _
+       header <> trialEditHeader Then
         Err.Raise vbObjectError + 349, , "一覧データの形式が承認済みのものではありません。"
     End If
-    withEdit = (header = editHeader Or header = legacyEditHeader)
-    editFieldCount = IIf(header = legacyEditHeader, 27, 32)
+    withTrial = (header = trialEditHeader)
+    withEdit = (header = editHeader Or header = legacyEditHeader Or withTrial)
+    editFieldCount = IIf(withTrial, 33, IIf(header = legacyEditHeader, 27, 32))
     withFiling = (header = filingHeader Or withEdit)
     withName = (header = nameHeader Or withFiling)
     withReport = (header = reportHeader Or withName)
@@ -1099,8 +1117,9 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
     Do Until inputFile.AtEndOfStream
         line = inputFile.ReadLine
         pieces = Split(line, vbTab)
-        If UBound(pieces) <> IIf(withEdit, 19 + editFieldCount, IIf(withFiling, 19, _
-                                    IIf(withName, 18, IIf(withReport, 17, 9)))) Then
+        If UBound(pieces) <> IIf(withTrial, 21 + editFieldCount, _
+                                    IIf(withEdit, 19 + editFieldCount, IIf(withFiling, 19, _
+                                    IIf(withName, 18, IIf(withReport, 17, 9))))) Then
             Err.Raise vbObjectError + 350, , "一括一覧の列数が不正です。"
         End If
         If rows.Count >= 100 Then
@@ -1129,7 +1148,7 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
             CStr(pieces(9)) Like "*[!A-Z_]*" Then
             Err.Raise vbObjectError + 357, , "一覧の理由コードが不正です。"
         End If
-        ReDim record(1 To 52)
+        ReDim record(1 To 55)
         record(1) = "氏名未判読"
         If withName Then record(1) = DecodeRecipientNameForBatch(CStr(pieces(18)))
         For col = 1 To 8
@@ -1233,6 +1252,21 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
                 End Select
             Next col
         End If
+        If withTrial Then
+            If Len(CStr(pieces(20 + editFieldCount))) > 0 Or _
+               Len(CStr(pieces(21 + editFieldCount))) > 0 Then
+                If status <> "PROVISIONAL" Or _
+                   Len(CStr(pieces(20 + editFieldCount))) = 0 Or _
+                   Len(CStr(pieces(21 + editFieldCount))) = 0 Then _
+                    Err.Raise vbObjectError + 480, , "保留行・片側のみの試算値は使用できません。"
+                record(54) = ParseBatchNumber(CStr(pieces(20 + editFieldCount)), False)
+                record(55) = ParseBatchNumber(CStr(pieces(21 + editFieldCount)), False)
+                If record(54) < 2000 Or record(54) > 1000000000# Or _
+                   record(54) <> Fix(record(54) / 1000#) * 1000# Or _
+                   record(55) < 2000 Or record(55) > record(54) Then _
+                    Err.Raise vbObjectError + 481, , "確定申告の寄附額・自己負担額が不正です。"
+            End If
+        End If
         rows.Add record
     Loop
     inputFile.Close
@@ -1241,20 +1275,24 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
     Set target = ThisWorkbook.Worksheets("一括計算一覧")
     Set editor = ThisWorkbook.Worksheets("一括入力修正")
     target.Unprotect
-    oldEdit = editor.Range("A6:AH105").Value2
-    oldData = target.Range("A6:T105").Value2
+    oldEdit = editor.Range("A6:AI105").Value2
+    oldData = target.Range("A6:V105").Value2
     For page = 6 To 105
         oldHeights(page) = target.Rows(page).RowHeight
     Next page
     changed = True
-    target.Range("A6:T105").ClearContents
-    editor.Range("A6:AH105").ClearContents
+    target.Range("A6:V105").ClearContents
+    editor.Range("A6:AI105").ClearContents
     target.Rows("6:105").RowHeight = 21
     For index = 1 To rows.Count
         record = rows.Item(index)
         For col = 1 To 20
             target.Cells(index + 5, col).Value2 = record(col)
         Next col
+        If withTrial Then
+            target.Cells(index + 5, 21).Value2 = record(54)
+            target.Cells(index + 5, 22).Value2 = record(55)
+        End If
         If withEdit Then
             editor.Cells(index + 5, 1).Value2 = record(1)
             editor.Cells(index + 5, 2).Value2 = record(2)
@@ -1295,8 +1333,8 @@ Failed:
     If Not inputFile Is Nothing Then inputFile.Close
     If changed Then
         target.Unprotect
-        target.Range("A6:T105").Value2 = oldData
-        editor.Range("A6:AH105").Value2 = oldEdit
+        target.Range("A6:V105").Value2 = oldData
+        editor.Range("A6:AI105").Value2 = oldEdit
         For page = 6 To 105
             target.Rows(page).RowHeight = oldHeights(page)
         Next page
