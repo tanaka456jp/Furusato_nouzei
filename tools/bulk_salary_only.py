@@ -34,6 +34,7 @@ REPORT_COLUMNS = (
 ALLOWED_MODEL_LOCALITIES = ("STANDARD", "DESIGNATED", "UNCERTAIN")
 NAME_COLUMNS = ("RECIPIENT_NAME_HEX",)  # v3; never plaintext in TSV
 FILING_COLUMNS = ("FILING_LIMIT",)  # v4; optional numeric comparison only
+FILING_TRIAL_COLUMNS = ("FILING_TRIAL_DONATION", "FILING_TRIAL_BURDEN")  # v6; both-or-none
 # v5 local-only detailed editor. Salary gross/income and tax amounts are
 # ordinary input values, never totals. Only the derived G06 deduction total
 # is intentionally excluded from editing and reconstructed on recalculation.
@@ -48,7 +49,7 @@ EDIT_FIELDS = (
     "mortgage_claim_count",
     "dependent_general_count", "dependent_special_count",
     "dependent_elderly_count", "dependent_cohabiting_elderly_count",
-    "under23_life_eligible_flag",
+    "under23_life_eligible_flag", "trial_donation",
 )
 EDIT_META = ("EDIT_SOURCE_YEAR", "EDIT_TARGET_YEAR", "EDIT_MUNI_CLASS",
              "EDIT_FORMAT", "EDIT_WARNINGS")
@@ -70,7 +71,8 @@ def pack_editor_source(evidence, target_year):
                w for w in (evidence.get("warnings") or [])
                if type(w) is str and len(w) <= 64 and
                w.replace("_", "").isalnum() and w.upper() == w)[:250]},
-        **{"EDIT_" + key.upper(): fields.get(key, "") for key in EDIT_FIELDS},
+        **{"EDIT_" + key.upper(): ("" if key == "trial_donation" else fields.get(key, ""))
+           for key in EDIT_FIELDS},
     }
 
 REQUIRED = (
@@ -255,6 +257,7 @@ def all_page_rows(path: Path, target_year=None) -> list[dict]:
                 row.update({name: "" for name in REPORT_COLUMNS})
                 row["RECIPIENT_NAME_HEX"] = result.get("recipient_name_hex", "")
                 row["FILING_LIMIT"] = ""
+                row.update({key: "" for key in FILING_TRIAL_COLUMNS})
                 row.update(pack_editor_source(result, target_year))
                 if reference["status"] == "AUTO_REFERENCE":
                     row["SALARY_INCOME"] = reference["salary_income"]
@@ -271,6 +274,9 @@ def all_page_rows(path: Path, target_year=None) -> list[dict]:
                     comparison = reference.get("filing_limit")
                     if comparison is not None:
                         row["FILING_LIMIT"] = comparison
+                    if reference.get("filing_trial_donation") is not None and reference.get("filing_trial_burden") is not None:
+                        row["FILING_TRIAL_DONATION"] = reference["filing_trial_donation"]
+                        row["FILING_TRIAL_BURDEN"] = reference["filing_trial_burden"]
                     row.update(reference["report_trace"])
                 else:
                     row["REFERENCE_LIMIT"] = ""
@@ -303,6 +309,7 @@ def all_page_rows(path: Path, target_year=None) -> list[dict]:
                 row.update({name: "" for name in REPORT_COLUMNS})
                 row["RECIPIENT_NAME_HEX"] = ""
                 row["FILING_LIMIT"] = ""
+                row.update({key: "" for key in FILING_TRIAL_COLUMNS})
                 row.update({key: "" for key in EDIT_COLUMNS})
             rows.append(row)
     return rows
@@ -324,6 +331,11 @@ def write_batch_bridge(rows: list[dict], output: Path) -> None:
     if with_edit and any(any(k not in row for k in EDIT_COLUMNS) for row in rows):
         raise ValueError("PARTIAL_EDIT_SCHEMA")
     with_filing = any("FILING_LIMIT" in row for row in rows)
+    with_trial = any(any(k in row for k in FILING_TRIAL_COLUMNS) for row in rows)
+    if with_trial and (not with_edit or not with_filing or
+                       any(any(k not in row for k in FILING_TRIAL_COLUMNS)
+                           for row in rows)):
+        raise ValueError("PARTIAL_FILING_TRIAL_SCHEMA")
     if with_filing and (not with_name or
                         any("FILING_LIMIT" not in row for row in rows)):
         raise ValueError("FILING_REQUIRES_COMPLETE_NAMED_REPORT")
@@ -332,7 +344,8 @@ def write_batch_bridge(rows: list[dict], output: Path) -> None:
     columns = (COLUMNS + (REPORT_COLUMNS if with_report else ())
                + (NAME_COLUMNS if with_name else ())
                + (FILING_COLUMNS if with_filing else ())
-               + (EDIT_COLUMNS if with_edit else ()))
+               + (EDIT_COLUMNS if with_edit else ())
+               + (FILING_TRIAL_COLUMNS if with_trial else ()))
     if with_report and any(any(k not in row for k in REPORT_COLUMNS)
                            for row in rows):
         raise ValueError("PARTIAL_REPORT_SCHEMA")
@@ -382,6 +395,20 @@ def write_batch_bridge(rows: list[dict], output: Path) -> None:
                 if (comparison not in ("", None) and
                         not isinstance(row.get("REFERENCE_LIMIT"), int)):
                     raise ValueError("FILING_WITHOUT_ONE_STOP")
+            if with_trial:
+                chosen = row["FILING_TRIAL_DONATION"]
+                burden = row["FILING_TRIAL_BURDEN"]
+                if (chosen in ("", None)) != (burden in ("", None)):
+                    raise ValueError("INCOMPLETE_FILING_TRIAL_VALUES")
+                if chosen not in ("", None) and (
+                        status != "PROVISIONAL" or type(chosen) is not int or
+                        type(burden) is not int or chosen < 2000 or
+                        chosen > 10**9 or chosen % 1000 or
+                        not 2000 <= burden <= chosen or
+                        not isinstance(row.get("REFERENCE_LIMIT"), int)):
+                    raise ValueError("INVALID_FILING_TRIAL_VALUES")
+                if status == "HOLD" and chosen not in ("", None):
+                    raise ValueError("HOLD_WITH_FILING_TRIAL_VALUES")
             if with_edit:
                 if not with_filing:
                     raise ValueError("EDIT_REQUIRES_FILING")
