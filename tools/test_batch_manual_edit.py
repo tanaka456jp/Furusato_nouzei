@@ -66,6 +66,27 @@ class BatchManualEditTests(unittest.TestCase):
         self.assertNotEqual(out[0]["RECIPIENT_NAME_HEX"], out[1]["RECIPIENT_NAME_HEX"])
         self.assertEqual(out[1]["EDIT_MORTGAGE_CLAIM_COUNT"], "1")
 
+    def test_individual_trial_donation_recalculation_is_isolated(self):
+        first = data_row(1, source(mortgage=True))
+        first["EDIT_TRIAL_DONATION"] = 3_000
+        second = data_row(2, source())
+        input_file, output = self.make_files([first, second])
+        self.assertEqual(recalculate_file(input_file, output), 2)
+        with output.open(encoding="ascii", newline="") as stream:
+            results = list(csv.DictReader(stream, delimiter="\t"))
+        self.assertEqual(results[0]["STATUS"], "PROVISIONAL")
+        self.assertEqual(results[0]["FILING_TRIAL_DONATION"], "3000")
+        self.assertEqual(results[0]["FILING_TRIAL_BURDEN"], "2005")
+        self.assertEqual(results[0]["EDIT_TRIAL_DONATION"], "3000")
+        self.assertEqual(results[1]["FILING_TRIAL_DONATION"], "")
+        self.assertEqual(results[1]["FILING_TRIAL_BURDEN"], "")
+        bad = data_row(1, source(mortgage=True))
+        bad["EDIT_TRIAL_DONATION"] = 2500
+        input_file, output = self.make_files([bad])
+        with self.assertRaisesRegex(ValueError, "TRIAL_DONATION_INVALID"):
+            recalculate_file(input_file, output)
+        self.assertFalse(output.exists())
+
     def test_editing_social_insurance_derives_total_and_holds_stale_tax(self):
         row = data_row(1, source())
         row["EDIT_SOCIAL_INSURANCE"] = 1_100_000
