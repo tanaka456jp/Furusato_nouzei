@@ -1,0 +1,2150 @@
+[
+  {
+    "id": "2025-mortgage-fully-national",
+    "input": {
+      "ordinary": 5000000,
+      "shortLand": 0,
+      "longLand": 0,
+      "listedDividend": 0,
+      "generalStock": 0,
+      "listedStock": 0,
+      "futures": 0,
+      "year": 2025,
+      "nationalDeductions": 1000000,
+      "residentDeductions": 850000,
+      "personalDifference": 50000,
+      "donation": 52000,
+      "filing": "return",
+      "conditions": "reviewed",
+      "mode": "separate",
+      "housingYear": 2024,
+      "housingBalance": 20000000,
+      "housingPossible": 140000
+    },
+    "expected": {
+      "nationalApplied": [
+        1000000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentApplied": [
+        850000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalTaxable": [
+        4000000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentTaxable": [
+        4150000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalUnused": 0,
+      "residentUnused": 0,
+      "nationalBefore": 237382,
+      "residentBefore": 412500,
+      "ratio": 69580,
+      "nationalAfter": 227172,
+      "residentAfter": 372600,
+      "netCost": 1890,
+      "limit": 120000,
+      "residentBeforeParts": [
+        247500,
+        165000
+      ],
+      "residentAfterParts": [
+        223600,
+        149000
+      ],
+      "creditBefore": [
+        372500,
+        0,
+        140000,
+        0,
+        97500,
+        232500,
+        4882
+      ],
+      "creditAfter": [
+        362500,
+        0,
+        140000,
+        0,
+        97500,
+        222500,
+        4672
+      ]
+    },
+    "exact": {
+      "maximum": 121004,
+      "rounded": 121000,
+      "costAtMaximum": 2000,
+      "costNext": 2001
+    }
+  },
+  {
+    "id": "2025-mortgage-transfer",
+    "input": {
+      "ordinary": 4000000,
+      "shortLand": 0,
+      "longLand": 0,
+      "listedDividend": 0,
+      "generalStock": 0,
+      "listedStock": 0,
+      "futures": 0,
+      "year": 2025,
+      "nationalDeductions": 1100000,
+      "residentDeductions": 850000,
+      "personalDifference": 50000,
+      "donation": 52000,
+      "filing": "return",
+      "conditions": "reviewed",
+      "mode": "separate",
+      "housingYear": 2024,
+      "housingBalance": 32000000,
+      "housingPossible": 224000
+    },
+    "expected": {
+      "nationalApplied": [
+        1100000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentApplied": [
+        850000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalTaxable": [
+        2900000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentTaxable": [
+        3150000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalUnused": 0,
+      "residentUnused": 0,
+      "nationalBefore": 0,
+      "residentBefore": 281000,
+      "ratio": 79790,
+      "nationalAfter": 0,
+      "residentAfter": 231000,
+      "netCost": 2000,
+      "limit": 80000,
+      "residentBeforeParts": [
+        168600,
+        112400
+      ],
+      "residentAfterParts": [
+        138600,
+        92400
+      ],
+      "creditBefore": [
+        192500,
+        0,
+        192500,
+        31500,
+        97500,
+        0,
+        0
+      ],
+      "creditAfter": [
+        187500,
+        0,
+        187500,
+        36500,
+        97500,
+        0,
+        0
+      ]
+    },
+    "exact": {
+      "maximum": 80300,
+      "rounded": 80000,
+      "costAtMaximum": 2000,
+      "costNext": 2001
+    }
+  },
+  {
+    "id": "2025-mortgage-cap",
+    "input": {
+      "ordinary": 4000000,
+      "shortLand": 0,
+      "longLand": 0,
+      "listedDividend": 0,
+      "generalStock": 0,
+      "listedStock": 0,
+      "futures": 0,
+      "year": 2025,
+      "nationalDeductions": 1100000,
+      "residentDeductions": 850000,
+      "personalDifference": 50000,
+      "donation": 52000,
+      "filing": "return",
+      "conditions": "reviewed",
+      "mode": "separate",
+      "housingYear": 2024,
+      "housingBalance": 50000000,
+      "housingPossible": 350000
+    },
+    "expected": {
+      "nationalApplied": [
+        1100000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentApplied": [
+        850000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalTaxable": [
+        2900000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentTaxable": [
+        3150000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalUnused": 0,
+      "residentUnused": 0,
+      "nationalBefore": 0,
+      "residentBefore": 215000,
+      "ratio": 79790,
+      "nationalAfter": 0,
+      "residentAfter": 170000,
+      "netCost": 7000,
+      "limit": 3000,
+      "residentBeforeParts": [
+        129000,
+        86000
+      ],
+      "residentAfterParts": [
+        102000,
+        68000
+      ],
+      "creditBefore": [
+        192500,
+        0,
+        192500,
+        97500,
+        97500,
+        0,
+        0
+      ],
+      "creditAfter": [
+        187500,
+        0,
+        187500,
+        97500,
+        97500,
+        0,
+        0
+      ]
+    },
+    "exact": {
+      "maximum": 3700,
+      "rounded": 3000,
+      "costAtMaximum": 2000,
+      "costNext": 2001
+    }
+  },
+  {
+    "id": "2025-domestic-dividend",
+    "input": {
+      "ordinary": 5000000,
+      "shortLand": 0,
+      "longLand": 0,
+      "listedDividend": 0,
+      "generalStock": 0,
+      "listedStock": 0,
+      "futures": 0,
+      "year": 2025,
+      "nationalDeductions": 1000000,
+      "residentDeductions": 850000,
+      "personalDifference": 50000,
+      "donation": 52000,
+      "filing": "return",
+      "conditions": "reviewed",
+      "mode": "separate",
+      "domesticDividend": 375019,
+      "municipality": "designated"
+    },
+    "expected": {
+      "nationalApplied": [
+        1000000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentApplied": [
+        850000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalTaxable": [
+        4000000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentTaxable": [
+        4150000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalUnused": 0,
+      "residentUnused": 0,
+      "nationalBefore": 342033,
+      "residentBefore": 401800,
+      "ratio": 69580,
+      "nationalAfter": 331823,
+      "residentAfter": 362100,
+      "netCost": 2090,
+      "limit": 0,
+      "residentBeforeParts": [
+        321500,
+        80300
+      ],
+      "residentAfterParts": [
+        289700,
+        72400
+      ],
+      "creditBefore": [
+        372500,
+        37501,
+        0,
+        0,
+        97500,
+        334999,
+        7034
+      ],
+      "creditAfter": [
+        362500,
+        37501,
+        0,
+        0,
+        97500,
+        324999,
+        6824
+      ]
+    },
+    "exact": {
+      "maximum": 120499,
+      "rounded": 120000,
+      "costAtMaximum": 2000,
+      "costNext": 2001
+    }
+  },
+  {
+    "id": "2025-foreign-in-national",
+    "input": {
+      "ordinary": 5000000,
+      "shortLand": 0,
+      "longLand": 0,
+      "listedDividend": 0,
+      "generalStock": 0,
+      "listedStock": 0,
+      "futures": 0,
+      "year": 2025,
+      "nationalDeductions": 1000000,
+      "residentDeductions": 850000,
+      "personalDifference": 50000,
+      "donation": 52000,
+      "filing": "return",
+      "conditions": "reviewed",
+      "mode": "separate",
+      "foreignIncome": 500000,
+      "foreignTax": 8000
+    },
+    "expected": {
+      "nationalApplied": [
+        1000000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentApplied": [
+        850000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalTaxable": [
+        4000000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentTaxable": [
+        4150000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalUnused": 0,
+      "residentUnused": 0,
+      "nationalBefore": 372322,
+      "residentBefore": 412500,
+      "ratio": 69580,
+      "nationalAfter": 362112,
+      "residentAfter": 372600,
+      "netCost": 1890,
+      "limit": 120000,
+      "residentBeforeParts": [
+        247500,
+        165000
+      ],
+      "residentAfterParts": [
+        223600,
+        149000
+      ],
+      "creditBefore": [
+        372500,
+        0,
+        0,
+        0,
+        97500,
+        364500,
+        7822
+      ],
+      "creditAfter": [
+        362500,
+        0,
+        0,
+        0,
+        97500,
+        354500,
+        7612
+      ]
+    },
+    "exact": {
+      "maximum": 121004,
+      "rounded": 121000,
+      "costAtMaximum": 2000,
+      "costNext": 2001
+    }
+  },
+  {
+    "id": "2025-all-credits-with-stock",
+    "input": {
+      "ordinary": 5000000,
+      "shortLand": 0,
+      "longLand": 0,
+      "listedDividend": 0,
+      "generalStock": 0,
+      "listedStock": 1000000,
+      "futures": 0,
+      "year": 2025,
+      "nationalDeductions": 1000000,
+      "residentDeductions": 850000,
+      "personalDifference": 50000,
+      "donation": 52000,
+      "filing": "return",
+      "conditions": "reviewed",
+      "mode": "separate",
+      "housingYear": 2024,
+      "housingBalance": 28571429,
+      "housingPossible": 200000,
+      "domesticDividend": 250000,
+      "foreignIncome": 1000000,
+      "foreignTax": 10000
+    },
+    "expected": {
+      "nationalApplied": [
+        1000000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentApplied": [
+        850000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalTaxable": [
+        4000000,
+        0,
+        0,
+        0,
+        0,
+        1000000,
+        0
+      ],
+      "residentTaxable": [
+        4150000,
+        0,
+        0,
+        0,
+        0,
+        1000000,
+        0
+      ],
+      "nationalUnused": 0,
+      "residentUnused": 0,
+      "nationalBefore": 293747,
+      "residentBefore": 455500,
+      "ratio": 69580,
+      "nationalAfter": 283537,
+      "residentAfter": 415600,
+      "netCost": 1890,
+      "limit": 135000,
+      "residentBeforeParts": [
+        273300,
+        182200
+      ],
+      "residentAfterParts": [
+        249400,
+        166200
+      ],
+      "creditBefore": [
+        522500,
+        25000,
+        200000,
+        0,
+        97500,
+        287500,
+        6247
+      ],
+      "creditAfter": [
+        512500,
+        25000,
+        200000,
+        0,
+        97500,
+        277500,
+        6037
+      ]
+    },
+    "exact": {
+      "maximum": 135363,
+      "rounded": 135000,
+      "costAtMaximum": 2000,
+      "costNext": 2001
+    }
+  },
+  {
+    "id": "2025-mortgage-zero-national-boundary",
+    "input": {
+      "ordinary": 5000000,
+      "shortLand": 0,
+      "longLand": 0,
+      "listedDividend": 0,
+      "generalStock": 0,
+      "listedStock": 0,
+      "futures": 0,
+      "year": 2025,
+      "nationalDeductions": 1000000,
+      "residentDeductions": 850000,
+      "personalDifference": 50000,
+      "donation": 117001,
+      "filing": "return",
+      "conditions": "reviewed",
+      "mode": "separate",
+      "housingYear": 2024,
+      "housingBalance": 49928572,
+      "housingPossible": 349500
+    },
+    "expected": {
+      "nationalApplied": [
+        1000000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentApplied": [
+        850000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalTaxable": [
+        4000000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentTaxable": [
+        4150000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalUnused": 0,
+      "residentUnused": 0,
+      "nationalBefore": 23483,
+      "residentBefore": 412500,
+      "ratio": 69580,
+      "nationalAfter": 0,
+      "residentAfter": 320700,
+      "netCost": 1718,
+      "limit": 120000,
+      "residentBeforeParts": [
+        247500,
+        165000
+      ],
+      "residentAfterParts": [
+        192400,
+        128300
+      ],
+      "creditBefore": [
+        372500,
+        0,
+        349500,
+        0,
+        97500,
+        23000,
+        483
+      ],
+      "creditAfter": [
+        349300,
+        0,
+        349300,
+        200,
+        97500,
+        0,
+        0
+      ]
+    },
+    "exact": {
+      "maximum": 120783,
+      "rounded": 120000,
+      "costAtMaximum": 2000,
+      "costNext": 2001
+    }
+  },
+  {
+    "id": "2026-mortgage-fully-national",
+    "input": {
+      "ordinary": 5000000,
+      "shortLand": 0,
+      "longLand": 0,
+      "listedDividend": 0,
+      "generalStock": 0,
+      "listedStock": 0,
+      "futures": 0,
+      "year": 2026,
+      "nationalDeductions": 1000000,
+      "residentDeductions": 850000,
+      "personalDifference": 50000,
+      "donation": 52000,
+      "filing": "return",
+      "conditions": "reviewed",
+      "mode": "separate",
+      "housingYear": 2024,
+      "housingBalance": 20000000,
+      "housingPossible": 140000
+    },
+    "expected": {
+      "nationalApplied": [
+        1000000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentApplied": [
+        850000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalTaxable": [
+        4000000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentTaxable": [
+        4150000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalUnused": 0,
+      "residentUnused": 0,
+      "nationalBefore": 237382,
+      "residentBefore": 412500,
+      "ratio": 69580,
+      "nationalAfter": 227172,
+      "residentAfter": 372600,
+      "netCost": 1890,
+      "limit": 120000,
+      "residentBeforeParts": [
+        247500,
+        165000
+      ],
+      "residentAfterParts": [
+        223600,
+        149000
+      ],
+      "creditBefore": [
+        372500,
+        0,
+        140000,
+        0,
+        97500,
+        232500,
+        4882
+      ],
+      "creditAfter": [
+        362500,
+        0,
+        140000,
+        0,
+        97500,
+        222500,
+        4672
+      ]
+    },
+    "exact": {
+      "maximum": 121004,
+      "rounded": 121000,
+      "costAtMaximum": 2000,
+      "costNext": 2001
+    }
+  },
+  {
+    "id": "2026-mortgage-transfer",
+    "input": {
+      "ordinary": 4000000,
+      "shortLand": 0,
+      "longLand": 0,
+      "listedDividend": 0,
+      "generalStock": 0,
+      "listedStock": 0,
+      "futures": 0,
+      "year": 2026,
+      "nationalDeductions": 1100000,
+      "residentDeductions": 850000,
+      "personalDifference": 50000,
+      "donation": 52000,
+      "filing": "return",
+      "conditions": "reviewed",
+      "mode": "separate",
+      "housingYear": 2024,
+      "housingBalance": 32000000,
+      "housingPossible": 224000
+    },
+    "expected": {
+      "nationalApplied": [
+        1100000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentApplied": [
+        850000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalTaxable": [
+        2900000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentTaxable": [
+        3150000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalUnused": 0,
+      "residentUnused": 0,
+      "nationalBefore": 0,
+      "residentBefore": 281000,
+      "ratio": 79790,
+      "nationalAfter": 0,
+      "residentAfter": 231000,
+      "netCost": 2000,
+      "limit": 80000,
+      "residentBeforeParts": [
+        168600,
+        112400
+      ],
+      "residentAfterParts": [
+        138600,
+        92400
+      ],
+      "creditBefore": [
+        192500,
+        0,
+        192500,
+        31500,
+        97500,
+        0,
+        0
+      ],
+      "creditAfter": [
+        187500,
+        0,
+        187500,
+        36500,
+        97500,
+        0,
+        0
+      ]
+    },
+    "exact": {
+      "maximum": 80300,
+      "rounded": 80000,
+      "costAtMaximum": 2000,
+      "costNext": 2001
+    }
+  },
+  {
+    "id": "2026-mortgage-cap",
+    "input": {
+      "ordinary": 4000000,
+      "shortLand": 0,
+      "longLand": 0,
+      "listedDividend": 0,
+      "generalStock": 0,
+      "listedStock": 0,
+      "futures": 0,
+      "year": 2026,
+      "nationalDeductions": 1100000,
+      "residentDeductions": 850000,
+      "personalDifference": 50000,
+      "donation": 52000,
+      "filing": "return",
+      "conditions": "reviewed",
+      "mode": "separate",
+      "housingYear": 2024,
+      "housingBalance": 50000000,
+      "housingPossible": 350000
+    },
+    "expected": {
+      "nationalApplied": [
+        1100000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentApplied": [
+        850000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalTaxable": [
+        2900000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentTaxable": [
+        3150000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalUnused": 0,
+      "residentUnused": 0,
+      "nationalBefore": 0,
+      "residentBefore": 215000,
+      "ratio": 79790,
+      "nationalAfter": 0,
+      "residentAfter": 170000,
+      "netCost": 7000,
+      "limit": 3000,
+      "residentBeforeParts": [
+        129000,
+        86000
+      ],
+      "residentAfterParts": [
+        102000,
+        68000
+      ],
+      "creditBefore": [
+        192500,
+        0,
+        192500,
+        97500,
+        97500,
+        0,
+        0
+      ],
+      "creditAfter": [
+        187500,
+        0,
+        187500,
+        97500,
+        97500,
+        0,
+        0
+      ]
+    },
+    "exact": {
+      "maximum": 3700,
+      "rounded": 3000,
+      "costAtMaximum": 2000,
+      "costNext": 2001
+    }
+  },
+  {
+    "id": "2026-domestic-dividend",
+    "input": {
+      "ordinary": 5000000,
+      "shortLand": 0,
+      "longLand": 0,
+      "listedDividend": 0,
+      "generalStock": 0,
+      "listedStock": 0,
+      "futures": 0,
+      "year": 2026,
+      "nationalDeductions": 1000000,
+      "residentDeductions": 850000,
+      "personalDifference": 50000,
+      "donation": 52000,
+      "filing": "return",
+      "conditions": "reviewed",
+      "mode": "separate",
+      "domesticDividend": 375019,
+      "municipality": "designated"
+    },
+    "expected": {
+      "nationalApplied": [
+        1000000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentApplied": [
+        850000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalTaxable": [
+        4000000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentTaxable": [
+        4150000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalUnused": 0,
+      "residentUnused": 0,
+      "nationalBefore": 342033,
+      "residentBefore": 401800,
+      "ratio": 69580,
+      "nationalAfter": 331823,
+      "residentAfter": 362100,
+      "netCost": 2090,
+      "limit": 0,
+      "residentBeforeParts": [
+        321500,
+        80300
+      ],
+      "residentAfterParts": [
+        289700,
+        72400
+      ],
+      "creditBefore": [
+        372500,
+        37501,
+        0,
+        0,
+        97500,
+        334999,
+        7034
+      ],
+      "creditAfter": [
+        362500,
+        37501,
+        0,
+        0,
+        97500,
+        324999,
+        6824
+      ]
+    },
+    "exact": {
+      "maximum": 120499,
+      "rounded": 120000,
+      "costAtMaximum": 2000,
+      "costNext": 2001
+    }
+  },
+  {
+    "id": "2026-foreign-in-national",
+    "input": {
+      "ordinary": 5000000,
+      "shortLand": 0,
+      "longLand": 0,
+      "listedDividend": 0,
+      "generalStock": 0,
+      "listedStock": 0,
+      "futures": 0,
+      "year": 2026,
+      "nationalDeductions": 1000000,
+      "residentDeductions": 850000,
+      "personalDifference": 50000,
+      "donation": 52000,
+      "filing": "return",
+      "conditions": "reviewed",
+      "mode": "separate",
+      "foreignIncome": 500000,
+      "foreignTax": 8000
+    },
+    "expected": {
+      "nationalApplied": [
+        1000000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentApplied": [
+        850000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalTaxable": [
+        4000000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentTaxable": [
+        4150000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalUnused": 0,
+      "residentUnused": 0,
+      "nationalBefore": 372322,
+      "residentBefore": 412500,
+      "ratio": 69580,
+      "nationalAfter": 362112,
+      "residentAfter": 372600,
+      "netCost": 1890,
+      "limit": 120000,
+      "residentBeforeParts": [
+        247500,
+        165000
+      ],
+      "residentAfterParts": [
+        223600,
+        149000
+      ],
+      "creditBefore": [
+        372500,
+        0,
+        0,
+        0,
+        97500,
+        364500,
+        7822
+      ],
+      "creditAfter": [
+        362500,
+        0,
+        0,
+        0,
+        97500,
+        354500,
+        7612
+      ]
+    },
+    "exact": {
+      "maximum": 121004,
+      "rounded": 121000,
+      "costAtMaximum": 2000,
+      "costNext": 2001
+    }
+  },
+  {
+    "id": "2026-all-credits-with-stock",
+    "input": {
+      "ordinary": 5000000,
+      "shortLand": 0,
+      "longLand": 0,
+      "listedDividend": 0,
+      "generalStock": 0,
+      "listedStock": 1000000,
+      "futures": 0,
+      "year": 2026,
+      "nationalDeductions": 1000000,
+      "residentDeductions": 850000,
+      "personalDifference": 50000,
+      "donation": 52000,
+      "filing": "return",
+      "conditions": "reviewed",
+      "mode": "separate",
+      "housingYear": 2024,
+      "housingBalance": 28571429,
+      "housingPossible": 200000,
+      "domesticDividend": 250000,
+      "foreignIncome": 1000000,
+      "foreignTax": 10000
+    },
+    "expected": {
+      "nationalApplied": [
+        1000000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentApplied": [
+        850000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalTaxable": [
+        4000000,
+        0,
+        0,
+        0,
+        0,
+        1000000,
+        0
+      ],
+      "residentTaxable": [
+        4150000,
+        0,
+        0,
+        0,
+        0,
+        1000000,
+        0
+      ],
+      "nationalUnused": 0,
+      "residentUnused": 0,
+      "nationalBefore": 293747,
+      "residentBefore": 455500,
+      "ratio": 69580,
+      "nationalAfter": 283537,
+      "residentAfter": 415600,
+      "netCost": 1890,
+      "limit": 135000,
+      "residentBeforeParts": [
+        273300,
+        182200
+      ],
+      "residentAfterParts": [
+        249400,
+        166200
+      ],
+      "creditBefore": [
+        522500,
+        25000,
+        200000,
+        0,
+        97500,
+        287500,
+        6247
+      ],
+      "creditAfter": [
+        512500,
+        25000,
+        200000,
+        0,
+        97500,
+        277500,
+        6037
+      ]
+    },
+    "exact": {
+      "maximum": 135363,
+      "rounded": 135000,
+      "costAtMaximum": 2000,
+      "costNext": 2001
+    }
+  },
+  {
+    "id": "2026-mortgage-zero-national-boundary",
+    "input": {
+      "ordinary": 5000000,
+      "shortLand": 0,
+      "longLand": 0,
+      "listedDividend": 0,
+      "generalStock": 0,
+      "listedStock": 0,
+      "futures": 0,
+      "year": 2026,
+      "nationalDeductions": 1000000,
+      "residentDeductions": 850000,
+      "personalDifference": 50000,
+      "donation": 117001,
+      "filing": "return",
+      "conditions": "reviewed",
+      "mode": "separate",
+      "housingYear": 2024,
+      "housingBalance": 49928572,
+      "housingPossible": 349500
+    },
+    "expected": {
+      "nationalApplied": [
+        1000000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentApplied": [
+        850000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalTaxable": [
+        4000000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentTaxable": [
+        4150000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalUnused": 0,
+      "residentUnused": 0,
+      "nationalBefore": 23483,
+      "residentBefore": 412500,
+      "ratio": 69580,
+      "nationalAfter": 0,
+      "residentAfter": 320700,
+      "netCost": 1718,
+      "limit": 120000,
+      "residentBeforeParts": [
+        247500,
+        165000
+      ],
+      "residentAfterParts": [
+        192400,
+        128300
+      ],
+      "creditBefore": [
+        372500,
+        0,
+        349500,
+        0,
+        97500,
+        23000,
+        483
+      ],
+      "creditAfter": [
+        349300,
+        0,
+        349300,
+        200,
+        97500,
+        0,
+        0
+      ]
+    },
+    "exact": {
+      "maximum": 120783,
+      "rounded": 120000,
+      "costAtMaximum": 2000,
+      "costNext": 2001
+    }
+  },
+  {
+    "id": "2026-cap-basis-occupancy-2025",
+    "input": {
+      "ordinary": 3800000,
+      "shortLand": 0,
+      "longLand": 0,
+      "listedDividend": 0,
+      "generalStock": 0,
+      "listedStock": 0,
+      "futures": 0,
+      "year": 2026,
+      "nationalDeductions": 1040000,
+      "residentDeductions": 850000,
+      "personalDifference": 50000,
+      "donation": 902000,
+      "filing": "return",
+      "conditions": "reviewed",
+      "mode": "separate",
+      "housingYear": 2025,
+      "housingBalance": 21000000,
+      "housingPossible": 147000
+    },
+    "expected": {
+      "nationalApplied": [
+        1040000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentApplied": [
+        850000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalTaxable": [
+        2760000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentTaxable": [
+        2950000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalUnused": 0,
+      "residentUnused": 0,
+      "nationalBefore": 32161,
+      "residentBefore": 292500,
+      "ratio": 79790,
+      "nationalAfter": 0,
+      "residentAfter": 90000,
+      "netCost": 667339,
+      "limit": 75000,
+      "residentBeforeParts": [
+        175500,
+        117000
+      ],
+      "residentAfterParts": [
+        54000,
+        36000
+      ],
+      "creditBefore": [
+        178500,
+        0,
+        147000,
+        0,
+        97500,
+        31500,
+        661
+      ],
+      "creditAfter": [
+        93000,
+        0,
+        93000,
+        54000,
+        97500,
+        0,
+        0
+      ]
+    },
+    "exact": {
+      "maximum": 75555,
+      "rounded": 75000,
+      "costAtMaximum": 2000,
+      "costNext": 2001
+    }
+  },
+  {
+    "id": "2026-cap-basis-occupancy-2026",
+    "input": {
+      "ordinary": 3800000,
+      "shortLand": 0,
+      "longLand": 0,
+      "listedDividend": 0,
+      "generalStock": 0,
+      "listedStock": 0,
+      "futures": 0,
+      "year": 2026,
+      "nationalDeductions": 1040000,
+      "residentDeductions": 850000,
+      "personalDifference": 50000,
+      "donation": 902000,
+      "filing": "return",
+      "conditions": "reviewed",
+      "mode": "separate",
+      "housingYear": 2026,
+      "housingBalance": 21000000,
+      "housingPossible": 147000
+    },
+    "expected": {
+      "nationalApplied": [
+        1040000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentApplied": [
+        850000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalTaxable": [
+        2760000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentTaxable": [
+        2950000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalUnused": 0,
+      "residentUnused": 0,
+      "nationalBefore": 32161,
+      "residentBefore": 292500,
+      "ratio": 79790,
+      "nationalAfter": 0,
+      "residentAfter": 90000,
+      "netCost": 667339,
+      "limit": 75000,
+      "residentBeforeParts": [
+        175500,
+        117000
+      ],
+      "residentAfterParts": [
+        54000,
+        36000
+      ],
+      "creditBefore": [
+        178500,
+        0,
+        147000,
+        0,
+        97500,
+        31500,
+        661
+      ],
+      "creditAfter": [
+        93000,
+        0,
+        93000,
+        54000,
+        93000,
+        0,
+        0
+      ]
+    },
+    "exact": {
+      "maximum": 75555,
+      "rounded": 75000,
+      "costAtMaximum": 2000,
+      "costNext": 2001
+    }
+  },
+  {
+    "id": "2026-new-housing-zero-before-credit-standard",
+    "input": {
+      "ordinary": 3000000,
+      "shortLand": 0,
+      "longLand": 0,
+      "listedDividend": 0,
+      "generalStock": 0,
+      "listedStock": 0,
+      "futures": 0,
+      "year": 2026,
+      "nationalDeductions": 1500000,
+      "residentDeductions": 500000,
+      "personalDifference": 50000,
+      "donation": 30000,
+      "filing": "return",
+      "conditions": "reviewed",
+      "mode": "separate",
+      "municipality": "standard",
+      "domesticDividend": 1000000,
+      "housingYear": 2026,
+      "housingBalance": 1500000,
+      "housingPossible": 10500
+    },
+    "expected": {
+      "nationalApplied": [
+        1500000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentApplied": [
+        500000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalTaxable": [
+        1500000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentTaxable": [
+        2500000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalUnused": 0,
+      "residentUnused": 0,
+      "nationalBefore": 0,
+      "residentBefore": 219500,
+      "ratio": 84895,
+      "nationalAfter": 0,
+      "residentAfter": 192800,
+      "netCost": 3300,
+      "limit": 5000,
+      "residentBeforeParts": [
+        131700,
+        87800
+      ],
+      "residentAfterParts": [
+        115700,
+        77100
+      ],
+      "creditBefore": [
+        75000,
+        75000,
+        0,
+        0,
+        75000,
+        0,
+        0
+      ],
+      "creditAfter": [
+        73600,
+        73600,
+        0,
+        0,
+        73600,
+        0,
+        0
+      ]
+    },
+    "exact": {
+      "maximum": 5700,
+      "rounded": 5000,
+      "costAtMaximum": 2000,
+      "costNext": 2001
+    }
+  },
+  {
+    "id": "2026-new-housing-zero-before-credit-designated",
+    "input": {
+      "ordinary": 3000000,
+      "shortLand": 0,
+      "longLand": 0,
+      "listedDividend": 0,
+      "generalStock": 0,
+      "listedStock": 0,
+      "futures": 0,
+      "year": 2026,
+      "nationalDeductions": 1500000,
+      "residentDeductions": 500000,
+      "personalDifference": 50000,
+      "donation": 30000,
+      "filing": "return",
+      "conditions": "reviewed",
+      "mode": "separate",
+      "municipality": "designated",
+      "domesticDividend": 1000000,
+      "housingYear": 2026,
+      "housingBalance": 1500000,
+      "housingPossible": 10500
+    },
+    "expected": {
+      "nationalApplied": [
+        1500000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentApplied": [
+        500000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalTaxable": [
+        1500000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentTaxable": [
+        2500000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalUnused": 0,
+      "residentUnused": 0,
+      "nationalBefore": 0,
+      "residentBefore": 219500,
+      "ratio": 84895,
+      "nationalAfter": 0,
+      "residentAfter": 192800,
+      "netCost": 3300,
+      "limit": 4000,
+      "residentBeforeParts": [
+        175600,
+        43900
+      ],
+      "residentAfterParts": [
+        154300,
+        38500
+      ],
+      "creditBefore": [
+        75000,
+        75000,
+        0,
+        0,
+        75000,
+        0,
+        0
+      ],
+      "creditAfter": [
+        73600,
+        73600,
+        0,
+        0,
+        73600,
+        0,
+        0
+      ]
+    },
+    "exact": {
+      "maximum": 5700,
+      "rounded": 5000,
+      "costAtMaximum": 2000,
+      "costNext": 2001
+    }
+  },
+  {
+    "id": "2026-national-boundary-116000",
+    "input": {
+      "ordinary": 5000000,
+      "shortLand": 0,
+      "longLand": 0,
+      "listedDividend": 0,
+      "generalStock": 0,
+      "listedStock": 0,
+      "futures": 0,
+      "year": 2026,
+      "nationalDeductions": 1000000,
+      "residentDeductions": 850000,
+      "personalDifference": 50000,
+      "donation": 116000,
+      "filing": "return",
+      "conditions": "reviewed",
+      "mode": "separate",
+      "housingYear": 2025,
+      "housingBalance": 49928572,
+      "housingPossible": 349500
+    },
+    "expected": {
+      "nationalApplied": [
+        1000000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentApplied": [
+        850000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalTaxable": [
+        4000000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentTaxable": [
+        4150000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalUnused": 0,
+      "residentUnused": 0,
+      "nationalBefore": 23483,
+      "residentBefore": 412500,
+      "ratio": 69580,
+      "nationalAfter": 204,
+      "residentAfter": 321700,
+      "netCost": 1921,
+      "limit": 120000,
+      "residentBeforeParts": [
+        247500,
+        165000
+      ],
+      "residentAfterParts": [
+        193000,
+        128700
+      ],
+      "creditBefore": [
+        372500,
+        0,
+        349500,
+        0,
+        97500,
+        23000,
+        483
+      ],
+      "creditAfter": [
+        349700,
+        0,
+        349500,
+        0,
+        97500,
+        200,
+        4
+      ]
+    },
+    "exact": {
+      "maximum": 120783,
+      "rounded": 120000,
+      "costAtMaximum": 2000,
+      "costNext": 2001
+    }
+  },
+  {
+    "id": "2026-national-boundary-116001",
+    "input": {
+      "ordinary": 5000000,
+      "shortLand": 0,
+      "longLand": 0,
+      "listedDividend": 0,
+      "generalStock": 0,
+      "listedStock": 0,
+      "futures": 0,
+      "year": 2026,
+      "nationalDeductions": 1000000,
+      "residentDeductions": 850000,
+      "personalDifference": 50000,
+      "donation": 116001,
+      "filing": "return",
+      "conditions": "reviewed",
+      "mode": "separate",
+      "housingYear": 2025,
+      "housingBalance": 49928572,
+      "housingPossible": 349500
+    },
+    "expected": {
+      "nationalApplied": [
+        1000000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentApplied": [
+        850000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalTaxable": [
+        4000000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentTaxable": [
+        4150000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalUnused": 0,
+      "residentUnused": 0,
+      "nationalBefore": 23483,
+      "residentBefore": 412500,
+      "ratio": 69580,
+      "nationalAfter": 0,
+      "residentAfter": 321700,
+      "netCost": 1718,
+      "limit": 120000,
+      "residentBeforeParts": [
+        247500,
+        165000
+      ],
+      "residentAfterParts": [
+        193000,
+        128700
+      ],
+      "creditBefore": [
+        372500,
+        0,
+        349500,
+        0,
+        97500,
+        23000,
+        483
+      ],
+      "creditAfter": [
+        349500,
+        0,
+        349500,
+        0,
+        97500,
+        0,
+        0
+      ]
+    },
+    "exact": {
+      "maximum": 120783,
+      "rounded": 120000,
+      "costAtMaximum": 2000,
+      "costNext": 2001
+    }
+  },
+  {
+    "id": "2026-national-boundary-117001",
+    "input": {
+      "ordinary": 5000000,
+      "shortLand": 0,
+      "longLand": 0,
+      "listedDividend": 0,
+      "generalStock": 0,
+      "listedStock": 0,
+      "futures": 0,
+      "year": 2026,
+      "nationalDeductions": 1000000,
+      "residentDeductions": 850000,
+      "personalDifference": 50000,
+      "donation": 117001,
+      "filing": "return",
+      "conditions": "reviewed",
+      "mode": "separate",
+      "housingYear": 2025,
+      "housingBalance": 49928572,
+      "housingPossible": 349500
+    },
+    "expected": {
+      "nationalApplied": [
+        1000000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentApplied": [
+        850000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalTaxable": [
+        4000000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentTaxable": [
+        4150000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalUnused": 0,
+      "residentUnused": 0,
+      "nationalBefore": 23483,
+      "residentBefore": 412500,
+      "ratio": 69580,
+      "nationalAfter": 0,
+      "residentAfter": 320700,
+      "netCost": 1718,
+      "limit": 120000,
+      "residentBeforeParts": [
+        247500,
+        165000
+      ],
+      "residentAfterParts": [
+        192400,
+        128300
+      ],
+      "creditBefore": [
+        372500,
+        0,
+        349500,
+        0,
+        97500,
+        23000,
+        483
+      ],
+      "creditAfter": [
+        349300,
+        0,
+        349300,
+        200,
+        97500,
+        0,
+        0
+      ]
+    },
+    "exact": {
+      "maximum": 120783,
+      "rounded": 120000,
+      "costAtMaximum": 2000,
+      "costNext": 2001
+    }
+  }
+]

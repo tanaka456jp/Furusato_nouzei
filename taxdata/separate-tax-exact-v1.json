@@ -1,0 +1,296 @@
+[
+  {
+    "id": "2025-required-1",
+    "maximum": 55771,
+    "rounded": 55000,
+    "costAtMaximum": 2000,
+    "costNext": 2001
+  },
+  {
+    "id": "2025-required-2",
+    "maximum": 2000,
+    "rounded": 2000,
+    "costAtMaximum": 2000,
+    "costNext": 2001
+  },
+  {
+    "id": "2025-required-3",
+    "maximum": 69215,
+    "rounded": 69000,
+    "costAtMaximum": 2000,
+    "costNext": 2001
+  },
+  {
+    "id": "2025-required-4",
+    "maximum": 62543,
+    "rounded": 62000,
+    "costAtMaximum": 2000,
+    "costNext": 2001
+  },
+  {
+    "id": "2025-required-5",
+    "maximum": 55771,
+    "rounded": 55000,
+    "costAtMaximum": 2000,
+    "costNext": 2001
+  },
+  {
+    "id": "2025-required-6",
+    "maximum": 2000,
+    "rounded": 2000,
+    "costAtMaximum": 2000,
+    "costNext": 2001
+  },
+  {
+    "id": "2025-required-7",
+    "maximum": 2000,
+    "rounded": 2000,
+    "costAtMaximum": 2000,
+    "costNext": 2001
+  },
+  {
+    "id": "2025-required-8",
+    "maximum": 110617,
+    "rounded": 110000,
+    "costAtMaximum": 2000,
+    "costNext": 2001
+  },
+  {
+    "id": "2025-overflow-minus-one",
+    "maximum": 69215,
+    "rounded": 69000,
+    "costAtMaximum": 2000,
+    "costNext": 2001
+  },
+  {
+    "id": "2025-overflow-plus-one",
+    "maximum": 68108,
+    "rounded": 68000,
+    "costAtMaximum": 2000,
+    "costNext": 2001
+  },
+  {
+    "id": "2025-short-stock-futures",
+    "maximum": 2653,
+    "rounded": 2000,
+    "costAtMaximum": 2000,
+    "costNext": 2001
+  },
+  {
+    "id": "2025-exhausted-short",
+    "maximum": 3507,
+    "rounded": 3000,
+    "costAtMaximum": 2000,
+    "costNext": 2001
+  },
+  {
+    "id": "2025-long-land",
+    "maximum": 57277,
+    "rounded": 57000,
+    "costAtMaximum": 2000,
+    "costNext": 2001
+  },
+  {
+    "id": "2025-declared-dividend",
+    "maximum": 57277,
+    "rounded": 57000,
+    "costAtMaximum": 2000,
+    "costNext": 2001
+  },
+  {
+    "id": "2025-tax-bracket-below",
+    "maximum": 107560,
+    "rounded": 107000,
+    "costAtMaximum": 2000,
+    "costNext": 2001
+  },
+  {
+    "id": "2025-tax-bracket-above",
+    "maximum": 107462,
+    "rounded": 107000,
+    "costAtMaximum": 2000,
+    "costNext": 2001
+  },
+  {
+    "id": "2025-ratio-below-zero",
+    "maximum": 73373,
+    "rounded": 73000,
+    "costAtMaximum": 2000,
+    "costNext": 2001
+  },
+  {
+    "id": "2025-ratio-exact-zero",
+    "maximum": 73827,
+    "rounded": 73000,
+    "costAtMaximum": 2000,
+    "costNext": 2001
+  },
+  {
+    "id": "2025-income-donation-caps",
+    "maximum": 56424,
+    "rounded": 56000,
+    "costAtMaximum": 2000,
+    "costNext": 2001
+  },
+  {
+    "id": "2025-credit-ceiling-before",
+    "maximum": 55771,
+    "rounded": 55000,
+    "costAtMaximum": 2000,
+    "costNext": 2001
+  },
+  {
+    "id": "2025-credit-ceiling-after",
+    "maximum": 55771,
+    "rounded": 55000,
+    "costAtMaximum": 2000,
+    "costNext": 2001
+  },
+  {
+    "id": "2026-required-1",
+    "maximum": 55771,
+    "rounded": 55000,
+    "costAtMaximum": 2000,
+    "costNext": 2001
+  },
+  {
+    "id": "2026-required-2",
+    "maximum": 2000,
+    "rounded": 2000,
+    "costAtMaximum": 2000,
+    "costNext": 2001
+  },
+  {
+    "id": "2026-required-3",
+    "maximum": 69215,
+    "rounded": 69000,
+    "costAtMaximum": 2000,
+    "costNext": 2001
+  },
+  {
+    "id": "2026-required-4",
+    "maximum": 62543,
+    "rounded": 62000,
+    "costAtMaximum": 2000,
+    "costNext": 2001
+  },
+  {
+    "id": "2026-required-5",
+    "maximum": 55771,
+    "rounded": 55000,
+    "costAtMaximum": 2000,
+    "costNext": 2001
+  },
+  {
+    "id": "2026-required-6",
+    "maximum": 2000,
+    "rounded": 2000,
+    "costAtMaximum": 2000,
+    "costNext": 2001
+  },
+  {
+    "id": "2026-required-7",
+    "maximum": 2000,
+    "rounded": 2000,
+    "costAtMaximum": 2000,
+    "costNext": 2001
+  },
+  {
+    "id": "2026-required-8",
+    "maximum": 110617,
+    "rounded": 110000,
+    "costAtMaximum": 2000,
+    "costNext": 2001
+  },
+  {
+    "id": "2026-overflow-minus-one",
+    "maximum": 69215,
+    "rounded": 69000,
+    "costAtMaximum": 2000,
+    "costNext": 2001
+  },
+  {
+    "id": "2026-overflow-plus-one",
+    "maximum": 68108,
+    "rounded": 68000,
+    "costAtMaximum": 2000,
+    "costNext": 2001
+  },
+  {
+    "id": "2026-short-stock-futures",
+    "maximum": 2653,
+    "rounded": 2000,
+    "costAtMaximum": 2000,
+    "costNext": 2001
+  },
+  {
+    "id": "2026-exhausted-short",
+    "maximum": 3507,
+    "rounded": 3000,
+    "costAtMaximum": 2000,
+    "costNext": 2001
+  },
+  {
+    "id": "2026-long-land",
+    "maximum": 57277,
+    "rounded": 57000,
+    "costAtMaximum": 2000,
+    "costNext": 2001
+  },
+  {
+    "id": "2026-declared-dividend",
+    "maximum": 57277,
+    "rounded": 57000,
+    "costAtMaximum": 2000,
+    "costNext": 2001
+  },
+  {
+    "id": "2026-tax-bracket-below",
+    "maximum": 107560,
+    "rounded": 107000,
+    "costAtMaximum": 2000,
+    "costNext": 2001
+  },
+  {
+    "id": "2026-tax-bracket-above",
+    "maximum": 107462,
+    "rounded": 107000,
+    "costAtMaximum": 2000,
+    "costNext": 2001
+  },
+  {
+    "id": "2026-ratio-below-zero",
+    "maximum": 74526,
+    "rounded": 74000,
+    "costAtMaximum": 2000,
+    "costNext": 2001
+  },
+  {
+    "id": "2026-ratio-exact-zero",
+    "maximum": 75034,
+    "rounded": 75000,
+    "costAtMaximum": 2000,
+    "costNext": 2001
+  },
+  {
+    "id": "2026-income-donation-caps",
+    "maximum": 56424,
+    "rounded": 56000,
+    "costAtMaximum": 2000,
+    "costNext": 2001
+  },
+  {
+    "id": "2026-credit-ceiling-before",
+    "maximum": 55771,
+    "rounded": 55000,
+    "costAtMaximum": 2000,
+    "costNext": 2001
+  },
+  {
+    "id": "2026-credit-ceiling-after",
+    "maximum": 55771,
+    "rounded": 55000,
+    "costAtMaximum": 2000,
+    "costNext": 2001
+  }
+]

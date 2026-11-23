@@ -1,0 +1,576 @@
+[
+  {
+    "id": "2025-required-1-designated",
+    "input": {
+      "ordinary": 0,
+      "shortLand": 0,
+      "longLand": 0,
+      "listedDividend": 0,
+      "generalStock": 0,
+      "listedStock": 5000000,
+      "futures": 0,
+      "year": 2025,
+      "nationalDeductions": 1000000,
+      "residentDeductions": 1000000,
+      "personalDifference": 50000,
+      "donation": 30000,
+      "filing": "return",
+      "conditions": "reviewed",
+      "mode": "separate",
+      "municipality": "designated"
+    },
+    "expected": {
+      "nationalApplied": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        1000000,
+        0
+      ],
+      "residentApplied": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        1000000,
+        0
+      ],
+      "nationalTaxable": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        4000000,
+        0
+      ],
+      "residentTaxable": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        4000000,
+        0
+      ],
+      "nationalUnused": 0,
+      "residentUnused": 0,
+      "nationalBefore": 612600,
+      "residentBefore": 200000,
+      "ratio": 74685,
+      "nationalAfter": 608311,
+      "residentAfter": 176200,
+      "netCost": 1911,
+      "limit": 55000,
+      "residentBeforeParts": [
+        160000,
+        40000
+      ],
+      "residentAfterParts": [
+        141000,
+        35200
+      ]
+    },
+    "exact": {
+      "maximum": 55771,
+      "rounded": 55000,
+      "costAtMaximum": 2000,
+      "costNext": 2001
+    }
+  },
+  {
+    "id": "2025-short-stock-futures-designated",
+    "input": {
+      "ordinary": 2000000,
+      "shortLand": 700000,
+      "longLand": 0,
+      "listedDividend": 0,
+      "generalStock": 1900250,
+      "listedStock": 2500000,
+      "futures": 999999,
+      "year": 2025,
+      "nationalDeductions": 3000000,
+      "residentDeductions": 2500000,
+      "personalDifference": 50000,
+      "donation": 40000,
+      "filing": "return",
+      "conditions": "reviewed",
+      "mode": "separate",
+      "municipality": "designated"
+    },
+    "expected": {
+      "nationalApplied": [
+        2000000,
+        700000,
+        0,
+        0,
+        300000,
+        0,
+        0
+      ],
+      "residentApplied": [
+        2000000,
+        500000,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalTaxable": [
+        0,
+        0,
+        0,
+        0,
+        1600000,
+        2500000,
+        999000
+      ],
+      "residentTaxable": [
+        0,
+        200000,
+        0,
+        0,
+        1900000,
+        2500000,
+        999000
+      ],
+      "nationalUnused": 0,
+      "residentUnused": 0,
+      "nationalBefore": 780911,
+      "residentBefore": 287800,
+      "ratio": 59370,
+      "nationalAfter": 775092,
+      "residentAfter": 261500,
+      "netCost": 7881,
+      "limit": 0,
+      "residentBeforeParts": [
+        230300,
+        57500
+      ],
+      "residentAfterParts": [
+        209200,
+        52300
+      ]
+    },
+    "exact": {
+      "maximum": 2653,
+      "rounded": 2000,
+      "costAtMaximum": 2000,
+      "costNext": 2001
+    }
+  },
+  {
+    "id": "2025-ratio-exact-zero-designated",
+    "input": {
+      "ordinary": 700000,
+      "shortLand": 0,
+      "longLand": 0,
+      "listedDividend": 0,
+      "generalStock": 0,
+      "listedStock": 5000000,
+      "futures": 0,
+      "year": 2025,
+      "nationalDeductions": 1100000,
+      "residentDeductions": 500000,
+      "personalDifference": 50000,
+      "donation": 30000,
+      "filing": "return",
+      "conditions": "reviewed",
+      "mode": "separate",
+      "municipality": "designated"
+    },
+    "expected": {
+      "nationalApplied": [
+        700000,
+        0,
+        0,
+        0,
+        0,
+        400000,
+        0
+      ],
+      "residentApplied": [
+        500000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalTaxable": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        4600000,
+        0
+      ],
+      "residentTaxable": [
+        200000,
+        0,
+        0,
+        0,
+        0,
+        5000000,
+        0
+      ],
+      "nationalUnused": 0,
+      "residentUnused": 0,
+      "nationalBefore": 704490,
+      "residentBefore": 267500,
+      "ratio": 84895,
+      "nationalAfter": 700201,
+      "residentAfter": 240800,
+      "netCost": -989,
+      "limit": 73000,
+      "residentBeforeParts": [
+        214000,
+        53500
+      ],
+      "residentAfterParts": [
+        192700,
+        48100
+      ]
+    },
+    "exact": {
+      "maximum": 73827,
+      "rounded": 73000,
+      "costAtMaximum": 2000,
+      "costNext": 2001
+    }
+  },
+  {
+    "id": "2026-required-1-designated",
+    "input": {
+      "ordinary": 0,
+      "shortLand": 0,
+      "longLand": 0,
+      "listedDividend": 0,
+      "generalStock": 0,
+      "listedStock": 5000000,
+      "futures": 0,
+      "year": 2026,
+      "nationalDeductions": 1000000,
+      "residentDeductions": 1000000,
+      "personalDifference": 50000,
+      "donation": 30000,
+      "filing": "return",
+      "conditions": "reviewed",
+      "mode": "separate",
+      "municipality": "designated"
+    },
+    "expected": {
+      "nationalApplied": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        1000000,
+        0
+      ],
+      "residentApplied": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        1000000,
+        0
+      ],
+      "nationalTaxable": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        4000000,
+        0
+      ],
+      "residentTaxable": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        4000000,
+        0
+      ],
+      "nationalUnused": 0,
+      "residentUnused": 0,
+      "nationalBefore": 612600,
+      "residentBefore": 200000,
+      "ratio": 74685,
+      "nationalAfter": 608311,
+      "residentAfter": 176200,
+      "netCost": 1911,
+      "limit": 55000,
+      "residentBeforeParts": [
+        160000,
+        40000
+      ],
+      "residentAfterParts": [
+        141000,
+        35200
+      ]
+    },
+    "exact": {
+      "maximum": 55771,
+      "rounded": 55000,
+      "costAtMaximum": 2000,
+      "costNext": 2001
+    }
+  },
+  {
+    "id": "2026-short-stock-futures-designated",
+    "input": {
+      "ordinary": 2000000,
+      "shortLand": 700000,
+      "longLand": 0,
+      "listedDividend": 0,
+      "generalStock": 1900250,
+      "listedStock": 2500000,
+      "futures": 999999,
+      "year": 2026,
+      "nationalDeductions": 3000000,
+      "residentDeductions": 2500000,
+      "personalDifference": 50000,
+      "donation": 40000,
+      "filing": "return",
+      "conditions": "reviewed",
+      "mode": "separate",
+      "municipality": "designated"
+    },
+    "expected": {
+      "nationalApplied": [
+        2000000,
+        700000,
+        0,
+        0,
+        300000,
+        0,
+        0
+      ],
+      "residentApplied": [
+        2000000,
+        500000,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalTaxable": [
+        0,
+        0,
+        0,
+        0,
+        1600000,
+        2500000,
+        999000
+      ],
+      "residentTaxable": [
+        0,
+        200000,
+        0,
+        0,
+        1900000,
+        2500000,
+        999000
+      ],
+      "nationalUnused": 0,
+      "residentUnused": 0,
+      "nationalBefore": 780911,
+      "residentBefore": 287800,
+      "ratio": 59370,
+      "nationalAfter": 775092,
+      "residentAfter": 261500,
+      "netCost": 7881,
+      "limit": 0,
+      "residentBeforeParts": [
+        230300,
+        57500
+      ],
+      "residentAfterParts": [
+        209200,
+        52300
+      ]
+    },
+    "exact": {
+      "maximum": 2653,
+      "rounded": 2000,
+      "costAtMaximum": 2000,
+      "costNext": 2001
+    }
+  },
+  {
+    "id": "2026-ratio-exact-zero-designated",
+    "input": {
+      "ordinary": 740000,
+      "shortLand": 0,
+      "longLand": 0,
+      "listedDividend": 0,
+      "generalStock": 0,
+      "listedStock": 5000000,
+      "futures": 0,
+      "year": 2026,
+      "nationalDeductions": 1100000,
+      "residentDeductions": 500000,
+      "personalDifference": 50000,
+      "donation": 30000,
+      "filing": "return",
+      "conditions": "reviewed",
+      "mode": "separate",
+      "municipality": "designated"
+    },
+    "expected": {
+      "nationalApplied": [
+        740000,
+        0,
+        0,
+        0,
+        0,
+        360000,
+        0
+      ],
+      "residentApplied": [
+        500000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalTaxable": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        4640000,
+        0
+      ],
+      "residentTaxable": [
+        240000,
+        0,
+        0,
+        0,
+        0,
+        5000000,
+        0
+      ],
+      "nationalUnused": 0,
+      "residentUnused": 0,
+      "nationalBefore": 710616,
+      "residentBefore": 271500,
+      "ratio": 84895,
+      "nationalAfter": 706327,
+      "residentAfter": 244800,
+      "netCost": -989,
+      "limit": 74000,
+      "residentBeforeParts": [
+        217200,
+        54300
+      ],
+      "residentAfterParts": [
+        195900,
+        48900
+      ]
+    },
+    "exact": {
+      "maximum": 75034,
+      "rounded": 75000,
+      "costAtMaximum": 2000,
+      "costNext": 2001
+    }
+  },
+  {
+    "id": "2026-rounded-is-infeasible",
+    "input": {
+      "ordinary": 19529655,
+      "shortLand": 0,
+      "longLand": 0,
+      "listedDividend": 0,
+      "generalStock": 0,
+      "listedStock": 1697956,
+      "futures": 0,
+      "year": 2026,
+      "nationalDeductions": 1102014,
+      "residentDeductions": 912014,
+      "personalDifference": 50000,
+      "donation": 430000,
+      "filing": "return",
+      "conditions": "reviewed",
+      "mode": "separate",
+      "municipality": "standard"
+    },
+    "expected": {
+      "nationalApplied": [
+        1102014,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "residentApplied": [
+        912014,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nationalTaxable": [
+        18427000,
+        0,
+        0,
+        0,
+        0,
+        1697000,
+        0
+      ],
+      "residentTaxable": [
+        18617000,
+        0,
+        0,
+        0,
+        0,
+        1697000,
+        0
+      ],
+      "nationalUnused": 0,
+      "residentUnused": 0,
+      "nationalBefore": 4930766,
+      "residentBefore": 1944000,
+      "ratio": 49160,
+      "nationalAfter": 4756042,
+      "residentAfter": 1690800,
+      "netCost": 2076,
+      "limit": 429000,
+      "residentBeforeParts": [
+        1166400,
+        777600
+      ],
+      "residentAfterParts": [
+        1014500,
+        676300
+      ]
+    },
+    "exact": {
+      "maximum": 430761,
+      "rounded": 430000,
+      "costAtMaximum": 2000,
+      "costNext": 2001
+    }
+  }
+]

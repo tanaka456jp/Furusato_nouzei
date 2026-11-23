@@ -66,6 +66,25 @@ class VbaUpdaterBridgeTest(unittest.TestCase):
         self.assertIn("MARKER_COMMENT_IN_STAGE_ONLY", bridge)
         self.assertIn("synthetic_source_verified", bridge)
         self.assertIn("STAGED_PUSH_EXCEL_PASS", bridge)
+        self.assertIn("Write-DisposableSourceSafely $stagedSource $changedSource", bridge)
+        self.assertIn("VBAUPDATER_STAGED_SOURCE_LOCK_NOT_RELEASED", bridge)
+        self.assertIn("[IO.FileShare]::None", bridge)
+        self.assertNotIn("[IO.File]::WriteAllText($stagedSource", bridge)
+        self.assertIn("original_preserved", bridge)
+        # Source-only and mandatory QA must never overwrite/reuse the same
+        # receipt. On PC1 the first file may still be mapped by Apex One.
+        self.assertIn("[IO.Path]::GetFileNameWithoutExtension($EvidencePath)", bridge)
+        self.assertIn(" + '_excel_acceptance.json'", bridge)
+        self.assertIn("VBAUPDATER_QA_EVIDENCE_ALREADY_EXISTS", bridge)
+        self.assertNotIn("Join-Path (Split-Path -Parent $EvidencePath) 'vbaupdater_excel_acceptance.json'", bridge)
+        self.assertIn("Updated sandbox XLSM has no fresh Excel acceptance evidence", bridge)
+        for evidence in ("vbaupdater_sourceonly_push.json", "vbaupdater_push.json"):
+            self.assertNotEqual(
+                Path(evidence).stem + "_excel_acceptance.json",
+                Path("vbaupdater_other.json").stem + "_excel_acceptance.json")
+        self.assertNotEqual(
+            Path("vbaupdater_sourceonly_push.json").stem + "_excel_acceptance.json",
+            Path("vbaupdater_push.json").stem + "_excel_acceptance.json")
         workflow = (ROOT / ".github" / "workflows" / "workbook.yml").read_text(encoding="utf-8")
         mandatory = workflow.split("- name: VBAUpdater staged project-push (mandatory acceptance)", 1)[1].split("- name: Upload verified review XLSM", 1)[0]
         self.assertNotIn("continue-on-error:", mandatory)

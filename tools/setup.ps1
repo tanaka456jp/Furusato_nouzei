@@ -13,7 +13,7 @@ $utf8 = New-Object System.Text.UTF8Encoding($true)
 $strictUtf8 = New-Object System.Text.UTF8Encoding($false, $true)
 $excel = $null; $workbook = $null; $tempBook = $null; $stagingDir = $null; $stagedSource = $null
 $button = $null; $sheet = $null; $anchor = $null; $component = $null
-try { [System.IO.File]::WriteAllText($logFile, ('Furusato_nouzei setup v4.10 ' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + "`r`n"), $utf8) }
+try { [System.IO.File]::WriteAllText($logFile, ('Furusato_nouzei setup v4.18.36 ' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + "`r`n"), $utf8) }
 catch { Write-Host ('Unable to create setup.log: ' + $_.Exception.Message); exit 10 }
 function Log([string]$message) {
     $line = '[' + (Get-Date -Format 'HH:mm:ss') + '] [' + $script:phase + '] ' + $message
@@ -118,7 +118,10 @@ try {
         throw [System.Exception]::new('VBAプロジェクトへのアクセスが拒否されました。Excel [ファイル]→[オプション]→[トラストセンター]→[トラストセンターの設定]→[マクロの設定]→[VBAプロジェクト オブジェクトモデルへのアクセスを信頼する] を確認してください。組織で禁止されている場合は管理者に相談してください。内部エラー: ' + $_.Exception.Message)
     }
     $phase = '一時xlsm保存'
-    $tempBook = Join-Path $folder ('_furusato_build_' + [Guid]::NewGuid().ToString('N') + '.xlsm')
+    # Preserve the FINAL workbook basename already inside the isolated temp folder.
+    # Excel may rewrite Forms OnAction bindings to its SaveAs name. Using an
+    # anonymous filename here left stale button macro references after moving.
+    $tempBook = Join-Path $stagingDir 'Furusato_nouzei.xlsm'
     $workbook.SaveAs($tempBook, 52)
     Assert (Test-Path -LiteralPath $tempBook -PathType Leaf) 'Excelの.xlsm保存に失敗しました。'
     $phase = 'VBA Unicodeモジュール登録'
@@ -133,13 +136,25 @@ try {
     $eventCode = @'
 
 Private Sub Workbook_Open()
+    TaxLawUpdater.MaskUnverifiedResults
     TaxLawUpdater.BindButtons
     TaxLawUpdater.ReturnHome
     Application.Calculate
+    TaxLawUpdater.RevealVerifiedResults
 End Sub
 
 Private Sub Workbook_SheetChange(ByVal Sh As Object, ByVal Target As Range)
-    If Sh Is Me.Worksheets(1) Then Application.Calculate
+    If Sh Is Me.Worksheets("操作画面") Or _
+       Sh Is Me.Worksheets("例外・分離課税") Or _
+       Sh Is Me.Worksheets("特定親族明細") Then
+        TaxLawUpdater.MaskUnverifiedResults
+        Application.Calculate
+        TaxLawUpdater.RevealVerifiedResults
+    End If
+End Sub
+
+Private Sub Workbook_SheetCalculate(ByVal Sh As Object)
+    TaxLawUpdater.RevealVerifiedResults
 End Sub
 '@
     $bookModule = $workbook.VBProject.VBComponents.Item($workbook.CodeName).CodeModule
@@ -151,7 +166,10 @@ End Sub
         try {
             $area = $target.Range($address)
             $control = $target.Buttons().Add($area.Left + 2, $area.Top + 2, $area.Width - 4, $area.Height - 4)
-            $control.Name = 'btn' + $macro
+            # Match the stable ID that TaxLawUpdater.BindButtons expects.
+            $control.Name = if ($macro -eq 'RecalculateBatchFromEditor') {
+                'btnRecalculateBatchEdits'
+            } else { 'btn' + $macro }
             # Qualify with the final workbook name; Workbook_Open will rebind
             # automatically if a case is later opened under a different name.
             $control.OnAction = "'" + [IO.Path]::GetFileName($final).Replace("'", "''") + "'!TaxLawUpdater." + $macro
@@ -168,9 +186,19 @@ End Sub
     Add-WorkbookButton $sheet 'B7' '案件保存' 'SaveCase'
     Add-WorkbookButton $sheet 'C7' '計算根拠' 'ShowDetails'
     Add-WorkbookButton $sheet 'D7' '計算' 'RecalculateCase'
-    Add-WorkbookButton $sheet 'B5' '追加所得・分離課税' 'ShowAdvanced'
+    Add-WorkbookButton $sheet 'B5' '追加・分離' 'ShowAdvanced'
     Add-WorkbookButton $sheet 'B3' '源泉票を取込' 'ImportWithholding'
     Add-WorkbookButton $sheet 'C3' '読取内容の確認' 'ReviewWithholding'
+    Add-WorkbookButton $sheet 'D3' '複数人一覧' 'ImportWithholdingBatch'
+    $batch = $workbook.Worksheets.Item('一括計算一覧')
+    try {
+        Add-WorkbookButton $batch 'B4' '一覧消去' 'ClearBatchOverviewWithConfirm'
+        Add-WorkbookButton $batch 'K4' '全員分PDF出力' 'ExportAllBatchReferencePDFs'
+        $editor = $workbook.Worksheets.Item('一括入力修正')
+        Add-WorkbookButton $editor 'C4' '修正値で全員再計算' 'RecalculateBatchFromEditor'
+    } finally {
+        [void][Runtime.InteropServices.Marshal]::ReleaseComObject($batch)
+    }
     $details = $workbook.Worksheets.Item('計算根拠')
     try {
         Add-WorkbookButton $details 'A17' 'メイン画面に戻る' 'ReturnHome'
@@ -189,16 +217,71 @@ End Sub
     $excel.ActiveWindow.Zoom = 85
     $excel.CalculateFullRebuild()
     Assert ($workbook.Worksheets.Item('自動回帰テスト').Range('B49').Value2 -ceq 'PASS') 'Excelでの内蔵回帰試験が不合格です。'
-    $phase = 'VBA実行スモーク'
-    Log 'マクロを実際に実行して、Excel/VBA連携を検査します。'
-    $excel.Run('TaxLawUpdater.BindButtons')
-    $excel.Run('TaxLawUpdater.RecalculateCase')
-    Assert ($workbook.Worksheets.Item('自動回帰テスト').Range('B49').Value2 -ceq 'PASS') 'マクロの実行後、回帰試験が不合格です。'
+    # Excel was opened with msoAutomationSecurityForceDisable (3).
+    # Do not invoke newly inserted macros from the same COM session: on PC1
+    # this exact Run('TaxLawUpdater.BindButtons') call blocked for 40 min.
+    # After the workbook is saved, dedicated isolated verify_stale_ui.ps1,
+    # verify_vbe_compile.ps1 and verify_excel.ps1 reopen the generated XLSM,
+    # execute TaxLawUpdater.BindButtons / TaxLawUpdater.RecalculateCase and
+    # exercise the full macro functionality with synthetic data.
+    $phase = 'VBA実行は独立受入へ委譲'
+    Log 'QA_SMOKE_DEFERRED: VBA登録完了。BindButtons・再計算は生成後の隔離実機受入で検査します。'
     $phase = 'ファイル確定保存'
     Log 'マクロ付きブックを保存します。'
     $workbook.Save()
     $workbook.Close($false)
+    $workbook = $null
     Assert ((Test-Path -LiteralPath $tempBook -PathType Leaf)) '一時ブックがありません。'
+    # Read-only, macros-disabled reopen of the SAVED bytes. The inspection
+    # must pass BEFORE moving the XLSM to the final user-visible location.
+    # Do not run BindButtons here; it would conceal an invalid saved action.
+    $phase = '保存済みボタン参照検証'
+    $workbook = $excel.Workbooks.Open($tempBook, 0, $true)
+    try {
+        $bindingChecks = @(
+            @{S='操作画面'; M='TaxLawUpdate'},
+            @{S='操作画面'; M='NewCase'},
+            @{S='操作画面'; M='SaveCase'},
+            @{S='操作画面'; M='ShowDetails'},
+            @{S='操作画面'; M='RecalculateCase'},
+            @{S='操作画面'; M='ShowAdvanced'},
+            @{S='操作画面'; M='ImportWithholding'},
+            @{S='操作画面'; M='ReviewWithholding'},
+            @{S='操作画面'; M='ImportWithholdingBatch'},
+            @{S='計算根拠'; M='ReturnHome'},
+            @{S='計算根拠'; M='PrintDetails'},
+            @{S='計算根拠'; M='ExportDetails'},
+            @{S='例外・分離課税'; M='ReturnFromAdvanced'},
+            @{S='一括計算一覧'; M='ClearBatchOverviewWithConfirm'},
+            @{S='一括計算一覧'; M='ExportAllBatchReferencePDFs'},
+            @{S='一括入力修正'; M='RecalculateBatchFromEditor'}
+        )
+        foreach ($entry in $bindingChecks) {
+            $buttonId = if ($entry.M -ceq 'RecalculateBatchFromEditor') {
+                'btnRecalculateBatchEdits'
+            } else { 'btn' + $entry.M }
+            $buttonName = $entry.M
+            $savedButton = $null
+            try {
+                $savedButton = $workbook.Worksheets.Item($entry.S).Buttons().Item($buttonId)
+                $actualAction = [string]$savedButton.OnAction
+                if ($actualAction -match "^'([^']+)'!(.+)$") {
+                    $actualAction = $Matches[1] + '!' + $Matches[2]
+                }
+                $expectedAction = 'Furusato_nouzei.xlsm!TaxLawUpdater.' + $buttonName
+                Assert ($actualAction -ceq $expectedAction) (
+                    '保存済みボタンの参照が異なります: ' + $buttonName)
+            } finally {
+                if ($null -ne $savedButton) {
+                    [void][Runtime.InteropServices.Marshal]::ReleaseComObject($savedButton)
+                }
+            }
+        }
+        Log '保存済み全16ボタンのマクロ参照: PASS'
+    } finally {
+        $workbook.Close($false)
+        $workbook = $null
+    }
     Assert ((Get-Item -LiteralPath $tempBook).Length -gt 20000) '一時ブックのサイズが不正です。'
     $phase = 'xlsm構造確認'
     Add-Type -AssemblyName System.IO.Compression.FileSystem

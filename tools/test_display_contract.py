@@ -1,0 +1,65 @@
+"""Fail-closed static contract for the isolated Windows display evidence collector.
+
+Real desktop coverage requires the PC runner and the captured evidence.
+"""
+from pathlib import Path
+root = Path(__file__).resolve().parents[1]
+ps = (root / "tools/probe_display_layout.ps1").read_text(encoding="utf-8-sig")
+workflow = (root / ".github/workflows/workbook.yml").read_text(encoding="utf-8")
+for token in (
+    "generated synthetic review workbook",
+    "StartsWith($runnerTemp",
+    "Workbooks.Open($source,0,$true)",
+    "$excel.AutomationSecurity = 3",
+    "FurusatoWindowCapture]::PrintWindow",
+    "foreach ($flags in @(2,0))",
+    "$attempt -le 3",
+    "$colors.Count -ge 8",
+    "EXCEL_CAPTURE_BLANK_OR_UNRENDERED",
+    "GetDpiForWindow",
+    "review_excel_window_sheet_only.png",
+    "review_excel_window_lower_section.png",
+    "review_excel_window_mortgage_and_projection.png",
+    "review_excel_window_municipality.png",
+    "FromHandle($hwnd)",
+    "$link.Follow()",
+    "$homeSheet.Range($capture.focus).Select()",
+    "COMMAND_OVERLAP_OR_CLIP",
+    "COMMAND_CAPTION_CLIPS",
+    "WORKSHEET_CONTENT_CLIPPED_BY_VIEWPORT",
+    "DISPLAY_WORKBOOK_CHANGED_DURING_CAPTURE",
+    "ScrollRow = [int]$capture.row",
+    "row = 12", "row = 24", "row = 42", "focus = 'D51'",
+    "$top = [Math]::Min(350",
+    "physical_resolution_verified = $false",
+    "screenshots = @($pictures)",
+    "display_review.json",
+    "furusato-display-review/v2",
+    "source_head = $SourceHead",
+    "workbook_sha256 = $workbookHash",
+    "WRONG_OWNER_OR_PROCEDURE",
+    "UNEXPECTED_COMMAND_ACTION_",
+    "Furusato_nouzei.xlsm!TaxLawUpdater.",
+    "'MEASURED'",
+    "'UNVERIFIED'",
+    "1920x1080@100", "1920x1080@125", "1366x768@150",
+    "ImportWithholdingBatch", "ClearBatchOverviewWithConfirm",
+    "ExportAllBatchReferencePDFs",
+    "book.Close($false)", "excel.Quit()",
+):
+    assert token in ps, f"Missing display safety invariant: {token}"
+# Regression: malformed replacement previously duplicated the PowerShell collector
+# and broke its native parser. Keep the source within the reviewed size.
+assert len(ps.splitlines()) < 470, "Display collector contains duplicated or malformed source"
+for forbidden in ("SetDisplayConfig", "ChangeDisplaySettings", "Set-DisplayResolution",
+                  "GetDesktopWindow", "CopyFromScreen", "BitBlt(", "CAPTURED_PASS"):
+    assert forbidden not in ps, f"Unreviewed desktop/screen mutation: {forbidden}"
+for token in (
+    r".\tools\probe_display_layout.ps1",
+    "tools/test_display_contract.py",
+    "Furusato_nouzei_DISPLAY_REVIEW_",
+    "display_review.json",
+    "verify_release_display_matrix.py",
+):
+    assert token in workflow, f"Display CI hook missing: {token}"
+print("DISPLAY_EVIDENCE_CONTRACT_PASS (not real-display release acceptance)")

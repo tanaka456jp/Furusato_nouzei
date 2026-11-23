@@ -1,0 +1,255 @@
+"""Only invented fixtures: candidate checks never approve a release."""
+import copy
+import hashlib
+import tempfile
+import unittest
+from pathlib import Path
+from zipfile import ZipFile
+from io import BytesIO
+from openpyxl import Workbook
+from make_excel_release_readme import render
+
+from release_readiness import PRODUCT_SCOPE, REQUIRED, REVIEWER_ROLES, SCHEMA
+from verify_excel_release_candidate import verify, sha256
+
+HEAD = "a" * 40
+RUN = 44043000554
+VERSION = "v4.18.36"
+
+
+def digest(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def workbook_bytes(label="ふるさと納税 寄附限度額試算    " + VERSION):
+    book = Workbook()
+    book.active.title = "操作画面"
+    book.active["A1"] = label
+    mortgage = book.create_sheet("住宅確申寄附検算")
+    mortgage["A1"] = "確定申告・住宅ローン控除併用：寄附額別の実税負担差分"
+    stream = BytesIO()
+    book.save(stream)
+    book.close()
+    return stream.getvalue()
+
+
+class ExcelPrepublicationTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.archive = Path(self.tmp.name) / "synthetic-signed-candidate.zip"
+        self.reader = b"synthetic-reader-byte-fixture" * 64
+        self.project_bytes = bytes.fromhex("D0CF11E0A1B11AE1") + b"synthetic-not-signed" * 130
+        workbook = BytesIO(workbook_bytes())
+        with ZipFile(workbook, "a") as inner:
+            inner.writestr("xl/vbaProject.bin", self.project_bytes)
+        self.book_bytes = workbook.getvalue()
+        self.readme = render(VERSION, HEAD)
+        with ZipFile(self.archive, "w") as zipfile:
+            zipfile.writestr("Furusato_nouzei.xlsm", self.book_bytes)
+            zipfile.writestr("FurusatoDocumentReader.exe", self.reader)
+            zipfile.writestr("README.txt", self.readme)
+        self.manifest = {
+            "schema": SCHEMA, "head_sha": HEAD, "checks": {
+                key: {"status": "REVIEWED", "sha256": "f" * 64,
+                      "reviewer_role": REVIEWER_ROLES[key][0], "head_sha": HEAD}
+                for key in REQUIRED
+            },
+        }
+        self.ci = {
+            "schema": "furusato-ci-acceptance/v1", "head_sha": HEAD,
+            "run_id": RUN, "ci_exact_head_gate": "PASS", "review_only": True,
+            "release_decision": "HOLD",
+            "prerequisite_jobs": {key: "success" for key in
+                                  ("static", "windows_compat", "excel", "document_reader")},
+            "review_zip_sha256": "b" * 64,
+            "accepted_workbook_sha256": "c" * 64,
+            "reader_sha256": "d" * 64,
+            "review_readme_sha256": "e" * 64,
+        }
+        self.signature = {
+            "schema": "furusato-signed-distribution-local/v2",
+            "archive_sha256": sha256(self.archive),
+            "signed_workbook_sha256": digest(self.book_bytes),
+            "signed_vba_project_sha256": digest(self.project_bytes),
+            "reader_exe_sha256": digest(self.reader),
+            "reader_authenticode": "VALID_TRUSTED_EXPECTED_SIGNER",
+            "vba_certificate_thumbprint_verified": True,
+            "macro_workbook_signature": "OFFICE_SIP_CRYPTOGRAPHICALLY_VERIFIED",
+            "office_vba_signed_property": "OFFICE_RECOGNIZED_SIGNED_PROJECT",
+            "timestamp_verified": True,
+            "exact_release_members": "THREE_EXPECTED_FILES_ONLY",
+            "signature_gate": "PASS",
+        }
+
+    def run_check(self, **overrides):
+        x = dict(head=HEAD, run_id=RUN, version=VERSION,
+                 archive=self.archive, expected_hash=sha256(self.archive),
+                 ci=self.ci, manifest=self.manifest, signature=self.signature)
+        x.update(overrides)
+        return verify(**x)
+
+    def test_unsigned_candidate_requires_same_ci_binary_sha256(self):
+        ci = dict(self.ci,
+                  accepted_workbook_sha256=digest(self.book_bytes),
+                  reader_sha256=digest(self.reader))
+        result = self.run_check(ci=ci, signature=None)
+        self.assertEqual(result["release_decision"], "HOLD")
+        self.assertEqual(result["source_lineage_after_signing"],
+                         "IDENTICAL_TO_CI_ACCEPTED_BYTES")
+        self.assertEqual(result["office_vba_signed_property"],
+                         "UNSIGNED_DISCLOSED_NOT_REQUIRED")
+        for column in ("reader_sha256", "accepted_workbook_sha256"):
+            wrong = dict(ci, **{column: "f" * 64})
+            with self.subTest(column=column):
+                with self.assertRaisesRegex(ValueError,
+                                            "UNSIGNED_CANDIDATE_NOT_IDENTICAL"):
+                    self.run_check(ci=wrong, signature=None)
+
+    def test_unsigned_candidate_rejects_fake_signature_part(self):
+        ci = dict(self.ci, reader_sha256=digest(self.reader))
+        with ZipFile(self.archive, "w") as outer:
+            inner = BytesIO(self.book_bytes)
+            with ZipFile(inner, "a") as pkg:
+                pkg.writestr("xl/vbaProjectSignature.bin", b"NOT_A_REAL_SIGNATURE")
+            altered = inner.getvalue()
+            outer.writestr("Furusato_nouzei.xlsm", altered)
+            outer.writestr("FurusatoDocumentReader.exe", self.reader)
+            outer.writestr("README.txt", self.readme)
+        ci["accepted_workbook_sha256"] = digest(altered)
+        with self.assertRaisesRegex(ValueError, "UNSIGNED_CANDIDATE_CONTAINS_SIGNATURE"):
+            self.run_check(ci=ci, signature=None)
+
+    def test_physical_paper_not_required_and_legacy_preprint_waiver_rejected(self):
+        result = self.run_check()
+        self.assertEqual(result["candidate_gate"], "METADATA_AND_ARCHIVE_CHECKED")
+        self.assertEqual(result["physical_paper_gate"], "NOT_REQUIRED")
+        self.assertEqual(result["private_review_records"], 5)
+        self.assertEqual(result["tax_and_pdf_acceptance"], "AUTOMATED_EXCEL_AND_PDF_CI_GATES_REQUIRED")
+        self.assertEqual(result["release_decision"], "HOLD")
+        with self.assertRaisesRegex(ValueError, "LEGACY_PREPRINT_WAIVER_NO_LONGER_APPLICABLE"):
+            self.run_check(preprint_only=True)
+        manifest = copy.deepcopy(self.manifest)
+        del manifest["checks"]["distribution_integrity_and_sha256"]
+        with self.assertRaisesRegex(ValueError, "EXCEL_PRIVATE_SCOPE_RECORDS_INCOMPLETE"):
+            self.run_check(manifest=manifest)
+
+    def test_all_claims_still_hold_and_web_is_separate(self):
+        result = self.run_check()
+        self.assertEqual(result["candidate_gate"], "METADATA_AND_ARCHIVE_CHECKED")
+        self.assertEqual(result["release_decision"], "HOLD")
+        self.assertEqual(result["product_scope"], PRODUCT_SCOPE)
+        self.assertEqual(result["private_review_records"], 5)
+        self.assertIn("REQUIRES_HUMAN", result["source_lineage_after_signing"])
+        self.assertEqual(result["office_vba_signed_property"],
+                         "OFFICE_RECOGNIZED_SIGNED_PROJECT")
+
+    def test_mismatched_or_tampered_candidate_refused(self):
+        with self.assertRaisesRegex(ValueError, "SHA256_MISMATCH"):
+            self.run_check(expected_hash="0" * 63 + "1")
+        accepted_hash = sha256(self.archive)
+        with self.archive.open("ab") as out:
+            out.write(b"tamper")
+        with self.assertRaisesRegex(ValueError, "SHA256_MISMATCH"):
+            self.run_check(expected_hash=accepted_hash)
+
+    def test_review_source_cannot_be_forged(self):
+        for change in ({"head_sha": "b" * 40}, {"run_id": RUN + 1},
+                       {"review_only": False}, {"release_decision": "APPROVED"},
+                       {"prerequisite_jobs": {"static": "success"}}):
+            with self.subTest(change=change):
+                ci = dict(self.ci, **change)
+                with self.assertRaisesRegex(ValueError, "CI_EXACT_SOURCE"):
+                    self.run_check(ci=ci)
+
+    def test_gas_only_or_stale_manifest_cannot_pass(self):
+        manifest = copy.deepcopy(self.manifest)
+        manifest["checks"].pop("distribution_integrity_and_sha256")
+        with self.assertRaisesRegex(ValueError, "SCOPE_RECORDS_INCOMPLETE"):
+            self.run_check(manifest=manifest)
+        manifest = copy.deepcopy(self.manifest)
+        manifest["schema"] = "furusato-release-readiness/v3"
+        with self.assertRaisesRegex(ValueError, "SCOPE_MANIFEST"):
+            self.run_check(manifest=manifest)
+
+    def test_missing_trusted_signature_refused(self):
+        for field, value in (("reader_authenticode", "NotSigned"),
+                             ("archive_sha256", "f" * 64),
+                             ("signed_workbook_sha256", "f" * 64),
+                             ("signed_vba_project_sha256", "f" * 64),
+                             ("reader_exe_sha256", "f" * 64),
+                             ("macro_workbook_signature", "CONTAINER_DETECTED_CRYPTOGRAPHIC_VALIDITY_NOT_VERIFIED"),
+                             ("office_vba_signed_property", "UNVERIFIED"),
+                             ("timestamp_verified", False),
+                             ("signature_gate", "UNVERIFIED")):
+            with self.subTest(field=field):
+                evidence = dict(self.signature, **{field: value})
+                with self.assertRaisesRegex(ValueError, "SIGNED_ARCHIVE"):
+                    self.run_check(signature=evidence)
+
+    def test_legacy_or_extra_signature_claims_fail_closed(self):
+        for changes in (
+            {"schema": "furusato-signed-distribution-local/v1"},
+            {"signature_gate": "REVIEW_ONLY"},
+            {"vba_certificate_thumbprint_verified": False},
+            {"manual_publisher_approval": "APPROVED"},
+        ):
+            with self.subTest(changes=changes):
+                evidence = dict(self.signature, **changes)
+                with self.assertRaisesRegex(ValueError, "SIGNED_ARCHIVE_LOCAL_EVIDENCE_INVALID"):
+                    self.run_check(signature=evidence)
+
+    def test_signed_vba_binary_is_hash_bound_to_final_zip(self):
+        evidence = dict(self.signature, signed_vba_project_sha256="e" * 64)
+        with self.assertRaisesRegex(ValueError, "SIGNED_ARCHIVE_VBA_PROJECT_HASH_MISMATCH"):
+            self.run_check(signature=evidence)
+        workbook = BytesIO(workbook_bytes())
+        with ZipFile(workbook, "a") as inner:
+            inner.writestr("xl/vbaProject.bin", b"not-ole-project" * 300)
+        with ZipFile(self.archive, "w") as outer:
+            outer.writestr("Furusato_nouzei.xlsm", workbook.getvalue())
+            outer.writestr("FurusatoDocumentReader.exe", self.reader)
+            outer.writestr("README.txt", self.readme)
+        fake = dict(self.signature, archive_sha256=sha256(self.archive),
+                    signed_workbook_sha256=digest(workbook.getvalue()),
+                    signed_vba_project_sha256=digest(b"not-ole-project" * 300))
+        with self.assertRaisesRegex(ValueError, "SIGNED_ARCHIVE_VBA_PROJECT_NOT_OLE"):
+            self.run_check(signature=fake)
+
+    def test_mismatched_readme_source_head_refused(self):
+        with ZipFile(self.archive, "w") as z:
+            z.writestr("Furusato_nouzei.xlsm", self.book_bytes)
+            z.writestr("FurusatoDocumentReader.exe", self.reader)
+            z.writestr("README.txt", render(VERSION, "b" * 40))
+        signature = dict(self.signature, archive_sha256=sha256(self.archive))
+        with self.assertRaisesRegex(ValueError, "RELEASE_README_HEAD_MISMATCH"):
+            self.run_check(signature=signature)
+
+    def test_workbook_brand_and_readme_are_bound_to_official_version(self):
+        with self.assertRaisesRegex(ValueError, "INVALID_NEXT_RELEASE_VERSION"):
+            self.run_check(version="v4.18.2")
+        for title in ("ふるさと納税 寄附限度額試算    v4.18.34",
+                      "ふるさと納税 寄附限度額試算    v4.18.36 検証版"):
+            with self.subTest(title=title):
+                with ZipFile(self.archive, "w") as z:
+                    z.writestr("Furusato_nouzei.xlsm", workbook_bytes(title))
+                    z.writestr("FurusatoDocumentReader.exe", self.reader)
+                    z.writestr("README.txt", self.readme)
+                signature = dict(self.signature, archive_sha256=sha256(self.archive))
+                with self.assertRaisesRegex(ValueError, "BRANDING_INVALID"):
+                    self.run_check(signature=signature)
+
+    def test_old_edition_and_review_marker_refused(self):
+        with self.assertRaisesRegex(ValueError, "INVALID_NEXT_RELEASE_VERSION"):
+            self.run_check(version="v4.18.2")
+        with ZipFile(self.archive, "w") as z:
+            z.writestr("Furusato_nouzei.xlsm", self.book_bytes)
+            z.writestr("FurusatoDocumentReader.exe", self.reader)
+            z.writestr("README.txt", "正式配布HOLD " + VERSION)
+        signature = dict(self.signature, archive_sha256=sha256(self.archive))
+        with self.assertRaisesRegex(ValueError, "REVIEW_OR_WRONG_VERSION_README"):
+            self.run_check(signature=signature)
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

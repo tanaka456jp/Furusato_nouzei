@@ -4,12 +4,9 @@ on:
     types: [opened, synchronize, reopened, edited]
   push:
     branches: [main]
+  # Exact development branch manual dispatch is the PC1 opt-in.
+  # The previous mobile boolean sometimes silently submitted false.
   workflow_dispatch:
-    inputs:
-      excel:
-        description: Run on a dedicated self-hosted Windows Excel runner
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -25,17 +22,46 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: python -m pip install openpyxl==3.1.5
+      - run: python -m pip install openpyxl==3.1.5 pymupdf==1.26.4 pypdfium2==5.15.2 Pillow==13.0.0
       - run: |
+          python tools/audit_pdf_layout.py --self-test
+          python tools/test_display_contract.py
           python tools/verify_baseline.py
           python tools/test_catalog_sync.py
           python tools/test_file_picker_filter.py
           python tools/qa_contract.py workbook/baseline.xlsx
           python tools/report_formula_wiring.py
           python tools/test_workbook.py
+          python tools/test_salary_donation_oracle.py
+          python tools/test_mortgage_filing.py
+          python tools/test_batch_mortgage_one_stop.py
+          python tools/test_insurance_deductions.py
+          python tools/test_reconcile_salary_only_from_slip.py
+          python tools/test_prior_year_projection.py
+          python tools/test_collect_local_release_evidence.py
+          python tools/test_release_display_matrix.py
+          python tools/test_local_display_wrapper.py
+          python tools/test_release_readiness.py
+          python tools/test_excel_release_candidate.py
+          python tools/test_assemble_signed_release_local.py
+          python tools/test_release_candidate_branding.py
+          python tools/test_prepare_official_excel_release.py
+          python tools/test_signed_release_negative.py
+          python tools/test_excel_vba_signer.py
+          python tools/test_reader_exe_signer.py
+          python tools/test_reader_launch_diagnostics.py
+          python tools/test_distribution_integrity.py
+          python tools/test_package_ready_to_use_review.py
+          python tools/test_package_internal_unsigned.py
+          python tools/test_automated_excel_release.py
+          python tools/verify_separate_oracle.py
+          node tools/test_excel_gas_v4183.cjs
           python tools/build_workbook.py Furusato_nouzei_audit.xlsx
           python tools/audit_tax_tables.py workbook/baseline.xlsx Furusato_nouzei_audit.xlsx
           python tools/audit_statutory_tables.py workbook/baseline.xlsx
@@ -45,7 +71,13 @@ jobs:
           python tools/test_shared_runner_contract.py
           python tools/test_open_probe_launcher.py
           python tools/test_vbaupdater_bridge.py
+          python tools/test_pc1_reader_operator_gate.py
           python tools/test_withholding_reader.py
+          python tools/test_automatic_slip_reference.py
+          python tools/test_batch_manual_edit.py
+          python tools/test_audit_salary_filing.py
+          python tools/test_recipient_name.py
+          python tools/test_municipality_hint.py
           python tools/make_excel_open_probes.py Excel_open_probes --self-test
       - name: Parse shared-PC Windows PowerShell setup (static syntax)
         shell: pwsh
@@ -57,20 +89,72 @@ jobs:
           if ($errors.Count -gt 0) {
             throw ($errors | Out-String)
           }
+      - name: Parse private local display wrapper (syntax only)
+        shell: pwsh
+        run: |
+          $tokens=$null; $errors=$null
+          $file=(Resolve-Path ./tools/probe_display_layout_local.ps1).Path
+          [System.Management.Automation.Language.Parser]::ParseFile($file,[ref]$tokens,[ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { throw ($errors | Out-String) }
+      - name: Parse PC1 operator pre-EXE notification gate (syntax only)
+        shell: pwsh
+        run: |
+          $t=$null; $e=$null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path ./tools/pc1_reader_operator_gate.ps1).Path,
+            [ref]$t, [ref]$e) | Out-Null
+          if ($e.Count -gt 0) { throw ($e | Out-String) }
+      - name: Parse local signed-release verifier (syntax only)
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          $file = (Resolve-Path ./tools/verify_signed_release_local.ps1).Path
+          [System.Management.Automation.Language.Parser]::ParseFile($file, [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { throw ($errors | Out-String) }
+      - name: Parse consent-gated local physical printer verifier (syntax only)
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          $file = (Resolve-Path ./tools/verify_physical_printer_local.ps1).Path
+          [System.Management.Automation.Language.Parser]::ParseFile($file, [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { throw ($errors | Out-String) }
+      - name: Verify local physical printer operation is blocked under CI
+        shell: pwsh
+        run: |
+          $env:CI = 'true'
+          $expected = 'PHYSICAL_PRINT_REQUIRES_LOCAL_INTERACTIVE_OPERATOR'
+          try {
+            & ./tools/verify_physical_printer_local.ps1 `
+              -Workbook '__FURUSATO_NONEXISTENT_SYNTHETIC__.xlsm' `
+              -ExpectedWorkbookSha256 ('a' * 64) `
+              -ExpectedDisplayedLimitYen 109000 `
+              -ExpectedTaxYear 2026 `
+              -PrinterName '__NO_REAL_PRINTER__' `
+              -EvidencePath '__DO_NOT_CREATE_PRINTER_EVIDENCE__.json' `
+              -SyntheticDataReviewed -AllowOnePagePrint
+            throw 'UNSAFE_CI_PRINT_VERIFIER_SUCCEEDED'
+          } catch {
+            if ($_.Exception.Message -cne $expected) { throw }
+          }
+          if (Test-Path '__DO_NOT_CREATE_PRINTER_EVIDENCE__.json') {
+            throw 'PRINTER_CI_BLOCK_CREATED_AN_EVIDENCE_FILE'
+          }
       - name: Attach one-click diagnostic launcher
         run: |
           cp tools/START_EXCEL_PROBE.cmd tools/run_excel_open_probe.ps1 tools/probe_excel_open.ps1 Excel_open_probes/
       - name: Upload XLSX opening diagnostics (not production)
         uses: actions/upload-artifact@v4
         with:
-          name: Furusato_nouzei_ExcelOpen_PROBES
+          name: Furusato_nouzei_ExcelOpen_PROBES_${{ github.run_id }}-${{ github.run_attempt }}
           path: Excel_open_probes/
           if-no-files-found: error
           retention-days: 7
       - name: Upload reproducible review ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: Furusato_nouzei_v4_REVIEW
+          name: Furusato_nouzei_v4_REVIEW_${{ github.run_id }}-${{ github.run_attempt }}
           path: Furusato_nouzei_v4_REVIEW.zip
           if-no-files-found: error
           retention-days: 14
@@ -82,6 +166,9 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -90,6 +177,45 @@ jobs:
         run: |
           python -m pip install openpyxl==3.1.5
           if ($LASTEXITCODE -ne 0) { throw 'Python dependency installation failed' }
+      - name: Parse 41-case Excel/GAS PowerShell using native Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $tokens = $null
+          $errors = $null
+          $script = (Resolve-Path .\tools\run_excel_gas_41_v4183.ps1).Path
+          [System.Management.Automation.Language.Parser]::ParseFile(
+             $script, [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            throw ('Excel/GAS parity script parser errors: '+($errors | Out-String))
+          }
+      - name: Parse local Excel VBA signer and verify fail-closed safeguards
+        shell: powershell
+        run: |
+          $tokens = $null; $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path .\tools\sign_excel_vba_local.ps1).Path,
+            [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { throw ($errors | Out-String) }
+          python tools/test_excel_vba_signer.py
+          if ($LASTEXITCODE -ne 0) { throw 'Local VBA signer contract failed' }
+      - name: Parse local EXE signer and enforce CI signing prohibition
+        shell: powershell
+        run: |
+          $tokens=$null; $errors=$null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path .\tools\sign_reader_exe_local.ps1).Path,
+            [ref]$tokens,[ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { throw ($errors | Out-String) }
+          python tools/test_reader_exe_signer.py
+          if ($LASTEXITCODE -ne 0) { throw 'Local EXE signer guard failed' }
+      - name: Parse desktop evidence collector in native Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $tokens = $null; $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path .\tools\probe_display_layout.ps1).Path,
+            [ref]$tokens,[ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { throw ($errors | Out-String) }
       - name: Rebuild workbook and review ZIP on Windows
         shell: powershell
         run: |
@@ -100,7 +226,18 @@ jobs:
           python tools/test_file_picker_filter.py
           if ($LASTEXITCODE -ne 0) { throw 'PDF filter contract mismatch' }
           python tools/test_workbook.py
+          python tools/test_salary_donation_oracle.py
+          python tools/test_mortgage_filing.py
+          python tools/test_batch_mortgage_one_stop.py
+          python tools/test_insurance_deductions.py
+          python tools/test_reconcile_salary_only_from_slip.py
+          python tools/test_prior_year_projection.py
+          python tools/test_collect_local_release_evidence.py
+          python tools/test_release_display_matrix.py
+          python tools/verify_separate_oracle.py
           if ($LASTEXITCODE -ne 0) { throw 'Workbook static regression failed' }
+          node tools/test_excel_gas_v4183.cjs
+          if ($LASTEXITCODE -ne 0) { throw '41-case parity comparator contract failed' }
           python tools/audit_statutory_tables.py workbook/baseline.xlsx
           if ($LASTEXITCODE -ne 0) { throw 'Baseline statutory reference audit failed' }
           python tools/build_workbook.py statutory_review.xlsx
@@ -118,7 +255,16 @@ jobs:
           python tools/test_vbaupdater_bridge.py
           if ($LASTEXITCODE -ne 0) { throw 'VBAUpdater sandbox staging contract failed' }
           python tools/test_withholding_reader.py
+          python tools/test_automatic_slip_reference.py
+          python tools/test_batch_manual_edit.py
+          python tools/test_audit_salary_filing.py
+          python tools/test_recipient_name.py
           if ($LASTEXITCODE -ne 0) { throw 'Offline withholding reader test failed' }
+      - name: Reject synthetic unsigned VBA in native Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          python tools/test_signed_release_negative.py
+          if ($LASTEXITCODE -ne 0) { throw 'Native unsigned-VBA release guard regression' }
       - name: Verify native PowerShell 5.1 and Japanese-path extraction
         shell: powershell
         run: |
@@ -135,18 +281,30 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       - name: Build offline reader executable for end-user PDFs
         shell: powershell
         run: |
-          python -m pip install pyinstaller==6.16.0 pymupdf==1.26.7 pillow pytesseract pillow-heif openpyxl==3.1.5
+          python -m pip install pyinstaller==6.16.0 pyinstaller-hooks-contrib==2026.10 pypdfium2==5.15.2 pymupdf==1.26.7 Pillow==13.0.0 pytesseract==0.3.13 packaging==25.0 openpyxl==3.1.5
           if ($LASTEXITCODE -ne 0) { throw 'Offline reader build dependencies unavailable' }
           python tools/test_withholding_reader.py
-          if ($LASTEXITCODE -ne 0) { throw 'Offline parser contract failed' }
-          python -m PyInstaller --onefile --clean --noconfirm --name FurusatoDocumentReader tools/withholding_reader.py
+          python tools/test_automatic_slip_reference.py
+          python tools/test_batch_manual_edit.py
+          python tools/test_audit_salary_filing.py
+          python tools/test_recipient_name.py
+          python tools/test_municipality_hint.py
+          if ($LASTEXITCODE -ne 0) { throw 'Offline parser/municipality contract failed' }
+          python -m PyInstaller --onefile --clean --noconfirm --name FurusatoDocumentReader --collect-all pypdfium2_raw --collect-all pypdfium2 --exclude-module fitz --exclude-module pymupdf --exclude-module pillow_heif tools/withholding_reader.py
           if ($LASTEXITCODE -ne 0) { throw 'Reader executable build failed' }
+          python tools/verify_reader_runtime.py dist/FurusatoDocumentReader.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Reader binary dependency verification failed' }
+          python tools/smoke_batch_recalculate_exe.py dist/FurusatoDocumentReader.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Reader EXE cannot recalculate corrected batch inputs' }
           $temp = Join-Path $env:RUNNER_TEMP ('furusato_reader_' + [guid]::NewGuid().ToString('N'))
           New-Item -ItemType Directory -Path $temp | Out-Null
           try {
@@ -159,6 +317,61 @@ jobs:
             $result = Get-Content -LiteralPath $out -Raw -Encoding UTF8 | ConvertFrom-Json
             if ($result.status -ne 'READY_FOR_EXCEL_CROSSCHECK' -or $result.fields.salary_gross -ne 7000000) { throw 'Reader smoke wrong or incomplete' }
             if (-not (Test-Path -LiteralPath $bridge -PathType Leaf)) { throw 'Reader VBA bridge missing' }
+            # Validate the packaged Windows EXE itself, not just Python:
+            # two anonymous slips, page count only, explicit page 2.
+            $multiPdf = Join-Path $temp 'synthetic-two-slips.pdf'
+            $generatePdf = @'
+          import fitz,sys
+          doc=fitz.open()
+          for salary in (5000000,7000000):
+              page=doc.new_page()
+              page.insert_text((40,30),"G04 "+format(salary,","))
+              page.insert_text((40,55),"G08 0")
+              page.insert_text((40,80),"G26 1,000,000")
+              page.insert_text((40,120),"ANONYMOUS SYNTHETIC SAMPLE: PAGE SELECTION CHECK")
+          doc.save(sys.argv[1])
+          doc.close()
+          '@
+            $fixtureScript = Join-Path $temp 'create_synthetic_pdf.py'
+            $generatePdf | Set-Content -LiteralPath $fixtureScript -Encoding Ascii
+            python $fixtureScript $multiPdf
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot create synthetic multi-page PDF fixture' }
+            $pageCountOutput = Join-Path $temp 'count.txt'
+            & .\dist\FurusatoDocumentReader.exe --input $multiPdf --output $pageCountOutput --page-count
+            if ($LASTEXITCODE -ne 0) { throw 'Packaged reader page-count failed' }
+            if ([string](Get-Content -LiteralPath $pageCountOutput -Raw -Encoding Ascii).Trim() -ne '2') {
+              throw 'Packaged reader reported incorrect PDF page count'
+            }
+            $singleOut = Join-Path $temp 'selected-result.json'
+            $singleBridge = Join-Path $temp 'selected-bridge.tsv'
+            & .\dist\FurusatoDocumentReader.exe --input $multiPdf --output $singleOut --bridge $singleBridge --page 2
+            if ($LASTEXITCODE -ne 0) { throw 'Packaged reader explicit PDF page selection failed' }
+            $selected = Get-Content -LiteralPath $singleOut -Raw -Encoding UTF8 | ConvertFrom-Json
+            if ($selected.status -ne 'REQUIRES_REVIEW' -or $selected.format -ne 'PDF_PAGE_SELECTED' -or
+                $selected.fields.salary_gross -ne 7000000 -or
+                -not ($selected.warnings -contains 'MULTIPAGE_SELECTED_PAGE_REVIEW')) {
+              throw 'Packaged reader selected page does not enforce verification or returned incorrect values'
+            }
+            if (-not ((Get-Content -LiteralPath $singleBridge -Raw -Encoding Ascii) -match 'salary_gross\s+7000000')) {
+              throw 'Selected-page bridge did not use the second synthetic slip'
+            }
+            # Also run the *frozen EXE* in multi-person list mode.
+            # The synthetic PDF lacks salary reference amounts, so both
+            # rows MUST be HOLD instead of an invented donation limit.
+            $batchBridge = Join-Path $temp 'anonymous-two-person-list.tsv'
+            & .\dist\FurusatoDocumentReader.exe --input $multiPdf --output $batchBridge --batch-bridge
+            if ($LASTEXITCODE -ne 0) { throw 'Packaged reader multi-person bridge failed' }
+            $rows = @(Get-Content -LiteralPath $batchBridge -Encoding Ascii)
+            if ($rows.Count -ne 3) { throw 'Packaged reader did not emit exactly two salary-only list rows' }
+            $first = $rows[1].Split([char]9)
+            $second = $rows[2].Split([char]9)
+            if ($first.Count -ne 10 -or $second.Count -ne 10 -or
+                $first[0] -ne '1' -or $second[0] -ne '2' -or
+                $first[2] -ne '5000000' -or $second[2] -ne '7000000' -or
+                $first[7] -ne '' -or $second[7] -ne '' -or
+                $first[8] -ne 'HOLD' -or $second[8] -ne 'HOLD') {
+              throw 'Packaged bulk mode merged taxpayers or approved incomplete source'
+            }
           } finally {
             Remove-Item -LiteralPath $temp -Recurse -Force
           }
@@ -169,40 +382,114 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Python-free package assembly failed' }
           python tools/test_windows_package.py Furusato_nouzei_Windows_REVIEW.zip
           if ($LASTEXITCODE -ne 0) { throw 'Windows distribution contract failed' }
+          python tools/verify_distribution_integrity.py Furusato_nouzei_Windows_REVIEW.zip --output distribution_integrity_hold.json
+          if ($LASTEXITCODE -ne 0) { throw 'Unsafe or inconsistent Windows ZIP: HOLD' }
+          # Detect signer trust separately from archive byte integrity.
+          # Unsigned PyInstaller EXE is expected in review builds. A valid
+          # EXE signature alone does not authorize distributing the ZIP.
+          $sig = Get-AuthenticodeSignature -LiteralPath .\dist\FurusatoDocumentReader.exe
+          $signatureStatus = if ($null -ne $sig -and $sig.Status -eq 'Valid') {
+            'EXE_TRUSTED_SIGNER_REVIEW_ONLY'
+          } else { 'EXE_UNSIGNED_OR_UNTRUSTED_HOLD' }
+          $review = [ordered]@{
+            schema = 'furusato-windows-signature-inspection/v1'
+            release_decision = 'HOLD'
+            exe_authenticode_inspection = $signatureStatus
+            exe_sha256 = (Get-FileHash -LiteralPath .\dist\FurusatoDocumentReader.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+            signed_archive_or_detached_signature = 'NOT_VERIFIED'
+            limitation = 'A signed EXE alone does not sign this ZIP or approve public distribution'
+          }
+          [IO.File]::WriteAllText(
+            (Join-Path (Get-Location).Path 'distribution_signature_hold.json'),
+            ($review | ConvertTo-Json -Depth 4),[Text.UTF8Encoding]::new($false))
+      - name: Upload distribution integrity and unsigned/release HOLD evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Furusato_DISTRIBUTION_INTEGRITY_HOLD_${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            distribution_integrity_hold.json
+            distribution_signature_hold.json
+          if-no-files-found: warn
+          retention-days: 14
       - name: Upload Python-free Windows review ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: Furusato_nouzei_Windows_REVIEW_${{ github.run_id }}
+          name: Furusato_nouzei_Windows_REVIEW_${{ github.run_id }}-${{ github.run_attempt }}
           path: Furusato_nouzei_Windows_REVIEW.zip
           if-no-files-found: error
           retention-days: 14
+      - name: Record exact-build offline reader identity and Authenticode state
+        shell: powershell
+        run: |
+          $reader = Get-Item -LiteralPath .\dist\FurusatoDocumentReader.exe
+          $head = (git rev-parse HEAD).Trim()
+          if ($head -cne '${{ github.event.pull_request.head.sha || github.sha }}' -or
+              (Get-AuthenticodeSignature -LiteralPath $reader.FullName).Status -ne 'NotSigned') {
+            throw 'Reader source or documented Authenticode state differs from the release scope'
+          }
+          python tools/collect_reader_notices.py --head $head --output THIRD_PARTY_NOTICES.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Reader third-party notices unavailable' }
+          $report = [ordered]@{
+            schema = 'furusato-reader-build/v1'
+            head_sha = $head
+            run_id = [long]$env:GITHUB_RUN_ID
+            run_attempt = [int]$env:GITHUB_RUN_ATTEMPT
+            exe_sha256 = (Get-FileHash -LiteralPath $reader.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            exe_authenticode = 'UNSIGNED'
+            pdf_backend = 'pypdfium2'
+            third_party_notices_sha256 = (Get-FileHash -LiteralPath THIRD_PARTY_NOTICES.txt -Algorithm SHA256).Hash.ToLowerInvariant()
+            windows_cli_accepted = $true
+          }
+          $report | ConvertTo-Json | Set-Content -LiteralPath reader_build.json -Encoding UTF8
       - name: Upload standalone local PDF reader
         uses: actions/upload-artifact@v4
         with:
-          name: Furusato_DocumentReader_Windows_EXE_${{ github.run_id }}
-          path: dist/FurusatoDocumentReader.exe
+          name: Furusato_DocumentReader_Windows_EXE_${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            dist/FurusatoDocumentReader.exe
+            reader_build.json
+            THIRD_PARTY_NOTICES.txt
           if-no-files-found: error
           retention-days: 14
 
   # Explicit opt-in: never execute arbitrary fork PR code on a self-hosted runner.
   excel:
+    # Run expensive PC Excel COM only after lightweight safety gates have passed.
+    needs: [static, windows_compat, document_reader]
     if: >-
       (github.event_name == 'pull_request' &&
        github.event.pull_request.head.repo.full_name == github.repository &&
        contains(github.event.pull_request.body, '[run-windows-excel]')) ||
-      (github.event_name == 'workflow_dispatch' && inputs.excel)
+      (github.event_name == 'workflow_dispatch' &&
+       github.ref == 'refs/heads/fix/excel-2026-salary-nta-20261107')
     # Both PC1 and PC2 may host this repository-scoped runner alongside
     # their existing runners. Accept only the Furusato Excel runner label.
     # Normally start PC1; start PC2 when PC1 is unavailable.
     runs-on: [self-hosted, Windows, furusato-excel]
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
     concurrency:
       group: furusato-excel-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
-    # Stalled COM must fail closed; the runner terminates job-owned Excel.
-    timeout-minutes: 8
+    # This limit includes the operator's interactive Apex One readiness gate.
+    # Run 45042760144 exhausted 40 min AFTER the 52-case Excel acceptance PASSED,
+    # while mandatory disposable VBAUpdater push had not yet completed.
+    # Keep a finite, fail-closed total budget without shortening human approval.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
-      - name: Build, install and run real Excel acceptance
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Download exact-run offline reader for batch correction Excel test
+        uses: actions/download-artifact@v4
+        with:
+          name: Furusato_DocumentReader_Windows_EXE_${{ github.run_id }}-${{ github.run_attempt }}
+          path: _reader_for_excel
+      - name: Build, install and verify stale-results safety (isolated Excel)
         shell: powershell
         run: |
           python -m pip install openpyxl==3.1.5
@@ -221,10 +508,248 @@ jobs:
           powershell.exe -NoProfile -File .\tools\probe_excel_open.ps1 -ProbeDirectory $probes -EvidencePath $probeEvidence
           if ($LASTEXITCODE -ne 0) { Write-Warning 'Excel opening diagnostic failed; installer verification continues.' }
           $setup = Join-Path $work 'review/setup.ps1'
+          # The installer is already bounded by the Excel CI job timeout.
+          # PowerShell 5.1 Start-Process returned a blank ExitCode even when
+          # setup.log and the staged XLSM confirmed a successful build.
+          # Use the previously accepted direct invocation; NEVER treat an
+          # unverified file or an absent return code as a successful build.
           powershell.exe -NoProfile -File $setup
-          if ($LASTEXITCODE -ne 0) { throw 'Excel installer failed; see setup.log' }
+          $installerExitCode = $LASTEXITCODE
+          Write-Host ('QA_INSTALLER_NATIVE_EXIT=' + [string]$installerExitCode)
+          if ($null -eq $installerExitCode -or [int]$installerExitCode -ne 0) {
+            throw ('Excel installer did not exit successfully (code=' + [string]$installerExitCode + '); see setup.log')
+          }
+          $reviewed = Join-Path $work 'review/Furusato_nouzei.xlsm'
+          if (-not (Test-Path -LiteralPath $reviewed -PathType Leaf)) {
+            throw 'Excel installer returned success without a generated XLSM'
+          }
+          # The fail-closed UI gate runs BEFORE the tax-master network update.
+          # A blocked external catalog must not conceal stale-result failures.
+          & .\tools\verify_stale_ui.ps1 -Workbook $reviewed
+          if (-not $?) { throw 'Manual calculation stale-result gate failed' }
+          'STALE_RESULTS_REAL_EXCEL_PASS (isolated synthetic).' >> $env:GITHUB_STEP_SUMMARY
+      - name: Compile the source project and select a verified VBA signing route
+        if: >-
+          success() && (github.event.pull_request.number == 5 ||
+          (github.event_name == 'workflow_dispatch' &&
+           github.ref == 'refs/heads/fix/excel-2026-salary-nta-20261107'))
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $head = (git rev-parse HEAD).Trim()
+          if ($head -cne '${{ github.event.pull_request.head.sha || github.sha }}' -or $env:RUNNER_NAME -cne 'PC1-Furusato-Excel' -or
+              $env:RUNNER_ENVIRONMENT -cne 'self-hosted') {
+            throw 'Release acceptance requires exact PR HEAD on PC1'
+          }
+          $work = Join-Path $env:RUNNER_TEMP ('furusato-' + $env:GITHUB_RUN_ID + '-' + $env:GITHUB_RUN_ATTEMPT)
+          $book = Join-Path $work 'review/Furusato_nouzei.xlsm'
+          $signed = Join-Path $work 'Furusato_nouzei_signed.xlsm'
+          $hash = (Get-FileHash -LiteralPath $book -Algorithm SHA256).Hash.ToLowerInvariant()
+          & .\tools\verify_vbe_compile.ps1 -Workbook $book -EvidencePath (Join-Path $work 'compile_source.json')
+          if ($env:FURUSATO_SIGNING_THUMBPRINT) {
+            & .\tools\verify_excel.ps1 -Workbook $book -EvidencePath (Join-Path $work 'excel_before_signing.json')
+            $before = Get-Content -LiteralPath (Join-Path $work 'excel_before_signing.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+            if ($before.status -cne 'PASS' -or $before.workbook_sha256.ToLowerInvariant() -cne $hash) {
+              throw 'Pre-signing Excel verification unavailable for accepted source'
+            }
+          }
+          & .\tools\try_release_excel_signature.ps1 -SourceWorkbook $book -OutputWorkbook $signed -EvidencePath (Join-Path $work 'release_signing.json') -ExpectedSourceSha256 $hash -ExpectedHeadSha $head
+          $sign = Get-Content -LiteralPath (Join-Path $work 'release_signing.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($sign.signing_state -ceq 'SIGNED') {
+            [IO.File]::Replace($signed, $book, (Join-Path $work 'accepted_unsigned.xlsm'))
+          } elseif ($sign.signing_state -cne 'UNSIGNED') {
+            throw 'VBA signing was not verified and unsigned fallback is not available'
+          }
+          & .\tools\verify_vbe_compile.ps1 -Workbook $book -EvidencePath (Join-Path $work 'compile_final.json')
+          $runner = [ordered]@{
+            schema = 'furusato-excel-runner/v1'
+            head_sha = $head
+            name = $env:RUNNER_NAME
+            environment = $env:RUNNER_ENVIRONMENT
+            run_id = [long]$env:GITHUB_RUN_ID
+            run_attempt = [int]$env:GITHUB_RUN_ATTEMPT
+            workbook_sha256 = (Get-FileHash -LiteralPath $book -Algorithm SHA256).Hash.ToLowerInvariant()
+          }
+          $runner | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $work 'release_runner.json') -Encoding UTF8
+      - name: Independent PC1 source-only full Excel acceptance (HOLD)
+        if: success()
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $work = Join-Path $env:RUNNER_TEMP ('furusato-' + $env:GITHUB_RUN_ID + '-' + $env:GITHUB_RUN_ATTEMPT)
+          $book = Join-Path $work 'review/Furusato_nouzei.xlsm'
+          $head = (git rev-parse HEAD).Trim()
+          $hash = (Get-FileHash -LiteralPath $book -Algorithm SHA256).Hash.ToLowerInvariant()
+          $receipt = Join-Path $work 'sourceonly_excel_acceptance.json'
+          & .\tools\verify_excel.ps1 -Workbook $book -BatchBridgeOnly -FullSyntheticSuite -SourceOnlyEvidencePath $receipt -SourceHead $head
+          if (-not $?) { throw 'PC1_SOURCE_ONLY_FULL_EXCEL_ACCEPTANCE_FAILED' }
+          if (-not (Test-Path -LiteralPath $receipt -PathType Leaf)) {
+            throw 'PC1_SOURCE_ONLY_RECEIPT_MISSING'
+          }
+          $report = Get-Content -LiteralPath $receipt -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($report.schema -cne 'furusato-excel-source-only-acceptance/v1' -or
+              $report.verdict -cne 'SOURCE_ONLY_PASS_RELEASE_HOLD' -or
+              $report.source_head -cne $head -or
+              $report.workbook_sha256 -cne $hash -or
+              $report.bundled_exe_executed -ne $false -or
+              $report.signed_product_accepted -ne $false -or
+              $report.release_approved -ne $false) {
+            throw 'PC1_SOURCE_ONLY_RECEIPT_NOT_SAFE_OR_NOT_PASSED'
+          }
+          'PC1 source-only synthetic Excel regression PASS. Product acceptance remains HOLD.' >> $env:GITHUB_STEP_SUMMARY
+      - name: Independent VBAUpdater sandbox project push (HOLD diagnostic)
+        if: success()
+        continue-on-error: true
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $work = Join-Path $env:RUNNER_TEMP ('furusato-' + $env:GITHUB_RUN_ID + '-' + $env:GITHUB_RUN_ATTEMPT)
+          $book = Join-Path $work 'review/Furusato_nouzei.xlsm'
+          $receipt = Get-Content -LiteralPath (Join-Path $work 'sourceonly_excel_acceptance.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+          $hash = (Get-FileHash -LiteralPath $book -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($receipt.verdict -cne 'SOURCE_ONLY_PASS_RELEASE_HOLD' -or
+              $receipt.workbook_sha256 -cne $hash) {
+            throw 'VBAUPDATER_DIAGNOSTIC_REQUIRES_SOURCE_ONLY_EXCEL_PASS'
+          }
+          $evidence = Join-Path $work 'vbaupdater_sourceonly_push.json'
+          & .\tools\verify_vbaupdater_bridge.ps1 -Workbook $book -StagingRoot (Join-Path $work 'sourceonly_vbaupdater_stage') -EvidencePath $evidence -PushInSandbox
+          if (-not $?) { throw 'VBAUPDATER_SANDBOX_DIAGNOSTIC_FAILED' }
+          $result = Get-Content -LiteralPath $evidence -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($result.status -cne 'STAGED_PUSH_EXCEL_PASS' -or
+              $result.original_preserved -ne $true -or
+              $result.project_push -cne 'PASS' -or
+              $result.post_push_diff -cne 'PASS' -or
+              $result.post_push_excel -cne 'PASS') {
+            throw 'VBAUPDATER_SANDBOX_INCOMPLETE_RELEASE_HOLD'
+          }
+          'VBAUpdater independent source-only disposable project-push PASS; release remains HOLD.' >> $env:GITHUB_STEP_SUMMARY
+      - name: Checkout exact pinned GAS PR #2 tax engine for independent parity
+        if: success()
+        uses: actions/checkout@v4
+        with:
+          ref: 347aae5756b90c05a10b2ffe6123b0ce09e3fc01
+          path: _gas_reference_v4183
+          persist-credentials: false
+      - name: Compare independent 41 Excel / GAS synthetic cases (HOLD diagnostic)
+        if: success()
+        continue-on-error: true
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $work = Join-Path $env:RUNNER_TEMP ('furusato-' + $env:GITHUB_RUN_ID + '-' + $env:GITHUB_RUN_ATTEMPT)
+          $book = Join-Path $work 'review/Furusato_nouzei.xlsm'
+          $receipt = Get-Content -LiteralPath (Join-Path $work 'sourceonly_excel_acceptance.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($receipt.verdict -cne 'SOURCE_ONLY_PASS_RELEASE_HOLD' -or
+              $receipt.workbook_sha256 -cne (Get-FileHash -LiteralPath $book -Algorithm SHA256).Hash.ToLowerInvariant()) {
+            throw 'GAS_SOURCE_ONLY_REQUIRES_MATCHING_EXCEL_RECEIPT'
+          }
+          $reference = Join-Path $env:GITHUB_WORKSPACE '_gas_reference_v4183'
+          $observations = Join-Path $work 'gas_sourceonly_observations.json'
+          $comparison = Join-Path $work 'gas_sourceonly_comparison.json'
+          & .\tools\run_excel_gas_41_v4183.ps1 -Workbook $book -GasCheckout $reference -OutputPath $observations
+          if (-not $?) { throw 'GAS_SOURCE_ONLY_EXCEL_OBSERVATIONS_FAILED' }
+          $outputLines = @(& node .\tools\compare_excel_gas_v4183.cjs $observations $reference 2>&1)
+          $exitCode = $LASTEXITCODE
+          $json = [string]::Join([Environment]::NewLine,[string[]]$outputLines)
+          [IO.File]::WriteAllText($comparison, $json, (New-Object Text.UTF8Encoding($false)))
+          if ($exitCode -ne 0) { throw 'GAS_SOURCE_ONLY_COMPARATOR_FAILED' }
+          $result = $json | ConvertFrom-Json
+          if ($result.numericVerdict -cne 'MATCH_41_OF_41' -or
+              $result.releaseVerdict -cne 'HOLD' -or
+              $result.matched -ne 41 -or
+              $result.mismatchCount -ne 0 -or
+              $result.calculationStateVerdict -cne 'DONE_41_OF_41' -or
+              $result.actualExcelCOM -ne $true) {
+            throw 'GAS_SOURCE_ONLY_PARITY_MISMATCH_RELEASE_HOLD'
+          }
+          'Independent source-only Excel vs pinned GAS: 41/41 match; release remains HOLD.' >> $env:GITHUB_STEP_SUMMARY
+      # Stop BEFORE the first bundled unsigned reader execution. PR-driven
+      # runs deliberately FAIL/HOLD at this gate instead of producing a short-
+      # lived Apex One popup unattended. The operator must intentionally start
+      # a workflow_dispatch on this EXACT branch. PR events always HOLD.
+      # This is a hard stop, not a timed wait or an AV policy bypass.
+      - name: Apex One operator confirmation gate (reader EXE not started)
+        if: success()
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ready = ('${{ github.event_name }}' -ceq 'workflow_dispatch' -and
+                    '${{ github.ref }}' -ceq 'refs/heads/fix/excel-2026-salary-nta-20261107' -and
+                    $env:RUNNER_NAME -ceq 'PC1-Furusato-Excel')
+          if (-not $ready) {
+            'Apex One: operator confirmation REQUIRED. Reader EXE was NOT launched. Release remains HOLD.' >> $env:GITHUB_STEP_SUMMARY
+            Write-Host 'APEX_ONE_OPERATOR_CONFIRMATION_REQUIRED_RELEASE_HOLD'
+            throw 'APEX_ONE_OPERATOR_CONFIRMATION_REQUIRED_RELEASE_HOLD'
+          }
+          'Apex One operator ready on PC1. Start same-run reader EXE acceptance; no AV policy changes.' >> $env:GITHUB_STEP_SUMMARY
+      # On a manual PC1 run, request a fresh GitHub comment ACK
+      # immediately before launching the unsigned reader EXE.
+      - name: Notify PC1 operator and require fresh pre-EXE readiness acknowledgment
+        if: success()
+        shell: powershell
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          & .\tools\pc1_reader_operator_gate.ps1 -SourceHead (git rev-parse HEAD).Trim()
+          if (-not $?) { throw 'PC1_OPERATOR_READY_EXE_GATE_FAILED_RELEASE_HOLD' }
+      - name: Complete Excel functional and tax update acceptance
+        if: success()
+        shell: powershell
+        run: |
+          $work = Join-Path $env:RUNNER_TEMP ('furusato-' + $env:GITHUB_RUN_ID + '-' + $env:GITHUB_RUN_ATTEMPT)
           $evidence = Join-Path $work 'excel_acceptance.json'
-          & .\tools\verify_excel.ps1 -Workbook (Join-Path $work 'review/Furusato_nouzei.xlsm') -EvidencePath $evidence
+          $readers = @(Get-ChildItem -LiteralPath _reader_for_excel -Recurse -File -Filter FurusatoDocumentReader.exe)
+          $reports = @(Get-ChildItem -LiteralPath _reader_for_excel -Recurse -File -Filter reader_build.json)
+          if ($readers.Count -ne 1 -or $reports.Count -ne 1) {
+            throw 'Offline reader artifact contents ambiguous'
+          }
+          $source = Get-Content -LiteralPath $reports[0].FullName -Raw -Encoding UTF8 | ConvertFrom-Json
+          $digest = (Get-FileHash -LiteralPath $readers[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($source.head_sha -cne (git rev-parse HEAD).Trim() -or
+              $source.exe_sha256 -cne $digest -or
+              $source.run_id -ne [long]$env:GITHUB_RUN_ID -or
+              $source.exe_authenticode -cne 'UNSIGNED') {
+            throw 'Offline batch reader is not the verified same-run unsigned build'
+          }
+          # Source-only full synthetic QA already passed earlier in this SAME
+          # job. Re-running its full Excel COM suite here consumed PC1 time
+          # without testing anything new. Verify the exact same-run receipt,
+          # HEAD, source bytes, and non-release scope instead.
+          $sourceOnlyPath = Join-Path $work 'sourceonly_excel_acceptance.json'
+          if (-not (Test-Path -LiteralPath $sourceOnlyPath -PathType Leaf)) {
+            throw 'PC1_PRE_READER_SOURCE_ONLY_RECEIPT_MISSING'
+          }
+          $priorSource = Get-Content -LiteralPath $sourceOnlyPath -Raw -Encoding UTF8 | ConvertFrom-Json
+          $preReaderHash = (Get-FileHash -LiteralPath (Join-Path $work 'review/Furusato_nouzei.xlsm') -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($priorSource.schema -cne 'furusato-excel-source-only-acceptance/v1' -or
+              $priorSource.verdict -cne 'SOURCE_ONLY_PASS_RELEASE_HOLD' -or
+              $priorSource.source_head -cne (git rev-parse HEAD).Trim() -or
+              $priorSource.workbook_sha256 -cne $preReaderHash -or
+              $priorSource.bundled_exe_executed -ne $false -or
+              $priorSource.signed_product_accepted -ne $false -or
+              $priorSource.release_approved -ne $false) {
+            throw 'PC1_PRE_READER_SOURCE_ONLY_RECEIPT_INVALID_OR_STALE'
+          }
+          # Only recognized, sanitized smoke error classes are passed to CI.
+          # Any nonzero exit used to be mislabeled as WinError 5.
+          $smokeText = @(& python tools/smoke_batch_recalculate_exe.py $readers[0].FullName 2>&1 |
+                         ForEach-Object { [string]$_ })
+          $smokeCode = $LASTEXITCODE
+          if ($smokeCode -ne 0) {
+            $known = @('READER_EXE_LAUNCH_ACCESS_DENIED', 'READER_EXE_LAUNCH_OS_ERROR',
+                       'READER_EXE_LAUNCH_TIMEOUT', 'READER_EXE_BATCH_RECALC_NONZERO_EXIT')
+            $observed = @($smokeText | Where-Object { $_ -in $known })
+            if ($observed -contains 'READER_EXE_LAUNCH_ACCESS_DENIED') {
+              # Read-only policy evidence: no ACL/policy/trust changes.
+              & .\tools\probe_reader_launch_policy.ps1 -ReaderExecutable $readers[0].FullName -EvidencePath (Join-Path $work 'reader_launch_diagnostic.json')
+              throw 'PC1_BATCH_READER_EXE_ACCESS_DENIED_RELEASE_HOLD'
+            }
+            if ($observed.Count -eq 1) {
+              throw ('PC1_BATCH_READER_' + $observed[0] + '_RELEASE_HOLD')
+            }
+            throw 'PC1_BATCH_READER_UNKNOWN_EXECUTION_FAILURE_RELEASE_HOLD'
+          }
+          & .\tools\verify_excel.ps1 -Workbook (Join-Path $work 'review/Furusato_nouzei.xlsm') -ReaderExecutable $readers[0].FullName -EvidencePath $evidence -PdfEvidencePath (Join-Path $work 'pdf_layout_evidence') -SourceHead (git rev-parse HEAD)
           if (-not $?) { throw 'Windows Excel acceptance failed' }
           if (-not (Test-Path -LiteralPath $evidence)) { throw 'Excel acceptance evidence was not created' }
           $report = Get-Content -LiteralPath $evidence -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -232,9 +757,67 @@ jobs:
           if (-not $report.workbook_sha256) { throw 'Excel acceptance report lacks workbook SHA-256' }
           $actual = (Get-FileHash -LiteralPath (Join-Path $work 'review/Furusato_nouzei.xlsm') -Algorithm SHA256).Hash
           if ($report.workbook_sha256 -ne $actual) { throw 'Excel acceptance evidence does not match generated workbook SHA-256' }
+      - name: Capture isolated desktop Excel window and observed DPI
+        if: success()
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $work = Join-Path $env:RUNNER_TEMP ('furusato-' + $env:GITHUB_RUN_ID + '-' + $env:GITHUB_RUN_ATTEMPT)
+          $folder = Join-Path $work 'display_review'
+          & .\tools\probe_display_layout.ps1 -Workbook (Join-Path $work 'review/Furusato_nouzei.xlsm') -EvidenceDirectory $folder -SourceHead (git rev-parse HEAD)
+          if (-not $?) { throw 'Display evidence collector failed its isolation guard' }
+          $file = Join-Path $folder 'display_review.json'
+          if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw 'Missing display observation evidence' }
+          $result = Get-Content -LiteralPath $file -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($result.schema -cne 'furusato-display-review/v2' -or $result.status -cne 'MEASURED') {
+            throw ('PC Excel worksheet capture failed: ' + [string]$result.failure_category)
+          }
+          if (@($result.screenshots).Count -ne 4) { throw 'All four worksheet regions must be captured' }
+          foreach ($image in @($result.screenshots)) {
+            if (-not (Test-Path -LiteralPath (Join-Path $folder $image.file) -PathType Leaf)) {
+              throw 'Display evidence names a missing worksheet region'
+            }
+          }
+          if ('${{ github.event.pull_request.number }}' -ceq '5') {
+            $head = (git rev-parse HEAD).Trim()
+            $book = Join-Path $work 'review/Furusato_nouzei.xlsm'
+            $hash = (Get-FileHash -LiteralPath $book -Algorithm SHA256).Hash.ToLowerInvariant()
+            python tools/verify_release_display_matrix.py --workbook-sha256 $hash --source-head $head --folders $folder --modes 1920x1080@125 --output (Join-Path $folder 'display_acceptance.json')
+            if ($LASTEXITCODE -ne 0) { throw 'PC1 automated desktop display gate failed' }
+          }
+          ('Desktop display observation: '+$result.status+'; Windows output mode '+$result.mode) >> $env:GITHUB_STEP_SUMMARY
+      - name: Upload isolated Excel display evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Furusato_nouzei_DISPLAY_REVIEW_${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/display_review/
+          if-no-files-found: ignore
+          retention-days: 7
       # VBAUpdater read-only and real sandbox project-push are mandatory release
       # gates. The sandbox source is intentionally modified by one ASCII comment
       # to prove a real write; no customer or distributed workbook is changed.
+      - name: Verify synthetic Excel PDF layout and render evidence
+        if: success()
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m pip install --disable-pip-version-check pymupdf==1.26.4
+          if ($LASTEXITCODE -ne 0) { throw 'PDF audit renderer install failed: HOLD' }
+          $work = Join-Path $env:RUNNER_TEMP ('furusato-' + $env:GITHUB_RUN_ID + '-' + $env:GITHUB_RUN_ATTEMPT)
+          $book = Join-Path $work 'review/Furusato_nouzei.xlsm'
+          $hash = (Get-FileHash -LiteralPath $book -Algorithm SHA256).Hash.ToLowerInvariant()
+          python tools/audit_pdf_layout.py --folder (Join-Path $work 'pdf_layout_evidence') --source tools/build_workbook.py --workbook-sha256 $hash --source-head (git rev-parse HEAD)
+          if ($LASTEXITCODE -ne 0) { throw 'PDF layout audit failed: HOLD' }
+          'Synthetic Excel A4 PDF layout: PASS. Physical printer not tested.' >> $env:GITHUB_STEP_SUMMARY
+      - name: Upload synthetic PDF visual evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Furusato_nouzei_PDF_LAYOUT_REVIEW_${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/pdf_layout_evidence/
+          if-no-files-found: ignore
+          retention-days: 7
       - name: VBAUpdater isolated read-only preflight and diff
         if: success()
         shell: powershell
@@ -279,17 +862,68 @@ jobs:
         shell: powershell
         run: |
           "FAIL: VBAUpdater sandbox project-push is a mandatory acceptance gate. Product distribution is HOLD. Original workbook remains preserved. See staged push evidence." >> $env:GITHUB_STEP_SUMMARY
+      - name: Compare 41 synthetic cases in actual Excel vs pinned GAS engine
+        if: success()
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $work = Join-Path $env:RUNNER_TEMP ('furusato-' + $env:GITHUB_RUN_ID + '-' + $env:GITHUB_RUN_ATTEMPT)
+          $book = Join-Path $work 'review/Furusato_nouzei.xlsm'
+          $acceptance = Get-Content -LiteralPath (Join-Path $work 'excel_acceptance.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+          $actual = (Get-FileHash -LiteralPath $book -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($acceptance.status -ne 'PASS' -or
+              $acceptance.workbook_sha256.ToLowerInvariant() -cne $actual) {
+            throw 'Previously accepted workbook does not match the workbook in parity test'
+          }
+          $reference = Join-Path $env:GITHUB_WORKSPACE '_gas_reference_v4183'
+          $evidence = Join-Path $work 'excel_gas_41_observations.json'
+          $comparison = Join-Path $work 'excel_gas_41_comparison.json'
+          if ((Test-Path -LiteralPath $evidence) -or (Test-Path -LiteralPath $comparison)) {
+            throw 'Synthetic parity outputs already exist'
+          }
+          & .\tools\run_excel_gas_41_v4183.ps1 -Workbook $book -GasCheckout $reference -OutputPath $evidence
+          $jsonLines = @(& node .\tools\compare_excel_gas_v4183.cjs $evidence $reference 2>&1)
+          $exitCode = $LASTEXITCODE
+          $json = [string]::Join([Environment]::NewLine,[string[]]$jsonLines)
+          [IO.File]::WriteAllText($comparison,$json,([System.Text.UTF8Encoding]::new($false)))
+          if ($exitCode -ne 0) { throw ('41-case comparator failed: '+$json) }
+          $report = $json | ConvertFrom-Json
+          if ($report.releaseVerdict -cne 'HOLD' -or
+              $report.numericVerdict -cne 'MATCH_41_OF_41' -or
+              $report.matched -ne 41 -or $report.mismatchCount -ne 0 -or
+              $report.calculationStateVerdict -cne 'DONE_41_OF_41' -or
+              $report.excelCalculationDoneCount -ne 41 -or
+              $report.excelCalculationPendingCount -ne 0 -or
+              $report.actualExcelCOM -ne $true) {
+            throw ('Excel vs GAS numerical discrepancy: '+$json)
+          }
+          $diag = Get-Content -LiteralPath $evidence -Raw -Encoding UTF8 | ConvertFrom-Json
+          if (-not $diag.calculationDiagnostics -or
+              $diag.calculationDiagnostics.persistedToWorkbook -ne $false) {
+            throw 'In-memory Excel calculation diagnostic is missing'
+          }
+          ('Excel calculation flag diagnostic: '+$diag.calculationDiagnostics.stateVerdict+
+             '; initialForceFullCalculation='+$diag.calculationDiagnostics.initialForceFullCalculation) >> $env:GITHUB_STEP_SUMMARY
+          (('Excel '+$report.excelRevision+' vs pinned GAS: ')+$report.matched+'/41 all 3 amounts match; '+
+             $report.excelCalculationPendingCount+' xlPending; release=HOLD') >> $env:GITHUB_STEP_SUMMARY
       - name: Upload verified review XLSM
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: Furusato_nouzei_Excel_XLSM_REVIEW_${{ github.run_id }}
+          name: Furusato_nouzei_Excel_XLSM_REVIEW_${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/review/Furusato_nouzei.xlsm
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/excel_acceptance.json
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/vbaupdater_bridge.json
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/vbaupdater_push.json
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/vbaupdater_excel_acceptance.json
+            ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/excel_gas_41_observations.json
+            ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/excel_gas_41_comparison.json
+            ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/release_runner.json
+            ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/compile_source.json
+            ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/compile_final.json
+            ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/release_signing.json
+            ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/excel_before_signing.json
           if-no-files-found: error
           retention-days: 14
       - name: Upload setup diagnostics
@@ -298,11 +932,16 @@ jobs:
         with:
           name: furusato-windows-logs-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/review/setup.log
-            ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/review/setup_launcher.log
+            ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/reader_launch_diagnostic.json
+            ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/sourceonly_excel_acceptance.json
+            ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/vbaupdater_sourceonly_push.json
+            ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/gas_sourceonly_observations.json
+            ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/gas_sourceonly_comparison.json
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/excel_acceptance.json
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/excel_open_probe.json
             ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/vbaupdater_bridge.json
+            ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/excel_gas_41_observations.json
+            ${{ runner.temp }}/furusato-${{ github.run_id }}-${{ github.run_attempt }}/excel_gas_41_comparison.json
           if-no-files-found: ignore
           retention-days: 7
       - name: Clean temporary acceptance data
@@ -310,6 +949,158 @@ jobs:
         shell: powershell
         run: |
           $work = Join-Path $env:RUNNER_TEMP ('furusato-' + $env:GITHUB_RUN_ID + '-' + $env:GITHUB_RUN_ATTEMPT)
-          if (Test-Path -LiteralPath $work) {
-            Remove-Item -LiteralPath $work -Recurse -Force
+          # Only anonymous synthetic fixtures are created under this unique path.
+          # Transient file locks on review.zip are not an Excel calculation failure.
+          for ($attempt = 1; $attempt -le 12; $attempt++) {
+            if (-not (Test-Path -LiteralPath $work)) { break }
+            try {
+              Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction Stop
+            } catch {
+              if ($attempt -eq 12) {
+                Write-Warning 'SYNTHETIC_TEMP_CLEANUP_INCOMPLETE: runner maintenance needed'
+                'Synthetic runner temp cleanup incomplete; review human maintenance; Release is HOLD.' >> $env:GITHUB_STEP_SUMMARY
+                break
+              }
+              Start-Sleep -Seconds 2
+            }
           }
+          if (-not (Test-Path -LiteralPath $work)) {
+            'Isolated synthetic temporary Excel files removed.' >> $env:GITHUB_STEP_SUMMARY
+          }
+
+  # Create a user-testable ReadyToUse review bundle from EXACTLY the two
+  # separately accepted artifacts of THIS Actions run. This is NOT a release.
+  ready_to_use_review:
+    # Do not create a review ZIP if static or Windows compatibility failed.
+    needs: [static, windows_compat, excel, document_reader]
+    runs-on: windows-2022
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --disable-pip-version-check openpyxl==3.1.5
+      - uses: actions/download-artifact@v4
+        with:
+          name: Furusato_nouzei_Excel_XLSM_REVIEW_${{ github.run_id }}-${{ github.run_attempt }}
+          path: _review_excel
+      - uses: actions/download-artifact@v4
+        with:
+          name: Furusato_DocumentReader_Windows_EXE_${{ github.run_id }}-${{ github.run_attempt }}
+          path: _review_reader
+      - name: Bind accepted XLSM and reader from this exact run into review ZIP
+        shell: powershell
+        run: |
+          $books = @(Get-ChildItem -LiteralPath _review_excel -Filter Furusato_nouzei.xlsm -Recurse -File)
+          $acceptances = @(Get-ChildItem -LiteralPath _review_excel -Filter excel_acceptance.json -Recurse -File)
+          $readers = @(Get-ChildItem -LiteralPath _review_reader -Filter FurusatoDocumentReader.exe -Recurse -File)
+          if ($books.Count -ne 1 -or $acceptances.Count -ne 1 -or $readers.Count -ne 1) {
+            throw 'Missing or ambiguous exact-run accepted artifacts'
+          }
+          python tools/test_package_ready_to_use_review.py
+          if ($LASTEXITCODE -ne 0) { throw 'ReadyToUse bundle negative tests failed' }
+          python tools/package_ready_to_use_review.py --book $books[0].FullName --reader $readers[0].FullName --acceptance $acceptances[0].FullName --guide docs/user-guide.md --target Furusato_nouzei_ReadyToUse_REVIEW_HOLD.zip --evidence ready_to_use_review_hold.json --head-sha "${{ github.event.pull_request.head.sha || github.sha }}"
+          if ($LASTEXITCODE -ne 0) { throw 'ReadyToUse review ZIP failed exact acceptance/SHA check' }
+          $report = Get-Content -LiteralPath ready_to_use_review_hold.json -Raw -Encoding UTF8 | ConvertFrom-Json
+          $actual = (Get-FileHash -LiteralPath Furusato_nouzei_ReadyToUse_REVIEW_HOLD.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($report.release_decision -ne 'HOLD' -or
+              $report.package_class -ne 'SYNTHETIC_CI_REVIEW_ONLY' -or
+              $report.ready_to_use_review_sha256 -cne $actual) {
+            throw 'Review bundle must have exact hash and stay HOLD'
+          }
+          'ReadyToUse REVIEW ZIP assembled from exactly accepted same-run XLSM and reader; release=HOLD.' >> $env:GITHUB_STEP_SUMMARY
+      - name: Record exact-head CI acceptance for the review package (NOT a release)
+        shell: powershell
+        run: |
+          python tools/test_ci_acceptance_receipt.py
+          if ($LASTEXITCODE -ne 0) { throw 'CI acceptance receipt negative tests failed' }
+          python tools/record_ci_acceptance.py --head-sha "${{ github.event.pull_request.head.sha || github.sha }}" --run-id "${{ github.run_id }}" --static "${{ needs.static.result }}" --windows-compat "${{ needs.windows_compat.result }}" --excel "${{ needs.excel.result }}" --document-reader "${{ needs.document_reader.result }}" --review ready_to_use_review_hold.json --archive Furusato_nouzei_ReadyToUse_REVIEW_HOLD.zip --output ci_exact_head_acceptance_hold.json
+          if ($LASTEXITCODE -ne 0) { throw 'Exact-head CI provenance / archive validation failed' }
+      - name: Assemble unsigned internal-use evaluation bundle (NOT a release)
+        if: github.event.pull_request.number == 5
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $reports = @(Get-ChildItem -LiteralPath _review_reader -Filter reader_build.json -Recurse -File)
+          $notices = @(Get-ChildItem -LiteralPath _review_reader -Filter THIRD_PARTY_NOTICES.txt -Recurse -File)
+          if ($reports.Count -ne 1 -or $notices.Count -ne 1) {
+            throw 'Internal unsigned bundle: ambiguous reader reports or license notices'
+          }
+          python tools/package_internal_unsigned.py --review-zip Furusato_nouzei_ReadyToUse_REVIEW_HOLD.zip --review-receipt ready_to_use_review_hold.json --reader-report $reports[0].FullName --notice $notices[0].FullName --head "${{ github.event.pull_request.head.sha || github.sha }}" --run-id "$env:GITHUB_RUN_ID" --output Furusato_nouzei_INTERNAL_UNSIGNED.zip --evidence internal_unsigned_hold.json
+          if ($LASTEXITCODE -ne 0) { throw 'Internal unsigned review ZIP failed source/signature verification' }
+          $out = Get-Content -LiteralPath internal_unsigned_hold.json -Raw -Encoding UTF8 | ConvertFrom-Json
+          $digest = (Get-FileHash -LiteralPath Furusato_nouzei_INTERNAL_UNSIGNED.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($out.release_decision -cne 'HOLD' -or
+              $out.vba_signature -cne 'UNSIGNED' -or
+              $out.exe_authenticode -cne 'UNSIGNED' -or
+              $out.package_class -cne 'UNSIGNED_PRIVATE_INTERNAL_EVALUATION' -or
+              $out.archive_sha256 -cne $digest) {
+            throw 'Internal unsigned ZIP must remain untrusted and byte-identical'
+          }
+          'Unsigned INTERNAL evaluation ZIP verified from same-run accepted binaries; tax/release=HOLD.' >> $env:GITHUB_STEP_SUMMARY
+      - name: Upload clearly labeled unsigned internal-use candidate
+        if: github.event.pull_request.number == 5
+        uses: actions/upload-artifact@v4
+        with:
+          name: Furusato_INTERNAL_UNSIGNED_HOLD_${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            Furusato_nouzei_INTERNAL_UNSIGNED.zip
+            internal_unsigned_hold.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload review-only ReadyToUse ZIP and anonymous SHA evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: Furusato_ReadyToUse_REVIEW_HOLD_${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            Furusato_nouzei_ReadyToUse_REVIEW_HOLD.zip
+            ready_to_use_review_hold.json
+            ci_exact_head_acceptance_hold.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Download PC1 display acceptance
+        if: github.event.pull_request.number == 5
+        uses: actions/download-artifact@v4
+        with:
+          name: Furusato_nouzei_DISPLAY_REVIEW_${{ github.run_id }}-${{ github.run_attempt }}
+          path: _release_display
+      - name: Download PC1 Excel PDF export acceptance
+        if: github.event.pull_request.number == 5
+        uses: actions/download-artifact@v4
+        with:
+          name: Furusato_nouzei_PDF_LAYOUT_REVIEW_${{ github.run_id }}-${{ github.run_attempt }}
+          path: _release_pdf
+      - name: Assemble and verify scoped Excel release candidate
+        if: github.event.pull_request.number == 5
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $book = @(Get-ChildItem -LiteralPath _review_excel -Filter Furusato_nouzei.xlsm -Recurse -File)
+          $excel = @(Get-ChildItem -LiteralPath _review_excel -Filter excel_acceptance.json -Recurse -File)
+          $reader = @(Get-ChildItem -LiteralPath _review_reader -Filter FurusatoDocumentReader.exe -Recurse -File)
+          $readerReport = @(Get-ChildItem -LiteralPath _review_reader -Filter reader_build.json -Recurse -File)
+          if ($book.Count -ne 1 -or $excel.Count -ne 1 -or $reader.Count -ne 1 -or $readerReport.Count -ne 1) {
+            throw 'Missing or ambiguous release candidate inputs'
+          }
+          python tools/prepare_official_excel_release.py --automated --head "${{ github.event.pull_request.head.sha || github.sha }}" --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --static "${{ needs.static.result }}" --windows-compat "${{ needs.windows_compat.result }}" --document-reader "${{ needs.document_reader.result }}" --excel "${{ needs.excel.result }}" --book $book[0].FullName --reader $reader[0].FullName --excel-dir $excel[0].DirectoryName --reader-report $readerReport[0].FullName --display-dir _release_display --pdf-dir _release_pdf --output excel_release_candidate
+          if ($LASTEXITCODE -ne 0) { throw 'Automated Excel candidate gate refused the distribution' }
+      - name: Verify the extracted release bundle on Windows
+        if: github.event.pull_request.number == 5
+        shell: powershell
+        run: |
+          python tools/smoke_excel_release.py excel_release_candidate
+          if ($LASTEXITCODE -ne 0) { throw 'Extracted Windows release bundle failed' }
+      - name: Upload scoped release candidate and anonymous checksums
+        if: github.event.pull_request.number == 5
+        uses: actions/upload-artifact@v4
+        with:
+          name: Furusato_ReadyToUse_CANDIDATE_${{ github.run_id }}-${{ github.run_attempt }}
+          path: excel_release_candidate/
+          if-no-files-found: error
+          retention-days: 14

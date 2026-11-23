@@ -10,6 +10,8 @@ from openpyxl.formatting.rule import FormulaRule
 from openpyxl.worksheet.page import PageMargins
 from openpyxl.worksheet.datavalidation import DataValidation
 from rebuild_xlsx import reconstruct
+from separate_tax_sheet import add_separate_tax
+from openpyxl.worksheet.hyperlink import Hyperlink
 
 ROOT = Path(__file__).resolve().parents[1]
 HOME = "操作画面"
@@ -19,6 +21,13 @@ RESIDENT = "住民税再計算"
 DETAIL = "計算根拠"
 ADVANCED = "例外・分離課税"
 SPLIT_ALLOC = "分離課税寄附控除"
+MORTGAGE_RETURN = "住宅確申寄附検算"
+RELATIVES = "特定親族明細"
+BATCH = "一括計算一覧"
+BATCH_EDITOR = "一括入力修正"
+AUTO_REPORT = "自動試算根拠"
+RELATIVE_LAST_ROW = 8  # 5 attested relatives; first three use home D14:D16
+
 
 
 def ref(sheet, address):
@@ -54,9 +63,14 @@ def build(source, output):
         book = load_workbook(safe_source)
     del book[HOME]
     home = book.create_sheet(HOME, 0)
+    relatives = book.create_sheet(RELATIVES, 1)
+    batch = book.create_sheet(BATCH, 2)
+    editor = book.create_sheet(BATCH_EDITOR, 3)
     detail = book.create_sheet(DETAIL)
+    auto_report = book.create_sheet(AUTO_REPORT)
     extra = book.create_sheet(ADVANCED)
     split = book.create_sheet(SPLIT_ALLOC)
+    mortgage_filing = book.create_sheet(MORTGAGE_RETURN)
     extra.sheet_view.showGridLines = False
     extra.column_dimensions["A"].width = 42
     extra.column_dimensions["B"].width = 25
@@ -70,6 +84,107 @@ def build(source, output):
     extra.page_setup.paperSize = extra.PAPERSIZE_A4
     extra.print_area = "A1:D25"
     original, withholding, resident = (book[name] for name in (ENGINE, INPUT, RESIDENT))
+
+    # R8/2026 (income-tax only): independently attested under-23 dependent
+    # raises the new general-life deduction ceiling to 60,000 yen.
+    # Keep all approved baseline formulas unchanged for 2025 and for 2026
+    # cases without the verified under-23 election. The resident-tax
+    # insurance deduction formula remains separate and UNCHANGED.
+    original_general_life = original["F19"].value
+    if not isinstance(original_general_life, str) or not original_general_life.startswith("="):
+        raise ValueError("BASELINE_GENERAL_LIFE_FORMULA_MISSING")
+    new_paid = f"MAX(0,N({ref(HOME, 'B19')}))"
+    old_paid = f"MAX(0,N({ref(HOME, 'B20')}))"
+    new_special = (
+        f"IF({new_paid}<=30000,{new_paid},"
+        f"IF({new_paid}<=60000,ROUNDUP({new_paid}/2+15000,0),"
+        f"IF({new_paid}<=120000,ROUNDUP({new_paid}/4+30000,0),60000)))"
+    )
+    old_general = (
+        f"IF({old_paid}<=25000,{old_paid},"
+        f"IF({old_paid}<=50000,ROUNDUP({old_paid}/2+12500,0),"
+        f"IF({old_paid}<=100000,ROUNDUP({old_paid}/4+25000,0),50000)))"
+    )
+    # Old premiums above 60,000 yen are NOT eligible for the
+    # new+old combined option (NTA No.1140); choose old-only/new-only.
+    special_general = (
+        f"IF({old_paid}>60000,MAX({old_general},{new_special}),"
+        f"MAX({old_general},{new_special},"
+        f"MIN(60000,{old_general}+{new_special})))"
+    )
+    original["F19"] = (
+        f'=IF(AND({ref("設定・税率", "B4")}=2026,'
+        f'{ref(HOME, "B25")}="あり",{new_paid}>0),'
+        f'{special_general},{original_general_life[1:]})'
+    )
+
+    # RESIDENT_DEDUCTIONS_DIRECT_FROM_COMPONENTS:
+    # Do not infer local taxable income from the income-tax taxable base
+    # (legacy J12) plus national/resident deduction differences (J43).
+    # Compute the resident deduction independently, line by line, using
+    # resident-specific H-column values. This requires NO additional entry:
+    # the same home premiums/family fields populate both columns.
+    # Cases with manual national deduction overrides, other income or
+    # nonstandard withholding differences keep the legacy fallback and
+    # remain outside this direct-calculation release acceptance.
+    previous_resident_taxable = original["J44"].value
+    if (not isinstance(previous_resident_taxable, str)
+            or not previous_resident_taxable.startswith("=")):
+        raise ValueError("BASELINE_RESIDENT_TAXABLE_FORMULA_MISSING")
+    direct_resident_deductions = (
+        f'SUM({ref(HOME, "B16")},H15,H24,H25,H38,H40,'
+        f'{ref("追加人的控除", "D12")})'
+    )
+    direct_salary_scope = (
+        f'AND(OR({ref("設定・税率", "B4")}=2025,'
+        f'{ref("設定・税率", "B4")}=2026),'
+        f'{ref(HOME, "D25")}="",'
+        f'N({ref(ADVANCED, "B28")})=0,'
+        f'N({ref(ADVANCED, "B24")})=0,'
+        f'N({ref(ADVANCED, "B27")})=0,'
+        f'N({ref(INPUT, "B13")})=0)'
+    )
+    original["J44"] = (
+        f'=IF({direct_salary_scope},'
+        f'ROUNDDOWN(MAX(0,D15-{direct_resident_deductions}),-3),'
+        f'{previous_resident_taxable[1:]})'
+    )
+
+    # Round the assessed city/prefecture shares independently in ordinary
+    # salary cases, with or without life/earthquake premiums. The standard
+    # jurisdiction is chosen in the same input as the separate-income mode.
+    # Keep legacy split-tax intermediate amounts for their existing checks.
+    original_levy = resident["B16"].value
+    if not isinstance(original_levy, str) or not original_levy.startswith("="):
+        raise ValueError("BASELINE_RESIDENT_LEVY_FORMULA_MISSING")
+    # The baseline aggregate also serves as an explicitly pooled historical
+    # comparison against the pinned GAS algorithm. It is not the UI result.
+    resident["A35"] = "比較用・合算所得割（100円未満切捨て）"
+    resident["B35"] = '=IF(B15="","",ROUNDDOWN(ROUND(MAX(0,B15-B14),2),-2))'
+    net_levy = 'ROUND(MAX(0,B15-B14),2)'
+    municipality = ref(HOME, "D51")
+    standard_city = f'{municipality}="標準市町村"'
+    designated_city = f'{municipality}="標準指定都市"'
+
+    def assessed_levy(city_share):
+        # ROUND removes binary floating artefacts at an integer ¥100 edge.
+        return "+".join(
+            f'ROUNDDOWN(ROUND({net_levy}*{share}/10,3),-2)'
+            for share in (city_share, 10 - city_share)
+        )
+
+    safe_standard_salary_only = (
+        f'AND(B15<>"",{direct_salary_scope},'
+        f'NOT(ISNUMBER({ref(INPUT, "B15")})),'
+        f'NOT(ISNUMBER({ref(INPUT, "B16")})),'
+        f'SUM({ref(ENGINE, "J51:J53")})=0)'
+    )
+    resident["B16"] = (
+        f'=IF({safe_standard_salary_only},'
+        f'IF({standard_city},{assessed_levy(6)},'
+        f'IF({designated_city},{assessed_levy(8)},"")),'
+        f'{original_levy[1:]})'
+    )
 
     for view, widths in ((home, (33, 16, 32, 18)), (detail, (33, 16, 32, 18))):
         view.sheet_view.showGridLines = False
@@ -119,8 +234,9 @@ def build(source, output):
         home.add_data_validation(validation)
         validation.add(home[cell])
 
-    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.18.2 正式版")
+    bar(home, 1, "ふるさと納税 寄附限度額試算    v4.18.36")
     bar(extra, 1, "追加所得・分離課税（所得年内で事前試算）")
+    extra.row_dimensions[2].height = 24  # Room for the return button.
     extra.merge_cells("A3:D3")
     extra["A3"] = "翌年度の住民税通知書は参照せず、所得年内の収入・経費・控除と法定税率表から計算します。"
     extra["A3"].alignment = Alignment(wrap_text=True)
@@ -158,13 +274,14 @@ def build(source, output):
         (36, "分離所得の控除前額（任意・限度判定）", None, None),
         (38, "特定親族の人数（源泉票G72・照合）", None, None),
         (39, "特定親族特別控除額（源泉票G74・照合）", None, None),
+        (40, "配偶者の合計所得（源泉票G43・照合）", None, None),
     )
     for row, label, initial, choices in extra_items:
         extra[f"A{row}"] = label
         extra[f"A{row}"].alignment = Alignment(wrap_text=True, vertical="center")
         extra[f"B{row}"] = initial
         extra.row_dimensions[row].height = 27
-        if row not in (4, 7, 19, 20, 22, 27, 28, 29, 30, 32, 34, 38, 39):
+        if row not in (4, 7, 19, 20, 22, 27, 28, 29, 30, 32, 34, 38, 39, 40):
             extra[f"B{row}"].fill = PatternFill("solid", fgColor="E2F2FF")
             extra[f"B{row}"].protection = Protection(locked=False)
             extra[f"B{row}"].number_format = '#,##0'
@@ -228,7 +345,7 @@ def build(source, output):
     extra["A23"].alignment = Alignment(wrap_text=True)
     extra.row_dimensions[23].height = 34
     extra.merge_cells("A31:D31")
-    extra["A31"] = "分離課税のB24は所得控除後の課税所得です。特別控除・繰越損失・軽減税率等はB33「あり」で安全停止します。"
+    extra["A31"] = "B24は旧入力です。分離課税は操作画面の詳細設定で控除前の所得と税目別控除を入力してください。"
     extra["A31"].alignment = Alignment(wrap_text=True)
     extra.row_dimensions[31].height = 36
     extra.row_dimensions[32].height = 42
@@ -241,36 +358,139 @@ def build(source, output):
     extra.merge_cells("A37:D37")
     extra["A37"].alignment = Alignment(wrap_text=True)
     extra.row_dimensions[37].height = 34
-    for addr in ("B38", "B39"):
+    for addr in ("B38", "B39", "B40"):
         extra[addr].fill = PatternFill("solid", fgColor="EAF3EA")
         extra[addr].protection = Protection(locked=True)
         extra[addr].alignment = Alignment(horizontal="right")
         extra[addr].number_format = "#,##0"
-    extra.print_area = "A1:D39"
+    # Source attestation is valid for the exact reviewed INPUT snapshot only.
+    # VBA persists B42 in B41 on explicit review; every relevant edited
+    # number, relative's income, tax year and source value changes B42. The
+    # independent stamp never includes its own review status or B41/B42.
+    fingerprint_home = (
+        # Input ONLY. No B13/B14/B17/B18/B31: calculated values may depend
+        # on this review gate, so referencing them can cause a circular
+        # calculation and block even otherwise-valid source-free cases.
+        ["B4", "B11", "B12", "B15", "B16"]
+        + [f"B{i}" for i in range(19, 26)]
+        + [f"D{i}" for i in range(11, 26)]
+        + ["B33", "B34", "B35", "B36", "D33", "D35", "D24"]
+        # Separate-tax controls may alter the applicability of a reviewed
+        # source; do not reuse source verification across case-mode changes.
+        + [f"B{i}" for i in range(44, 52)]
+        + [f"D{i}" for i in range(44, 52)]
+        + ["F51"]  # municipality candidate is part of the review snapshot
+        + [f"D{i}" for i in range(72, 78)]
+    )
+    fingerprint_extra = (
+        # B7/B22/B27-B30/B34 are formula results, never snapshot drivers.
+        [f"B{i}" for i in (5,6,8,9,10,11,12,13,14,15,16,17,18)]
+        + ["B19", "B21", "B24", "B25", "B26",
+           "B32", "B33", "B36", "B38", "B39", "B40", "B43", "B44",
+           "B45", "B46", "B47", "B48"]  # modified preview must expire
+    )
+    fingerprint_fields = (
+        [ref(HOME, cell) for cell in fingerprint_home]
+        + [ref(ADVANCED, cell) for cell in fingerprint_extra]
+        + [ref("設定・税率", "B4")]
+        + [ref(RELATIVES, f"{column}{row}")
+           for row in range(4, RELATIVE_LAST_ROW + 1)
+           for column in (("B", "D") if row <= 6 else ("B", "C", "D"))]
+    )
+    extra["A41"] = "読取確認時の入力スナップショット（自動保存）"
+    extra["A42"] = "現在の入力スナップショット（自動更新）"
+    extra["A43"] = "前年原票：住宅ローン控除の所得税適用額（照合のみ）"
+    extra["A44"] = "前年原票：住宅ローン控除可能額（照合のみ）"
+    extra["B43"] = None
+    extra["B44"] = None
+    for cell in ("B43", "B44"):
+        extra[cell].protection = Protection(locked=True)
+        extra[cell].number_format = '#,##0'
+    extra["B41"] = None
+    # Source-only automatic reference is deliberately independent of the
+    # reviewed donation ceiling. Never store full address or taxpayer name.
+    extra["A45"] = "原票だけからの自動参考額（未確定・円）"
+    extra["A46"] = "自動参考額の区分（仮定値）"
+    extra["A47"] = "自動参考額の対象所得年"
+    extra["A48"] = "未反映条件のコード（原票全文は格納禁止）"
+    extra["A49"] = "読取時の入力スナップショット（変更で失効）"
+    for coord in ("B45", "B46", "B47", "B48", "B49"):
+        extra[coord] = None
+        extra[coord].protection = Protection(locked=True)
+    extra["B45"].number_format = "#,##0"
+    extra["B49"].number_format = "@"
+    for row in range(45, 50):
+        extra.row_dimensions[row].hidden = True
+    # A plain delimiter alone is ambiguous: "a|b" and "a","b" could
+    # serialize to the same text even though the reviewed inputs changed.
+    # Prefix EACH input with its length. LEN + & work in old desktop Excel
+    # without TEXTJOIN/_xlfn compatibility risks and stay under 8,192 chars.
+    snapshot_segments = [f'LEN({cell})&":"&{cell}' for cell in fingerprint_fields]
+    snapshot_formula = "=" + '&"|"&'.join(snapshot_segments)
+    if len(snapshot_formula) > 8192:
+        raise AssertionError("Source review fingerprint exceeded Excel's formula length limit")
+    extra["B42"] = snapshot_formula
+    for addr in ("B41", "B42"):
+        extra[addr].protection = Protection(locked=True)
+        extra[addr].number_format = "@"
+    extra.row_dimensions[41].hidden = True
+    extra.row_dimensions[42].hidden = True
+    extra.print_area = "A1:D40"
     home.row_dimensions[3].height = 28
-    field("B4", "選択する所得年", "2026", ("2025", "2026"))
+    field("B4", "計算対象の所得年", "2026", ("2025", "2026"))
     home["C4"], home["D4"] = "適用中の所得年", "=" + ref("設定・税率", "B4")
+    # Excel displays B4's validation arrow over the start of the adjacent cell.
+    home["C4"].alignment = Alignment(horizontal="left", vertical="center", indent=2)
     home["C5"], home["D5"] = "住民税課税年度", "=" + ref(RESIDENT, "B5")
     note(home, 6, '="税制版 "&B29&" ｜ "&B30')
     home["B29"] = "2026-11-05-bundled"
+    home.merge_cells("A2:D2")
+    home["A2"] = "詳細設定（課税自治体・申告分離課税）"
+    home["A2"].hyperlink = Hyperlink(ref="A2", location="'操作画面'!A42")
+    home["A2"].style = "Hyperlink"
+    home["A2"].alignment = Alignment(vertical="center")
+    home.row_dimensions[2].height = 25
     home["B30"] = "内蔵マスタ"
     home.row_dimensions[29].hidden = True
     home.row_dimensions[30].hidden = True
+    # Row 7 is reserved for form buttons; never put inputs beneath them.
+    # Source/target year review inputs live by mortgage controls in row 33.
     for row in (5, 7, 8):
         home.row_dimensions[row].height = 25
     detail.row_dimensions[17].height = 26
-    home["A8"], home["C8"] = "寄附限度額の目安（円）", "調整控除後の所得割（円）"
+    # All three public surfaces use one eligibility predicate; unverified
+    # cached numbers, warnings and labels must expire at the same instant.
+    auto_ref_ok = (
+        f'AND({ref(ADVANCED,"B46")}="AUTO_REFERENCE",'
+        f'ISNUMBER({ref(ADVANCED,"B45")}),'
+        f'{ref(ADVANCED,"B47")}=IFERROR(1*B4,0),'
+        f'{ref(ADVANCED,"B49")}<>"",'
+        f'{ref(ADVANCED,"B49")}={ref(ADVANCED,"B42")},'
+        'COUNT(B12,B15,B16)=3,'
+        'LEFT(B28,3)<>"エラー")'
+    )
+    preview_visible = f'AND(B28<>"正常",{auto_ref_ok})'
+    home["A8"] = (f'=IF({preview_visible},'
+                  '"自動参考額（未確定・円）","寄附限度額の目安（円）")')
+    home["C8"] = "調整控除後の所得割（円）"
+    home["B8"] = (f'=IF(B28<>"正常",IF({auto_ref_ok},'
+                  f'{ref(ADVANCED,"B45")},""),{ref(RESIDENT,"B26")})')
+    home["D8"] = f'=IF(B28<>"正常","",{ref(RESIDENT,"B16")})'
     for cell, target in (("B8", "B26"), ("D8", "B16")):
-        home[cell] = f'=IF(B28<>"正常","",{ref(RESIDENT, target)})'
         home[cell].number_format = '#,##0'
         home[cell].alignment = Alignment(horizontal="right")
         home[cell].font = Font(name="Yu Gothic", bold=True, size=15, color="163A56")
-    note(home, 9, '=B28')
-    home.row_dimensions[9].height = 40
+    # Keep the caution in a locked helper in hidden column F: the existing
+    # VBA result-mask/reveal cycle must not erase the warning from row 9.
+    home["F9"] = (f'=IF({preview_visible},'
+                  '"【仮の参考額・限度額未確定】前年の給与・保険・扶養条件継続、給与以外の所得なし、住宅ローン控除等未調整。確定上限ではありません。"&CHAR(10)&B28,B28)')
+    home["F9"].protection = Protection(locked=True)
+    note(home, 9, "=F9")
+    home.row_dimensions[9].height = 58
     home.conditional_formatting.add(
         "A9:D9",
         FormulaRule(
-            formula=['AND($B$28<>"正常",$B$28<>"")'],
+            formula=['AND($B$28<>"正常",$B$28<>"",LEFT($B$28,4)<>"入力待ち")'],
             fill=PatternFill("solid", fgColor="FCE8E6"),
             font=Font(name="Yu Gothic", bold=True, color="A4242D"),
         ),
@@ -281,6 +501,14 @@ def build(source, output):
             formula=['$B$28="正常"'],
             fill=PatternFill("solid", fgColor="EAF5ED"),
             font=Font(name="Yu Gothic", bold=True, color="206E40"),
+        ),
+    )
+    home.conditional_formatting.add(
+        "A9:D9",
+        FormulaRule(
+            formula=['LEFT($B$28,4)="入力待ち"'],
+            fill=PatternFill("solid", fgColor="EDF4FE"),
+            font=Font(name="Yu Gothic", bold=True, color="1C4976"),
         ),
     )
     bar(home, 10, "源泉徴収票から転記・該当する控除の内訳")
@@ -317,22 +545,475 @@ def build(source, output):
     field("D22", "本人の控除区分", "該当なし", ("該当なし", "寡婦", "ひとり親（母）", "ひとり親（父）", "勤労学生"))
     field("D23", "16歳未満の扶養（人数）", maximum=30)
     field("D24", "申告方式", "ワンストップ", ("ワンストップ", "確定申告"))
-    note(home, 27, "公的年金・事業所得・雑所得・通常の申告分離課税は追加所得から入力できます。申告不要の上場株式・特例譲渡・繰越損失は区別してください。住宅ローン控除は通常欄です。")
-    home.row_dimensions[27].height = 42
-    note(home, 31, "対象外の手動判定は不要。原票の所得控除を優先し、入力内容に応じて計算可否を自動判定します。")
+    # The source slip's total stays in ADVANCED B14 for audit only. D25 is
+    # the user's independent manual override; clearing it restores auto.
+    field("D25", "所得控除合計（手入力上書き）")
+    home["C25"].font = Font(name="Yu Gothic", bold=True, color="9C4100")
+    home["D25"].fill = PatternFill("solid", fgColor="FFF0C2")
+    home["C26"] = "所得控除額の計算状態"
+    home["C26"].alignment = Alignment(wrap_text=True)
+    home["D26"] = '=IF(D25="","自動再計算","⚠ 手入力上書き中")'
+    home["D26"].font = Font(name="Yu Gothic", bold=True, color="9C4100")
+    home["D26"].alignment = Alignment(wrap_text=True)
+    home["D26"].protection = Protection(locked=True)
+    home.row_dimensions[26].height = 38
+    note(home, 27, '=IF(D25<>"","⚠ 所得控除合計は手入力上書き中です。D25を消すと自動計算に戻ります。",IF(AND(IFERROR(1*B11,0)=2025,D4=2026),"前年原票の所得控除合計は照合用です。令和8年の基礎・扶養等の控除を再計算します。D33の前提確認と読取内容の確認が必要です。","所得控除合計は社会保険料・扶養・配偶者等の変更により自動再計算します。D25で手入力上書きが可能です。"))')
+    home.row_dimensions[27].height = 56
+    home["A31"] = "所得控除合計（自動算定）"
+    home["B31"] = ('=IF(OR(B13="",B16=""),"",'
+                   f'SUM(B16:B18,{ref(ENGINE,"F15")},'
+                   f'{ref(ENGINE,"F38")},{ref("追加人的控除","C12")}))')
+    home["C31"] = "所得控除合計（原票記載）"
+    home["D31"] = f'=IF(ISNUMBER({ref(ADVANCED,"B14")}),{ref(ADVANCED,"B14")},"")'
+    for a in ("A31","C31"):
+        home[a].alignment = Alignment(wrap_text=True, vertical="center")
+    for a in ("B31","D31"):
+        home[a].number_format = '#,##0'
+        home[a].fill = PatternFill("solid", fgColor="EAF3EA")
+        home[a].protection = Protection(locked=True)
+        home[a].alignment = Alignment(horizontal="right")
+    home.row_dimensions[31].height = 42
+    for region in ("A14:B14", "C25:D26", "A27:D27"):
+        home.conditional_formatting.add(region,
+            FormulaRule(formula=['ISNUMBER($D$25)'],
+                fill=PatternFill("solid", fgColor="FFF0C2"),
+                font=Font(name="Yu Gothic", bold=True, color="9C4100")))
+    # Read-only multi-page overview: this view never changes the current
+    # taxpayer's single-case inputs or the precise donation calculation.
+    # One PDF page = one table row; uncertain family, residence or additional
+    # income conditions remain HOLD rather than producing a false tax limit.
+    batch.sheet_view.showGridLines = False
+    batch.sheet_view.zoomScale = 85
+    # A = E03 recipient name, B = original source PDF page, C:K = figures.
+    # Widen B for the clear-list button and K for the PDF export button.
+    for col, width in {"A": 26, "B": 15, "C": 17, "D": 19,
+                       "E": 19, "F": 19, "G": 18, "H": 19,
+                       "I": 21, "J": 15, "K": 50, "T": 26,
+                       "U": 23, "V": 25, "W": 19}.items():
+        batch.column_dimensions[col].width = width
+    # L:S numerical trace is included in the sort/filter range to prevent
+    # a name/amount/trace mismatch when Excel sorts by surname.
+    for letter in "LMNOPQRS":
+        batch.column_dimensions[letter].hidden = True
+    for line, note_text, height in (
+        (1, "源泉徴収票｜一括計算（給与所得のみ・ワンストップ／確定申告の両方式）", 29),
+        (2, "確定申告なし・ワンストップ特例、前年の給与・保険料・扶養・住宅ローン控除可能額などが継続するとの仮定による参考額。所得控除は試算対象年の法令で再計算。T列は自己負担2千円以内の厳密参考、U～W列は指定寄附額の申告時負担試算です。", 47),
+        (3, "原票の年分を確認してください。HOLD行は年分・控除内訳等が未確認の場合があります。住宅ローン残高の年次変動は考慮しない旨を該当者の備考に表示します。", 44),
+    ):
+        batch.merge_cells(start_row=line, start_column=1, end_row=line, end_column=23)
+        cell = batch.cell(row=line, column=1, value=note_text)
+        cell.alignment = Alignment(wrap_text=True, vertical="center")
+        batch.row_dimensions[line].height = height
+    # The hidden numerical trace keeps source year per person; the visible
+    # summary derives its years from that trace and the target-year column.
+    # A previous year's source is NEVER displayed as target-year evidence.
+    batch["A3"] = ('="原票年分："&IF(COUNT(L6:L105)=0,"未確認",'
+                   'IF(COUNTIF(L6:L105,2025)=COUNT(L6:L105),"2025年（令和7年）",'
+                   'IF(COUNTIF(L6:L105,2026)=COUNT(L6:L105),'
+                   '"2026年（令和8年）","2025/2026年混在")))&'
+                   '" ｜ 試算対象："&IF(COUNT(C6:C105)=0,"未取込",'
+                   'IF(COUNTIF(C6:C105,2026)=COUNT(C6:C105),'
+                   '"2026年（令和8年）",IF(COUNTIF(C6:C105,2025)=COUNT(C6:C105),'
+                   '"2025年（令和7年）","年分混在")))&'
+                   '" ｜ 試算対象年の法令を適用（参考額・未確定）"')
+    batch["A3"].font = Font(name="Yu Gothic", bold=True, color="163A56")
+    batch["A1"].font = Font(name="Yu Gothic", size=14, bold=True, color="FFFFFF")
+    batch["A1"].fill = PatternFill("solid", fgColor="163A56")
+    # Excel Form buttons need more than the default 15pt row height;
+    # the Japanese clear-list caption was vertically clipped at 125% DPI.
+    batch.row_dimensions[4].height = 34
+    batch["I4"] = "個別数値の手修正"
+    batch["I4"].hyperlink = Hyperlink(ref="I4", location="'一括入力修正'!A1")
+    batch["I4"].style = "Hyperlink"
+    batch["A4"] = "操作画面に戻る"
+    batch["A4"].hyperlink = Hyperlink(ref="A4", location="'操作画面'!A1")
+    batch["A4"].style = "Hyperlink"
+    batch["C4"] = "読取人数"
+    batch["D4"] = '=COUNT(B6:B105)'
+    batch["E4"] = "参考額あり"
+    batch["F4"] = '=COUNTIF(J6:J105,"参考額（仮）")'
+    batch["G4"] = "HOLD"
+    batch["H4"] = '=COUNTIF(J6:J105,"HOLD／要確認")'
+    batch["K4"] = "全員分PDF出力"
+    batch["K4"].alignment = Alignment(horizontal="center", vertical="center")
+    for cell in ("D4", "F4", "H4"):
+        batch[cell].font = Font(name="Yu Gothic", size=11, bold=True,
+                                color="163A56")
+    for col, caption in enumerate((
+        "氏名", "原票ページ", "計算対象年（適用税制）", "支払金額（円）", "給与所得（円）",
+        "所得控除合計（円）", "源泉徴収税額（円）", "社会保険料（円）",
+        "ワンストップ上限（仮・円）", "判定", "備考（判定理由・両方式の差）",
+    ), 1):
+        cell = batch.cell(row=5, column=col, value=caption)
+        cell.fill = PatternFill("solid", fgColor="163A56")
+        cell.font = Font(name="Yu Gothic", bold=True, color="FFFFFF")
+        cell.alignment = Alignment(wrap_text=True, vertical="center")
+    for letter, caption in (
+        ("T", "確定申告・自己負担2,000円以内の厳密参考額"),
+        ("U", "確定申告で試算する寄附額（円）"),
+        ("V", "確定申告時の実質自己負担（仮・円）"),
+        ("W", "自己負担2,000円超過分（仮・円）"),
+    ):
+        batch[f"{letter}5"] = caption
+        batch[f"{letter}5"].fill = PatternFill("solid", fgColor="163A56")
+        batch[f"{letter}5"].font = Font(name="Yu Gothic", bold=True, color="FFFFFF")
+        batch[f"{letter}5"].alignment = Alignment(wrap_text=True, vertical="center")
+    batch.row_dimensions[5].height = 34
+    batch.freeze_panes = "C6"
+    batch.auto_filter.ref = "A5:W105"  # move trace with person on sort
+    batch.sheet_properties.pageSetUpPr.fitToPage = True
+    batch.page_setup.fitToWidth = 1
+    batch.page_setup.fitToHeight = 0
+    batch.page_setup.orientation = "landscape"
+    batch.page_setup.paperSize = batch.PAPERSIZE_A3
+    batch.print_options.gridLines = False
+    batch.print_title_rows = "1:5"
+    for row in range(6, 106):
+        batch.row_dimensions[row].height = 21
+        for col in range(1, 24):
+            cell = batch.cell(row=row, column=col)
+            cell.protection = Protection(locked=True)
+            if col in (4, 5, 6, 7, 8, 9, 12, 13, 14, 15, 16, 17, 18, 20, 21, 22, 23):
+                cell.number_format = "#,##0;[Red](#,##0);-"
+            if col == 11:
+                cell.alignment = Alignment(
+                    wrap_text=True, vertical="center", horizontal="left")
+            if row % 2 == 0:
+                cell.fill = PatternFill("solid", fgColor="F4F8FB")
+        # A trial is evaluated by the offline EXE; do NOT infer the burden
+        # from the strict limit T or extrapolate from a different donation.
+        batch[f"W{row}"] = f'=IF(ISNUMBER(V{row}),MAX(0,V{row}-2000),"")'
+
+
+    # Batch source-detail editor. The G06 deduction total is derived only
+    # during recalculation and intentionally has NO editable cell here.
+    # Each row is tied to its original PDF page and cannot be grouped with
+    # another person's record. The opaque provenance columns stay hidden.
+    editor.sheet_view.showGridLines = False
+    editor.sheet_view.zoomScale = 80
+    editor.freeze_panes = "H6"
+    editor["A1"] = "源泉徴収票｜各人の入力値を修正（所得控除合計は自動算出）"
+    editor.merge_cells("A1:AI1")
+    editor["A1"].font = Font(name="Yu Gothic", size=14, bold=True, color="FFFFFF")
+    editor["A1"].fill = PatternFill("solid", fgColor="163A56")
+    editor.row_dimensions[1].height = 29
+    editor["A2"] = "氏名・原票ページと同じ行の数字のみ修正してください。所得控除合計は編集せず「修正値で全員再計算」を押すと自動で再算出します。"
+    editor.merge_cells("A2:AI2")
+    editor["A2"].alignment = Alignment(wrap_text=True, vertical="center")
+    editor.row_dimensions[2].height = 33
+    editor["A3"] = "源泉票の所得年・控除内訳・住宅ローン控除条件を個別確認。未確認の数字や税額不一致はHOLDとなり、推測で限度額を表示しません。"
+    editor.merge_cells("A3:AI3")
+    editor["A3"].alignment = Alignment(wrap_text=True, vertical="center")
+    editor.row_dimensions[3].height = 31
+    editor["A4"] = "一覧へ戻る"
+    editor["A4"].hyperlink = Hyperlink(ref="A4", location="'一括計算一覧'!A1")
+    editor["A4"].style = "Hyperlink"
+    editor["C4"] = "修正値で全員再計算"
+    edit_labels = (
+        "原票年", "試算対象年", "自治体区分", "内部資料種別", "原票の注意コード",
+        "支払金額", "給与所得控除後（原票）", "源泉徴収税額", "社会保険料",
+        "新生命保険料", "旧生命保険料", "介護医療保険料", "新個人年金保険料",
+        "旧個人年金保険料", "地震保険料控除", "旧長期損保払込額",
+        "配偶者控除", "配偶者所得", "配偶者該当", "16歳未満扶養",
+        "特定親族人数", "特定親族特別控除", "所得金額調整控除",
+        "所得税住宅控除額", "住宅控除可能額", "住宅居住開始年", "住宅控除適用数",
+        "一般扶養人数（16～18／23～69歳）", "特定扶養人数（19～22歳）",
+        "老人扶養人数（同居老親等以外）", "同居老親等人数",
+        "23歳未満扶養の生命保険特例（0/1）",
+        "申告時の試算寄附額（任意・千円単位、空欄はワンストップ参考額）",
+    )
+    from openpyxl.utils import get_column_letter
+    editor_cols = ("氏名", "原票ページ") + edit_labels
+    assert len(editor_cols) == 35
+    for idx, label in enumerate(editor_cols, 1):
+        letter = get_column_letter(idx)
+        cell = editor.cell(row=5, column=idx, value=label)
+        cell.fill = PatternFill("solid", fgColor="163A56")
+        cell.font = Font(name="Yu Gothic", size=9, bold=True, color="FFFFFF")
+        cell.alignment = Alignment(wrap_text=True, vertical="center")
+        editor.column_dimensions[letter].width = (
+            25 if idx == 1 else 14 if idx in (2, 3, 4) else 18)
+    editor.column_dimensions["F"].hidden = True
+    editor.column_dimensions["G"].hidden = True
+    editor.row_dimensions[5].height = 44
+    editor.auto_filter.ref = "A5:AI105"
+    for line in range(6, 106):
+        editor.row_dimensions[line].height = 22
+        for idx in range(1, 36):
+            cell = editor.cell(row=line, column=idx)
+            cell.number_format = "#,##0" if idx >= 8 else "General"
+            cell.protection = Protection(locked=(idx in (2, 6, 7)))
+            if idx not in (2, 6, 7):
+                cell.fill = PatternFill("solid", fgColor="FFF5DA")
+    editor.sheet_properties.pageSetUpPr.fitToPage = True
+    editor.page_setup.fitToWidth = 1
+    editor.page_setup.fitToHeight = 0
+    editor.page_setup.orientation = "landscape"
+    # Detail editor is an INPUT workspace, not a tax report for printing.
+
+    # Prepared per-person report sheet, populated only from the selected
+    # source PDF row. The official verified report is a DIFFERENT sheet and
+    # retains its prior ResultsAreCurrent gate.
+    auto_report.sheet_view.showGridLines = False
+    auto_report.sheet_view.zoomScale = 85
+    for col, width in {"A": 39, "B": 22, "C": 26, "D": 20}.items():
+        auto_report.column_dimensions[col].width = width
+    auto_report.sheet_properties.pageSetUpPr.fitToPage = True
+    auto_report.page_setup.fitToWidth = 1
+    auto_report.page_setup.fitToHeight = 1
+    auto_report.page_setup.orientation = "portrait"
+    auto_report.page_setup.paperSize = auto_report.PAPERSIZE_A4
+    auto_report.page_margins = PageMargins(
+        left=0.29, right=0.29, top=0.36, bottom=0.36,
+        header=0.15, footer=0.15)
+    auto_report.print_options.gridLines = False
+    auto_report.print_options.horizontalCentered = True
+    auto_report.print_area = "A1:D27"
+    bar(auto_report, 1, "源泉徴収票ごとの自動試算根拠｜未確定")
+    note(auto_report, 2, "検証用の推定参考額です。確定した寄附限度額ではありません。対象所得年の給与・控除が継続する等の仮定を含みます。")
+    auto_report["A3"] = "受給者氏名（源泉票E03）"
+    auto_report["A3"].font = Font(name="Yu Gothic", size=10, color="163A56")
+    auto_report["B3"].font = Font(name="Yu Gothic", size=11, bold=True, color="163A56")
+    auto_report["B3"].alignment = Alignment(horizontal="left")
+    auto_report.row_dimensions[3].height = 24
+    labels = {
+        4: "元PDFのページ番号",
+        5: "試算する所得年",
+        6: "源泉票の所得年",
+        7: "支払金額（原票）",
+        8: "給与所得（対象年・推計）",
+        9: "所得控除合計（原票）",
+        10: "社会保険料等（原票）",
+        11: "源泉徴収税額（原票）",
+        12: "原票の国税基礎控除（推定）",
+        13: "住民税の所得控除（仮定）",
+        14: "住民税課税所得（仮定・千円未満切捨）",
+        15: "住民税所得割（調整控除後・仮定）",
+        16: "特例控除計算上の所得税率相当",
+        17: "ふるさと納税特例控除割合",
+        18: "特例控除上限（住民税所得割の20％）",
+        19: "ふるさと納税参考額（千円単位）",
+        20: "自治体税率モデル（仮定）",
+        21: "判定",
+        22: "選択した税率モデルの算式",
+        23: "ワンストップ根拠・申告時比較",
+    }
+    for row, label in labels.items():
+        auto_report[f"A{row}"] = label
+        auto_report[f"A{row}"].font = Font(name="Yu Gothic", size=9, color="163A56")
+        auto_report[f"B{row}"].font = Font(name="Yu Gothic", size=10, bold=row == 19)
+        auto_report[f"B{row}"].alignment = Alignment(horizontal="right", vertical="center")
+        auto_report[f"B{row}"].number_format = '#,##0;[Red](#,##0);-'
+        auto_report.row_dimensions[row].height = 21
+    for row in (16, 17):
+        auto_report[f"B{row}"].number_format = "0.000%"
+    for row in (20, 21, 22, 23):
+        auto_report.merge_cells(start_row=row, start_column=2, end_row=row, end_column=4)
+        auto_report[f"B{row}"].alignment = Alignment(wrap_text=True, vertical="center")
+        auto_report.row_dimensions[row].height = 78 if row == 23 else 30
+    note(auto_report, 24, "特例控除上限は住宅ローン控除前の住民税所得割額を基準に計算。住宅ローン控除がある場合は、控除後の住民税額の余力も考慮します。")
+    note(auto_report, 25, "T列は自己負担2千円以内となる厳密な参考額。別途U列の試算寄附額に対する確定申告時の自己負担をV列に表示します。対象の住宅・扶養・自治体条件は個別確認が必要です。")
+    note(auto_report, 26, "前年の源泉票は翌年の所得や1月1日住所を保証しません。適用法令・所得控除の個別照合が必要です。")
+    note(auto_report, 27, "原票の受給者氏名をページ単位で表示。氏名を判読できない場合は必ず原票と照合。確定版レポートとは区別します。")
+
+    # Separate every special-age relative's income and legal eligibility.
+    # The first three retain the existing home input cells; remaining relatives
+    # are entered on this visible sheet.  No unconfirmed person gets an amount.
+    relatives.sheet_view.showGridLines = False
+    relatives.sheet_view.zoomScale = 90
+    for column, width in {"A": 8, "B": 19, "C": 24, "D": 21,
+                          "E": 18, "F": 18, "G": 25, "H": 43}.items():
+        relatives.column_dimensions[column].width = width
+    relatives.merge_cells("A1:H1")
+    relatives["A1"] = "特定扶養親族・特定親族特別控除｜個別計算（最大5人）"
+    relatives["A1"].font = Font(name="Yu Gothic", size=13, bold=True, color="FFFFFF")
+    relatives["A1"].fill = PatternFill("solid", fgColor="163A56")
+    relatives.row_dimensions[1].height = 27
+    relatives.merge_cells("A2:H2")
+    relatives["A2"] = ("年齢は所得年12月31日時点。確認済＝19～22歳・生計同一・"
+                      "他の納税者との重複適用なし・専従者等に該当しないことを証憑で確認。"
+                      "1～3人目の所得は操作画面D14:D16と連動します。")
+    relatives["A2"].alignment = Alignment(wrap_text=True, vertical="center")
+    relatives.row_dimensions[2].height = 45
+    for column, title in zip("ABCDEFGH", (
+        "No.", "年末年齢", "年間合計所得（円）", "適用要件",
+        "所得税控除（円）", "住民税控除（円）", "適用区分", "確認事項"
+    )):
+        cell = relatives[f"{column}3"]
+        cell.value = title
+        cell.fill = PatternFill("solid", fgColor="163A56")
+        cell.font = Font(name="Yu Gothic", bold=True, color="FFFFFF")
+        cell.alignment = Alignment(wrap_text=True)
+    relatives.row_dimensions[3].height = 30
+    relatives.freeze_panes = "C4"
+    age_rule = DataValidation(type="whole", operator="between",
+                              formula1=0, formula2=120)
+    income_rule = DataValidation(type="whole", operator="between",
+                                 formula1=0, formula2=100000000)
+    status_rule = DataValidation(
+        type="list", formula1='"未確認,要件確認済,対象外"')
+    for validation in (age_rule, income_rule, status_rule):
+        validation.showErrorMessage = True
+        validation.errorTitle = "特定親族の入力を確認してください"
+        validation.error = "年末年齢・各人の合計所得・適用要件を確認してください。"
+        relatives.add_data_validation(validation)
+    tax_year = ref(HOME, "D4")
+    special_income = lambda c: (
+        f'IF({c}<=850000,630000,IF({c}<=900000,610000,'
+        f'IF({c}<=950000,510000,IF({c}<=1000000,410000,'
+        f'IF({c}<=1050000,310000,IF({c}<=1100000,210000,'
+        f'IF({c}<=1150000,110000,IF({c}<=1200000,60000,'
+        f'IF({c}<=1230000,30000,0)))))))))'
+    )
+    special_resident = lambda c: (
+        f'IF({c}<=950000,450000,IF({c}<=1000000,410000,'
+        f'IF({c}<=1050000,310000,IF({c}<=1100000,210000,'
+        f'IF({c}<=1150000,110000,IF({c}<=1200000,60000,'
+        f'IF({c}<=1230000,30000,0)))))))'
+    )
+    for row in range(4, RELATIVE_LAST_ROW + 1):
+        person = row - 3
+        relatives[f"A{row}"] = person
+        relatives[f"D{row}"] = "未確認"
+        if person <= 3:
+            source = ref(HOME, f"D{row+10}")
+            relatives[f"C{row}"] = f'=IF({source}="","",{source})'
+            relatives[f"C{row}"].fill = PatternFill("solid", fgColor="EAF3EA")
+            relatives[f"C{row}"].protection = Protection(locked=True)
+        else:
+            relatives[f"C{row}"].fill = PatternFill("solid", fgColor="E2F2FF")
+            relatives[f"C{row}"].protection = Protection(locked=False)
+            income_rule.add(relatives[f"C{row}"])
+        for col in ("B", "D"):
+            cell = relatives[f"{col}{row}"]
+            cell.fill = PatternFill("solid", fgColor="E2F2FF")
+            cell.protection = Protection(locked=False)
+        age_rule.add(relatives[f"B{row}"])
+        status_rule.add(relatives[f"D{row}"])
+        category = (
+            f'=IF(AND(B{row}="",C{row}="",D{row}="未確認"),"未入力",'
+            f'IF(D{row}="対象外","対象外",'
+            f'IF(OR(B{row}="",C{row}="",D{row}<>"要件確認済",'
+            f'NOT(ISNUMBER(B{row})),NOT(ISNUMBER(C{row}))),"要確認",'
+            f'IF(OR(B{row}<19,B{row}>22,B{row}<>INT(B{row}),'
+            f'C{row}<0,C{row}<>INT(C{row})),"要確認",'
+            f'IF(C{row}>1230000,"対象外",'
+            f'IF(C{row}<=IF({tax_year}=2025,580000,620000),'
+            '"特定扶養親族","特定親族特別控除"))))))'
+        )
+        relatives[f"G{row}"] = category
+        relatives[f"E{row}"] = (
+            f'=IF(G{row}="特定扶養親族",630000,'
+            f'IF(G{row}="特定親族特別控除",{special_income(f"C{row}")},0))'
+        )
+        relatives[f"F{row}"] = (
+            f'=IF(G{row}="特定扶養親族",450000,'
+            f'IF(G{row}="特定親族特別控除",{special_resident(f"C{row}")},0))'
+        )
+        relatives[f"H{row}"] = (
+            f'=IF(G{row}="要確認","要確認：年齢・各人所得・生計同一等",'
+            f'IF(G{row}="対象外","適用対象外",""))'
+        )
+        for column in ("E","F"):
+            cell = relatives[f"{column}{row}"]
+            cell.number_format = "#,##0"
+            cell.fill = PatternFill("solid", fgColor="EAF3EA")
+            cell.protection = Protection(locked=True)
+        relatives.row_dimensions[row].height = 22
+    relatives["D10"] = "控除額合計"
+    relatives["E10"] = f"=SUM(E4:E{RELATIVE_LAST_ROW})"
+    relatives["F10"] = f"=SUM(F4:F{RELATIVE_LAST_ROW})"
+    relatives["D11"] = "特定親族特別控除人数"
+    relatives["E11"] = f'=COUNTIF(G4:G{RELATIVE_LAST_ROW},"特定親族特別控除")'
+    relatives["D12"] = "特定親族特別控除（所得税）"
+    relatives["E12"] = f'=SUMIF(G4:G{RELATIVE_LAST_ROW},"特定親族特別控除",E4:E{RELATIVE_LAST_ROW})'
+    relatives["D13"] = "未確認人数"
+    relatives["E13"] = f'=COUNTIF(G4:G{RELATIVE_LAST_ROW},"要確認")'
+    relatives["A15"] = "操作画面に戻る"
+    relatives["A15"].hyperlink = Hyperlink(ref="A15", location="'操作画面'!A1")
+    relatives["A15"].style = "Hyperlink"
+    relatives.print_area = "A1:H15"
+    relatives.sheet_properties.pageSetUpPr.fitToPage = True
+    relatives.page_setup.fitToWidth = 1
+    relatives.page_setup.fitToHeight = 2
+    relatives.page_setup.paperSize = relatives.PAPERSIZE_A4
+    relatives.page_setup.orientation = "landscape"
+    # B3 and C3 are occupied by source-import/review form controls; never
+    # merge A3:D3, or Excel buttons would be overlaid/obscured.
+    home["A3"] = "特定扶養・特定親族 明細（5人）"
+    home["A3"].hyperlink = Hyperlink(ref="A3", location="'特定親族明細'!A1")
+    home["A3"].style = "Hyperlink"
+    home["A3"].alignment = Alignment(vertical="center")
+    # Replace the three legacy XLOOKUP amount calculations, whose tax
+    # and legal-eligibility state were not independently checked.
+    for person in range(3):
+        eng_row, rel_row = 32 + person, 4 + person
+        original[f"F{eng_row}"] = "=" + ref(RELATIVES, f"E{rel_row}")
+        original[f"H{eng_row}"] = "=" + ref(RELATIVES, f"F{rel_row}")
+    # The old engine totals F28:F37 and H28:H37 cover persons 1..3.
+    # Append only persons 4..30; no duplicate deductions.
+    original["F38"] = f"=SUM(F28:F37)+SUM({ref(RELATIVES,'E7:E8')})"
+    original["H38"] = f"=SUM(H28:H37)+SUM({ref(RELATIVES,'F7:F8')})"
+
     bar(home, 32, "住宅ローン控除（通常処理・源泉徴収票から転記）")
     field("B33", "住宅ローン控除の所得税適用額")
     field("B34", "住宅ローン控除可能額（G36）")
+    field("D33", "翌年試算の前提確認", "未確認",
+          ("未確認", "確認済", "住宅控除なし"))
+    home["C34"] = "原票・試算年の関係"
+    home["D34"] = ('=IF(IFERROR(1*B11,0)=D4,"同一年分",'
+                   'IF(AND(IFERROR(1*B11,0)=2025,D4=2026),'
+                   '"前年票→2026試算","年分不一致"))')
+    home["D34"].protection = Protection(locked=True)
+    home["D34"].alignment = Alignment(horizontal="center")
+    home["D34"].fill = PatternFill("solid", fgColor="EAF3EA")
     field("B35", "居住開始年（西暦）", maximum=2035)
+    field("D35", "2022年入居の特例区分", "未確認",
+          ("未確認", "通常5%確認", "経過措置7%確認"))
+    # Tax-law eligibility is not derivable from a withholding statement.
+    # Show the statutory conditions in Excel's native input guidance
+    # rather than silently treating a selected 7% rate as eligibility proof.
+    for rule in home.data_validations.dataValidation:
+        if str(rule.sqref) == "D35":
+            rule.showInputMessage = True
+            rule.promptTitle = "2022年入居・7%経過措置"
+            rule.prompt = (
+                "7%は消費税10%の住宅取得と所定の契約時期等が条件。"
+                "新築2020/10～2021/9、建売・中古・増改築2020/12～2021/11。"
+                "原資料未確認なら「未確認」を選択。"
+            )
+            break
+    else:
+        raise AssertionError("Missing D35 2022 mortgage classification validation")
     field("B36", "住宅ローン控除適用数", maximum=3)
     note(home, 37, "可能額と所得税適用額は別物です。控除可能額があって適用額が空欄なら、原票確認まで試算額を表示しません。")
     home["A38"] = "住民税住宅ローン控除見込額"
-    home["B38"] = ('=IF(B34="",0,IF(AND(ISNUMBER(B33),ISNUMBER(B35),B35>=2022,B35<=D4),'
-                   'MIN(MAX(0,B34-B33),97500,ROUNDDOWN(MAX(0,B13-B14)/1000,0)*50),""))')
+    # From 2026 resident-tax year, the ordinary 5% housing-credit cap for
+    # occupancies through 2025 uses taxable national total PLUS the excess
+    # of the national basic deduction over the former ¥480,000 baseline.
+    # The 2026-occupancy cap is defined on the taxable total itself.
+    # J12 includes ordinary pension/business income; B13-B14 does not.
+    mortgage_taxable = f'N({ref(ENGINE,"J12")})'
+    mortgage_basic_delta = f'MAX(0,N({ref(ENGINE,"F15")})-480000)'
+    # 2022 occupancy can be 5%/97,500 or an exceptional 7%/136,500.
+    # No tax-credit amount is displayed before the operator identifies
+    # which legal acquisition/contract conditions the source proves.
+    housing_2022_seven = 'AND(B35=2022,D35="経過措置7%確認")'
+    housing_2022_unknown = (
+        'AND(B35=2022,NOT(OR(D35="通常5%確認",D35="経過措置7%確認")))'
+    )
+    home["B38"] = (
+        '=IF(B34="",0,IF(' + housing_2022_unknown + ',"",'
+        'IF(AND(ISNUMBER(B33),ISNUMBER(B35),B35>=2022,B35<=D4),'
+        f'MIN(MAX(0,B34-B33),IF({housing_2022_seven},136500,97500),'
+        f'ROUNDDOWN(MAX(0,{mortgage_taxable}+'
+        f'IF(B35>=2026,0,{mortgage_basic_delta}))/1000,0)*'
+        f'IF({housing_2022_seven},70,50)),"")))'
+    )
     home["B38"].number_format = '#,##0'
     home["B38"].fill = PatternFill("solid", fgColor="EAF3EA")
     home["B38"].protection = Protection(locked=True)
-    note(home, 39, "住民税控除の自動見込は居住年2022年以降・通常の5%/97,500円枠のみ。古い住宅・複数適用・残余税額不足は追加照合で安全停止します。")
+    note(home, 39, "2022年入居は契約・取得条件で通常5%／経過措置7%を必ず選択（未確認は停止）。2025・2026年分は所得税基礎控除差を反映。その他の特例・複数適用は個別照合。")
     home.row_dimensions[39].height = 36
     home.print_area = "A1:D39"
 
@@ -356,26 +1037,37 @@ def build(source, output):
     for row, label in enumerate(("寡婦", "ひとり親（母）", "ひとり親（父）", "勤労学生"), 7):
         book["追加人的控除"][f"B{row}"] = f'=IF({ref(HOME, "D22")}="{label}",1,0)'
 
+    # A previous-year withholding document is reference evidence, not a
+    # current-year tax determination. Restrict references and source-tax
+    # sanity checks to the same income year throughout the calculator.
+    same_source_year = 'IFERROR(1*B11,0)=D4'
     # Salary and premiums are user inputs; corresponding deductions are
     # calculated from approved year masters, not retyped.
     derived = {
-        "B13": (f'=IF(ISNUMBER({ref(ADVANCED,"B15")}),{ref(ADVANCED,"B15")},IF(B12="","",MAX(0,'
+        "B13": (f'=IF(AND(IFERROR(1*B11,0)=D4,ISNUMBER({ref(ADVANCED,"B15")})),'
+                 f'{ref(ADVANCED,"B15")},IF(B12="","",MAX(0,'
                  'IF(B12<6600000,'
                  'IF(B12<=IF(D4=2025,1900000,2200000),'
-                 'MAX(0,B12-IF(D4=2025,650000,740000)),'
+                 # Income Tax Act / Special Measures Act 2026 NTA No.1410 note (2).
+                 # 2026 salary 2,191,000..2,199,999: fixed income rather than
+                 # gross minus the ordinary 740,000-yen minimum deduction.
+                 'IF(AND(D4=2026,B12<2200000),'
+                 'IF(B12<741000,0,IF(B12<2191000,B12-740000,'
+                 'IF(B12<2193000,1451000,IF(B12<2196000,1453000,1456000)))),'
+                 # Under the 2025 statutory Fifth Table, gross below 651,000 yen
+                  # has ZERO salary income. Gross-650,000 incorrectly
+                  # returns 1..999 yen for the 650,001..650,999 band.
+                  'IF(AND(D4=2025,B12<651000),0,MAX(0,B12-IF(D4=2025,650000,740000)))),'
                  'ROUNDDOWN(B12/4000,0)*4000*'
                  'IF(B12<=3600000,0.7,0.8)-IF(B12<=3600000,80000,440000)),'
                  f'{ref(INPUT,"B34")})-'
-                 f'IF(ISNUMBER({ref(ADVANCED,"B13")}),'
+                 f'IF(AND({same_source_year},ISNUMBER({ref(ADVANCED,"B13")})),'
                  f'{ref(ADVANCED,"B13")},'
                  'IF(AND(B12>8500000,B25="あり"),'
-                 '(MIN(B12,10000000)-8500000)*0.1,0)))))'),
-        "B17": f'=IF(ISNUMBER({ref(ADVANCED,"B16")}),{ref(ADVANCED,"B16")},IF(B12="","",{ref(ENGINE, "F24")}))',
-        "B18": f'=IF(ISNUMBER({ref(ADVANCED,"B17")}),{ref(ADVANCED,"B17")},IF(B12="","",{ref(ENGINE, "F25")}))',
-        "B14": (f'=IF(ISNUMBER({ref(ADVANCED,"B14")}),{ref(ADVANCED,"B14")},'
-                'IF(OR(B13="",B16=""),"",'
-                f'SUM(B16:B18,{ref(ENGINE,"F15")},'
-                f'{ref(ENGINE,"F38")},{ref("追加人的控除","C12")})))'),
+                 'ROUNDUP((MIN(B12,10000000)-8500000)/10,0),0)))))'),
+        "B17": f'=IF(AND(IFERROR(1*B11,0)=D4,ISNUMBER({ref(ADVANCED,"B16")})),{ref(ADVANCED,"B16")},IF(B12="","",{ref(ENGINE, "F24")}))',
+        "B18": f'=IF(AND(IFERROR(1*B11,0)=D4,ISNUMBER({ref(ADVANCED,"B17")})),{ref(ADVANCED,"B17")},IF(B12="","",{ref(ENGINE, "F25")}))',
+        "B14": '=IF(D25<>"",IF(ISNUMBER(D25),D25,""),B31)',
     }
     for addr, formula in derived.items():
         home[addr] = formula
@@ -386,7 +1078,7 @@ def build(source, output):
         home[addr].protection = Protection(locked=True)
     for addr, label in (
         ("A13", "給与所得控除後の金額（自動）"),
-        ("A14", "所得控除の額の合計額（自動）"),
+        ("A14", "所得控除の額の合計額（適用値）"),
         ("A17", "生命保険料控除額（自動）"),
         ("A18", "地震保険料控除額（自動）"),
     ):
@@ -411,16 +1103,48 @@ def build(source, output):
         'AND(N(B34)>0,OR(NOT(ISNUMBER(B33)),NOT(ISNUMBER(B35)),B35<2022,B35>D4))',
         'AND(N(B34)>0,OR(NOT(ISNUMBER(B36)),B36<>1))',
         'AND(N(B34)>0,ISNUMBER(B33),B33>B34)',
-        'AND(ISNUMBER(B33),B33<0)',
+        'AND(ISNUMBER(B33),B33<0)', 'AND(ISNUMBER(B34),B34<0)',
         # Source reference totals include omitted special and family deductions.
         # They are authoritative when extracted from the withholding form.
-        f'AND(ISNUMBER({ref(ADVANCED,"B14")}),{ref(ADVANCED,"B14")}<B16)',
-        'MAX(D11:D13,D19:D21)>30', 'COUNT(D17:D18)>1', 'B13>B12', 'B15>B12', 'B16>B14',
-                'AND(COUNT(D14:D16,D23)>0,B25="なし",OR(COUNT(D14:D16)>0,D23>0))',
+        'AND(D25<>"",OR(NOT(ISNUMBER(D25)),D25<0,D25>100000000,D25<>INT(D25)))',
+        # Source total is provenance only. A manual adjustment of current-year
+        # social insurance must not be rejected against historic slip totals.
+        'MAX(D11:D13,D19:D21)>30', 'COUNT(D17:D18)>1', 'B13>B12',
+                f'AND({same_source_year},B15>B12)', 'B16>B14',
+                # Special-relative deductions (>58/62万円 income) are NOT
+                # statutory dependents for the under-23 salary adjustment.
+                # Only individually confirmed regular special dependents
+                # or the separately declared under-16 count force B25=あり.
+                f'AND(B25="なし",OR(COUNTIF({ref(RELATIVES,"G4:G8")},'
+                '"特定扶養親族")>0,N(D23)>0))',
                 f'OR(AND(NOT(ISNUMBER({ref(ADVANCED,"B16")})),B17<>{ref(ENGINE,"F24")}),'
                 f'AND(NOT(ISNUMBER({ref(ADVANCED,"B17")})),B18<>{ref(ENGINE,"F25")}))',
-                f'AND(NOT(ISNUMBER({ref(ADVANCED,"B14")})),'
-                f'B14<>SUM(B16:B18,{ref(ENGINE,"F15")},{ref(ENGINE,"F38")},{ref("追加人的控除","C12")}))']
+                'AND(D25="",B14<>B31)']
+    # The resident income-levy exemption uses statutory dependents,
+    # not every numeric entry in the special-relative/spouse income fields.
+    # Special-relative allowance recipients above the dependent threshold
+    # do not count; an ineligible spouse does not count either.
+    spouse_threshold = f'IF({ref("設定・税率","B4")}=2025,580000,620000)'
+    eligible_family_count = (
+        '(SUM(D11:D13,D23)+'
+        f'COUNTIF({ref(RELATIVES,"G4:G8")},"特定扶養親族")+'
+        + '+'.join(
+            f'IF(AND(ISNUMBER({cell}),{cell}<={spouse_threshold}),1,0)'
+            for cell in ("D17", "D18")
+        ) + ')'
+    )
+    # Kyoto City's statutory individual resident income-levy exemption is
+    # based on TOTAL ordinary-and-split income (総所得金額等), not merely
+    # salary income from B13. B30 already includes net pension, business,
+    # miscellaneous and salary/pension adjustment; declared split income
+    # must additionally be included. Prefer the source gross split amount
+    # B36 when available, to avoid understating an exemption threshold
+    # basis if tax deductions were applied to B24.
+    income_levy_basis = (
+        f'(N({ref(ADVANCED,"B30")})+'
+        f'IF(N({ref(ADVANCED,"B24")})>0,'
+        f'MAX(N({ref(ADVANCED,"B24")}),N({ref(ADVANCED,"B36")})),0))'
+    )
     unsupported = (
         'OR('
         +f'AND(N({ref(ADVANCED,"B24")})>0,NOT(OR('
@@ -431,10 +1155,12 @@ def build(source, output):
         +f'AND(N({ref(ADVANCED,"B24")})>0,{ref(ADVANCED,"B33")}<>"なし"),'
         +f'N({ref(ADVANCED,"B21")})>0,'
         +f'{ref(ADVANCED,"B20")}="REQUIRES_REVIEW",'
-        +f'AND(D24="確定申告",B15=0,B34="",N({ref(ADVANCED,"B24")})=0),'
-        'B13<=IF(SUM(D11:D13,D23)+COUNT(D14:D18)=0,450000,'
-        '350000*(1+SUM(D11:D13,D23)+COUNT(D14:D18))+420000),'
-        'AND(OR(SUM(D19:D21)>0,D22<>"該当なし"),B13<=1350000))'
+        +f'AND({ref(ADVANCED,"B40")}<>"",{ref(ADVANCED,"B20")}<>"VERIFIED_AFTER_CORRECTION"),'
+        +f'AND({same_source_year},D24="確定申告",B15=0,B34="",N({ref(ADVANCED,"B24")})=0),'
+        f'{income_levy_basis}<=IF({eligible_family_count}=0,450000,'
+        f'350000*(1+{eligible_family_count})+420000),'
+        f'AND(OR(SUM(D19:D21)>0,D22<>"該当なし"),'
+        f'{income_levy_basis}<=1350000))'
     )
     # Add declared split-tax resident levy to the existing levy base. Do
     # not mix split taxable income into the ordinary taxable bracket.
@@ -541,6 +1267,109 @@ def build(source, output):
     set_candidate(50, "=200000")
     split["A51"] = "実税額軽減額の計算は、総合課税から先に所得控除し、超過分を分離課税に適用します。"
     split.freeze_panes = "E19"
+    # Independent taxable-income difference model for salary-only taxpayers
+    # filing a return with an independently verified housing credit. This is
+    # distinct from the one-stop model: the donation reduces national taxable
+    # income BEFORE the national housing credit is used. Housing transferred
+    # to resident tax must then be recalculated on the post-donation basis.
+    # No VBA event writes to this hidden, formula-only calculation surface.
+    mortgage_filing.sheet_view.showGridLines = False
+    mortgage_filing["A1"] = "確定申告・住宅ローン控除併用：寄附額別の実税負担差分"
+    mortgage_fields = {
+        "B2": ("所得税課税所得（寄附前）",
+               f'=ROUNDDOWN(MAX(0,N({ref(ENGINE,"D15")})-N({ref(HOME,"B14")})),-3)'),
+        "B3": ("所得税額（寄附前・住宅控除前）",
+               f'={income_tax_progressive("B2")}'),
+        "B4": ("住宅控除後の所得税・復興税込（寄附前）",
+               '=ROUNDDOWN(MAX(0,B3-MIN(B3,B5))*1.021,0)'),
+        "B5": ("当年の住宅ローン控除可能額",
+               f'=MAX(0,N({ref(HOME,"B34")}))'),
+        "B6": ("住民税へ移す住宅ローン控除（寄附前）",
+               '=MIN(MAX(0,B5-MIN(B3,B5)),B9,'
+               'ROUNDDOWN(MAX(0,B2+B12)/1000,0)*B13)'),
+        "B7": ("調整控除後の住民税所得割",
+               f'=MAX(0,N({ref(RESIDENT,"B16")}))'),
+        "B8": ("住宅控除後の住民税（寄附前）",
+               '=MAX(0,B7-B6)'),
+        "B9": ("住宅ローン控除の住民税移行額上限",
+               f'=IF(AND({ref(HOME,"B35")}=2022,'
+               f'{ref(HOME,"D35")}="経過措置7%確認"),136500,97500)'),
+        "B10": ("特例分の20%法定上限（住宅控除前）",
+                f'=MAX(0,N({ref(RESIDENT,"B19")}))'),
+        "B11": ("寄附金住民税特例控除割合",
+                f'=MAX(0,N({ref(RESIDENT,"B22")}))'),
+        "B12": ("国税基礎控除差の住宅移行額加算",
+                f'=IF({ref(HOME,"B35")}<=2025,'
+                f'MAX(0,N({ref(ENGINE,"F15")})-480000),0)'),
+        "B13": ("住民税住宅移行上限の千円当たり額",
+                f'=IF(AND({ref(HOME,"B35")}=2022,'
+                f'{ref(HOME,"D35")}="経過措置7%確認"),70,50)'),
+        "B14": ("寄附額探索上限（千円単位）",
+                '=MAX(2,ROUNDDOWN(B16/1000,0))'),
+        "B15": ("所得税の寄附額40%上限",
+                f'=ROUNDDOWN(MAX(0,N({ref(ENGINE,"D15")}))*0.4,0)'),
+        "B16": ("住民税の寄附額30%上限",
+                f'=ROUNDDOWN(MAX(0,N({ref(ENGINE,"D15")}))*0.3,0)'),
+    }
+    for coordinate, (label, formula_value) in mortgage_fields.items():
+        mortgage_filing[f"A{mortgage_filing[coordinate].row}"] = label
+        mortgage_filing[coordinate] = formula_value
+    labels = (
+        "下限(k円)", "上限(k円)", "試行(k円)", "試行寄附額",
+        "寄附金所得控除額", "寄附後の所得税課税所得",
+        "寄附後の住宅控除前所得税", "寄附後の国税住宅控除使用額",
+        "住民税住宅控除移行額", "寄附後の所得税・復興税込",
+        "住民税寄附基本分", "住民税寄附特例分",
+        "寄附後の住民税残額", "寄附による税負担軽減合計",
+        "実質負担2千円以内", "実質自己負担額",
+    )
+    for col, caption in enumerate(labels, 2):
+        mortgage_filing.cell(18, col, caption)
+
+    def mortgage_candidate(row, amount_formula):
+        m = mortgage_filing
+        m[f"E{row}"] = amount_formula
+        m[f"F{row}"] = f'=MAX(0,MIN(E{row},$B$15)-2000)'
+        m[f"G{row}"] = f'=ROUNDDOWN(MAX(0,$B$2-F{row}),-3)'
+        m[f"H{row}"] = f'={income_tax_progressive(f"G{row}")}'
+        m[f"I{row}"] = f'=MIN($B$5,H{row})'
+        m[f"J{row}"] = (
+            f'=MIN(MAX(0,$B$5-I{row}),$B$9,'
+            f'ROUNDDOWN(MAX(0,G{row}+$B$12)/1000,0)*$B$13)')
+        m[f"K{row}"] = f'=ROUNDDOWN(MAX(0,H{row}-I{row})*1.021,0)'
+        m[f"L{row}"] = (
+            f'=ROUNDDOWN(MAX(0,MIN(E{row},$B$16)-2000)*0.1,0)')
+        m[f"M{row}"] = (
+            f'=MIN($B$10,ROUNDDOWN('
+            f'MAX(0,MIN(E{row},$B$16)-2000)*$B$11,0))')
+        m[f"N{row}"] = f'=MAX(0,$B$7-J{row}-L{row}-M{row})'
+        m[f"O{row}"] = f'=$B$4+$B$8-K{row}-N{row}'
+        m[f"P{row}"] = (
+            f'=IF(OR(E{row}<=2000,O{row}+1>=E{row}-2000),1,0)')
+        m[f"Q{row}"] = f'=MAX(0,E{row}-O{row})'
+
+    # Conservative 1,000-yen bisection: 24 iterations cover the validated
+    # salary-only resident 30% donation cap. The independent Python oracle
+    # instead scans safe-prefix amounts and checks monotonicity regressions.
+    for n in range(19, 43):
+        if n == 19:
+            mortgage_filing[f"B{n}"] = "=2"
+            mortgage_filing[f"C{n}"] = "=$B$14"
+        else:
+            mortgage_filing[f"B{n}"] = (
+                f'=IF(P{n-1}=1,D{n-1},B{n-1})')
+            mortgage_filing[f"C{n}"] = (
+                f'=IF(P{n-1}=1,C{n-1},MAX(B{n-1},D{n-1}-1))')
+        mortgage_filing[f"D{n}"] = f'=ROUNDUP((B{n}+C{n})/2,0)'
+        mortgage_candidate(n, f'=D{n}*1000')
+    mortgage_filing["A43"] = "最終合格寄附額（千円単位）"
+    mortgage_filing["B43"] = '=IF(P42=1,D42,B42)'
+    mortgage_filing["A46"] = "確定申告・住宅控除後の寄附上限参照値"
+    mortgage_filing["B46"] = (
+        '=IF(OR(B7<=0,B10<=0,B16<2000),0,MAX(0,B43*1000))')
+    mortgage_filing["A50"] = "単一寄附額の検証用"
+    mortgage_candidate(50, "=109000")
+    mortgage_filing.freeze_panes = "E19"
     # No redundant one-stop attestation input.
     bracket_limits = "{0,1951000,3301000,6951000,9001000,18001000,40001000}"
     bracket_rates = "{0.05,0.1,0.2,0.23,0.33,0.4,0.45}"
@@ -558,17 +1387,79 @@ def build(source, output):
         f'MAX(0,N({candidate})-2000)*'
         f'IF(D24="ワンストップ",1,MAX(0,1-N({rate})*1.021))'
     )
+    add_separate_tax(book, home, field, bar, note, income_tax_progressive)
+    # D72:D77 belong exclusively to the split-tax reviewed model.  If any
+    # separate-case credit remains populated in ordinary salary mode, the
+    # ordinary donation estimate does NOT account for it and must not show.
+    # Compare raw cells (not N()), so pasted text and negative entries also
+    # fail closed rather than silently being interpreted as zero.
+    unhandled_ordinary_credits = 'OR(' + ','.join(f'D{row}<>0' for row in range(72, 78)) + ')'
+    projection = 'AND(IFERROR(1*B11,0)=2025,D4=2026)'
+    projected_source_mortgage = f'OR(N({ref(ADVANCED,"B43")})>0,N({ref(ADVANCED,"B44")})>0)'
+    filing_housing = 'AND(D24="確定申告",N(B34)>0)'
+    additional_income_inputs = [
+        ref(ADVANCED, f"B{row}") for row in (5, 8, 9, 10, 11, 12, 26)
+    ]
+    unverified_additional_income = "OR(" + ",".join(
+        f'AND({cell}<>"",{cell}<>0)' for cell in additional_income_inputs
+    ) + ")"
+    housing_unverified = (
+        f'OR(D25<>"",N({ref(ADVANCED,"B28")})>0,'
+        f'N({ref(ADVANCED,"B24")})>0,'
+        f'N({ref(ADVANCED,"B27")})>0,'
+        f'N({ref(INPUT,"B13")})>0,'
+        f'N(B33)<>MIN(N(B34),N({ref(MORTGAGE_RETURN,"B3")})),'
+        f'N({ref(MORTGAGE_RETURN,"B2")})<=0)'
+    )
     status = [
-        ('OR(IFERROR(1*B4,0)<>D4,IFERROR(1*B11,0)<>D4)', "警告：源泉徴収票と適用中の所得年を一致させてください"),
+        ('B44<>"給与・通常"', "詳細設定の55行目以降で状態と試算額を確認してください。"),
+        (f'NOT(OR({standard_city},{designated_city}))',
+         "SAFE-TAX-036 要確認。詳細設定の課税自治体を確認してください。条例差・不明の場合は試算を停止します。"),
+        ('B12>20000000',
+         "SAFE-TAX-037 要確認。給与収入2,000万円超は年末調整の対象外です。通常試算の対象外です。"),
+        (unhandled_ordinary_credits,
+         "SAFE-TAX-026 要確認。詳細設定の税額控除は通常計算に反映されません。入力内容を個別に照合してください。"),
+        ('AND(D24="ワンストップ",N(B34)>0,ISNUMBER(B35),B35=D4)',
+         "SAFE-TAX-033 要確認。住宅ローン控除の入居初年度は確定申告が必要です。ワンストップ特例では計算できません。"),
+        (f'AND(D24="ワンストップ",N({rate})>0.33)',
+         "SAFE-TAX-034 要確認。高所得者の申告特例控除割合は個別の税額照合が必要です。"),
+        ('AND(ISNUMBER(B33),B33>0,OR(NOT(ISNUMBER(B34)),B34<B33))',
+         "SAFE-TAX-027 要確認。住宅ローン控除の所得税適用額があるため、控除可能額（G36）を確認してください。"),
+        ('AND(N(B34)>0,' + housing_2022_unknown + ')',
+         "SAFE-TAX-028 要確認。2022年入居の住宅ローン控除は取得・契約条件を照合し、5%／7%の適用区分を選択してください。"),
+        ('AND(D35<>"",D35<>"未確認",OR(B35<>2022,N(B34)<=0))',
+         "SAFE-TAX-029 要確認。2022年以外の住宅ローン控除に2022年入居の特例区分が残っています。"),
+        (f'OR({ref(ADVANCED,"B24")}<>"",{ref(ADVANCED,"B36")}<>"")',
+         "SAFE-TAX-016 要確認。旧・控除後の分離課税入力です。詳細設定で控除前の所得と税目別控除を入力し、再計算してください。"),
+        (f'OR(IFERROR(1*B4,0)<>D4,NOT(OR({same_source_year},{projection})))',
+         "警告：原票の年分と試算年を確認してください。前年原票からの試算は2025→2026のみ対応します"),
+        (f'AND({projection},OR(AND(D33<>"確認済",D33<>"住宅控除なし"),'
+         f'{ref(ADVANCED,"B20")}<>"VERIFIED_AFTER_CORRECTION",'
+         f'{ref(ADVANCED,"B41")}="",'
+         f'{ref(ADVANCED,"B41")}<>{ref(ADVANCED,"B42")}))',
+         "SAFE-TAX-030 前年票による翌年試算です。当年の給与・保険料・扶養等を確認し、読取内容の確認を行ってください"),
+        (f'AND({projection},D33="住宅控除なし",OR(B33<>"",B34<>""))',
+         "SAFE-TAX-032 住宅控除なしの確認と当年の住宅ローン控除欄が矛盾しています。控除欄を空欄にするか、確認区分を変更してください"),
+        (f'AND({projection},{projected_source_mortgage},'
+         'D33="確認済",N(B34)<=0)',
+         "SAFE-TAX-031 前年の住宅ローン控除を流用できません。当年の適用額・可能額・入居年を確認してください"),
+        (f'AND({filing_housing},{housing_unverified})',
+         "SAFE-TAX-035 要確認。確定申告と住宅ローン控除の併用は、国税の適用額、他所得、その他の税額控除を個別に照合してください。"),
         ('OR(COUNT(B12:B18)<>7,AND(B25<>"あり",B25<>"なし"),'
          'AND(D24<>"ワンストップ",D24<>"確定申告"),'
          'AND(D22<>"該当なし",D22<>"寡婦",D22<>"ひとり親（母）",D22<>"ひとり親（父）",D22<>"勤労学生"))',
          "警告：源泉徴収票の金額と確認欄を入力してください"),
         ("OR(" + ",".join(invalid) + ")", "エラー：金額・人数・控除の内訳を源泉徴収票と照合してください"),
+        (f'OR(D25<>"",N({ref(INPUT,"B13")})<>0,{ref(INPUT,"B15")}<>"",'
+         f'{ref(INPUT,"B16")}<>"",{ref(INPUT,"B19")}<>"")',
+         "SAFE-TAX-038 要確認。手入力控除を含む通常試算は保留します。控除内訳を確認し、自動計算に戻してください。"),
+        (unverified_additional_income,
+         "SAFE-TAX-039 要確認。年金・事業・不動産・雑所得を含む通常試算は保留します。総所得と控除を個別照合してください。"),
         (f'OR(ABS({ref(INPUT,"B34")}-B13-'
-         f'IF(ISNUMBER({ref(ADVANCED,"B13")}),{ref(ADVANCED,"B13")},'
+         f'IF(AND({same_source_year},ISNUMBER({ref(ADVANCED,"B13")})),'
+         f'{ref(ADVANCED,"B13")},'
          'IF(AND(B12>8500000,B25="あり"),'
-         '(MIN(B12,10000000)-8500000)*0.1,0)))>10000,'
+         'ROUNDUP((MIN(B12,10000000)-8500000)/10,0),0)))>10000,'
          f'{ref(RESIDENT,"B16")}<=0)',
          "警告：給与所得または住民税所得割を個別に照合してください"),
         (f'AND(N({ref(ADVANCED,"B24")})>0,'
@@ -579,18 +1470,32 @@ def build(source, output):
          "警告：申告分離課税の所得区分を選択してください"),
         (f'AND(N({ref(ADVANCED,"B24")})>0,{ref(ADVANCED,"B33")}<>"なし")',
          "警告：特例・繰越損失を伴う分離課税は個別照合が必要です"),
+        (f'N({ref(ADVANCED,"B38")})>30',
+         "警告：特定親族が5人を超えています。個別確認可能人数を超えるため試算を停止します"),
+        (f'COUNTIF({ref(RELATIVES,"G4:G8")},"要確認")>0',
+         "警告：特定扶養親族・特定親族特別控除の年齢・所得・適用要件を個別確認してください"),
+        (f'AND({same_source_year},ISNUMBER({ref(ADVANCED,"B14")}),ISNUMBER(B31),'
+         f'ABS({ref(ADVANCED,"B14")}-B31)>1,'
+         f'OR({ref(ADVANCED,"B20")}<>"VERIFIED_AFTER_CORRECTION",'
+         f'{ref(ADVANCED,"B41")}="",'
+         f'{ref(ADVANCED,"B41")}<>{ref(ADVANCED,"B42")}))',
+         "警告：原票の所得控除合計と自動再計算額が異なります。原票と修正額を確認して読取内容の確認を行ってください"),
+        (f'AND({ref(ADVANCED,"B20")}="VERIFIED_AFTER_CORRECTION",'
+         f'OR({ref(ADVANCED,"B41")}="",'
+         f'{ref(ADVANCED,"B41")}<>{ref(ADVANCED,"B42")}))',
+         "警告：前回の原票確認後に入力値が変わりました。読取内容を再確認してください"),
         (f'{ref(ADVANCED,"B20")}="REQUIRES_REVIEW"',
          "警告：源泉徴収票の読取内容を確認してください"),
         (unsupported, "警告：入力内容から個別照合が必要と判定しました"),
         (f'AND(N({ref(ADVANCED,"B24")})>0,N(B34)>0)',
          "警告：分離課税と住宅ローン控除の併用は税額控除の再配分検証が必要です"),
-        (f'AND(N(B34)>0,ISNUMBER(B38),B38>0,{remaining_levy}<{donation_resident})',
+        (f'AND(N({ref(ADVANCED,"B24")})>0,N(B34)>0,ISNUMBER(B38),B38>0,{remaining_levy}<{donation_resident})',
          "警告：住宅ローン控除後の住民税枠が不足するため、寄附限度額を個別に照合してください"),
         (f'OR(COUNTIF({ref("整合性チェック","B4:B12")},"OK")<>9,{ref("自動回帰テスト","B49")}<>"PASS")',
          "エラー：税制マスタまたは内蔵検証に異常があります"),
         (f'OR(NOT(ISNUMBER({ref(RESIDENT,"B24")})),NOT(ISNUMBER({ref(RESIDENT,"B25")})))',
          "エラー：住民税または寄附額を算定できません"),
-        (f'AND(D24="確定申告",N({ref(ADVANCED,"B24")})=0,OR({taxable}<=0,'
+        (f'AND(D24="確定申告",N(B34)<=0,N({ref(ADVANCED,"B24")})=0,OR({taxable}<=0,'
          f'ABS({ref(RESIDENT,"B20")}-{taxable})>{settings_b10},'
          f'{rate}<>LOOKUP({taxable},{bracket_limits},{bracket_rates}),'
          f'MAX(0,{candidate}-{settings_b8})>{taxable}-LOOKUP({taxable},{bracket_limits},{previous_bracket_max})))',
@@ -599,20 +1504,46 @@ def build(source, output):
     formula = '"正常"'
     for condition, message in reversed(status):
         formula = f'IF({condition},"{message}",{formula})'
-    home["B28"] = f'=IFERROR({formula},"エラー：入力または計算式を確認してください")'
+    # Show a neutral initial-input prompt only when required amounts are
+    # genuinely empty (not nonnumeric pasted values); retain fail-closed
+    # tax-calculation checks as soon as all three core amounts are present.
+    # Do not reference B26: it depends on B28 and would introduce a cycle.
+    waiting = 'AND(COUNT(B12,B15,B16)<3,COUNTA(B12,B15,B16)=COUNT(B12,B15,B16))'
+    home["B28"] = (f'=IF({waiting},"入力待ち：支払金額・源泉徴収税額・社会保険料等を入力してください",'
+                   f'IFERROR({formula},"エラー：入力または計算式を確認してください"))' )
     home.row_dimensions[28].hidden = True
     checks = book["自動回帰テスト"]
     checks["B49"] = '=IF(COUNTIF(H4:H45,"PASS")+COUNTIF(D58:D63,"PASS")+COUNTIF(H66:H69,"PASS")=52,"PASS","FAIL")'
     prior = resident["B26"].value[1:]
+    # Housing is credited before resident donation relief, but the special
+    # donation cap keeps the *pre-housing* adjustment-credit levy as its base.
+    # Verified one-stop cases can safely be bounded by the remaining levy,
+    # instead of hiding a computable 1,000-yen reference.  Tax-return cases
+    # retain the separate warning, since donation deductions can change the
+    # national-to-resident housing-credit allocation.
+    available_after_housing = (
+        f'MAX(0,N({ref(RESIDENT,"B16")})-N({ref(HOME,"B38")}))'
+    )
+    one_stop_housing_limit = (
+        f'IF({available_after_housing}<=0,0,'
+        f'MIN({prior},ROUNDDOWN(({available_after_housing}+2000)/1000,0)*1000))'
+    )
     resident["B26"] = (f'=IFERROR(IF({ref(HOME,"B28")}="正常",'
                        f'IF(N({ref(ADVANCED,"B24")})>0,{ref(SPLIT_ALLOC,"B46")},'
-                       f'{prior}),""),"")')
+                       f'IF(AND({ref(HOME,"D24")}="確定申告",'
+                       f'N({ref(HOME,"B34")})>0),{ref(MORTGAGE_RETURN,"B46")},'
+                       f'IF(AND({ref(HOME,"D24")}="ワンストップ",'
+                       f'N({ref(HOME,"B34")})>0),{one_stop_housing_limit},'
+                       f'{prior}))),""),"")')
     bar(detail, 1, "ふるさと納税｜計算根拠")
     note(detail, 2, "=" + ref(HOME, "B28"))
     note(detail, 3, f'="所得年 "&{ref(HOME,"D4")}&" ｜ 住民税課税年度 "&{ref(HOME,"D5")}&" ｜ 税制版 "&{ref(HOME,"B29")}')
     items = (
         ("総合課税所得（給与・年金等）", ref(ENGINE, "D15"), "給与所得＋追加の総合課税所得"),
-        ("所得控除（住民税）", f'{ref(HOME,"B14")}-{ref(ENGINE,"J43")}', "所得税の所得控除合計 − 控除差額"),
+        ("所得控除（住民税）",
+         f'IF({direct_salary_scope},{direct_resident_deductions},'
+         f'{ref(HOME,"B14")}-{ref(ENGINE,"J43")})',
+         "住民税の控除を個別合算。対象外ケースのみ旧式で参考表示"),
         ("住民税課税所得", ref(RESIDENT, "B6"), "総合所得−住民税所得控除。千円未満切捨て"),
         ("住民税算出所得割", ref(RESIDENT, "B15"), "総合課税所得割＋申告分離課税所得割"),
         ("調整控除", ref(RESIDENT, "B14"), "課税所得と人的控除差から算定"),
@@ -629,31 +1560,46 @@ def build(source, output):
         detail[f"B{row}"].alignment = Alignment(horizontal="right", vertical="center")
         detail.merge_cells(start_row=row, start_column=3, end_row=row, end_column=4)
         detail[f"C{row}"] = explanation
-        detail[f"C{row}"].alignment = Alignment(wrap_text=True, vertical="center")
+        detail[f"C{row}"].alignment = Alignment(wrap_text=True, vertical="center", indent=1)
         detail.row_dimensions[row].height = 28
     note(detail, 15, "申告分離課税では所得税の実際の減税額・住民税を寄附額ごとに再計算し、自己負担2,000円以内の最大額を探索します。")
     detail["A16"] = "分離課税（課税所得）"
-    detail["B16"] = f'=IF(N({ref(ADVANCED,"B24")})>0,{ref(SPLIT_ALLOC,"B3")},"")'
+    detail["B16"] = f'=IF(AND({ref(HOME,"B28")}="正常",N({ref(ADVANCED,"B24")})>0),{ref(SPLIT_ALLOC,"B3")},"")'
     detail["C16"] = "総合課税の税率だけでは分離課税部分の減税額を算定できません。"
     detail["A17"] = "寄附金控除前：総合課税の課税所得"
-    detail["B17"] = f'=IF(N({ref(ADVANCED,"B24")})>0,{ref(SPLIT_ALLOC,"B2")},"")'
+    detail["B17"] = f'=IF(AND({ref(HOME,"B28")}="正常",N({ref(ADVANCED,"B24")})>0),{ref(SPLIT_ALLOC,"B2")},"")'
     detail["C17"] = "所得控除を差し引いた後。寄附金控除は総合課税から先に適用。"
     detail["A18"] = "最終寄附目安で分離課税に配分した控除"
-    detail["B18"] = f'=IF(N({ref(ADVANCED,"B24")})>0,MAX(0,MIN({ref(RESIDENT,"B26")},{ref(SPLIT_ALLOC,"B8")})-2000-{ref(SPLIT_ALLOC,"B2")}),"")'
+    detail["B18"] = f'=IF(AND({ref(HOME,"B28")}="正常",N({ref(ADVANCED,"B24")})>0),MAX(0,MIN({ref(RESIDENT,"B26")},{ref(SPLIT_ALLOC,"B8")})-2000-{ref(SPLIT_ALLOC,"B2")}),"")'
     detail["C18"] = "所得税の寄附金控除のうち総合課税から引ききれない部分。"
     for row in range(16,19):
         detail[f"B{row}"].number_format = '#,##0'
         detail[f"B{row}"].alignment = Alignment(horizontal="right")
         detail.merge_cells(start_row=row,start_column=3,end_row=row,end_column=4)
-        detail[f"C{row}"].alignment = Alignment(wrap_text=True)
+        detail[f"C{row}"].alignment = Alignment(wrap_text=True, indent=1)
         detail.row_dimensions[row].height = 32
-    note(detail, 19, "分離課税所得B24は他の所得控除適用後の課税所得。源泉所得税額ではなく寄附前後の所得税額の差を用います。")
-    detail.print_area = "A1:D19"
+    note(detail, 19, "分離課税の新規試算は操作画面の詳細設定に表示します。")
+    detail["A20"] = "所得控除合計（原票記載）"
+    detail["B20"] = "=" + ref(HOME,"D31")
+    detail["A21"] = "所得控除合計（自動算定）"
+    detail["B21"] = "=" + ref(HOME,"B31")
+    detail["A22"] = "所得控除合計（計算使用額）"
+    detail["B22"] = "=" + ref(HOME,"B14")
+    detail["A23"] = "所得控除額の計算状態"
+    detail["B23"] = "=" + ref(HOME,"D26")
+    for row in (20,21,22):
+        detail[f"B{row}"].number_format = '#,##0'
+    detail["B23"].font = Font(name="Yu Gothic", bold=True, color="9C4100")
+    detail.print_area = "A1:D23"
     for sheet in book:
-        sheet.sheet_state = "visible" if sheet == home else "veryHidden"
+        sheet.sheet_state = "visible" if sheet in (home, relatives, batch, editor) else "veryHidden"
         sheet.sheet_view.tabSelected = sheet == home
     book.active = 0
-    book.calculation = CalcProperties(calcMode="auto", fullCalcOnLoad=True, forceFullCalc=True)
+    # Retain a complete first-open calculation while allowing Excel to use
+    # smart dependency recalculation thereafter. This is isolated to the
+    # v4.18.3 review; compare its xlPending state in a freshly owned Excel
+    # process before claiming the calculation-state defect resolved.
+    book.calculation = CalcProperties(calcMode="auto", fullCalcOnLoad=True, forceFullCalc=False)
     output.parent.mkdir(parents=True, exist_ok=True)
     book.save(output)
 
