@@ -588,7 +588,8 @@ def build(source, output):
     # Widen B for the clear-list button and K for the PDF export button.
     for col, width in {"A": 26, "B": 15, "C": 17, "D": 19,
                        "E": 19, "F": 19, "G": 18, "H": 19,
-                       "I": 21, "J": 15, "K": 50, "T": 23}.items():
+                       "I": 21, "J": 15, "K": 50, "T": 26,
+                       "U": 23, "V": 25, "W": 19}.items():
         batch.column_dimensions[col].width = width
     # L:S numerical trace is included in the sort/filter range to prevent
     # a name/amount/trace mismatch when Excel sorts by surname.
@@ -596,10 +597,10 @@ def build(source, output):
         batch.column_dimensions[letter].hidden = True
     for line, note_text, height in (
         (1, "源泉徴収票｜一括計算（給与所得のみ・ワンストップ／確定申告の両方式）", 29),
-        (2, "確定申告なし・ワンストップ特例、前年の給与・保険料・扶養・住宅ローン控除可能額などが継続するとの仮定による参考額。所得控除は試算対象年の法令で再計算。確定した上限額ではありません。", 42),
+        (2, "確定申告なし・ワンストップ特例、前年の給与・保険料・扶養・住宅ローン控除可能額などが継続するとの仮定による参考額。所得控除は試算対象年の法令で再計算。T列は自己負担2千円以内の厳密参考、U～W列は指定寄附額の申告時負担試算です。", 47),
         (3, "原票の年分を確認してください。HOLD行は年分・控除内訳等が未確認の場合があります。住宅ローン残高の年次変動は考慮しない旨を該当者の備考に表示します。", 44),
     ):
-        batch.merge_cells(start_row=line, start_column=1, end_row=line, end_column=20)
+        batch.merge_cells(start_row=line, start_column=1, end_row=line, end_column=23)
         cell = batch.cell(row=line, column=1, value=note_text)
         cell.alignment = Alignment(wrap_text=True, vertical="center")
         batch.row_dimensions[line].height = height
@@ -647,13 +648,19 @@ def build(source, output):
         cell.fill = PatternFill("solid", fgColor="163A56")
         cell.font = Font(name="Yu Gothic", bold=True, color="FFFFFF")
         cell.alignment = Alignment(wrap_text=True, vertical="center")
-    batch["T5"] = "確定申告上限（仮・円）"
-    batch["T5"].fill = PatternFill("solid", fgColor="163A56")
-    batch["T5"].font = Font(name="Yu Gothic", bold=True, color="FFFFFF")
-    batch["T5"].alignment = Alignment(wrap_text=True, vertical="center")
+    for letter, caption in (
+        ("T", "確定申告・自己負担2,000円以内の厳密参考額"),
+        ("U", "確定申告で試算する寄附額（円）"),
+        ("V", "確定申告時の実質自己負担（仮・円）"),
+        ("W", "自己負担2,000円超過分（仮・円）"),
+    ):
+        batch[f"{letter}5"] = caption
+        batch[f"{letter}5"].fill = PatternFill("solid", fgColor="163A56")
+        batch[f"{letter}5"].font = Font(name="Yu Gothic", bold=True, color="FFFFFF")
+        batch[f"{letter}5"].alignment = Alignment(wrap_text=True, vertical="center")
     batch.row_dimensions[5].height = 34
     batch.freeze_panes = "C6"
-    batch.auto_filter.ref = "A5:T105"  # move trace with person on sort
+    batch.auto_filter.ref = "A5:W105"  # move trace with person on sort
     batch.sheet_properties.pageSetUpPr.fitToPage = True
     batch.page_setup.fitToWidth = 1
     batch.page_setup.fitToHeight = 0
@@ -663,16 +670,19 @@ def build(source, output):
     batch.print_title_rows = "1:5"
     for row in range(6, 106):
         batch.row_dimensions[row].height = 21
-        for col in range(1, 21):
+        for col in range(1, 24):
             cell = batch.cell(row=row, column=col)
             cell.protection = Protection(locked=True)
-            if col in (4, 5, 6, 7, 8, 9, 12, 13, 14, 15, 16, 17, 18, 20):
+            if col in (4, 5, 6, 7, 8, 9, 12, 13, 14, 15, 16, 17, 18, 20, 21, 22, 23):
                 cell.number_format = "#,##0;[Red](#,##0);-"
             if col == 11:
                 cell.alignment = Alignment(
                     wrap_text=True, vertical="center", horizontal="left")
             if row % 2 == 0:
                 cell.fill = PatternFill("solid", fgColor="F4F8FB")
+        # A trial is evaluated by the offline EXE; do NOT infer the burden
+        # from the strict limit T or extrapolate from a different donation.
+        batch[f"W{row}"] = f'=IF(ISNUMBER(V{row}),MAX(0,V{row}-2000),"")'
 
 
     # Batch source-detail editor. The G06 deduction total is derived only
@@ -683,16 +693,16 @@ def build(source, output):
     editor.sheet_view.zoomScale = 80
     editor.freeze_panes = "H6"
     editor["A1"] = "源泉徴収票｜各人の入力値を修正（所得控除合計は自動算出）"
-    editor.merge_cells("A1:AH1")
+    editor.merge_cells("A1:AI1")
     editor["A1"].font = Font(name="Yu Gothic", size=14, bold=True, color="FFFFFF")
     editor["A1"].fill = PatternFill("solid", fgColor="163A56")
     editor.row_dimensions[1].height = 29
     editor["A2"] = "氏名・原票ページと同じ行の数字のみ修正してください。所得控除合計は編集せず「修正値で全員再計算」を押すと自動で再算出します。"
-    editor.merge_cells("A2:AH2")
+    editor.merge_cells("A2:AI2")
     editor["A2"].alignment = Alignment(wrap_text=True, vertical="center")
     editor.row_dimensions[2].height = 33
     editor["A3"] = "源泉票の所得年・控除内訳・住宅ローン控除条件を個別確認。未確認の数字や税額不一致はHOLDとなり、推測で限度額を表示しません。"
-    editor.merge_cells("A3:AH3")
+    editor.merge_cells("A3:AI3")
     editor["A3"].alignment = Alignment(wrap_text=True, vertical="center")
     editor.row_dimensions[3].height = 31
     editor["A4"] = "一覧へ戻る"
@@ -710,10 +720,11 @@ def build(source, output):
         "一般扶養人数（16～18／23～69歳）", "特定扶養人数（19～22歳）",
         "老人扶養人数（同居老親等以外）", "同居老親等人数",
         "23歳未満扶養の生命保険特例（0/1）",
+        "申告時の試算寄附額（任意・千円単位、空欄はワンストップ参考額）",
     )
     from openpyxl.utils import get_column_letter
     editor_cols = ("氏名", "原票ページ") + edit_labels
-    assert len(editor_cols) == 34
+    assert len(editor_cols) == 35
     for idx, label in enumerate(editor_cols, 1):
         letter = get_column_letter(idx)
         cell = editor.cell(row=5, column=idx, value=label)
@@ -725,10 +736,10 @@ def build(source, output):
     editor.column_dimensions["F"].hidden = True
     editor.column_dimensions["G"].hidden = True
     editor.row_dimensions[5].height = 44
-    editor.auto_filter.ref = "A5:AH105"
+    editor.auto_filter.ref = "A5:AI105"
     for line in range(6, 106):
         editor.row_dimensions[line].height = 22
-        for idx in range(1, 35):
+        for idx in range(1, 36):
             cell = editor.cell(row=line, column=idx)
             cell.number_format = "#,##0" if idx >= 8 else "General"
             cell.protection = Protection(locked=(idx in (2, 6, 7)))
@@ -799,9 +810,9 @@ def build(source, output):
     for row in (20, 21, 22, 23):
         auto_report.merge_cells(start_row=row, start_column=2, end_row=row, end_column=4)
         auto_report[f"B{row}"].alignment = Alignment(wrap_text=True, vertical="center")
-        auto_report.row_dimensions[row].height = 52 if row == 23 else 30
+        auto_report.row_dimensions[row].height = 78 if row == 23 else 30
     note(auto_report, 24, "特例控除上限は住宅ローン控除前の住民税所得割額を基準に計算。住宅ローン控除がある場合は、控除後の住民税額の余力も考慮します。")
-    note(auto_report, 25, "原則、確定申告なし・ワンストップ特例を仮定。確定申告時の参考上限額が大きい場合のみ比較を表示します。住宅取得区分・扶養・自治体条件等は個別確認が必要です。")
+    note(auto_report, 25, "T列は自己負担2千円以内となる厳密な参考額。別途U列の試算寄附額に対する確定申告時の自己負担をV列に表示します。対象の住宅・扶養・自治体条件は個別確認が必要です。")
     note(auto_report, 26, "前年の源泉票は翌年の所得や1月1日住所を保証しません。適用法令・所得控除の個別照合が必要です。")
     note(auto_report, 27, "原票の受給者氏名をページ単位で表示。氏名を判読できない場合は必ず原票と照合。確定版レポートとは区別します。")
 
