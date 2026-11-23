@@ -134,13 +134,15 @@ def compare_mortgage_modes(*, evidence, source_year, target_year,
     # A selectable donation is an independent *comparison*, never a new
     # strict-2,000-yen ceiling. Defaults to the conservative one-stop amount.
     # No private document contents or identifying text are returned.
-    trial = conservative if trial_donation is None else trial_donation
-    if (type(trial) is not int or trial < 2_000 or
+    trial = (None if conservative < 2_000 and trial_donation is None
+             else conservative if trial_donation is None else trial_donation)
+    if trial is not None and (type(trial) is not int or trial < 2_000 or
             trial > salary_income * 3 // 10 or trial % 1_000):
         raise MortgageBatchScopeError("FILING_TRIAL_DONATION_INVALID")
     trial_burden = None
     trial_total_saving = None
-    try:
+    if trial is not None:
+      try:
         compared = [calculate_mortgage_filing_case(
             year=target_year, salary_income=salary_income,
             national_deductions=national_deductions,
@@ -153,7 +155,7 @@ def compare_mortgage_modes(*, evidence, source_year, target_year,
         # highest possible burden across the two supported city splits.
         trial_burden = max(x["estimated_personal_burden"] for x in compared)
         trial_total_saving = trial - trial_burden
-    except (ValueError, TypeError):
+      except (ValueError, TypeError):
         pass
 
     higher_filing = None
