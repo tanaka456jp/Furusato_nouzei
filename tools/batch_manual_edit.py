@@ -189,6 +189,9 @@ def evaluated_row(page, name_hex, record, target, total, reason="EDIT_INPUT_REVI
             else:
                 row["REASON"] = "EDIT_SOURCE_TAX_OR_DEDUCTIONS_REVIEW"
     row.update(pack_editor_source(record, target))
+    # Preserve the user's independent donation scenario across re-import.
+    trial = record.get("filing_trial_donation")
+    row["EDIT_TRIAL_DONATION"] = trial if trial is not None else ""
     return row
 
 
