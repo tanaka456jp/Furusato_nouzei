@@ -411,6 +411,8 @@ try {
         $input = Join-Path $dir 'synthetic-editor-input.tsv'
         $output = Join-Path $dir 'synthetic-editor-output.tsv'
         $batchEditor.Range('K6').Value2 = 1000000
+        # Independent per-person donation scenario, distinct from strict T cap.
+        $batchEditor.Range('AI6').Value2 = 3000
         Assert-Value ([int]($excel.Run('TaxLawUpdater.ExportBatchEditsForTest'))) 2 'Excel shared editor export'
         if (-not (Test-Path -LiteralPath $input -PathType Leaf)) {
             throw 'BATCH_SOURCE_ONLY_INPUT_NOT_CREATED'
@@ -425,6 +427,10 @@ try {
         }
         Assert-Value $batchSheet.Range('F6').Value2 1670000 'Excel roundtrip recalculated income deductions'
         Assert-Value $batchSheet.Range('J6').Value2 '参考額（仮）' 'Excel roundtrip valid status'
+        Assert-Value $batchSheet.Range('U6').Value2 3000 'V6 independent trial donation preserved'
+        Assert-Value $batchSheet.Range('V6').Value2 2005 'V6 tax-return burden for 3000 yen'
+        Assert-Value $batchSheet.Range('W6').Value2 5 'V6 amount above 2000 yen shown separately'
+        Assert-Value ([string]$batchSheet.Range('U7').Value2) '' 'Other person has no trial'
         Assert-Value $batchSheet.Range('B7').Value2 2 'Excel source bridge second taxpayer preserved'
         Remove-Item -LiteralPath $input,$output -Force
         $batchEditor.Range('K6').Value2 = 1100000
