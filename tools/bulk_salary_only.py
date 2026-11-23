@@ -404,7 +404,7 @@ def write_batch_bridge(rows: list[dict], output: Path) -> None:
                         status != "PROVISIONAL" or type(chosen) is not int or
                         type(burden) is not int or chosen < 2000 or
                         chosen > 10**9 or chosen % 1000 or
-                        not 2000 <= burden <= chosen or
+                        not 0 <= burden <= chosen or
                         not isinstance(row.get("REFERENCE_LIMIT"), int)):
                     raise ValueError("INVALID_FILING_TRIAL_VALUES")
                 if status == "HOLD" and chosen not in ("", None):
