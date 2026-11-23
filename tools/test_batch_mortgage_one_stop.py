@@ -40,6 +40,22 @@ class MortgageBatchOneStopTest(unittest.TestCase):
         self.assertGreater(result["one_stop_limit"], 0)
         self.assertIsNone(result["filing_higher_limit"])
 
+    def test_trial_burden_keeps_strict_ceiling_separate(self):
+        default = compare()
+        self.assertEqual(default["filing_limit"], 2_000)
+        self.assertEqual(default["filing_trial_donation"], default["one_stop_limit"])
+        self.assertEqual(default["filing_trial_tax_saving"],
+                         default["filing_trial_donation"] - default["filing_trial_burden"])
+        small = compare(trial_donation=3_000)
+        self.assertEqual(small["filing_limit"], 2_000)
+        self.assertEqual(small["filing_trial_donation"], 3_000)
+        self.assertEqual(small["filing_trial_burden"], 2_005)
+        self.assertEqual(small["one_stop_limit"], default["one_stop_limit"])
+        for illegal in (0, 1999, 2500, -1000, True, 2_000_000):
+            with self.subTest(illegal=illegal), self.assertRaisesRegex(
+                    MortgageBatchScopeError, "TRIAL_DONATION_INVALID"):
+                compare(trial_donation=illegal)
+
     def test_no_tax_return_applies_to_same_source_year_only(self):
         with self.assertRaisesRegex(MortgageBatchScopeError, "TAX_YEAR_UNSUPPORTED"):
             compare(target_year=2025)
