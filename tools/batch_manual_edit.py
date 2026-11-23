@@ -55,6 +55,9 @@ def evidence_from_edit(row):
         for k in EDIT_FIELDS
     }
     values = {k: v for k, v in values.items() if v is not None}
+    trial_donation = values.pop("trial_donation", None)
+    if trial_donation is not None and (trial_donation < 2000 or trial_donation % 1000):
+        fail("EDIT_TRIAL_DONATION_INVALID")
     if row["EDIT_FORMAT"] not in VALID_SOURCE or row["EDIT_MUNI_CLASS"] not in VALID_MUNI:
         fail("EDIT_SOURCE_OR_MUNICIPALITY_INVALID")
     warning_str = row["EDIT_WARNINGS"]
@@ -63,7 +66,7 @@ def evidence_from_edit(row):
     warnings = warning_str.split("|") if warning_str else []
     if any(len(code) > 64 or not CODE.fullmatch(code) for code in warnings):
         fail("EDIT_WARNINGS_INVALID")
-    record = {"year": year, "fields": values,
+    record = {"year": year, "fields": values, "filing_trial_donation": trial_donation,
               "format": row["EDIT_FORMAT"], "warnings": warnings,
               "municipality_hint": {"class": row["EDIT_MUNI_CLASS"]}}
     return record, target
@@ -141,7 +144,7 @@ def evaluated_row(page, name_hex, record, target, total, reason="EDIT_INPUT_REVI
                for k in COLUMNS},
             **{k: "" for k in REPORT_COLUMNS},
             "RECIPIENT_NAME_HEX": name_hex,
-            "FILING_LIMIT": "",
+            "FILING_LIMIT": "", "FILING_TRIAL_DONATION": "", "FILING_TRIAL_BURDEN": "",
             **{k: "" for k in EDIT_COLUMNS},
         }
     fields = record["fields"]
@@ -155,10 +158,12 @@ def evaluated_row(page, name_hex, record, target, total, reason="EDIT_INPUT_REVI
         "REFERENCE_LIMIT": "", "STATUS": "HOLD",
         "REASON": reason,
         "RECIPIENT_NAME_HEX": name_hex, "FILING_LIMIT": "",
+        "FILING_TRIAL_DONATION": "", "FILING_TRIAL_BURDEN": "",
         **{k: "" for k in REPORT_COLUMNS},
     }
     if total is not None:
-        auto = make_automatic_reference(record, target)
+        auto = make_automatic_reference(
+            record, target, filing_trial_donation=record.get("filing_trial_donation"))
         if auto["status"] == "AUTO_REFERENCE" and (
                 reconcile(record["year"], fields).get("source_tax") == "MATCH"):
             row.update({
@@ -169,6 +174,12 @@ def evaluated_row(page, name_hex, record, target, total, reason="EDIT_INPUT_REVI
                            else "AUTO_SOURCE_ASSUMPTION"),
                 "FILING_LIMIT": (auto.get("filing_limit")
                                  if auto.get("filing_limit") is not None else ""),
+                "FILING_TRIAL_DONATION": (
+                    auto.get("filing_trial_donation")
+                    if auto.get("filing_trial_donation") is not None else ""),
+                "FILING_TRIAL_BURDEN": (
+                    auto.get("filing_trial_burden")
+                    if auto.get("filing_trial_burden") is not None else ""),
             })
             row.update(auto["report_trace"])
         else:
