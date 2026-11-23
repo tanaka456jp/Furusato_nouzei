@@ -210,8 +210,8 @@ def make_automatic_reference(extracted, target_year, filing_trial_donation=None)
         amount = comparison["one_stop_limit"]
         filing_higher = comparison["filing_higher_limit"]
         filing_limit = comparison["filing_limit"]
-        filing_trial_amount = comparison["filing_trial_donation"]
-        filing_trial_burden = comparison["filing_trial_burden"]
+        filing_trial_amount = comparison.get("filing_trial_donation")
+        filing_trial_burden = comparison.get("filing_trial_burden")
         # The independent minimum after housing must use the corresponding
         # locality's *same* levy and rate trace.
         scenario_key = comparison["selected_municipality"]
