@@ -1263,7 +1263,7 @@ Public Function LoadBatchFromTsv(ByVal tsvPath As String) As Long
                 record(55) = ParseBatchNumber(CStr(pieces(21 + editFieldCount)), False)
                 If record(54) < 2000 Or record(54) > 1000000000# Or _
                    record(54) <> Fix(record(54) / 1000#) * 1000# Or _
-                   record(55) < 2000 Or record(55) > record(54) Then _
+                   record(55) < 0 Or record(55) > record(54) Then _
                     Err.Raise vbObjectError + 481, , "確定申告の寄附額・自己負担額が不正です。"
             End If
         End If
