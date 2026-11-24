@@ -11,6 +11,9 @@ const script=name=>fs.readFileSync(path.join(root,name),"utf8");
 win.fetch=()=>{throw Error("NO_EXTERNAL_NETWORK_ALLOWED");};
 win.eval(script("engine.js"));
 win.eval(script("resident-levy.js"));
+win.eval(script("family-deductions.js"));
+win.eval(script("family-tax.js"));
+win.eval(script("family-source.js"));
 win.eval(script("app.js"));
 win.eval(script("batch-core.js"));
 const candidatesA={salaryGross:5000000,salaryIncomeReference:3560000,
@@ -120,6 +123,29 @@ function type(idx,key,value){
  assert.equal(choose(1,"confirmed").checked,false);
  assert.equal(d.querySelector("#batchRows tr:nth-child(2) .batch-result").textContent,"—");
  assert.equal(d.querySelector("#batchRows tr:nth-child(2) .batch-resident-levy").textContent,"—");
+ // A newly read family slip is independent of the previous two rows.
+ reviews[0]={year:2025,eligibleForManualTransfer:true,sourceIndicators:{hasDependents:true},
+  candidates:{salaryGross:6500000,salaryIncomeReference:4760000,socialInsurance:1340000,deductionsReference:3030000}};
+ d.getElementById("batchScan").click();
+ for(let n=0;n<12&&d.querySelectorAll("#batchRows tr").length<2;n++)
+  await new Promise(resolve=>setImmediate(resolve));
+ change(0,"municipality","standard");
+ change(0,"familySourceText","S,40,600000\nR,20,600000,0");
+ change(0,"familyTargetText","S,41,600000\nR,21,600000,0");
+ change(0,"confirmed",true);change(0,"noExclusions",true);change(0,"forecastReviewed",true);
+ d.getElementById("batchCalculate").click();
+ assert.equal(d.querySelector("#batchRows tr .batch-result").textContent,"—");
+ change(0,"familyReviewed",true);
+ d.getElementById("batchCalculate").click();
+ assert.equal(d.querySelector("#batchRows tr .batch-result").textContent,"53,000円");
+ assert.deepEqual([...d.querySelectorAll("#batchRows tr:first-child .batch-family-result")].map(x=>x.textContent),
+  ["3,030,000円","1,010,000円","780,000円"]);
+ assert.equal(d.querySelector("#batchRows tr:nth-child(2) .batch-result").textContent,"—");
+ choose(0,"familySourceText").value="なし";
+ win.dispatchEvent(new win.Event("beforeprint"));
+ assert.equal(d.querySelector("#batchRows tr .batch-result").textContent,"—");
+ assert.ok([...d.querySelectorAll("#batchRows tr:first-child .batch-family-result")].every(x=>x.textContent==="—"));
+ assert.equal(d.getElementById("batchDownload").disabled,true);
  win.close();
  console.log("PUBLIC_WEB_EDITABLE_BATCH_DOM_FICTIONAL_NAME_2026_PASS");
 })().catch(e=>{console.error(e);process.exitCode=1;win.close();});
