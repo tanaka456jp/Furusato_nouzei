@@ -80,6 +80,16 @@
     });
     if(input.hasSpouse||input.hasDependents||spouseAge!==""||spouseIncome!==""||relatives.length||get("familyReviewed").checked)
       input.familyDetails={spouseAge:spouseAge,spouseIncome:spouseIncome,relatives:relatives,reviewed:get("familyReviewed").checked};
+    var sourceAge=get("sourceSpouseAge").value.trim(),sourceIncome=get("sourceSpouseIncome").value.trim();
+    var sourceRelatives=Array.from(document.querySelectorAll("#sourceFamilyRelatives .family-relative")).map(function(row){
+      return {age:row.querySelector('[data-family="age"]').value.trim(),income:row.querySelector('[data-family="income"]').value.trim(),
+        cohabiting:row.querySelector('[data-family="cohabiting"]').checked===true};
+    });
+    if(sourceAge!==""||sourceIncome!==""||sourceRelatives.length||get("sourceFamilyReviewed").checked){
+      input.sourceFamily={spouseAge:sourceAge,spouseIncome:sourceIncome,relatives:sourceRelatives,
+        reviewed:get("sourceFamilyReviewed").checked,originalIncome:form.dataset.ocrOriginalIncome};
+      if(!input.familyDetails)input.familyDetails={spouseAge:spouseAge,spouseIncome:spouseIncome,relatives:relatives,reviewed:get("familyReviewed").checked};
+    }
     return input;
   }
   function strictYen(value) {
@@ -273,26 +283,51 @@
     canDisplayEstimate:canDisplayEstimate,selectedReference:selectedReference
   });
   // The family route is deliberately separate from the basic-only engine.
-  // Imported sources remain HOLD until original-year family reconciliation
-  // is implemented. Never mask OCR flags or clear the original source.
+  // Imported family sources require independently reviewed original-year facts.
+  // Never mask OCR flags or clear the original source.
   function familyEstimate(input){
     var fail=function(reason){return {status:"HOLD",reasons:[reason]};};
     var f=input.familyDetails,year=Number(input.year),gross=strictYen(input.salaryGross),social=strictYen(input.socialInsurance);
     var file=document.getElementById("slipFile");
     if(!f||!f.reviewed||!input.acknowledgedExclusions)
       return fail("家族明細と適用条件を確認してください。");
-    if(input.sourceYear!==undefined||input.sourceIndicators!==undefined||
+    if(input.sourceReviewPending||(form.dataset.ocrReviewPending==="true"&&
+       !(form.dataset.ocrManualReviewRequired==="true"&&form.elements.namedItem("correctedSourceReviewed").checked))||
+       (file&&file.files&&file.files.length))
+      return fail("原票読取・手修正の再確認が必要です。");
+    var imported=input.sourceYear!==undefined||input.sourceIndicators!==undefined||
        input.sourceOriginalGross!==undefined||input.sourceOriginalSocial!==undefined||
-       input.sourceOriginalDeductions!==undefined||input.sourceReviewPending||
-       form.dataset.ocrReviewPending==="true"||(file&&file.files&&file.files.length))
-      return fail("家族控除とOCR取込の併用は未対応です。入力をクリアして全項目を手入力してください。");
+       input.sourceOriginalDeductions!==undefined;
+    var original=null;
+    var parseSpouse=function(age,income){return age===""&&income===""?null:
+      {age:strictYen(age),income:strictYen(income),eligibilityReviewed:true};};
+    var parseRelatives=function(rows){return rows.map(function(m){return {age:strictYen(m.age),income:strictYen(m.income),
+      cohabitingDirectAscendant:m.cohabiting,eligibilityReviewed:true};});};
+    if(imported){
+      var sourceYear=Number(input.sourceYear),sf=input.sourceFamily;
+      if(!sf||sf.reviewed!==true||![2025,2026].includes(sourceYear)||
+         (sourceYear!==year&&sourceYear!==year-1)||(sourceYear!==year&&input.forecastReviewed!==true)||
+         !window.FurusatoFamilySource)
+        return fail("原票年分の家族明細・翌年見込額の確認が必要です。");
+      original=window.FurusatoFamilySource.reconcile({year:sourceYear,
+        gross:strictYen(input.sourceOriginalGross),salaryIncome:strictYen(sf.originalIncome),
+        social:strictYen(input.sourceOriginalSocial),deductions:strictYen(input.sourceOriginalDeductions),
+        indicators:input.sourceIndicators===undefined?{}:input.sourceIndicators,
+        spouse:parseSpouse(sf.spouseAge,sf.spouseIncome),relatives:parseRelatives(sf.relatives),
+        reviewed:sf.reviewed},FurusatoEngine);
+      if(original.status!=="RECONCILED")return fail(original.reason);
+      if(sourceYear===year&&(
+        JSON.stringify(parseSpouse(sf.spouseAge,sf.spouseIncome))!==JSON.stringify(parseSpouse(f.spouseAge,f.spouseIncome))||
+        JSON.stringify(parseRelatives(sf.relatives))!==JSON.stringify(parseRelatives(f.relatives))))
+        return fail("同一年分の原票家族明細と試算明細が一致しません。");
+    }else if(input.sourceFamily)return fail("原票が取り込まれていません。原票年分の入力をクリアしてください。");
     if(flags.some(function(k){return k!=="hasSpouse"&&k!=="hasDependents"&&input[k]!==false;})||
        ![2025,2026].includes(year)||!["one-stop","return"].includes(input.filing)||
        !["standard","designated"].includes(input.municipality)||gross===null||gross<=0||gross>8500000||
        social===null||social>gross||typeof FurusatoEngine.salaryIncome!=="function")
       return fail("給与・自治体・申告方式・未対応控除等を確認してください。");
     if((!input.hasSpouse&&(f.spouseAge!==""||f.spouseIncome!==""))||
-       input.hasDependents!==(f.relatives.length>0)||(!input.hasSpouse&&!input.hasDependents))
+       input.hasDependents!==(f.relatives.length>0)||(!imported&&!input.hasSpouse&&!input.hasDependents))
       return fail("配偶者・扶養親族のチェックと明細が一致しません。");
     var income=FurusatoEngine.salaryIncome(gross,year);
     if(input.salaryIncomeReference!==""&&strictYen(input.salaryIncomeReference)!==income)
@@ -315,9 +350,10 @@
        !Number.isSafeInteger(result.donationLimitYen)||result.donationLimitYen<2000||
        result.donationLimitYen!==Math.floor(c.exactReferenceYen/1000)*1000)
       return fail("家族税額の整合性を確認できません。");
-    if([input.sourceDeductionsReference,input.deductionsOverride].some(function(v){
-      return v!==""&&strictYen(v)!==c.nationalDeductionsYen;
-    }))return fail("所得控除合計と家族控除の自動計算が一致しません。");
+    if((input.deductionsOverride!==""&&strictYen(input.deductionsOverride)!==c.nationalDeductionsYen)||
+       (input.sourceDeductionsReference!==""&&strictYen(input.sourceDeductionsReference)!==c.nationalDeductionsYen&&
+        (!original||strictYen(input.sourceDeductionsReference)!==original.calculation.deductionsYen)))
+      return fail("所得控除合計と家族控除の自動計算が一致しません。");
     var prefix=engine.filingPrefix(args);
     if(prefix.status!=="ESTIMATE"||!Number.isSafeInteger(prefix.donationLimitYen)||prefix.donationLimitYen<2000)
       return fail("確定申告参考上限を確認できません。");
@@ -325,14 +361,15 @@
     var trial=engine.filingTrial(args,trialAmount);
     return {status:"ESTIMATE",familyMode:true,calculation:c,oneStop:result.donationLimitYen,
       filing:prefix.donationLimitYen,amount:input.filing==="return"?prefix.donationLimitYen:result.donationLimitYen,
-      trial:trial,income:income,social:social};
+      trial:trial,income:income,social:social,sourceReconciliation:original?original.calculation:null};
   }
   var printableInputSnapshot=null,printableResult=null;
   function renderFamily(result,input){
     if(result.status!=="ESTIMATE"){render(result,input);return;}
     output.replaceChildren();output.hidden=false;output.className="result";
     printableInputSnapshot=JSON.stringify(input);printableResult=result;
-    add("h3",output,"寄附上限額の概算（家族控除・手入力検証）");
+    add("h3",output,result.sourceReconciliation?"寄附上限額の概算（家族控除・原票照合済）":"寄附上限額の概算（家族控除・手入力検証）");
+    if(result.sourceReconciliation)add("p",output,"参照源泉票："+result.sourceReconciliation.year+"年分 ／ 試算対象："+input.year+"年分","muted");
     add("p",output,yen(result.amount),"amount");
     add("p",output,"所得年 "+input.year+"年 ／ 住民税 "+(Number(input.year)+1)+"年度 ／ "+
       (input.municipality==="standard"?"標準市町村":"政令指定都市")+" ／ "+
@@ -347,6 +384,7 @@
       ["人的控除差",c.personalDifferenceYen],["調整控除額",c.adjustmentYen],
       ["特例控除割合判定基礎",c.residentSpecialBaseYen],["住民税所得割",c.residentIncomeLevyYen],
       ["ワンストップ参考上限",result.oneStop],["確定申告参考上限（千円刻み）",result.filing]];
+    if(result.sourceReconciliation)pairs.push(["原票年の所得控除合計（照合済）",result.sourceReconciliation.deductionsYen]);
     pairs.forEach(function(p){add("dt",dl,p[0]);add("dd",dl,yen(p[1]));});
     var trial=add("section",details,undefined,"filing-trial");add("h4",trial,"確定申告した場合の寄附額・自己負担比較");
     if(result.trial.status==="ESTIMATE"){
@@ -531,14 +569,18 @@
     var target=event.target;
     if(!target||target===conditionsConfirmation)return;
     var name=target.name;
-    var familyChanged=target.hasAttribute("data-family")||name==="familySpouseAge"||name==="familySpouseIncome";
+    var familyChanged=target.hasAttribute("data-family")||["familySpouseAge","familySpouseIncome","sourceSpouseAge","sourceSpouseIncome"].includes(name);
+    if(["familyReviewed","sourceFamilyReviewed","forecastReviewed"].includes(name)){
+      conditionsConfirmation.checked=false;return;
+    }
     if(familyChanged||name==="familyReviewed"||name==="year"||name==="filing"||name==="municipality"||
        name==="salaryGross"||name==="socialInsurance"||
        name==="salaryIncomeReference"||name==="deductionsReference"||
        name==="deductionsOverride"||
        name==="forecastReviewed"||flags.includes(name)){
       if(conditionsConfirmation)conditionsConfirmation.checked=false;
-      if(name!=="familyReviewed")form.elements.namedItem("familyReviewed").checked=false;
+      form.elements.namedItem("familyReviewed").checked=false;
+      form.elements.namedItem("sourceFamilyReviewed").checked=false;
       // A prior-year forecast must be re-confirmed after any change to its
       // year, amounts or tax conditions. Never clear on its own click.
       if(name!=="forecastReviewed"){
@@ -562,10 +604,20 @@
   form.addEventListener("input",revokeOldConditionsConfirmation);
   form.addEventListener("change",revokeOldConditionsConfirmation);
   var familyRows=document.getElementById("familyRelatives");
-  function revokeFamily(){form.elements.namedItem("familyReviewed").checked=false;conditionsConfirmation.checked=false;invalidateEstimate();}
-  function addFamilyRow(){
-    if(familyRows.children.length>=30)return;
-    var row=add("fieldset",familyRows,undefined,"family-relative");
+  var sourceFamilyRows=document.getElementById("sourceFamilyRelatives");
+  function revokeFamily(){
+    ["familyReviewed","sourceFamilyReviewed","forecastReviewed"].forEach(function(name){form.elements.namedItem(name).checked=false;});
+    conditionsConfirmation.checked=false;invalidateEstimate();
+  }
+  function resetSourceFamily(){
+    sourceFamilyRows.replaceChildren();
+    ["sourceSpouseAge","sourceSpouseIncome"].forEach(function(name){form.elements.namedItem(name).value="";});
+    revokeFamily();
+  }
+  form.addEventListener("family-source-reset",resetSourceFamily);
+  function addFamilyRow(container){
+    if(container.children.length>=30)return;
+    var row=add("fieldset",container,undefined,"family-relative");
     add("legend",row,"扶養親族・特定親族");
     ["age","income"].forEach(function(key){
       var label=add("label",row,key==="age"?"年齢":"合計所得（円）");
@@ -579,7 +631,8 @@
     remove.addEventListener("click",function(){row.remove();revokeFamily();});
     revokeFamily();
   }
-  document.getElementById("familyAdd").addEventListener("click",addFamilyRow);
+  document.getElementById("familyAdd").addEventListener("click",function(){addFamilyRow(familyRows);});
+  document.getElementById("sourceFamilyAdd").addEventListener("click",function(){addFamilyRow(sourceFamilyRows);});
   form.addEventListener("submit", function (event) {
     event.preventDefault();
     try {
@@ -607,11 +660,12 @@
   });
   form.addEventListener("reset", function () {
     printableInputSnapshot=null;printableResult=null;
-    familyRows.replaceChildren();
+    familyRows.replaceChildren();sourceFamilyRows.replaceChildren();
     form.classList.remove("deduction-override-active");
     if(overrideNotice)overrideNotice.hidden=true;
     delete form.dataset.ocrYear;
     delete form.dataset.ocrOriginalGross;
+    delete form.dataset.ocrOriginalIncome;
     delete form.dataset.ocrOriginalSocial;
     delete form.dataset.ocrOriginalDeductions;
     delete form.dataset.ocrSourceIndicators;
