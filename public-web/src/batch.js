@@ -190,6 +190,8 @@
     });
     insuranceDetails.appendChild(group);
    }
+   const copyPremiums=formControl("button",{type:"button",text:"原票年の保険料を試算年へコピー（上書き）","data-copy-premiums":String(i),class:"secondary"});
+   insuranceDetails.appendChild(copyPremiums);
    const insuranceReview=formControl("label",{text:" 原票年・試算年の保険料区分・金額・重複なし・適用条件を確認済み"});
    insuranceReview.prepend(formControl("input",{type:"checkbox","data-row":String(i),"data-field":"insuranceReviewed",
     checked:r.insuranceReviewed,"aria-label":"対象者 "+r.page+" の保険料明細照合済み"}));
@@ -350,6 +352,15 @@
   }
   updateButtons();
  }
+ body.addEventListener("click",ev=>{
+  const button=ev.target?.closest?.("[data-copy-premiums]");
+  if(!button||running||!body.contains(button)||!reconcileLiveInputs())return;
+  const i=Number(button.dataset.copyPremiums),row=rows[i];
+  if(!Number.isSafeInteger(i)||!row)return;
+  if(!core.copySourcePremiums(row)){say("原票年の年間保険料を正しく入力してください。");return;}
+  invalidateEditedRow(row);render();
+  say("対象者 "+row.page+" の原票年の年間保険料を試算年にコピーしました。変更があれば訂正し、再確認してください。");
+ });
  body.addEventListener("input",ev=>{
   const idx=Number(ev.target?.dataset?.row);
   const key=ev.target?.dataset?.field;

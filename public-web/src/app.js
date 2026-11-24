@@ -841,6 +841,7 @@
     conditionsConfirmation.checked=false;invalidateEstimate();
   }
   function resetSourceFamily(){
+    document.getElementById("premiumCopyStatus").textContent="";
     form.elements.namedItem("medicalNetPaidYen").value="";
     ["mortgageSourceApplied","mortgageSourcePossible","mortgageMoveInYear","mortgageCapClass"].forEach(function(name){form.elements.namedItem(name).value="";});
     sourceFamilyRows.replaceChildren();sourceAdjustmentRows.replaceChildren();
@@ -896,6 +897,20 @@
   }
   document.getElementById("adjustmentAdd").addEventListener("click",function(){addAdjustmentRow(adjustmentRows);});
   document.getElementById("sourceAdjustmentAdd").addEventListener("click",function(){addAdjustmentRow(sourceAdjustmentRows);});
+  document.getElementById("copySourcePremiums").addEventListener("click",function(){
+    var sourceYear=Number(form.dataset.ocrYear),year=Number(form.elements.namedItem("year").value);
+    var values=premiumKeys.map(function(k){return form.elements.namedItem("sourceInsurance_"+k).value.trim();});
+    var note=document.getElementById("premiumCopyStatus");
+    if(![2025,2026].includes(sourceYear)||(year!==sourceYear&&year!==sourceYear+1)||
+       form.dataset.ocrReviewPending==="true"||
+       !values.some(v=>v!=="")||values.some(v=>v!==""&&(strictYen(v)===null||strictYen(v)>100000000))){
+      note.textContent="原票年の年間保険料と参照年分を正しく確認してください。";return;
+    }
+    premiumKeys.forEach(function(k,i){form.elements.namedItem("targetInsurance_"+k).value=values[i];});
+    form.elements.namedItem("hasLifeInsurance").checked=values.slice(0,5).some(v=>Number(v)>0);
+    form.elements.namedItem("hasEarthquakeInsurance").checked=values.slice(5).some(v=>Number(v)>0);
+    revokeFamily();note.textContent="原票年の年間保険料を試算年へコピーしました。変更があれば訂正し、再確認してください。";
+  });
   form.elements.namedItem("hasMortgage").addEventListener("change",function(){if(this.checked)document.getElementById("mortgagePanel").open=true;});
   form.elements.namedItem("medicalNetPaidYen").addEventListener("input",function(){
     var n=strictYen(this.value.trim());

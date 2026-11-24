@@ -566,10 +566,20 @@ document.getElementById("familyAdd").click();member("age").value="21";member("in
 field("sourceSpouseAge").value="40";field("sourceSpouseIncome").value="600000";
 document.getElementById("sourceFamilyAdd").click();
 originalMember("age").value="20";originalMember("income").value="600000";
-for(const prefix of ["target","source"]){
- field(prefix+"Insurance_generalNew").value="120000";
- field(prefix+"Insurance_earthquake").value="50000";
-}
+field("sourceInsurance_generalNew").value="120000";
+field("sourceInsurance_earthquake").value="50000";
+field("targetInsurance_generalOld").value="12345";
+field("insuranceReviewed").checked=true;field("acknowledgedExclusions").checked=true;
+document.getElementById("copySourcePremiums").click();
+assert.equal(field("targetInsurance_generalNew").value,"120000");
+assert.equal(field("targetInsurance_earthquake").value,"50000");
+assert.equal(field("targetInsurance_generalOld").value,"");
+assert.equal(field("insuranceReviewed").checked,false);
+assert.equal(field("acknowledgedExclusions").checked,false);
+assert.equal(field("hasLifeInsurance").checked,true);assert.equal(field("hasEarthquakeInsurance").checked,true);
+field("sourceInsurance_generalNew").value="bad";document.getElementById("copySourcePremiums").click();
+assert.equal(field("targetInsurance_generalNew").value,"120000");
+field("sourceInsurance_generalNew").value="120000";
 for(const name of ["familyReviewed","sourceFamilyReviewed","forecastReviewed","insuranceReviewed","acknowledgedExclusions"])
  field(name).checked=true;
 rawSubmit();assert.equal(view.className,"result hold");

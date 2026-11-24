@@ -156,9 +156,14 @@ function type(idx,key,value){
  change(0,"municipality","standard");
  change(0,"familySourceText","S,40,600000\nR,20,600000,0");
  change(0,"familyTargetText","S,41,600000\nR,21,600000,0");
- for(const prefix of ["source","target"]){
-  change(0,prefix+"Insurance_generalNew","120000");change(0,prefix+"Insurance_earthquake","50000");
- }
+ change(0,"sourceInsurance_generalNew","120000");change(0,"sourceInsurance_earthquake","50000");
+ change(0,"targetInsurance_generalOld","12345");change(0,"insuranceReviewed",true);
+ d.querySelector('[data-copy-premiums="0"]').click();
+ assert.equal(choose(0,"targetInsurance_generalNew").value,"120000");
+ assert.equal(choose(0,"targetInsurance_earthquake").value,"50000");
+ assert.equal(choose(0,"targetInsurance_generalOld").value,"");
+ assert.equal(choose(0,"insuranceReviewed").checked,false);
+ assert.equal(choose(1,"targetInsurance_generalNew").value,"");
  change(0,"confirmed",true);change(0,"noExclusions",true);change(0,"forecastReviewed",true);change(0,"familyReviewed",true);
  d.getElementById("batchCalculate").click();
  assert.equal(d.querySelector("#batchRows tr .batch-result").textContent,"—");

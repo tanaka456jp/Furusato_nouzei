@@ -560,5 +560,21 @@ const malformedOptional=fixture(1,{year:2025,eligibleForManualTransfer:true,sour
  candidates:{salaryGross:9000000,salaryIncomeReference:7050000,socialInsurance:1000000,deductionsReference:1580000},
  optionalCandidates:{sourceBasicYen:"580000",sourceAdjustmentYen:-1,mortgageSourceApplied:600001}},2026);
 assert.equal(malformedOptional.sourceBasicYen,"");assert.equal(malformedOptional.sourceAdjustmentYen,"");assert.equal(malformedOptional.mortgageSourceApplied,"");
+// One explicit copy of seven premium categories, no consent or result copied.
+const copyRow=fixture(1,basic2026);
+batch.edit(copyRow,"sourceInsurance_generalNew","120000");
+batch.edit(copyRow,"sourceInsurance_earthquake","50000");
+batch.edit(copyRow,"targetInsurance_generalOld","12345");
+copyRow.confirmed=true;copyRow.noExclusions=true;copyRow.insuranceReviewed=true;
+assert.equal(batch.copySourcePremiums(copyRow),true);
+assert.equal(copyRow.targetInsurance_generalNew,"120000");
+assert.equal(copyRow.targetInsurance_earthquake,"50000");
+assert.equal(copyRow.targetInsurance_generalOld,"");
+assert.equal(copyRow.confirmed,false);assert.equal(copyRow.insuranceReviewed,false);
+assert.equal(copyRow.noExclusions,false);assert.equal(copyRow.donationLimitYen,null);
+batch.edit(copyRow,"sourceInsurance_generalNew","bad");
+assert.equal(batch.copySourcePremiums(copyRow),false);
+assert.equal(copyRow.targetInsurance_generalNew,"120000");
+const emptyCopy=fixture(1,basic2026);assert.equal(batch.copySourcePremiums(emptyCopy),false);
 dom.window.close();
 console.log("PUBLIC_BATCH_PER_PAGE_LOCAL_SAFETY_SYNTHETIC_PASS; no private slips; no deploy");

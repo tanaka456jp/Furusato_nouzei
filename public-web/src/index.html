@@ -164,6 +164,8 @@
               <label>地震保険料<input type="text" inputmode="numeric" autocomplete="off" spellcheck="false" name="targetInsurance_earthquake" maxlength="12" placeholder="0"></label>
               <label>旧長期損害保険料<input type="text" inputmode="numeric" autocomplete="off" spellcheck="false" name="targetInsurance_longTermOld" maxlength="12" placeholder="0"></label>
             </div>
+            <button type="button" class="secondary" id="copySourcePremiums">原票年の保険料を試算年へコピー（上書き）</button>
+            <p id="premiumCopyStatus" role="status" aria-live="polite"></p>
             <label class="confirm"><input type="checkbox" name="insuranceReviewed"> 年間支払額・新旧契約・控除対象・重複なし・家族条件を確認しました（該当なしの確認も含む）。</label>
           </fieldset>
           <fieldset class="conditions family-panel" id="targetOtherPanel">

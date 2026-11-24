@@ -201,6 +201,15 @@
  function familyDetailsActive(row){
   return row.familySourceText!==""||row.familyTargetText!==""||row.familyReviewed===true||insuranceActive(row)||otherActive(row);
  }
+ // Copy only the operator's entered annual premium amounts. Never copy a
+ // computed deduction: the target-year engine recomputes the statutory rules.
+ function copySourcePremiums(row){
+  if(!row||!canEstimate(row)||!parsePremiums(row,"source")||
+     !PREMIUM_KEYS.some(k=>row["sourceInsurance_"+k]!==""))return false;
+  for(const k of PREMIUM_KEYS)edit(row,"targetInsurance_"+k,row["sourceInsurance_"+k]);
+  row.reason="原票年の年間保険料を試算年へコピーしました。変更があれば訂正し、再確認してください";
+  return true;
+ }
  function familyActive(row){return familyDetailsActive(row)||medicalActive(row)||highActive(row)||mortgageActive(row);}
  // Six fixed fields, followed by one disability code per family relative
  // in exactly the same order as the reviewed family editor. No identity data.
@@ -602,5 +611,5 @@
   // UTF-8 BOM is an intentional local Excel compatibility aid.
   return "\ufeff"+lines.join("\r\n")+"\r\n";
  }
- return Object.freeze({FIELDS,MAX_ROWS,PREMIUM_FIELDS,PREMIUM_KEYS,OTHER_FIELDS,MEDICAL_FIELDS,MEDICAL_SUMMARY_KEYS,HIGH_FIELDS,HIGH_SUMMARY_KEYS,highActive,MORTGAGE_FIELDS,MORTGAGE_SUMMARY_KEYS,mortgageActive,fromPage,holdRow,edit,canEstimate,canOutputEstimate,outputComparison,invalidate,calculate,labelFor,csv});
+ return Object.freeze({FIELDS,MAX_ROWS,PREMIUM_FIELDS,PREMIUM_KEYS,OTHER_FIELDS,MEDICAL_FIELDS,MEDICAL_SUMMARY_KEYS,HIGH_FIELDS,HIGH_SUMMARY_KEYS,highActive,MORTGAGE_FIELDS,MORTGAGE_SUMMARY_KEYS,mortgageActive,copySourcePremiums,fromPage,holdRow,edit,canEstimate,canOutputEstimate,outputComparison,invalidate,calculate,labelFor,csv});
 }));
