@@ -140,6 +140,19 @@
    exactReferenceYen:exactReference,roundedReferenceYen:rounded}};
  }
  function calculate(input){return calculateCore(input,false);}
+ // Filing-only display basis. Do not expose the one-stop reference ceiling
+ // or the component reference ceilings for medical claims.
+ function medicalFilingCalculation(input){
+  if(input?.conditions!=="salary-basic-social-family-insurance-other-medical-filing-reviewed")
+   return hold("医療費控除の確定申告条件を確認してください");
+  const ref=calculateCore(input,true);
+  if(ref.status!=="ESTIMATE")return ref;
+  const {exactReferenceYen,roundedReferenceYen,city,prefecture,...rest}=ref.calculation;
+  const {referenceLimitYen:cityRef,...cityDetails}=city;
+  const {referenceLimitYen:prefRef,...prefectureDetails}=prefecture;
+  return {status:"ESTIMATE",release:"HOLD",donationLimitYen:null,
+   calculation:{...rest,city:cityDetails,prefecture:prefectureDetails,filingOnly:true,oneStopAllowed:false}};
+ }
  function medicalFilingMetadata(c){
   return c.medical?{filingOnly:true,oneStopAllowed:false,medical:c.medical,
    nationalDeductionsYen:c.nationalDeductionsYen,residentDeductionsYen:c.residentDeductionsYen,
@@ -229,5 +242,5 @@
   return {status:"ESTIMATE",donationLimitYen:ceiling,release:"HOLD",calculation:{
    ...medicalFilingMetadata(c),salaryAdjustment:c.salaryAdjustment,firstFailureYen:firstFailure,stopOnFirstFailure:true}};
  }
- return Object.freeze({calculate,filingTrial,filingPrefix,highSalaryCalculate,highSalaryFilingTrial,highSalaryFilingPrefix});
+ return Object.freeze({calculate,medicalFilingCalculation,filingTrial,filingPrefix,highSalaryCalculate,highSalaryFilingTrial,highSalaryFilingPrefix});
 }));

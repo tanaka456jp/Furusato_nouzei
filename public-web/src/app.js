@@ -121,7 +121,11 @@
     var sourceOther=readOther("source","sourceOtherReviewed","#sourceFamilyRelatives");
     if(activeOther(other))input.otherDetails=other;
     if(activeOther(sourceOther))input.sourceOtherDetails=sourceOther;
-    if(input.otherDetails||input.sourceOtherDetails){
+    var med={method:get("medicalMethod").value,health:get("medicalHealthReviewed").checked===true,
+      reviewed:get("medicalReviewed").checked===true,groups:Array.from(document.querySelectorAll("#medicalGroups .medical-group")).map(function(row){
+        return {paid:row.querySelector('[data-medical="paid"]').value.trim(),reimbursed:row.querySelector('[data-medical="reimbursed"]').value.trim(),reviewed:row.querySelector('[data-medical="reviewed"]').checked===true};})};
+    if(input.hasMedical||med.method!==""||med.health||med.reviewed||med.groups.length)input.medicalDetails=med;
+    if(input.otherDetails||input.sourceOtherDetails||input.medicalDetails){
       if(!input.familyDetails)input.familyDetails={spouseAge:spouseAge,spouseIncome:spouseIncome,relatives:relatives,reviewed:get("familyReviewed").checked};
     }
     return input;
@@ -332,7 +336,9 @@
     var imported=input.sourceYear!==undefined||input.sourceIndicators!==undefined||
        input.sourceOriginalGross!==undefined||input.sourceOriginalSocial!==undefined||
        input.sourceOriginalDeductions!==undefined;
-    var original=null,ip=input.insuranceDetails,si=input.sourceInsurance,od=input.otherDetails,so=input.sourceOtherDetails;
+    var original=null,ip=input.insuranceDetails,si=input.sourceInsurance,od=input.otherDetails,so=input.sourceOtherDetails,md=input.medicalDetails;
+    if(md&&(!input.hasMedical||input.filing!=="return"||!md.reviewed||!od||!od.reviewed||!ip||!ip.reviewed))
+      return fail("医療費控除は確定申告専用です。医療費・その他所得控除・保険料の明細を確認してください。");
     if(so&&!imported)return fail("原票が取り込まれていません。原票のその他所得控除明細をクリアしてください。");
     if(imported&&(od||so)&&(!od||!so||!so.reviewed||!si||!si.reviewed))return fail("原票年分・試算年分のその他所得控除と保険料明細の確認が必要です。");
     if(od&&(!od.reviewed||!ip||ip.reviewed!==true))
@@ -386,7 +392,7 @@
       if(sourceYear===year&&(ip||si)&&premiumKeys.some(function(k){return (sourcePremiums?sourcePremiums[k]:0)!==(targetPremiums?targetPremiums[k]:0);}))
         return fail("同一年分の原票保険料明細と試算明細が一致しません。");
     }else if(input.sourceFamily)return fail("原票が取り込まれていません。原票年分の入力をクリアしてください。");
-    if(flags.some(function(k){return !["hasSpouse","hasDependents","hasLifeInsurance","hasEarthquakeInsurance"].includes(k)&&input[k]!==false;})||
+    if(flags.some(function(k){return !["hasSpouse","hasDependents","hasLifeInsurance","hasEarthquakeInsurance"].includes(k)&&!(k==="hasMedical"&&md)&&input[k]!==false;})||
        ![2025,2026].includes(year)||!["one-stop","return"].includes(input.filing)||
        !["standard","designated"].includes(input.municipality)||gross===null||gross<=0||gross>8500000||
        social===null||social>gross||typeof FurusatoEngine.salaryIncome!=="function")
@@ -412,29 +418,41 @@
       args.conditions="salary-basic-social-family-insurance-other-only-reviewed";
       args.otherDeductions=targetOther;
     }
-    var result=engine.calculate(args);
+    if(md){
+      if(!["ordinary","selfMedication"].includes(md.method)||md.groups.length===0||
+         (md.method==="selfMedication"?md.health!==true:md.health!==false)||
+         md.groups.some(function(g){return !g.reviewed||strictYen(g.paid)===null||strictYen(g.reimbursed)===null;}))
+        return fail("医療費控除方式・対象費用・補填金・適用条件を確認してください。");
+      args.conditions="salary-basic-social-family-insurance-other-medical-filing-reviewed";
+      args.medicalDeductions={method:md.method,groups:md.groups.map(function(g){return {paidYen:strictYen(g.paid),reimbursedYen:strictYen(g.reimbursed),eligibilityReviewed:true};}),
+        conditions:"annual-salary-only-eligible-paid-expenses-compensation-reviewed",...(md.method==="selfMedication"?{healthMeasureReviewed:true}:{})};
+    }
+    var result=md?engine.medicalFilingCalculation(args):engine.calculate(args);
     if(result.status!=="ESTIMATE")return fail(result.reason||"家族控除を確認できません。");
     var c=result.calculation;
     if(!c||c.year!==year||c.municipality!==input.municipality||
-       (!!c.other!==!!od)||
+       (!!c.other!==!!od)||(!!c.medical!==!!md)||
+       (md&&(c.filingOnly!==true||c.oneStopAllowed!==false||result.donationLimitYen!==null||c.medical.nationalDeductionYen!==c.medical.residentDeductionYen))||
        (od&&(c.socialAndContributionsYen!==social||c.socialInsuranceOnlyYen!==social-contribution||c.other.contributions.nationalYen!==contribution))||
-       c.nationalDeductionsYen!==c.nationalBasicYen+social+c.family.nationalFamilyDeductionYen+(c.insurance?.national.totalYen??0)+(od?c.other.nationalOtherDeductionYen-contribution:0)||
-       c.residentDeductionsYen!==430000+social+c.family.residentFamilyDeductionYen+(c.insurance?.resident.totalYen??0)+(od?c.other.residentOtherDeductionYen-contribution:0)||
+       c.nationalDeductionsYen!==c.nationalBasicYen+social+c.family.nationalFamilyDeductionYen+(c.insurance?.national.totalYen??0)+(od?c.other.nationalOtherDeductionYen-contribution:0)+(md?c.medical.nationalDeductionYen:0)||
+       c.residentDeductionsYen!==430000+social+c.family.residentFamilyDeductionYen+(c.insurance?.resident.totalYen??0)+(od?c.other.residentOtherDeductionYen-contribution:0)+(md?c.medical.residentDeductionYen:0)||
        (!!c.insurance!==!!ip)||
        c.nationalTaxableYen!==Math.floor(Math.max(0,income-c.nationalDeductionsYen)/1000)*1000||
        c.residentTaxableYen!==Math.floor(Math.max(0,income-c.residentDeductionsYen)/1000)*1000||
        c.residentIncomeLevyYen!==c.city.assessedYen+c.prefecture.assessedYen||
-       !Number.isSafeInteger(result.donationLimitYen)||result.donationLimitYen<2000||
-       result.donationLimitYen!==Math.floor(c.exactReferenceYen/1000)*1000)
+       (!md&&(!Number.isSafeInteger(result.donationLimitYen)||result.donationLimitYen<2000||
+       result.donationLimitYen!==Math.floor(c.exactReferenceYen/1000)*1000)))
       return fail("家族税額の整合性を確認できません。");
     if((input.deductionsOverride!==""&&strictYen(input.deductionsOverride)!==c.nationalDeductionsYen)||
-       (input.sourceDeductionsReference!==""&&strictYen(input.sourceDeductionsReference)!==c.nationalDeductionsYen&&
-        (!original||strictYen(input.sourceDeductionsReference)!==original.calculation.deductionsYen)))
+       (input.sourceDeductionsReference!==""&&(md?
+         strictYen(input.sourceDeductionsReference)!==(original?original.calculation.deductionsYen:c.nationalDeductionsYen-c.medical.nationalDeductionYen):
+         (strictYen(input.sourceDeductionsReference)!==c.nationalDeductionsYen&&
+          (!original||strictYen(input.sourceDeductionsReference)!==original.calculation.deductionsYen)))))
       return fail("所得控除合計と家族控除の自動計算が一致しません。");
     var prefix=engine.filingPrefix(args);
     if(prefix.status!=="ESTIMATE"||!Number.isSafeInteger(prefix.donationLimitYen)||prefix.donationLimitYen<2000)
       return fail("確定申告参考上限を確認できません。");
-    var trialAmount=input.donationTrial===""?result.donationLimitYen:strictYen(input.donationTrial);
+    var trialAmount=input.donationTrial===""?(md?prefix.donationLimitYen:result.donationLimitYen):strictYen(input.donationTrial);
     var trial=engine.filingTrial(args,trialAmount);
     return {status:"ESTIMATE",familyMode:true,calculation:c,oneStop:result.donationLimitYen,
       filing:prefix.donationLimitYen,amount:input.filing==="return"?prefix.donationLimitYen:result.donationLimitYen,
@@ -460,7 +478,15 @@
       ["所得税課税所得",c.nationalTaxableYen],["住民税課税所得",c.residentTaxableYen],
       ["人的控除差",c.personalDifferenceYen],["調整控除額",c.adjustmentYen],
       ["特例控除割合判定基礎",c.residentSpecialBaseYen],["住民税所得割",c.residentIncomeLevyYen],
-      ["ワンストップ参考上限",result.oneStop],["確定申告参考上限（千円刻み）",result.filing]];
+      ["確定申告参考上限（千円刻み）",result.filing]];
+    if(!c.medical)pairs.splice(pairs.length-1,0,["ワンストップ参考上限",result.oneStop]);
+    if(c.medical){
+      add("p",details,"医療費控除を申告するためワンストップ特例は利用できません。すべてのふるさと納税を確定申告に含めてください。","muted");
+      add("p",details,c.medical.method==="ordinary"?"通常の医療費控除":"セルフメディケーション税制","muted");
+      pairs.push(["対象費用の支払額",c.medical.paidYen],["補填金の受取額",c.medical.reimbursementReceivedYen],
+        ["対象費用から控除する補填金",c.medical.reimbursementAppliedYen],["別の費用から控除しない補填金超過額",c.medical.excessReimbursementIgnoredYen],
+        ["医療費控除の足切額",c.medical.thresholdYen],["医療費控除額（所得税・住民税）",c.medical.nationalDeductionYen]);
+    }
     if(c.insurance){
       add("p",details,"23歳未満の扶養親族に係る新一般生命保険料控除特例："+(c.insurance.enhancedGeneral?"適用":"対象外"),"muted");
       pairs.push(["生命保険料控除（所得税）",c.insurance.national.lifeYen],["生命保険料控除（住民税）",c.insurance.resident.lifeYen],
@@ -661,10 +687,10 @@
     if(!target||target===conditionsConfirmation)return;
     var name=target.name;
     var familyChanged=target.hasAttribute("data-family")||["familySpouseAge","familySpouseIncome","sourceSpouseAge","sourceSpouseIncome"].includes(name);
-    if(["familyReviewed","sourceFamilyReviewed","forecastReviewed","insuranceReviewed","sourceInsuranceReviewed","otherReviewed","sourceOtherReviewed"].includes(name)){
+    if(["familyReviewed","sourceFamilyReviewed","forecastReviewed","insuranceReviewed","sourceInsuranceReviewed","otherReviewed","sourceOtherReviewed","medicalReviewed"].includes(name)){
       conditionsConfirmation.checked=false;return;
     }
-    if(familyChanged||target.hasAttribute("data-other-disability")||/^(target|source)Other_/.test(name)||/^(target|source)Insurance_/.test(name)||name==="familyReviewed"||name==="year"||name==="filing"||name==="municipality"||
+    if(familyChanged||target.hasAttribute("data-medical")||/^medical/.test(name)||target.hasAttribute("data-other-disability")||/^(target|source)Other_/.test(name)||/^(target|source)Insurance_/.test(name)||name==="familyReviewed"||name==="year"||name==="filing"||name==="municipality"||
        name==="salaryGross"||name==="socialInsurance"||
        name==="salaryIncomeReference"||name==="deductionsReference"||
        name==="deductionsOverride"||
@@ -676,6 +702,7 @@
       form.elements.namedItem("sourceInsuranceReviewed").checked=false;
       form.elements.namedItem("otherReviewed").checked=false;
       form.elements.namedItem("sourceOtherReviewed").checked=false;
+      form.elements.namedItem("medicalReviewed").checked=false;
       // A prior-year forecast must be re-confirmed after any change to its
       // year, amounts or tax conditions. Never clear on its own click.
       if(name!=="forecastReviewed"){
@@ -701,7 +728,7 @@
   var familyRows=document.getElementById("familyRelatives");
   var sourceFamilyRows=document.getElementById("sourceFamilyRelatives");
   function revokeFamily(){
-    ["familyReviewed","sourceFamilyReviewed","forecastReviewed","insuranceReviewed","sourceInsuranceReviewed","otherReviewed","sourceOtherReviewed"].forEach(function(name){form.elements.namedItem(name).checked=false;});
+    ["familyReviewed","sourceFamilyReviewed","forecastReviewed","insuranceReviewed","sourceInsuranceReviewed","otherReviewed","sourceOtherReviewed","medicalReviewed"].forEach(function(name){form.elements.namedItem(name).checked=false;});
     conditionsConfirmation.checked=false;invalidateEstimate();
   }
   function resetSourceFamily(){
@@ -737,6 +764,22 @@
     remove.addEventListener("click",function(){row.remove();revokeFamily();});
     revokeFamily();
   }
+  var medicalRows=document.getElementById("medicalGroups");
+  document.getElementById("medicalAdd").addEventListener("click",function(){
+    if(medicalRows.children.length>=1000)return;
+    var row=add("fieldset",medicalRows,undefined,"medical-group");
+    add("legend",row,"補填対象ごとの費用明細");
+    [["paid","対象支払費用（円）"],["reimbursed","対応する補填金（円・なしは0）"]].forEach(function(pair){
+      var label=add("label",row,pair[1]),control=add("input",label);
+      control.type="text";control.inputMode="numeric";control.autocomplete="off";control.maxLength=9;control.setAttribute("data-medical",pair[0]);
+    });
+    var label=add("label",row,undefined,"confirm"),review=add("input",label);
+    review.type="checkbox";review.setAttribute("data-medical","reviewed");
+    label.appendChild(document.createTextNode(" この費用と補填金の対応・対象要件を確認しました"));
+    var remove=add("button",row,"この費用明細を削除","secondary");remove.type="button";
+    remove.addEventListener("click",function(){row.remove();revokeFamily();});
+    revokeFamily();
+  });
   document.getElementById("familyAdd").addEventListener("click",function(){addFamilyRow(familyRows);});
   document.getElementById("sourceFamilyAdd").addEventListener("click",function(){addFamilyRow(sourceFamilyRows);});
   form.addEventListener("submit", function (event) {
@@ -766,7 +809,7 @@
   });
   form.addEventListener("reset", function () {
     printableInputSnapshot=null;printableResult=null;
-    familyRows.replaceChildren();sourceFamilyRows.replaceChildren();
+    familyRows.replaceChildren();sourceFamilyRows.replaceChildren();medicalRows.replaceChildren();
     form.classList.remove("deduction-override-active");
     if(overrideNotice)overrideNotice.hidden=true;
     delete form.dataset.ocrYear;
