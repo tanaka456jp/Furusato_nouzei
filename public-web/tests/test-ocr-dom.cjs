@@ -84,6 +84,7 @@ async function main(){
    }
  };
  win.eval(script("engine.js"));
+ win.eval(script("resident-levy.js"));
  win.eval(script("app.js"));
  win.eval(script("ocr-review.js"));
  win.eval(script("ocr-quality.js"));
@@ -95,6 +96,7 @@ async function main(){
  field("salaryGross").value="7000000";
  field("socialInsurance").value="1000000";
  function calc(){
+   if(field("municipality").value==="")field("municipality").value="standard";
    form.dispatchEvent(new win.Event("submit",{bubbles:true,cancelable:true}));
    return doc.getElementById("result");
  }
