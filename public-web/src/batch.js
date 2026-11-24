@@ -151,6 +151,23 @@
    cell(tr,yen(comparison?.trial?.selfPay),"batch-comparison");
    cell(tr,yen(comparison?.trial?.excess),"batch-comparison");
    cell(tr,comparison?.trialStatus??"HOLD","batch-trial-status");
+   const familyCell=cell(tr,"","batch-family-editor");
+   const details=formControl("details");
+   details.appendChild(formControl("summary",{text:"家族明細を入力・確認"}));
+   for(const [key,title] of [["familySourceText","原票年の家族"],["familyTargetText","試算年の家族"]]){
+    const label=formControl("label",{text:title});
+    const area=formControl("textarea",{"data-row":String(i),"data-field":key,
+     "aria-label":"対象者 "+r.page+" "+title,rows:"4",maxlength:"3000",
+     autocomplete:"off",spellcheck:"false",placeholder:"S,40,600000\nR,20,600000,0"});
+    area.value=r[key];label.appendChild(area);details.appendChild(label);
+   }
+   const review=formControl("label",{text:" 原票年・試算年の全家族と控除条件を確認済み"});
+   const familyCheck=formControl("input",{type:"checkbox","data-row":String(i),"data-field":"familyReviewed",
+    checked:r.familyReviewed,"aria-label":"対象者 "+r.page+" の家族明細照合済み"});
+   review.prepend(familyCheck);details.appendChild(review);familyCell.appendChild(details);
+   cell(tr,isEstimate?yen(r.familySummary?.sourceTotal):"—","batch-family-result");
+   cell(tr,isEstimate?yen(r.familySummary?.national):"—","batch-family-result");
+   cell(tr,isEstimate?yen(r.familySummary?.resident):"—","batch-family-result");
    for(const select of tr.querySelectorAll("select")){
     const span=document.createElement("span");span.className="batch-print-value";
     span.textContent=select.selectedOptions[0]?.textContent??"未確認";select.parentNode.appendChild(span);
@@ -250,7 +267,7 @@
   // and screenshots cannot retain an estimate for an edited recipient.
   const index=rows.indexOf(row),tr=body.children[index];
   if(tr){
-   const amounts=tr.querySelectorAll(".batch-result,.batch-deduction-applied,.batch-resident-levy,.batch-comparison");
+   const amounts=tr.querySelectorAll(".batch-result,.batch-deduction-applied,.batch-resident-levy,.batch-comparison,.batch-family-result");
    const reason=tr.querySelector(".batch-reason");
    amounts.forEach(el=>{el.textContent="—";});
    if(reason)reason.textContent="HOLD："+row.reason;
@@ -262,7 +279,7 @@
   const idx=Number(ev.target?.dataset?.row);
   const key=ev.target?.dataset?.field;
   if(!Number.isSafeInteger(idx)||!rows[idx])return;
-  if(key==="label"||key==="trialInput"||monetary.includes(key)){
+  if(key==="label"||key==="trialInput"||key==="familySourceText"||key==="familyTargetText"||monetary.includes(key)){
    core.edit(rows[idx],key,ev.target.value);
    invalidateEditedRow(rows[idx]);
   }
@@ -272,14 +289,14 @@
   const key=ev.target?.dataset?.field;
   if(!Number.isSafeInteger(idx)||!rows[idx])return;
   const row=rows[idx];
-  if(key==="label"||key==="trialInput"||monetary.includes(key)){
+  if(key==="label"||key==="trialInput"||key==="familySourceText"||key==="familyTargetText"||monetary.includes(key)){
    core.edit(row,key,ev.target.value);
   }else if(key==="sourceYear"||key==="year"||key==="municipality"){
    core.edit(row,key,ev.target.value);
   }else if(key==="filing"&&["one-stop","return"].includes(ev.target.value)){
    row.filing=ev.target.value;
-   row.confirmed=false;row.noExclusions=false;row.forecastReviewed=false;
-  }else if(["confirmed","noExclusions","forecastReviewed"].includes(key)){
+   row.confirmed=false;row.noExclusions=false;row.forecastReviewed=false;row.familyReviewed=false;
+  }else if(["confirmed","noExclusions","forecastReviewed","familyReviewed"].includes(key)){
    row[key]=ev.target.checked===true;
   }else return;
   invalidateEditedRow(row);
@@ -295,7 +312,7 @@
   const engine=window.FurusatoEngine;
   const guard=window.FurusatoEstimateGuard?.canDisplayEstimate;
   const selectedReference=window.FurusatoEstimateGuard?.selectedReference;
-  rows.forEach(row=>core.calculate(row,engine,guard,selectedReference,window.FurusatoResidentLevy));
+  rows.forEach(row=>core.calculate(row,engine,guard,selectedReference,window.FurusatoResidentLevy,window.FurusatoFamilyTax,window.FurusatoFamilySource));
   computed=true;render();
   const allowed=rows.filter(core.canOutputEstimate).length;
   say("対象 "+rows.length+"件：概算 "+allowed+"件、HOLD "+(rows.length-allowed)+
@@ -314,7 +331,7 @@
    if(key==="year"&&row.year===null&&actual==="2026")continue;
    if(actual!==expected){
     if(element.type==="checkbox")row[key]=false;
-    else if(key==="filing"){row.filing=actual;row.confirmed=false;row.noExclusions=false;row.forecastReviewed=false;}
+    else if(key==="filing"){row.filing=actual;row.confirmed=false;row.noExclusions=false;row.forecastReviewed=false;row.familyReviewed=false;}
     else core.edit(row,key,actual);
     invalidateEditedRow(row);changed=true;
    }
