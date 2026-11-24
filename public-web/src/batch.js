@@ -49,6 +49,7 @@
   return el;
  }
  function render(){
+  const openFamilyRows=new Set([...body.children].map((tr,i)=>tr.querySelector(".batch-family-editor details")?.open?i:-1));
   body.replaceChildren();
   table.hidden=rows.length===0;
   rows.forEach((r,i)=>{
@@ -152,7 +153,7 @@
    cell(tr,yen(comparison?.trial?.excess),"batch-comparison");
    cell(tr,comparison?.trialStatus??"HOLD","batch-trial-status");
    const familyCell=cell(tr,"","batch-family-editor");
-   const details=formControl("details");
+   const details=formControl("details");details.open=openFamilyRows.has(i);
    details.appendChild(formControl("summary",{text:"家族明細を入力・確認"}));
    for(const [key,title] of [["familySourceText","原票年の家族"],["familyTargetText","試算年の家族"]]){
     const label=formControl("label",{text:title});
@@ -271,6 +272,8 @@
    const reason=tr.querySelector(".batch-reason");
    amounts.forEach(el=>{el.textContent="—";});
    if(reason)reason.textContent="HOLD："+row.reason;
+   for(const checkbox of tr.querySelectorAll('input[type="checkbox"][data-field]'))
+    checkbox.checked=row[checkbox.dataset.field]===true;
    const trialStatus=tr.querySelector(".batch-trial-status");if(trialStatus)trialStatus.textContent="HOLD";
   }
   updateButtons();
@@ -289,7 +292,13 @@
   const key=ev.target?.dataset?.field;
   if(!Number.isSafeInteger(idx)||!rows[idx])return;
   const row=rows[idx];
-  if(key==="label"||key==="trialInput"||key==="familySourceText"||key==="familyTargetText"||monetary.includes(key)){
+  if(key==="familySourceText"||key==="familyTargetText"){
+   // The input listener already records typing; avoid replacing the editor
+   // on blur, which could swallow a click on the confirmation checkbox.
+   if(row[key]!==ev.target.value){core.edit(row,key,ev.target.value);invalidateEditedRow(row);}
+   return;
+  }
+  if(key==="label"||key==="trialInput"||monetary.includes(key)){
    core.edit(row,key,ev.target.value);
   }else if(key==="sourceYear"||key==="year"||key==="municipality"){
    core.edit(row,key,ev.target.value);
