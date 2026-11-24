@@ -200,4 +200,24 @@ const partialConfirmed=g.confirmSocialZero({...partialOptional,optionalCandidate
 assert.deepEqual(partialConfirmed.optionalCandidates,wanted);
 assert.equal(partialConfirmed.autoApproved,false);
 assert.equal(partialOptional.candidates.socialInsurance,undefined);
+// R8 verified layout: synthetic amounts only, no actual slip contents.
+const r8Token=(str,x,y,width=12)=>({str,transform:[1,0,0,1,x,y],width});
+const r8Structure=[["G30",76.67,450.39],["G31",175.88,450.39],["G32",275.09,450.39],["G33",374.31,450.39],["G34",473.52,450.39],["G36",131.94,408.93],["新生命保険料の金額",99.99,463.5],["旧生命保険料の金額",199.2,463.5],["介護医療保険料の金額",295.65,463.5],["住宅借入金等特別控除可能額",141.41,433.74]].map(a=>r8Token(...a));
+const r8Base=groupedFields.map(p=>p.str==="7"?{...p,str:"8"}:p);
+const r8Date=dateTokens("令和","3","2","28");
+const r8Values=[r8Token("12345",130,450.39),r8Token("23456",230,450.39),r8Token("34567",330,450.39),r8Token("45678",430,450.39),r8Token("234567",190,408.93),countToken(379.98,"2")];
+const r8All=[...r8Base,...r8Structure,...counts,...r8Date,...r8Values];
+const r8Review=g.review(r8All);
+const r8Expected={sourceInsurance_generalNew:12345,sourceInsurance_generalOld:23456,sourceInsurance_medicalNew:34567,mortgageSourcePossible:234567,familySpecialRelativeCount:2,mortgageMoveInYear:2021};
+assert.equal(r8Review.r8VerifiedLayout,true);
+assert.equal(r8Review.eligibleForManualTransfer,true);
+assert.deepEqual(g.verifiedOptional(r8Review,r8Review),r8Expected);
+assert.equal(r8Review.optionalCandidates.sourceInsurance_pensionNew,undefined);
+for(const missing of ["G30","介護医療保険料の金額","G72"]){
+ const rejected=g.review(r8All.filter(p=>p.str!==missing));
+ assert.equal(rejected.r8VerifiedLayout,false);
+ assert.deepEqual(g.verifiedOptional(rejected,rejected),{});
+}
+assert.deepEqual(g.verifiedOptional({...r8Review,r8VerifiedLayout:false},r8Review),{});
+assert.deepEqual(g.verifiedOptional(r8Review,{...r8Review,year:2025}),{});
 console.log("PUBLIC_PDF_GCODES_EVERY_DIGIT_POSITION_SYNTHETIC_PASS");
