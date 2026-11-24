@@ -1453,3 +1453,62 @@ console.log(JSON.stringify({schema:"web-high-salary-tax-integration/v1",highCase
  console.log(JSON.stringify({schema:"web-other-source-reconciliation/v1",sourceOtherCases,sourceOtherHoldCases,
   g25IncludedInG26:true,originalYearIndependent:true,uiIntegrated:false,release:"HOLD"}));
 }
+
+// High salary source-year reconciliation: independent G04/G05/G46/G47,
+// G25 inside G26, verified family facts, no forecast inputs.
+{
+ const highSource={year:2025,gross:9000000,salaryIncome:7000000,social:1000000,deductions:1960000,
+  indicators:{hasSpouse:true,hasDependents:true,hasSalaryAdjustment:true,hasSmallEnterpriseContributions:true},
+  spouse:spouse(0),relatives:[relative(10,0)],reviewed:true,premiums:{...premiumsZero},insuranceReviewed:true,
+  otherDeductions:{disability:{self:"none",spouse:"none",relatives:["none"]},
+   maritalRelief:"none",childIndex:null,workingStudent:false,smallEnterpriseContributions:120000},
+  otherReviewed:true,sourceContributionYen:120000,sourceAdjustmentYen:50000,sourceBasicYen:580000,
+  adjustmentReviewed:true,adjustmentFacts:{...adjBase,spouse:adjSpouse(0,false),relatives:[adjMember(10,0)]}};
+ let highSourceCases=0,highSourceHoldCases=0;
+ for(const year of [2025,2026]){
+  const basic=year===2025?580000:620000;
+  const input={...highSource,year,sourceBasicYen:basic,deductions:basic+1380000,
+   adjustmentFacts:{...highSource.adjustmentFacts,year}};
+  const result=sourceFamily.reconcile(input,engine);assert.equal(result.status,"RECONCILED",result.reason);
+  const c=result.calculation;
+  assert.deepEqual([c.year,c.salaryIncomeYen,c.basicYen,c.familyYen,c.deductionsYen,c.sourceAdjustmentYen,
+   c.salaryAdjustment.salaryIncomeBeforeAdjustmentYen,c.socialInsuranceOnlyYen,c.otherYen],
+   [year,7000000,basic,380000,basic+1380000,50000,7050000,880000,120000]);
+  highSourceCases++;
+  // The same family income may qualify in 2026 but not 2025. No claimed
+  // family deduction here, because the witness may be claimed elsewhere.
+  const qualifies=year===2026,base=qualifies?670000:580000;
+  const boundary={...input,gross:8500001,salaryIncome:qualifies?6550000:6550001,
+   spouse:null,relatives:[],indicators:qualifies?{hasSalaryAdjustment:true}:{},
+   sourceAdjustmentYen:qualifies?1:0,sourceBasicYen:base,deductions:base+1000000,
+   otherDeductions:{...input.otherDeductions,disability:{self:"none",spouse:"none",relatives:[]}},
+   adjustmentFacts:{...adjBase,year,grossSalary:8500001,relatives:[adjMember(10,600000)]}};
+  const b=sourceFamily.reconcile(boundary,engine);assert.equal(b.status,"RECONCILED",b.reason);
+  assert.equal(b.calculation.salaryIncomeYen,boundary.salaryIncome);
+  highSourceCases++;
+  const upper={...boundary,gross:20000000,salaryIncome:17900000,sourceAdjustmentYen:150000,
+   sourceBasicYen:basic,deductions:basic+1000000,indicators:{hasSalaryAdjustment:true},
+   adjustmentFacts:{...boundary.adjustmentFacts,grossSalary:20000000,relatives:[adjMember(10,0)]}};
+  assert.equal(sourceFamily.reconcile(upper,engine).status,"RECONCILED");
+  highSourceCases++;
+ }
+ for(const patch of [
+  {adjustmentReviewed:false},{sourceAdjustmentYen:49999},{sourceAdjustmentYen:50001},
+  {sourceAdjustmentYen:150001},{sourceBasicYen:630000},{sourceBasicYen:undefined},
+  {salaryIncome:7050000},{salaryIncome:6999999},{deductions:2080000},
+  {year:2026},{gross:9000001},{adjustmentFacts:{...highSource.adjustmentFacts,year:2026}},
+  {adjustmentFacts:{...highSource.adjustmentFacts,grossSalary:9000001}},
+  {adjustmentFacts:{...highSource.adjustmentFacts,relatives:[]}},
+  {adjustmentFacts:{...highSource.adjustmentFacts,selfSpecialDisability:true}},
+  {adjustmentFacts:{...highSource.adjustmentFacts,spouse:adjSpouse(0,true)}},
+  {adjustmentFacts:{...highSource.adjustmentFacts,conditions:"unreviewed"}},
+  {sourceContributionYen:120001},{indicators:{hasMortgage:true}},
+  {medicalDeductions:{method:"ordinary"}},{gross:20000001}
+ ]){
+  const result=sourceFamily.reconcile({...highSource,...patch},engine);
+  assert.equal(result.status,"HOLD",JSON.stringify(patch));assert.equal(result.calculation,null);
+  highSourceHoldCases++;
+ }
+ console.log(JSON.stringify({schema:"web-high-salary-source-reconciliation/v1",highSourceCases,highSourceHoldCases,
+  g04g05g46g47Reviewed:true,g25IncludedInG26:true,sourceYearIndependent:true,uiIntegrated:false,release:"HOLD"}));
+}

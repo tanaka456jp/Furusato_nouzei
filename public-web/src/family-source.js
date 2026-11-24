@@ -2,9 +2,9 @@
 // Source-year reconciliation only. No inference from current-year household,
 // no tax credits, no personal identifiers, no network or storage.
 (function(root,factory){
- if(typeof module==="object"&&module.exports)module.exports=factory(require("./family-deductions.js"),require("./insurance-deductions.js"),require("./other-deductions.js"));
- else root.FurusatoFamilySource=factory(root.FurusatoFamilyDeductions,root.FurusatoInsuranceDeductions,root.FurusatoOtherDeductions);
-}(typeof window!=="undefined"?window:this,function(family,insurance,other){
+ if(typeof module==="object"&&module.exports)module.exports=factory(require("./family-deductions.js"),require("./insurance-deductions.js"),require("./other-deductions.js"),require("./salary-adjustment.js"));
+ else root.FurusatoFamilySource=factory(root.FurusatoFamilyDeductions,root.FurusatoInsuranceDeductions,root.FurusatoOtherDeductions,root.FurusatoSalaryAdjustment);
+}(typeof window!=="undefined"?window:this,function(family,insurance,other,salaryAdjustment){
  const amount=(n,max)=>Number.isSafeInteger(n)&&n>=0&&n<=max;
  const hold=reason=>({status:"HOLD",reason,calculation:null});
  function reconcile(input,salaryEngine){
@@ -13,25 +13,48 @@
   if(withInsurance)keys.push("premiums","insuranceReviewed");
   const withOther=!!input&&Object.prototype.hasOwnProperty.call(input,"otherDeductions");
   if(withOther)keys.push("otherDeductions","otherReviewed","sourceContributionYen");
+  const high=!!input&&Object.prototype.hasOwnProperty.call(input,"adjustmentFacts");
+  if(high)keys.push("adjustmentFacts","sourceAdjustmentYen","sourceBasicYen","adjustmentReviewed");
   const allowed=withInsurance?["hasSpouse","hasDependents","hasLifeInsurance","hasEarthquakeInsurance"]:["hasSpouse","hasDependents"];
   if(withOther)allowed.push("hasDisability","hasWidow","hasSingleParent","hasWorkingStudent","hasSmallEnterpriseContributions");
+  if(high)allowed.push("hasSalaryAdjustment");
   if(!input||typeof input!=="object"||Array.isArray(input)||Object.keys(input).length!==keys.length||
      !keys.every(k=>Object.prototype.hasOwnProperty.call(input,k))||
-     ![2025,2026].includes(input.year)||!amount(input.gross,8500000)||input.gross===0||
-     !amount(input.salaryIncome,6550000)||!amount(input.social,input.gross)||
+     ![2025,2026].includes(input.year)||!amount(input.gross,high?20000000:8500000)||input.gross===0||
+     !amount(input.salaryIncome,high?18050000:6550000)||!amount(input.social,input.gross)||
      !amount(input.deductions,100000000)||input.reviewed!==true||
      !input.indicators||typeof input.indicators!=="object"||Array.isArray(input.indicators)||
      Object.entries(input.indicators).some(([k,v])=>!allowed.includes(k)||v!==true)||
      (withInsurance&&(input.insuranceReviewed!==true||!insurance||typeof insurance.calculate!=="function"))||
      (withOther&&(!withInsurance||input.otherReviewed!==true||!amount(input.sourceContributionYen,input.social)||
        !other||typeof other.calculate!=="function"))||
-     !salaryEngine||typeof salaryEngine.salaryIncome!=="function"||
-     typeof salaryEngine.statutoryRows!=="function"||!family)
+     (high&&(!withOther||input.gross<8500000||input.adjustmentReviewed!==true||
+       !amount(input.sourceAdjustmentYen,150000)||!amount(input.sourceBasicYen,1040000)||
+       !salaryAdjustment||typeof salaryAdjustment.reconcileClaims!=="function"))||
+     (!high&&(!salaryEngine||typeof salaryEngine.salaryIncome!=="function"||
+       typeof salaryEngine.statutoryRows!=="function"))||!family)
    return hold("原票年分・4金額・家族明細・その他控除の確認が必要です");
-  const salary=salaryEngine.salaryIncome(input.gross,input.year);
+  let salary,basicYen,highDetails=null;
+  if(high){
+   const facts=input.adjustmentFacts;
+   if(!facts||facts.year!==input.year||facts.grossSalary!==input.gross)
+    return hold("原票年分・支払金額と所得金額調整控除の確認明細が一致しません");
+   const out=salaryAdjustment.reconcileClaims(facts,input);
+   if(out.status!=="COMPONENTS_ONLY")return hold(out.reason);
+   highDetails=out.calculation;
+   if(input.sourceAdjustmentYen!==highDetails.salaryAdjustmentYen||
+      (input.indicators.hasSalaryAdjustment&&input.sourceAdjustmentYen===0))
+    return hold("原票の所得金額調整控除額（G47）が一致しません");
+   salary=highDetails.salaryIncomeAfterAdjustmentYen;
+   basicYen=input.year===2025?(salary<=6550000?630000:580000):(salary<=6550000?670000:620000);
+   if(basicYen!==input.sourceBasicYen)return hold("原票年分の基礎控除額（G46）が一致しません");
+  }else{
+   salary=salaryEngine.salaryIncome(input.gross,input.year);
+   const row=salaryEngine.statutoryRows().find(row=>row[0]===input.year&&salary<=row[1]);
+   if(!row||!amount(row[2],1040000))return hold("原票年分の基礎控除を確認できません");
+   basicYen=row[2];
+  }
   if(salary!==input.salaryIncome)return hold("原票の給与所得控除後の金額が一致しません");
-  const basicRow=salaryEngine.statutoryRows().find(row=>row[0]===input.year&&salary<=row[1]);
-  if(!basicRow||!amount(basicRow[2],1040000))return hold("原票年分の基礎控除を確認できません");
   const household={year:input.year,taxpayerIncome:salary,spouse:input.spouse,
     relatives:input.relatives,conditions:"annual-resident-family-reviewed"};
   const f=family.calculate(household);
@@ -72,10 +95,11 @@
   }
   // G26 already includes G25. Count the latter exactly once.
   const socialOnly=input.social-(withOther?input.sourceContributionYen:0);
-  const total=basicRow[2]+socialOnly+c.nationalFamilyDeductionYen+
+  const total=basicYen+socialOnly+c.nationalFamilyDeductionYen+
    (insuranceDetails?.national.totalYen??0)+(otherDetails?.nationalOtherDeductionYen??0);
   if(total!==input.deductions)return hold("原票年分の所得控除合計が一致しません。未対応控除の可能性があります");
-  return {status:"RECONCILED",calculation:{year:input.year,salaryIncomeYen:salary,basicYen:basicRow[2],
+  return {status:"RECONCILED",calculation:{year:input.year,salaryIncomeYen:salary,basicYen,
+    ...(high?{salaryAdjustment:highDetails,sourceAdjustmentYen:input.sourceAdjustmentYen}:{}),
     familyYen:c.nationalFamilyDeductionYen,deductionsYen:total,
     ...(withOther?{socialInsuranceOnlyYen:socialOnly,sourceContributionYen:input.sourceContributionYen,
       otherYen:otherDetails.nationalOtherDeductionYen,otherWithoutContributionsYen:otherDetails.nationalOtherDeductionYen-input.sourceContributionYen}:{}),

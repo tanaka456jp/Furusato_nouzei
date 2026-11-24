@@ -46,5 +46,33 @@
    dependentIncomeThresholdYen:threshold,eligible,qualifyingSelf:input.selfSpecialDisability,
    qualifyingUnder23,qualifyingSpecialRelative,qualifyingSpecialSpouse}};
  }
- return Object.freeze({calculate});
+ // Shared validation for tax and source-year reconciliation. The salary
+ // adjustment witnesses may include a child claimed by another spouse.
+ function reconcileClaims(adj,tax){
+  const result=calculate(adj);
+  if(result.status!=="COMPONENTS_ONLY")return result;
+  if(!tax||typeof tax!=="object")return hold("扶養親族の確認が必要です");
+  const d=tax.otherDeductions?.disability;
+  const special=k=>k==="special"||k==="cohabitingSpecial";
+  if(!d||!Array.isArray(d.relatives)||!Array.isArray(tax.relatives)||
+     d.relatives.length!==tax.relatives.length||adj.selfSpecialDisability!==(d.self==="special"))
+   return hold("本人・扶養親族の特別障害者区分が一致しません");
+  if((tax.spouse===null)!==(adj.spouse===null)||
+     (tax.spouse!==null&&(!tax.spouse||tax.spouse.income!==adj.spouse.income||
+       special(d.spouse)!==adj.spouse.specialDisability)))
+   return hold("同一生計配偶者の所得・障害区分が一致しません");
+  // Claimed relatives must match distinct reviewed witnesses; witnesses not
+  // claimed here may be claimed by the other spouse for family deductions.
+  const available=adj.relatives.slice();
+  for(let i=0;i<tax.relatives.length;i++){
+   const member=tax.relatives[i];
+   if(!member)return hold("扶養親族の確認が必要です");
+   const j=available.findIndex(x=>x.age===member.age&&x.income===member.income&&
+      x.specialDisability===special(d.relatives[i]));
+   if(j<0)return hold("扶養親族と所得金額調整控除の確認明細が一致しません");
+   available.splice(j,1);
+  }
+  return result;
+ }
+ return Object.freeze({calculate,reconcileClaims});
 }));
