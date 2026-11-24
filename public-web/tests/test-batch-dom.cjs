@@ -10,6 +10,7 @@ const win=new JSDOM(fs.readFileSync(path.join(root,"index.html"),"utf8"),{
 const script=name=>fs.readFileSync(path.join(root,name),"utf8");
 win.fetch=()=>{throw Error("NO_EXTERNAL_NETWORK_ALLOWED");};
 win.eval(script("engine.js"));
+win.eval(script("resident-levy.js"));
 win.eval(script("app.js"));
 win.eval(script("batch-core.js"));
 const candidatesA={salaryGross:5000000,salaryIncomeReference:3560000,
@@ -62,6 +63,8 @@ function type(idx,key,value){
  assert.equal(choose(0,"sourceYear").value,"2025");
  assert.equal(choose(0,"year").value,"2026");
  assert.equal(choose(0,"deductionsReference").value,"1430000");
+ assert.equal(choose(0,"municipality").value,"");
+ change(0,"municipality","standard");
  change(0,"deductionsReference","1790000");
  change(0,"confirmed",true);
  change(0,"noExclusions",true);
@@ -73,6 +76,7 @@ function type(idx,key,value){
  assert.match(d.querySelector("#batchRows tr").textContent,/57,000円/);
  assert.match(d.querySelector("#batchRows tr").textContent,/前年参考概算/);
  assert.doesNotMatch(d.querySelector("#batchRows tr:nth-child(2)").textContent,/109,000円/);
+ change(1,"municipality","designated");
  change(1,"confirmed",true);
  change(1,"noExclusions",true);
  d.getElementById("batchCalculate").click();
@@ -82,6 +86,8 @@ function type(idx,key,value){
  assert.equal(second.children[7].textContent,"1,670,000円");
  assert.equal(second.children[8].querySelector("input").dataset.field,"socialInsurance");
  assert.equal(second.children[8].querySelector("input").value,"1000000");
+ assert.equal(second.querySelector(".batch-resident-levy").textContent,"374,500円");
+ assert.equal(second.children.length,d.querySelectorAll("#batchTable th").length);
  type(0,"label","架空改姓");
  assert.doesNotMatch(d.querySelector("#batchRows tr:nth-child(1)").textContent,/57,000円/,
   "A name edit must erase stale amount without losing keyboard focus");
@@ -93,6 +99,10 @@ function type(idx,key,value){
  assert.equal(choose(0,"confirmed").checked,false);
  assert.equal(choose(0,"forecastReviewed").checked,false);
  assert.equal(d.getElementById("batchDownload").disabled,true);
+ change(1,"municipality","standard");
+ assert.equal(choose(1,"confirmed").checked,false);
+ assert.equal(d.querySelector("#batchRows tr:nth-child(2) .batch-result").textContent,"—");
+ assert.equal(d.querySelector("#batchRows tr:nth-child(2) .batch-resident-levy").textContent,"—");
  win.close();
  console.log("PUBLIC_WEB_EDITABLE_BATCH_DOM_FICTIONAL_NAME_2026_PASS");
 })().catch(e=>{console.error(e);process.exitCode=1;win.close();});
