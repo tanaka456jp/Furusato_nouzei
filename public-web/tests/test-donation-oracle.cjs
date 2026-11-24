@@ -1722,3 +1722,129 @@ console.log(JSON.stringify({schema:"web-high-salary-tax-integration/v1",highCase
  assert.equal(medicalCases,18);
  console.log(JSON.stringify({schema:"web-medical-nta-example-and-boundaries/v1",medicalCases,excelCOM:false,fractionalYenCertified:false,release:"HOLD"}));
 }
+
+// Multi-deduction cross-boundary audit: independently tabulated household
+// and insurance deductions + progressive integer tax slices.
+// NTA No.1411, 1140, 1180, 1120, 2260; Otsu resident special-credit table;
+// Yokohama resident mortgage credit (continuing 2024 occupancy).
+// https://www.city.otsu.lg.jp/soshiki/005/1215/g/shimin/koujo/28359.html
+// https://www.city.yokohama.lg.jp/kurashi/koseki-zei-hoken/zeikin/y-shizei/kojin-shiminzei-kenminzei/kojin-shiminzei-shosai/zeigakukoujoR8.html
+// Synthetic only. Tests the documented conservative prefix and existing
+// resident rounding model, not new Excel evidence or legal certification.
+{
+ const min=(a,b)=>a<b?a:b,max=(a,b)=>a>b?a:b;
+ const floorTax=x=>max(0n,x)/1000n*1000n;
+ const bands=[[1950000n,5n],[3300000n,10n],[6950000n,20n],[9000000n,23n],[18000000n,33n]];
+ function ordinary(x){
+  let start=0n,result=0n;
+  for(const [end,rate] of bands){
+   result+=max(0n,min(x,end)-start)*rate/100n;
+   start=end;
+  }
+  return result;
+ }
+ let scenarios=0,filingTrials=0,mortgageTrials=0,prefixes=0,holdCases=0;
+ for(const year of [2025,2026])
+ for(const municipality of ["standard","designated"])
+ for(const [boundary,gross,income] of [[1950000,9000000,7000000],[3300000,9000000,7000000],[6950000,12000000,9900000],[9000000,15000000,12900000]])
+ for(const delta of [-1000,0,1000]){
+  // 20-year-old qualifying dependent: 630k national/450k local,
+  // 180k personal difference. General new 120k + care 40k:
+  // national life 70k/90k, resident life 52k. Earthquake 20k/10k.
+  // 300k net medical -> 200k deduction. No spouse or other income.
+  const basic=year===2025?580000:620000;
+  const life=year===2025?70000:90000;
+  const nationalNonSocial=basic+630000+life+20000+200000;
+  const residentNonSocial=430000+450000+52000+10000+200000;
+  const localTaxable=boundary+delta+230000+basic-480000;
+  const social=income-residentNonSocial-localTaxable;
+  const nationalDed=social+nationalNonSocial,residentDed=social+residentNonSocial;
+  const nationalTaxable=floorTax(BigInt(income-nationalDed));
+  const specialBase=boundary+delta;
+  const rate=bands.find(([end])=>BigInt(specialBase)<=end)[1];
+  const ratio=90000n-rate*1021n;
+  const shares=municipality==="standard"?[3n,2n]:[4n,1n];
+  // All cases have local taxable above 2.18m, so the adjustment
+  // credit is 2,500 yen (5% of the 50,000 floor).
+  // Use 100ths of yen for the unrounded municipal/prefectural levy.
+  const raw=shares.map(s=>BigInt(localTaxable)*s*2n-50000n*s);
+  const bills=raw.map(v=>v/10000n*100n);
+  const input={
+   adjustment:{year,grossSalary:gross,selfSpecialDisability:false,spouse:null,relatives:[adjMember(20,0)],conditions:"annual-resident-salary-only-adjustment-facts-reviewed"},
+   tax:{socialAndContributions:social,municipality,spouse:null,relatives:[relative(20)],
+    conditions:"salary-basic-social-family-insurance-other-only-reviewed",
+    premiums:{...premiumsZero,generalNew:120000,medicalNew:40000,earthquake:20000},
+    otherDeductions:{disability:{self:"none",spouse:"none",relatives:["none"]},maritalRelief:"none",childIndex:null,workingStudent:false,smallEnterpriseContributions:0},
+    medicalNetPaidYen:300000}
+  };
+  const c=familyTax.highSalaryMedicalFilingCalculation(input);
+  assert.equal(c.status,"ESTIMATE",c.reason);
+  assert.equal(c.donationLimitYen,null);
+  assert.deepEqual([c.calculation.salaryAdjustment.salaryIncomeAfterAdjustmentYen,c.calculation.nationalDeductionsYen,c.calculation.residentDeductionsYen,c.calculation.nationalTaxableYen,c.calculation.residentTaxableYen,c.calculation.residentSpecialBaseYen,c.calculation.specialRatePercent,c.calculation.city.assessedYen,c.calculation.prefecture.assessedYen],
+   [income,nationalDed,residentDed,Number(nationalTaxable),localTaxable,specialBase,Number(rate),...bills.map(Number)]);
+  assert.equal(familyTax.highSalaryCalculate(input).status,"HOLD");
+  holdCases++;
+  // Mortgage interaction: use progressive slices rather than the
+  // production quick-deduction table, and rational municipal credits.
+  function state(d,potential){
+   const taxable=floorTax(BigInt(income-nationalDed)-d);
+   const tax=ordinary(taxable);
+   const applied=min(tax,potential);
+   const rest=tax-applied;
+   const localCap=min(97500n,(taxable+BigInt(basic-480000))*5n/100n);
+   return {applied,local:min(potential-applied,localCap),cap:localCap,total:rest+rest*21n/1000n};
+  }
+  function localBills(d,st){
+   return shares.map((s,i)=>{
+    // regular credit = 2% * share; special = (90%-rate*1.021)*share/5
+    // cap = 20% of unrounded post-adjustment levy.
+    const creditNumerator=d*s*10000n+min(d*s*ratio,raw[i]*1000n);
+    const credit=(creditNumerator+499999n)/500000n;
+    return max(0n,raw[i]-st.local*s*20n-credit*100n)/10000n*100n;
+   });
+  }
+  function oracle(d,potential){
+   const D=BigInt(d)-2000n,before=state(0n,potential),after=state(D,potential);
+   const b=localBills(0n,before),a=localBills(D,after);
+   const ns=before.total-after.total,rs=b[0]+b[1]-a[0]-a[1];
+   return {before,after,b,a,ns,rs,self:BigInt(d)-ns-rs};
+  }
+  const nominal=Math.floor(Math.min(...shares.map((s,i)=>Number(2000n+bills[i]*100000n/(ratio*s))))/1000)*1000;
+  for(const d of [2000,3000,nominal,nominal+1000]){
+   const expected=oracle(d,0n);
+   const trial=familyTax.highSalaryFilingTrial(input,d);
+   assert.equal(trial.status,"ESTIMATE",trial.reason);
+   assert.deepEqual([trial.calculation.nationalSavingYen,trial.calculation.residentSavingYen,trial.calculation.selfPayYen],[expected.ns,expected.rs,expected.self].map(Number));
+   filingTrials++;
+  }
+  let filingCeiling=2000;
+  for(let d=3000;d<=Math.floor(income*3/10);d+=1000){if(oracle(d,0n).self>2000n)break;filingCeiling=d;}
+  assert.equal(familyTax.highSalaryFilingPrefix(input).donationLimitYen,filingCeiling);
+  prefixes++;
+  for(const potential of [30000,300000,600000]){
+   const housing={moveInYear:2024,capClass:"standard5",possibleYen:potential,eligibilityReviewed:true};
+   const request={tax:input,housing,filing:"return"};
+   assert.equal(familyTax.mortgageTrial({...request,filing:"one-stop"},3000).status,"HOLD");
+   holdCases++;
+   for(const d of [2000,3000,nominal,nominal+1000]){
+    const e=oracle(d,BigInt(potential)),trial=familyTax.mortgageTrial(request,d);
+    assert.equal(trial.status,"COMPONENTS_ONLY",trial.reason);
+    assert.equal(trial.donationLimitYen,null);
+    const x=trial.calculation;
+    assert.deepEqual([x.before.nationalHousingYen,x.before.residentHousingYen,x.before.localCapYen,x.after.nationalHousingYen,x.after.residentHousingYen,x.after.localCapYen,x.nationalSavingYen,x.residentSavingYen,x.selfPayYen,...x.localBefore,...x.localAfter.map(v=>v.assessedYen)],
+     [e.before.applied,e.before.local,e.before.cap,e.after.applied,e.after.local,e.after.cap,e.ns,e.rs,e.self,...e.b,...e.a].map(Number));
+    mortgageTrials++;
+   }
+   let ceiling=2000;
+   for(let d=3000;d<=nominal;d+=1000){if(oracle(d,BigInt(potential)).self>2000n)break;ceiling=d;}
+   const prefix=familyTax.mortgagePrefix(request);
+   assert.equal(prefix.status,"COMPONENTS_ONLY",prefix.reason);
+   assert.equal(prefix.donationLimitYen,null);
+   assert.equal(prefix.calculation.conservativePrefixYen,ceiling);
+   prefixes++;
+  }
+  scenarios++;
+ }
+ assert.deepEqual([scenarios,filingTrials,mortgageTrials,prefixes,holdCases],[48,192,576,192,192]);
+ console.log(JSON.stringify({schema:"web-combined-high-salary-tax-boundary-audit/v1",scenarios,filingTrials,mortgageTrials,prefixes,holdCases,excelCOM:false,release:"HOLD"}));
+}
