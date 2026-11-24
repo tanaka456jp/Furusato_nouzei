@@ -188,4 +188,16 @@ for(const additions of [
  assert.equal(g.canConfirmSocialZero(rejected),false);
  assert.equal(g.confirmSocialZero(rejected),null);
 }
+// Optional review-only values survive a precisely identified blank G26.
+const partialOptional=g.review([...groupedFields.slice(0,-1),...r7Slots]);
+assert.equal(g.canConfirmSocialZero(partialOptional),true);
+assert.equal(partialOptional.eligibleForManualTransfer,false);
+assert.deepEqual(g.verifiedOptional(partialOptional,partialOptional),wanted);
+assert.deepEqual(g.verifiedOptional(partialOptional,{...partialOptional,candidates:{...partialOptional.candidates,salaryGross:6123001}}),{});
+assert.deepEqual(g.verifiedOptional(partialOptional,{...partialOptional,reasons:["CODE_G26_AMOUNT_CONFLICT"]}),{});
+assert.deepEqual(g.verifiedOptional(partialOptional,{...partialOptional,year:2026}),{});
+const partialConfirmed=g.confirmSocialZero({...partialOptional,optionalCandidates:g.verifiedOptional(partialOptional,partialOptional)});
+assert.deepEqual(partialConfirmed.optionalCandidates,wanted);
+assert.equal(partialConfirmed.autoApproved,false);
+assert.equal(partialOptional.candidates.socialInsurance,undefined);
 console.log("PUBLIC_PDF_GCODES_EVERY_DIGIT_POSITION_SYNTHETIC_PASS");
