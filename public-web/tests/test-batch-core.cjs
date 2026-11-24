@@ -655,5 +655,18 @@ assert.match(spouseHintRow.reason,/G43/);
 batch.edit(spouseHintRow,"familySourceText","S,40,720000");
 Object.assign(spouseHintRow,{confirmed:true,noExclusions:true,forecastReviewed:true,familyReviewed:true});
 runFamily(spouseHintRow);assert.notEqual(spouseHintRow.donationLimitYen,null);
+// Manual blank G26 attestation fills the original snapshot, not just forecast.
+const zeroReview={schema:"furusato-positioned-gcodes/v1",year:2025,eligibleForManualTransfer:false,reasons:["CODE_G26_AMOUNT_UNVERIFIED"],candidates:{salaryGross:7000000,salaryIncomeReference:5200000,deductionsReference:630000}};
+const zeroRow=fixture(1,zeroReview,2026);
+assert.equal(batch.canConfirmSocialZero(zeroRow),true);
+assert.equal(zeroRow.originalCandidates.socialInsurance,undefined);
+assert.equal(batch.confirmSocialZero(zeroRow),true);
+assert.equal(zeroRow.originalCandidates.socialInsurance,0);assert.equal(zeroRow.candidates.socialInsurance,0);
+assert.equal(zeroRow.socialZeroManuallyConfirmed,true);assert.equal(zeroRow.confirmed,false);assert.equal(zeroRow.forecastReviewed,false);
+assert.equal(zeroRow.sourceValid,true);assert.equal(zeroRow.donationLimitYen,null);
+assert.equal(batch.confirmSocialZero(zeroRow),false);
+const altered=fixture(1,zeroReview,2026);batch.edit(altered,"salaryGross","7000001");assert.equal(batch.confirmSocialZero(altered),false);
+const ambiguous=fixture(1,{...zeroReview,reasons:["CODE_G26_AMBIGUOUS"]},2026);assert.equal(batch.confirmSocialZero(ambiguous),false);
+const actual=fixture(1,basic2026);assert.equal(batch.confirmSocialZero(actual),false);
 dom.window.close();
 console.log("PUBLIC_BATCH_PER_PAGE_LOCAL_SAFETY_SYNTHETIC_PASS; no private slips; no deploy");

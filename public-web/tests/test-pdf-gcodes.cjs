@@ -162,4 +162,15 @@ const explicitZero=g.review([...groupedFields.slice(0,-1),{...groupedFields[9],s
 assert.equal(explicitZero.eligibleForManualTransfer,true);assert.equal(explicitZero.candidates.socialInsurance,0);
 const overlap=g.review([...groupedFields,{str:"G07",transform:[1,0,0,1,220,619.41],width:12}]);
 assert.equal(overlap.eligibleForManualTransfer,false);assert.equal(overlap.candidates.salaryGross,undefined);
+// User-confirmed zero is deliberately separate from OCR success.
+assert.equal(g.canConfirmSocialZero(noSocial),true);
+const zeroConfirmed=g.confirmSocialZero(noSocial);
+assert.equal(zeroConfirmed.candidates.socialInsurance,0);
+assert.equal(zeroConfirmed.eligibleForManualTransfer,true);
+assert.equal(zeroConfirmed.autoApproved,false);assert.equal(zeroConfirmed.originalCompared,false);
+assert.equal(zeroConfirmed.socialZeroManuallyConfirmed,true);
+assert.equal(noSocial.candidates.socialInsurance,undefined);
+assert.equal(g.confirmSocialZero({...noSocial,reasons:[...noSocial.reasons,"OTHER"]}),null);
+assert.equal(g.confirmSocialZero({...noSocial,reasons:["CODE_G26_AMBIGUOUS"]}),null);
+assert.equal(g.confirmSocialZero(explicitZero),null);
 console.log("PUBLIC_PDF_GCODES_EVERY_DIGIT_POSITION_SYNTHETIC_PASS");

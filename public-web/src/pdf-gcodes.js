@@ -265,5 +265,20 @@
      Number.isSafeInteger(moveIn)&&moveIn>=2014&&moveIn<=2025)result.mortgageMoveInYear=moveIn;
   return result;
  }
- return Object.freeze({review,verifiedOptional});
+ // A human, not the parser, may attest that an unreadable G26 is blank.
+ // Only the precise partial review with all other required fields present
+ // is eligible. Missing/duplicate anchors or any other failure stay HOLD.
+ function canConfirmSocialZero(r){
+  return r?.schema==="furusato-positioned-gcodes/v1"&&r.eligibleForManualTransfer===false&&
+   [2025,2026].includes(r.year)&&Array.isArray(r.reasons)&&r.reasons.length===1&&
+   r.reasons[0]==="CODE_G26_AMOUNT_UNVERIFIED"&&r.candidates&&
+   r.candidates.socialInsurance===undefined&&Object.values(FIELDS).filter(k=>k!=="socialInsurance").every(k=>Number.isSafeInteger(r.candidates[k])&&r.candidates[k]>=0&&r.candidates[k]<=1000000000000);
+ }
+ function confirmSocialZero(r){
+  if(!canConfirmSocialZero(r))return null;
+  return {...r,candidates:{...r.candidates,socialInsurance:0},reasons:[],
+   eligibleForManualTransfer:true,autoApproved:false,originalCompared:false,
+   socialZeroManuallyConfirmed:true};
+ }
+ return Object.freeze({review,verifiedOptional,canConfirmSocialZero,confirmSocialZero});
 }));

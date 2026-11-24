@@ -693,6 +693,15 @@
       var errors=document.createElement("p");
       errors.textContent="停止理由："+(r.reasons||[]).join(" / ");
       report.appendChild(errors);
+      if(window.FurusatoPdfGCodes?.canConfirmSocialZero(r)&&isAllowedReferenceYear(r.year)){
+        const note=document.createElement("p");note.textContent="社会保険料等の欄のみ未取得です。原票を見て本当に空欄（控除対象額なし）であることを確認した場合だけ、次のボタンを押してください。金額が記載されている場合は使用しないでください。";report.appendChild(note);
+        const button=document.createElement("button");button.type="button";button.className="secondary";button.id="slipConfirmSocialZero";button.textContent="原票が空欄であることを確認し、0円を設定";
+        button.addEventListener("click",function(){
+          if(busy||review!==r||reviewGeneration!==generation||reviewManualRevision!==manualRevision||reviewFile!==(fileInput.files&&fileInput.files[0])||reviewYear!==Number(taxYear.value)||!isAllowedReferenceYear(r.year))return;
+          const completed=window.FurusatoPdfGCodes.confirmSocialZero(r);if(!completed)return;
+          review=completed;displayReview(completed);
+        });report.appendChild(button);
+      }
       return;
     }
     var ul=document.createElement("ul");
@@ -711,6 +720,7 @@
       }
     }
     report.appendChild(ul);
+    if(r.socialZeroManuallyConfirmed===true){const note=document.createElement("p");note.textContent="社会保険料等：原票空欄を手動確認して0円設定（自動読取ではありません）。";report.appendChild(note);}
     var y=document.createElement("p");
     y.textContent="所得年："+r.year+"年（申告年分と一致することを確認）";
     report.appendChild(y);

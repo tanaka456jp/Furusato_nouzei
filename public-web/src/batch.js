@@ -101,6 +101,11 @@
      });
      control.value=Number.isSafeInteger(v?.[field])?String(v[field]):"";
      td.appendChild(control);
+     if(field==="socialInsurance"&&core.canConfirmSocialZero(r)){
+      td.appendChild(formControl("p",{class:"batch-basic-note",text:"原票が本当に空欄（控除対象額なし）の場合だけ押してください。"}));
+      td.appendChild(formControl("button",{type:"button",class:"secondary batch-confirm-basic","data-confirm-social-zero":String(i),text:"原票空欄を確認し0円設定"}));
+     }
+     if(field==="socialInsurance"&&r.socialZeroManuallyConfirmed===true)td.appendChild(formControl("span",{class:"batch-basic-note",text:"原票年：空欄を手動確認して0円"}));
      if(field==="deductionsReference"&&r.deductionsOverrideActive){
       td.classList.add("batch-deduction-manual");
       const warn=document.createElement("span");
@@ -378,6 +383,13 @@
   updateButtons();
  }
  body.addEventListener("click",ev=>{
+  const zero=ev.target?.closest?.("[data-confirm-social-zero]");
+  if(zero){
+   if(running||!body.contains(zero)||!reconcileLiveInputs())return;
+   const row=rows[Number(zero.dataset.confirmSocialZero)];
+   if(!core.confirmSocialZero(row)){say("原票年の金額を確認してください。空欄確認の対象外です。");return;}
+   invalidateEditedRow(row);render();say("対象者 "+row.page+" の原票空欄を手動確認して0円設定しました。見込額・適用条件を再確認してください。");return;
+  }
   const basic=ev.target?.closest?.("[data-confirm-basic]");
   if(basic){
    if(running||!body.contains(basic)||!reconcileLiveInputs())return;
