@@ -389,12 +389,40 @@ async function main(){
     "each independently confirmed taxpayer must get a separate result");
   const firstRow=page.locator("#batchRows tr").first();
   const secondRow=page.locator("#batchRows tr").nth(1);
+  // Real browser responsive viewport checks (not physical mobile devices).
+  const desktopViewport=page.viewportSize();
+  for(const width of [360,390,700]){
+   await page.setViewportSize({width,height:844});
+   const geometry=await page.evaluate(()=>{
+    const table=document.getElementById("batchTable"),viewport=table.closest(".batch-viewport");
+    const rows=[...table.tBodies[0].rows];
+    const box=table.getBoundingClientRect();
+    return {mode:getComputedStyle(table).display,tableWidth:box.width,
+     viewportWidth:viewport.clientWidth,viewportScroll:viewport.scrollWidth,
+     rowCount:rows.length,
+     labels:rows.every(row=>[...row.cells].every(cell=>!!cell.dataset.columnLabel&&!!cell.getAttribute("headers"))),
+     cellsFit:rows.every(row=>[...row.cells].filter(cell=>getComputedStyle(cell).display!=="none").every(cell=>cell.getBoundingClientRect().width<=row.getBoundingClientRect().width)),
+     oneInputPerRecipient:rows.every(row=>row.querySelectorAll('[data-field="trialInput"]').length===1),
+     blankOptionalHidden:rows.every(row=>getComputedStyle(row.querySelector(".batch-high-result")).display==="none"),
+     resultVisible:rows.every(row=>getComputedStyle(row.querySelector(".batch-result")).display!=="none")};
+   });
+   assert.equal(geometry.mode,"block");
+   assert.ok(geometry.tableWidth<=geometry.viewportWidth+1,JSON.stringify(geometry));
+   assert.ok(geometry.viewportScroll<=geometry.viewportWidth+1,JSON.stringify(geometry));
+   assert.equal(geometry.rowCount,2);
+   assert.ok(geometry.labels&&geometry.cellsFit&&geometry.oneInputPerRecipient&&geometry.blankOptionalHidden&&geometry.resultVisible,JSON.stringify(geometry));
+  }
+  await page.setViewportSize({width:390,height:844});
   await firstRow.locator('[data-field="trialInput"]').fill("120000");
   assert.equal(await firstRow.locator(".batch-result").textContent(),"—");
   assert.equal(await firstRow.locator('[data-field="confirmed"]').isChecked(),true);
   assert.equal(await secondRow.locator(".batch-result").textContent(),"109,000円");
   assert.equal(await page.locator("#batchDownload").isDisabled(),true);
+  await page.setViewportSize(desktopViewport);
+  assert.equal(await page.locator("#batchTable").evaluate(el=>getComputedStyle(el).display),"table");
+  assert.equal(await firstRow.locator('[data-field="trialInput"]').inputValue(),"120000");
   await page.locator("#batchCalculate").click();
+  console.log("PUBLIC_BATCH_RESPONSIVE_VIEWPORT_SYNTHETIC_PASS; 360/390/700 CSS pixels; physical devices not tested");
   assert.deepEqual(await firstRow.locator(".batch-comparison").allTextContents(),
     ["109,000円","109,000円","120,000円","9,104円","7,104円"]);
   assert.equal(await firstRow.locator(".batch-trial-status").textContent(),"確定申告参考");
