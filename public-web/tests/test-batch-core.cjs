@@ -32,21 +32,21 @@ assert.equal(b.sourceValid,true);
 assert.equal(c.sourceValid,false);
 assert.equal(a.candidates.personalName,undefined);
 assert.equal(a.label,"");
-batch.calculate(a,win.FurusatoEngine,guard,selected);
+batch.calculate(a,win.FurusatoEngine,guard,selected,win.FurusatoResidentLevy);
 assert.equal(a.status,"HOLD","OCR alone must never automatically calculate");
 a.confirmed=true;
-batch.calculate(a,win.FurusatoEngine,guard,selected);
+batch.calculate(a,win.FurusatoEngine,guard,selected,win.FurusatoResidentLevy);
 assert.equal(a.status,"HOLD","unsupported-condition check must be explicit");
 a.noExclusions=true;
-batch.calculate(a,win.FurusatoEngine,guard,selected);
+batch.calculate(a,win.FurusatoEngine,guard,selected,win.FurusatoResidentLevy);
 assert.equal(a.status,"概算");
 assert.equal(a.donationLimitYen,109000);
 assert.equal(a.appliedDeductionsYen,1670000);
 b.confirmed=true;b.noExclusions=true;
-batch.calculate(b,win.FurusatoEngine,guard,selected);
+batch.calculate(b,win.FurusatoEngine,guard,selected,win.FurusatoResidentLevy);
 assert.equal(b.status,"概算");
 assert.equal(b.donationLimitYen,61000);
-batch.calculate(c,win.FurusatoEngine,guard,selected);
+batch.calculate(c,win.FurusatoEngine,guard,selected,win.FurusatoResidentLevy);
 assert.equal(c.status,"HOLD");
 assert.equal(c.donationLimitYen,null);
 const exported=batch.csv([a,b,c]);
@@ -63,7 +63,7 @@ const weird=fixture(4,{...basic2026,candidates:{
 assert.equal(weird.candidates.personalName,undefined);
 weird.label='=HYPERLINK("https://not-sent.invalid","unsafe")';
 weird.confirmed=true;weird.noExclusions=true;
-batch.calculate(weird,win.FurusatoEngine,guard,selected);
+batch.calculate(weird,win.FurusatoEngine,guard,selected,win.FurusatoResidentLevy);
 const line=batch.csv([weird]);
 assert.ok(line.includes("'=HYPERLINK("),"manual label must be escaped for Excel");
 assert.ok(!line.includes("SYNTHETIC_PERSON_NAME"));
@@ -81,17 +81,17 @@ assert.throws(()=>batch.csv(Array.from({length:21},(_,n)=>
  batch.holdRow(n+1,"not-a-candidate"))),/BATCH_CSV_ROWS_INVALID/);
 const oldAmount=a.donationLimitYen;
 a.confirmed=false;
-batch.calculate(a,win.FurusatoEngine,guard,selected);
+batch.calculate(a,win.FurusatoEngine,guard,selected,win.FurusatoResidentLevy);
 assert.equal(a.donationLimitYen,null);
 assert.notEqual(a.donationLimitYen,oldAmount);
 b.year=2026;
-batch.calculate(b,win.FurusatoEngine,guard,selected);
+batch.calculate(b,win.FurusatoEngine,guard,selected,win.FurusatoResidentLevy);
 assert.equal(b.status,"HOLD","2025 slip must not calculate using 2026 year");
 // Internal tax engine and UI guard are not bypassed even if an engine emits
 // an unverified number. No synthetic test can attest real source accuracy.
 const invented={calculate:()=>({status:"ESTIMATE",donationLimitYen:999999})};
 const x=fixture(5,basic2026);x.confirmed=true;x.noExclusions=true;
-batch.calculate(x,invented,guard,selected);
+batch.calculate(x,invented,guard,selected,win.FurusatoResidentLevy);
 assert.equal(x.status,"HOLD");
 assert.equal(x.donationLimitYen,null);
 // A verified prior-year source can become a *2026* forecast only after
@@ -100,7 +100,7 @@ const future=fixture(6,basic2025,2026);
 assert.equal(future.sourceYear,2025);
 assert.equal(future.year,2026);
 future.confirmed=true;future.noExclusions=true;
-batch.calculate(future,win.FurusatoEngine,guard,selected);
+batch.calculate(future,win.FurusatoEngine,guard,selected,win.FurusatoResidentLevy);
 assert.equal(future.status,"HOLD","prior-year forecast is not automatically approved");
 batch.edit(future,"deductionsReference","1790000");
 assert.equal(future.deductionsOverrideActive,true);
@@ -108,7 +108,7 @@ assert.equal(future.confirmed,false);
 assert.equal(future.noExclusions,false);
 assert.equal(future.candidates.deductionsReference,1790000);
 future.confirmed=true;future.noExclusions=true;future.forecastReviewed=true;
-batch.calculate(future,win.FurusatoEngine,guard,selected);
+batch.calculate(future,win.FurusatoEngine,guard,selected,win.FurusatoResidentLevy);
 assert.equal(future.status,"前年参考概算");
 assert.equal(future.donationLimitYen,57000);
 assert.equal(future.appliedDeductionsYen,1790000);
@@ -118,12 +118,12 @@ assert.match(future.reason,/手入力上書き中/);
 // A social-insurance edit cannot retroactively update the typed total.
 batch.edit(future,"socialInsurance","800000");
 future.confirmed=true;future.noExclusions=true;future.forecastReviewed=true;
-batch.calculate(future,win.FurusatoEngine,guard,selected);
+batch.calculate(future,win.FurusatoEngine,guard,selected,win.FurusatoResidentLevy);
 assert.equal(future.status,"HOLD");
 assert.equal(future.donationLimitYen,null);
 batch.edit(future,"socialInsurance","750000");
 future.confirmed=true;future.noExclusions=true;future.forecastReviewed=true;
-batch.calculate(future,win.FurusatoEngine,guard,selected);
+batch.calculate(future,win.FurusatoEngine,guard,selected,win.FurusatoResidentLevy);
 assert.equal(future.status,"前年参考概算");
 batch.edit(future,"label","架空受給者");
 assert.equal(future.status,"HOLD");
@@ -136,7 +136,7 @@ assert.match(batch.csv([future]),/架空受給者/);
 const autoForecast=fixture(14,basic2025,2026);
 batch.edit(autoForecast,"socialInsurance","800000");
 autoForecast.confirmed=true;autoForecast.noExclusions=true;autoForecast.forecastReviewed=true;
-batch.calculate(autoForecast,win.FurusatoEngine,guard,selected);
+batch.calculate(autoForecast,win.FurusatoEngine,guard,selected,win.FurusatoResidentLevy);
 assert.equal(autoForecast.status,"前年参考概算");
 assert.equal(autoForecast.appliedDeductionsYen,1840000);
 assert.equal(autoForecast.originalCandidates.deductionsReference,1430000);
@@ -147,7 +147,7 @@ assert.match(batch.csv([autoForecast]),/1840000/);
 const unsupportedSource=fixture(15,{...basic2026,
  candidates:{...basic2026.candidates,deductionsReference:1800000}});
 unsupportedSource.confirmed=true;unsupportedSource.noExclusions=true;
-batch.calculate(unsupportedSource,win.FurusatoEngine,guard,selected);
+batch.calculate(unsupportedSource,win.FurusatoEngine,guard,selected,win.FurusatoResidentLevy);
 assert.equal(unsupportedSource.status,"HOLD");
 assert.equal(unsupportedSource.donationLimitYen,null);
 assert.equal(unsupportedSource.appliedDeductionsYen,null);
@@ -155,27 +155,27 @@ const patched=fixture(7,basic2026);
 batch.edit(patched,"socialInsurance","");
 assert.equal(patched.sourceValid,false);
 patched.confirmed=true;patched.noExclusions=true;
-batch.calculate(patched,win.FurusatoEngine,guard,selected);
+batch.calculate(patched,win.FurusatoEngine,guard,selected,win.FurusatoResidentLevy);
 assert.equal(patched.donationLimitYen,null);
 batch.edit(patched,"socialInsurance","1000000");
 assert.equal(patched.sourceValid,true);
 assert.equal(patched.confirmed,false);
 batch.edit(patched,"sourceYear","2024");
 assert.equal(patched.sourceValid,false);
-batch.calculate(patched,win.FurusatoEngine,guard,selected);
+batch.calculate(patched,win.FurusatoEngine,guard,selected,win.FurusatoResidentLevy);
 assert.equal(patched.status,"HOLD");
 // Original source deductions cannot be waived by checkboxes or edits.
 const credited=fixture(11,{
  ...basic2026,sourceIndicators:{hasMortgage:true,hasLifeInsurance:true}
 });
 credited.confirmed=true;credited.noExclusions=true;
-batch.calculate(credited,win.FurusatoEngine,guard,selected);
+batch.calculate(credited,win.FurusatoEngine,guard,selected,win.FurusatoResidentLevy);
 assert.equal(credited.status,"HOLD");
 assert.equal(credited.donationLimitYen,null);
 batch.edit(credited,"salaryGross","7000000");
 assert.equal(credited.sourceIndicators.hasMortgage,true);
 credited.confirmed=true;credited.noExclusions=true;
-batch.calculate(credited,win.FurusatoEngine,guard,selected);
+batch.calculate(credited,win.FurusatoEngine,guard,selected,win.FurusatoResidentLevy);
 assert.equal(credited.status,"HOLD");
 assert.doesNotMatch(batch.csv([credited]),/,"109000",/);
 const malformedIndicator=fixture(12,{
@@ -204,17 +204,17 @@ assert.equal(partial.candidates.socialInsurance,undefined);
 assert.equal(partial.candidates.salaryGross,960000);
 assert.equal(partial.sourceValid,false);
 partial.confirmed=true;partial.noExclusions=true;partial.forecastReviewed=true;
-batch.calculate(partial,win.FurusatoEngine,guard,selected);
+batch.calculate(partial,win.FurusatoEngine,guard,selected,win.FurusatoResidentLevy);
 assert.equal(partial.donationLimitYen,null);
 batch.edit(partial,"socialInsurance","0");
 assert.equal(partial.sourceValid,true);
 assert.equal(partial.confirmed,false,"Manual fill must revoke source confirmation");
-batch.calculate(partial,win.FurusatoEngine,guard,selected);
+batch.calculate(partial,win.FurusatoEngine,guard,selected,win.FurusatoResidentLevy);
 assert.equal(partial.status,"HOLD");
 // A stale calculated deduction total must not leak into CSV after confirmation is revoked.
 const stale=fixture(20,basic2026);
 stale.confirmed=true;stale.noExclusions=true;
-batch.calculate(stale,win.FurusatoEngine,guard,selected);
+batch.calculate(stale,win.FurusatoEngine,guard,selected,win.FurusatoResidentLevy);
 assert.equal(stale.status,"概算");
 assert.equal(stale.appliedDeductionsYen,1670000);
 // Source input and computed total can be equal. Verify the actual columns,
@@ -233,11 +233,14 @@ for(const revoke of [
  row=>{row.filing="return";},
  row=>{row.municipality="designated";},
  row=>{row.municipality="";},
- row=>{row.appliedDeductionsYen=null;}
+ row=>{row.appliedDeductionsYen=null;},
+ row=>{row.trialInput="120000";},
+ row=>{row.candidates.socialInsurance=1000001;},
+ row=>{row.year=2025;}
 ]){
  const candidate=fixture(20,basic2026);
  candidate.confirmed=true;candidate.noExclusions=true;
- batch.calculate(candidate,win.FurusatoEngine,guard,selected);
+ batch.calculate(candidate,win.FurusatoEngine,guard,selected,win.FurusatoResidentLevy);
  assert.equal(batch.canOutputEstimate(candidate),true);
  revoke(candidate);
  const values=columns(candidate);
@@ -247,12 +250,14 @@ for(const revoke of [
  assert.equal(values[12],"HOLD");
  assert.equal(values[15],"","stale resident levy must not export");
  assert.equal(values[16],"","stale calculation basis must not export");
+ for(const i of [17,18,20,21,22])assert.equal(values[i],"","stale comparison must not export");
+ assert.equal(values[23],"HOLD");
 }
 stale.confirmed=false;
 assert.equal(columns(stale)[6],"1670000","original input remains visible for review");
 const staleForecast=fixture(20,basic2025,2026);
 staleForecast.confirmed=true;staleForecast.noExclusions=true;staleForecast.forecastReviewed=true;
-batch.calculate(staleForecast,win.FurusatoEngine,guard,selected);
+batch.calculate(staleForecast,win.FurusatoEngine,guard,selected,win.FurusatoResidentLevy);
 assert.equal(batch.canOutputEstimate(staleForecast),true);
 staleForecast.forecastReviewed=false;
 assert.equal(columns(staleForecast)[7],"");
@@ -261,12 +266,12 @@ assert.equal(columns(staleForecast)[12],"HOLD");
 
 const unknown=batch.fromPage(1,basic2026);
 unknown.confirmed=true;unknown.noExclusions=true;
-batch.calculate(unknown,win.FurusatoEngine,guard,selected);
+batch.calculate(unknown,win.FurusatoEngine,guard,selected,win.FurusatoResidentLevy);
 assert.equal(unknown.status,"HOLD");assert.equal(unknown.donationLimitYen,null);
 batch.edit(unknown,"municipality","designated");
 assert.equal(unknown.confirmed,false);
 unknown.confirmed=true;unknown.noExclusions=true;
-batch.calculate(unknown,win.FurusatoEngine,guard,selected);
+batch.calculate(unknown,win.FurusatoEngine,guard,selected,win.FurusatoResidentLevy);
 assert.equal(unknown.donationLimitYen,109000);
 assert.equal(unknown.residentLevyYen,374500);
 assert.equal(columns(unknown)[14],"政令指定都市");
@@ -275,5 +280,22 @@ assert.equal(columns(unknown)[16],"自治体別ワンストップ参考");
 batch.edit(unknown,"municipality","standard");
 assert.equal(unknown.residentLevyYen,null);
 assert.equal(columns(unknown)[15],"");
+const trialRow=fixture(1,basic2026);
+trialRow.confirmed=true;trialRow.noExclusions=true;
+batch.calculate(trialRow,win.FurusatoEngine,guard,selected,win.FurusatoResidentLevy);
+assert.deepEqual(columns(trialRow).slice(17),["109000","109000","","109000","1951","0","確定申告参考"]);
+batch.edit(trialRow,"trialInput","120000");
+assert.equal(trialRow.confirmed,true);
+assert.equal(trialRow.noExclusions,true);
+assert.equal(batch.outputComparison(trialRow),null);
+batch.calculate(trialRow,win.FurusatoEngine,guard,selected,win.FurusatoResidentLevy);
+assert.deepEqual(columns(trialRow).slice(17),["109000","109000","120000","120000","9104","7104","確定申告参考"]);
+batch.edit(trialRow,"trialInput","1999");
+batch.calculate(trialRow,win.FurusatoEngine,guard,selected,win.FurusatoResidentLevy);
+assert.deepEqual(columns(trialRow).slice(17),["109000","109000","1999","","","","HOLD"]);
+batch.edit(trialRow,"trialInput","=1+1");
+batch.calculate(trialRow,win.FurusatoEngine,guard,selected,win.FurusatoResidentLevy);
+assert.equal(columns(trialRow)[19],"'=1+1");
+assert.equal(columns(trialRow)[21],"");
 dom.window.close();
 console.log("PUBLIC_BATCH_PER_PAGE_LOCAL_SAFETY_SYNTHETIC_PASS; no private slips; no deploy");
