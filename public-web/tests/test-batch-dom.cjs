@@ -150,7 +150,9 @@ function type(idx,key,value){
   await new Promise(resolve=>setImmediate(resolve));
  change(0,"municipality","standard");
  change(0,"familySourceText","S,40,600000\nR,20,600000,0");
- change(0,"familyTargetText","S,41,600000\nR,21,600000,0");
+ d.querySelector('[data-copy-family="0"]').click();
+ assert.equal(choose(0,"familyTargetText").value,"S,41,600000\nR,21,600000,0");
+ assert.equal(choose(0,"familyReviewed").checked,false);assert.equal(choose(1,"familyTargetText").value,"");
  change(0,"confirmed",true);change(0,"noExclusions",true);change(0,"forecastReviewed",true);
  d.getElementById("batchCalculate").click();
  assert.equal(d.querySelector("#batchRows tr .batch-result").textContent,"—");

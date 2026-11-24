@@ -627,5 +627,22 @@ for(const text of ["R,20,0,0","R,20,0,0\nR,10,0,0\nR,8,0,0","R,20,0,0\nR,10,5800
 const forecastCounts=countFixture();batch.edit(forecastCounts,"familyTargetText","R,21,0,0");
 Object.assign(forecastCounts,{confirmed:true,noExclusions:true,forecastReviewed:true,familyReviewed:true});
 runFamily(forecastCounts);assert.equal(forecastCounts.status,"前年参考概算",forecastCounts.reason);
+// Ordinary family forecast copy: source stays intact, ages advance and consent is revoked.
+const familyCopy=fixture(1,{...basic2026,year:2025},2026);
+batch.edit(familyCopy,"familySourceText","S,40,600000\nR,15,0,0\nR,70,0,1");
+batch.edit(familyCopy,"familyTargetText","なし");
+familyCopy.confirmed=true;familyCopy.familyReviewed=true;familyCopy.forecastReviewed=true;
+assert.equal(batch.copySourceFamily(familyCopy),true);
+assert.equal(familyCopy.familySourceText,"S,40,600000\nR,15,0,0\nR,70,0,1");
+assert.equal(familyCopy.familyTargetText,"S,41,600000\nR,16,0,0\nR,71,0,1");
+assert.equal(familyCopy.familyReviewed,false);assert.equal(familyCopy.confirmed,false);assert.equal(familyCopy.forecastReviewed,false);
+assert.equal(familyCopy.donationLimitYen,null);
+batch.edit(familyCopy,"familySourceText","R,130,0,0");
+assert.equal(batch.copySourceFamily(familyCopy),false);
+assert.equal(familyCopy.familyTargetText,"S,41,600000\nR,16,0,0\nR,71,0,1");
+batch.edit(familyCopy,"familySourceText","なし");batch.edit(familyCopy,"otherTargetText","ordinary,none,none,0,0,0");
+assert.equal(batch.copySourceFamily(familyCopy),false);
+batch.edit(familyCopy,"otherTargetText","");assert.equal(batch.copySourceFamily(familyCopy),true);
+assert.equal(familyCopy.familyTargetText,"なし");
 dom.window.close();
 console.log("PUBLIC_BATCH_PER_PAGE_LOCAL_SAFETY_SYNTHETIC_PASS; no private slips; no deploy");

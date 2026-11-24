@@ -180,6 +180,7 @@
      autocomplete:"off",spellcheck:"false",placeholder:"S,40,600000\nR,20,600000,0"});
     area.value=r[key];label.appendChild(area);details.appendChild(label);
    }
+   details.appendChild(formControl("button",{type:"button",class:"secondary",text:"原票年の家族を試算年へコピー（上書き・年齢更新）","data-copy-family":String(i)}));
    const review=formControl("label",{text:" 原票年・試算年の全家族と控除条件を確認済み"});
    const familyCheck=formControl("input",{type:"checkbox","data-row":String(i),"data-field":"familyReviewed",
     checked:r.familyReviewed,"aria-label":"対象者 "+r.page+" の家族明細照合済み"});
@@ -382,6 +383,13 @@
    const i=Number(basic.dataset.confirmBasic),row=rows[i];
    if(!Number.isSafeInteger(i)||!row||!core.confirmBasic(row)){say("原票年分・金額・自治体区分・未対応条件を確認してください。");return;}
    invalidateEditedRow(row);render();say("対象者 "+row.page+" の基本確認を反映しました。該当する個別控除は別途確認してください。");return;
+  }
+  const family=ev.target?.closest?.("[data-copy-family]");
+  if(family){
+   if(running||!body.contains(family)||!reconcileLiveInputs())return;
+   const i=Number(family.dataset.copyFamily),row=rows[i];
+   if(!Number.isSafeInteger(i)||!row||!core.copySourceFamily(row)){say("原票年の家族明細を確認してください。その他控除・所得金額調整控除の親族明細がある場合は個別入力してください。");return;}
+   invalidateEditedRow(row);render();say("対象者 "+row.page+" の家族明細をコピーしました。試算年の所得・家族構成・適用条件を確認してください。");return;
   }
   const button=ev.target?.closest?.("[data-copy-premiums]");
   if(!button||running||!body.contains(button)||!reconcileLiveInputs())return;

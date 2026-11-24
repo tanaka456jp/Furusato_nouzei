@@ -846,6 +846,7 @@
     conditionsConfirmation.checked=false;invalidateEstimate();
   }
   function resetSourceFamily(){
+    document.getElementById("familyCopyStatus").textContent="";
     delete form.dataset.ocrFamilyCountHints;
     document.getElementById("sourceFamilyCountHints").textContent="";
     document.getElementById("premiumCopyStatus").textContent="";
@@ -904,6 +905,30 @@
   }
   document.getElementById("adjustmentAdd").addEventListener("click",function(){addAdjustmentRow(adjustmentRows);});
   document.getElementById("sourceAdjustmentAdd").addEventListener("click",function(){addAdjustmentRow(sourceAdjustmentRows);});
+  document.getElementById("copySourceFamily").addEventListener("click",function(){
+    const input=getInput(),source=input.sourceFamily,sy=Number(input.sourceYear),year=Number(input.year),delta=year-sy;
+    const status=document.getElementById("familyCopyStatus"),get=k=>form.elements.namedItem(k);
+    const fail=()=>{status.textContent="原票年の家族明細を正しく入力してください。障害・その他所得控除や所得金額調整控除の追加親族がある場合は個別入力してください。";};
+    if(!source||input.sourceReviewPending||![2025,2026].includes(sy)||![2025,2026].includes(year)||![0,1].includes(delta)||
+       input.otherDetails||input.sourceOtherDetails||sourceAdjustmentRows.children.length||adjustmentRows.children.length)return fail();
+    const spousePresent=source.spouseAge!==""||source.spouseIncome!=="";
+    if(!spousePresent&&!source.relatives.length&&!source.reviewed)return fail();
+    const members=[...(spousePresent?[{age:source.spouseAge,income:source.spouseIncome}]:[]),...source.relatives];
+    if(members.some(m=>strictYen(m.age)===null||strictYen(m.income)===null||strictYen(m.age)+delta>130||strictYen(m.income)>100000000||(m.cohabiting&&strictYen(m.age)<70)))return fail();
+    get("familySpouseAge").value=spousePresent?String(strictYen(source.spouseAge)+delta):"";
+    get("familySpouseIncome").value=spousePresent?source.spouseIncome:"";
+    familyRows.replaceChildren();
+    for(const m of source.relatives){
+      addFamilyRow(familyRows);
+      const row=familyRows.lastElementChild;
+      row.querySelector('[data-family="age"]').value=String(strictYen(m.age)+delta);
+      row.querySelector('[data-family="income"]').value=m.income;
+      row.querySelector('[data-family="cohabiting"]').checked=m.cohabiting;
+    }
+    get("hasSpouse").checked=spousePresent;get("hasDependents").checked=source.relatives.length>0;
+    revokeFamily();document.getElementById("familyPanelFold").open=true;
+    status.textContent="家族明細をコピーしました。試算年の所得・家族構成・適用条件を再確認してください。";
+  });
   document.getElementById("copySourcePremiums").addEventListener("click",function(){
     var sourceYear=Number(form.dataset.ocrYear),year=Number(form.elements.namedItem("year").value);
     var values=premiumKeys.map(function(k){return form.elements.namedItem("sourceInsurance_"+k).value.trim();});
@@ -1008,6 +1033,7 @@
   form.addEventListener("reset", function () {
     printableInputSnapshot=null;printableResult=null;
     optionalPanelIds.forEach(function(id){document.getElementById(id).open=false;});
+    document.getElementById("familyCopyStatus").textContent="";
     basicConfirm.hidden=true;document.getElementById("basicForecastStatus").textContent="";
     document.getElementById("premiumCopyStatus").textContent="";
     familyRows.replaceChildren();sourceFamilyRows.replaceChildren();adjustmentRows.replaceChildren();sourceAdjustmentRows.replaceChildren();

@@ -219,6 +219,23 @@
  }
  // Copy only the operator's entered annual premium amounts. Never copy a
  // computed deduction: the target-year engine recomputes the statutory rules.
+ // Explicit copy of ordinary family facts, not tax deductions or consent.
+ function copySourceFamily(row){
+  if(!canEstimate(row)||row.sourceYear!==row.originalYear||
+     !["","なし"].includes(row.otherSourceText.trim())||!["","なし"].includes(row.otherTargetText.trim())||
+     row.sourceAdjustmentExtras!==""||row.targetAdjustmentExtras!=="")return false;
+  const source=parseFamily(row.familySourceText);
+  if(!source)return false;
+  const delta=row.year-row.sourceYear;
+  const members=[...(source.spouse?[source.spouse]:[]),...source.relatives];
+  if(members.some(m=>m.age+delta>130||(m.cohabitingDirectAscendant&&m.age<70)))return false;
+  const lines=[];
+  if(source.spouse)lines.push(["S",source.spouse.age+delta,source.spouse.income].join(","));
+  for(const m of source.relatives)lines.push(["R",m.age+delta,m.income,m.cohabitingDirectAscendant?1:0].join(","));
+  edit(row,"familyTargetText",lines.join("\n")||"なし");
+  row.reason="家族明細をコピーしました。試算年の所得・家族構成・適用条件を再確認してください";
+  return true;
+ }
  function copySourcePremiums(row){
   if(!row||!canEstimate(row)||!parsePremiums(row,"source")||
      !PREMIUM_KEYS.some(k=>row["sourceInsurance_"+k]!==""))return false;
@@ -628,5 +645,5 @@
   // UTF-8 BOM is an intentional local Excel compatibility aid.
   return "\ufeff"+lines.join("\r\n")+"\r\n";
  }
- return Object.freeze({FIELDS,MAX_ROWS,PREMIUM_FIELDS,PREMIUM_KEYS,OTHER_FIELDS,MEDICAL_FIELDS,MEDICAL_SUMMARY_KEYS,HIGH_FIELDS,HIGH_SUMMARY_KEYS,highActive,MORTGAGE_FIELDS,MORTGAGE_SUMMARY_KEYS,mortgageActive,copySourcePremiums,confirmBasic,fromPage,holdRow,edit,canEstimate,canOutputEstimate,outputComparison,invalidate,calculate,labelFor,csv});
+ return Object.freeze({FIELDS,MAX_ROWS,PREMIUM_FIELDS,PREMIUM_KEYS,OTHER_FIELDS,MEDICAL_FIELDS,MEDICAL_SUMMARY_KEYS,HIGH_FIELDS,HIGH_SUMMARY_KEYS,highActive,MORTGAGE_FIELDS,MORTGAGE_SUMMARY_KEYS,mortgageActive,copySourcePremiums,copySourceFamily,confirmBasic,fromPage,holdRow,edit,canEstimate,canOutputEstimate,outputComparison,invalidate,calculate,labelFor,csv});
 }));
