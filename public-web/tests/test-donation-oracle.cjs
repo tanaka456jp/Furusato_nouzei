@@ -367,3 +367,87 @@ assert.equal(local.filingTrial({...localArgs,hasMortgage:true},3000).status,"HOL
 assert.equal(local.filingPrefix({...localArgs,municipality:""}).status,"HOLD");
 console.log(JSON.stringify({schema:"web-salary-filing-trial/v1",filingTrials,filingPrefixes,
  mortgageSupported:false,actualExcelFilingCOM:false,release:"HOLD"}));
+
+
+// Family component oracle: official table boundary checks for both years.
+// No family-aware donation estimate may be emitted by this module.
+const family=require("../src/family-deductions.js");
+const baseFamily={year:2026,taxpayerIncome:5200000,spouse:null,relatives:[],
+ conditions:"annual-resident-family-reviewed"};
+const spouse=(income,age=40)=>({income,age,eligibilityReviewed:true});
+const relative=(age,income=0,cohabitingDirectAscendant=false)=>({age,income,cohabitingDirectAscendant,eligibilityReviewed:true});
+let familyCases=0;
+function familyCheck(input,expected){
+ const out=family.calculate({...baseFamily,...input});
+ assert.equal(out.status,"COMPONENTS_ONLY");
+ assert.equal(out.donationLimitYen,null);
+ const c=out.calculation;
+ assert.deepEqual([c.nationalFamilyDeductionYen,c.residentFamilyDeductionYen,
+  c.familyAdjustmentDifferenceYen,c.familyCount],expected,JSON.stringify(input));
+ assert.equal(c.ordinaryResidentIncomeLevyExemptionLimitYen,expected[3]===0?450000:350000*(expected[3]+1)+420000);
+ familyCases++;
+ return c;
+}
+for(const year of [2025,2026]){
+ const threshold=year===2025?580000:620000;
+ for(const [age,cohab,n,r,d] of [[15,false,0,0,0],[16,false,380000,330000,50000],
+  [18,false,380000,330000,50000],[19,false,630000,450000,180000],[22,false,630000,450000,180000],
+  [23,false,380000,330000,50000],[69,false,380000,330000,50000],[70,false,480000,380000,100000],[70,true,580000,450000,130000]]){
+  familyCheck({year,relatives:[relative(age,threshold,cohab)]},[n,r,d,1]);
+  familyCheck({year,relatives:[relative(age,threshold+1,cohab)]},
+   age>=19&&age<23?[630000,450000,0,0]:[0,0,0,0]);
+ }
+ // Official spouse tables for each taxpayer band, including exact edges.
+ for(const [income,n,r,d,en,er,ed] of [[9000000,380000,330000,50000,480000,380000,100000],
+  [9000001,260000,220000,40000,320000,260000,60000],[9500000,260000,220000,40000,320000,260000,60000],
+  [9500001,130000,110000,20000,160000,130000,30000],[10000000,130000,110000,20000,160000,130000,30000],
+  [10000001,0,0,0,0,0,0]]){
+  familyCheck({year,taxpayerIncome:income,spouse:spouse(threshold)},[n,r,d,1]);
+  familyCheck({year,taxpayerIncome:income,spouse:spouse(threshold,70)},[en,er,ed,1]);
+ }
+ const spouseNational=[[380000,260000,130000],[360000,240000,120000],[310000,210000,110000],
+  [260000,180000,90000],[210000,140000,70000],[160000,110000,60000],
+  [110000,80000,40000],[60000,40000,20000],[30000,20000,10000]];
+ const spouseResident=[[330000,220000,110000],[330000,220000,110000],...spouseNational.slice(2)];
+ const edges=[950000,1000000,1050000,1100000,1150000,1200000,1250000,1300000,1330000];
+ for(const [band,taxpayerIncome] of [9000000,9500000,10000000].entries()){
+  for(let i=0;i<edges.length;i++){
+   const pair=[spouseNational[i][band],spouseResident[i][band],0,0];
+   const next=i===edges.length-1?[0,0,0,0]:[spouseNational[i+1][band],spouseResident[i+1][band],0,0];
+   familyCheck({year,taxpayerIncome,spouse:spouse(edges[i])},pair);
+   familyCheck({year,taxpayerIncome,spouse:spouse(edges[i]+1)},next);
+  }
+  familyCheck({year,taxpayerIncome,spouse:spouse(threshold+1,70)},
+   [spouseNational[0][band],spouseResident[0][band],0,0]);
+ }
+ const upper=[850000,900000,950000,1000000,1050000,1100000,1150000,1200000,1230000];
+ const national=[630000,610000,510000,410000,310000,210000,110000,60000,30000];
+ const resident=[450000,450000,450000,410000,310000,210000,110000,60000,30000];
+ for(let i=0;i<upper.length;i++){
+  familyCheck({year,relatives:[relative(19,upper[i])]},[national[i],resident[i],0,0]);
+  familyCheck({year,relatives:[relative(22,upper[i]+1)]},
+   i===upper.length-1?[0,0,0,0]:[national[i+1],resident[i+1],0,0]);
+ }
+ // Independently established ordinary family combinations use the same
+ // statutory amounts as tools/audit_salary_donation_limit.py (Excel audit).
+ familyCheck({year,spouse:spouse(0),relatives:[relative(15),relative(16),relative(20),relative(75),relative(80,0,true)]},
+  [2450000,1940000,510000,6]);
+ const at=familyCheck({year,taxpayerIncome:1120000,relatives:[relative(15)]},[0,0,0,1]);
+ assert.equal(at.ordinaryResidentIncomeLevyExempt,true);
+ assert.equal(familyCheck({year,taxpayerIncome:1120001,relatives:[relative(15)]},[0,0,0,1]).ordinaryResidentIncomeLevyExempt,false);
+}
+// Same facts, different year: the 600k spouse changes from special to
+// ordinary, and the 600k 20-year-old changes from special relative to dependent.
+familyCheck({year:2025,spouse:spouse(600000),relatives:[relative(20,600000)]},[1010000,780000,0,0]);
+familyCheck({year:2026,spouse:spouse(600000),relatives:[relative(20,600000)]},[1010000,780000,230000,2]);
+for(const invalid of [{year:2024},{year:"2026"},{conditions:""},{taxpayerIncome:-1},
+ {spouse:{age:40,income:0,eligibilityReviewed:false}},
+ {spouse:{age:40,income:"0",eligibilityReviewed:true}},
+ {relatives:[relative(69,0,true)]},{relatives:[relative(20,0.5)]},
+ {relatives:[{...relative(20),eligibilityReviewed:false}]},
+ {relatives:Array(31).fill(relative(20))},{hasMortgage:true}]){
+ const out=family.calculate({...baseFamily,...invalid});
+ assert.equal(out.status,"HOLD");assert.equal(out.calculation,null);assert.equal(out.donationLimitYen,null);
+}
+console.log(JSON.stringify({schema:"web-family-components/v1",familyCases,
+ adjustmentDifferenceSeparated:true,actualExcelCOM:false,uiIntegrated:false,release:"HOLD"}));
