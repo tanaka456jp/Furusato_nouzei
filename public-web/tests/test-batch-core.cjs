@@ -283,19 +283,59 @@ assert.equal(columns(unknown)[15],"");
 const trialRow=fixture(1,basic2026);
 trialRow.confirmed=true;trialRow.noExclusions=true;
 batch.calculate(trialRow,win.FurusatoEngine,guard,selected,win.FurusatoResidentLevy);
-assert.deepEqual(columns(trialRow).slice(17),["109000","109000","","109000","1951","0","確定申告参考"]);
+assert.deepEqual(columns(trialRow).slice(17,24),["109000","109000","","109000","1951","0","確定申告参考"]);
 batch.edit(trialRow,"trialInput","120000");
 assert.equal(trialRow.confirmed,true);
 assert.equal(trialRow.noExclusions,true);
 assert.equal(batch.outputComparison(trialRow),null);
 batch.calculate(trialRow,win.FurusatoEngine,guard,selected,win.FurusatoResidentLevy);
-assert.deepEqual(columns(trialRow).slice(17),["109000","109000","120000","120000","9104","7104","確定申告参考"]);
+assert.deepEqual(columns(trialRow).slice(17,24),["109000","109000","120000","120000","9104","7104","確定申告参考"]);
 batch.edit(trialRow,"trialInput","1999");
 batch.calculate(trialRow,win.FurusatoEngine,guard,selected,win.FurusatoResidentLevy);
-assert.deepEqual(columns(trialRow).slice(17),["109000","109000","1999","","","","HOLD"]);
+assert.deepEqual(columns(trialRow).slice(17,24),["109000","109000","1999","","","","HOLD"]);
 batch.edit(trialRow,"trialInput","=1+1");
 batch.calculate(trialRow,win.FurusatoEngine,guard,selected,win.FurusatoResidentLevy);
 assert.equal(columns(trialRow)[19],"'=1+1");
 assert.equal(columns(trialRow)[21],"");
+const familyTax=require("../dist/family-tax.js"),familySource=require("../dist/family-source.js");
+const familyReview={year:2025,eligibleForManualTransfer:true,sourceIndicators:{hasDependents:true},
+ candidates:{salaryGross:6500000,salaryIncomeReference:4760000,socialInsurance:1340000,deductionsReference:3030000}};
+const familyRow=fixture(1,familyReview,2026);
+const runFamily=r=>batch.calculate(r,win.FurusatoEngine,guard,selected,win.FurusatoResidentLevy,familyTax,familySource);
+const attest=r=>{r.confirmed=true;r.noExclusions=true;r.forecastReviewed=true;r.familyReviewed=true;};
+batch.edit(familyRow,"familySourceText","S,40,600000\nR,20,600000,0");
+batch.edit(familyRow,"familyTargetText","S,41,600000\nR,21,600000,0");
+attest(familyRow);familyRow.familyReviewed=false;runFamily(familyRow);
+assert.equal(familyRow.status,"HOLD");
+attest(familyRow);runFamily(familyRow);
+assert.equal(familyRow.status,"前年参考概算");assert.equal(familyRow.donationLimitYen,53000);
+assert.equal(familyRow.appliedDeductionsYen,3390000);
+assert.equal(batch.canOutputEstimate(familyRow),true);
+assert.deepEqual(columns(familyRow).slice(24),["3030000","1010000","780000"]);
+assert.doesNotMatch(batch.csv([familyRow]),/S,40|R,20/);
+for(const mutate of [
+ r=>{r.familyReviewed=false;},r=>{r.familySourceText="なし";},
+ r=>{r.familyTargetText="なし";},r=>{r.sourceYear=2026;},
+ r=>{r.sourceIndicators.hasMortgage=true;}
+]){
+ const r=fixture(2,familyReview,2026);
+ batch.edit(r,"familySourceText","S,40,600000\nR,20,600000,0");
+ batch.edit(r,"familyTargetText","S,41,600000\nR,21,600000,0");
+ attest(r);runFamily(r);assert.equal(batch.canOutputEstimate(r),true);
+ mutate(r);assert.equal(batch.canOutputEstimate(r),false);
+ assert.deepEqual(columns(r).slice(24),["","",""]);
+}
+batch.edit(familyRow,"familySourceText","S,40,600000");
+attest(familyRow);runFamily(familyRow);assert.equal(familyRow.status,"HOLD");
+assert.equal(familyRow.donationLimitYen,null);
+batch.edit(familyRow,"familySourceText","S,40,600000\nR,20,600000,0");
+batch.edit(familyRow,"familyTargetText","S,41,600000\nR,21,600000,0");
+batch.edit(familyRow,"deductionsReference","3030000");
+attest(familyRow);runFamily(familyRow);assert.equal(familyRow.status,"HOLD");
+batch.edit(familyRow,"deductionsReference","3390000");
+attest(familyRow);runFamily(familyRow);assert.equal(familyRow.donationLimitYen,53000);
+batch.edit(familyRow,"trialInput","120000");runFamily(familyRow);
+assert.equal(familyRow.comparison.trial.donation,120000);
+assert.equal(familyRow.familyReviewed,true);
 dom.window.close();
 console.log("PUBLIC_BATCH_PER_PAGE_LOCAL_SAFETY_SYNTHETIC_PASS; no private slips; no deploy");
