@@ -173,4 +173,19 @@ assert.equal(noSocial.candidates.socialInsurance,undefined);
 assert.equal(g.confirmSocialZero({...noSocial,reasons:[...noSocial.reasons,"OTHER"]}),null);
 assert.equal(g.confirmSocialZero({...noSocial,reasons:["CODE_G26_AMBIGUOUS"]}),null);
 assert.equal(g.confirmSocialZero(explicitZero),null);
+// A conflicting or malformed social-insurance amount is not a blank.
+for(const additions of [
+ [{...groupedFields[9],str:"123,456"},{...groupedFields[9],str:"234,567"}],
+ [{...groupedFields[9],str:"12O,456"}],
+ [{...groupedFields[9],str:"12,34"}],
+ [{...groupedFields[9],str:"1"},{...groupedFields[9],str:"2",transform:[1,0,0,1,249,529.25]}],
+ [{str:"G27",transform:[1,0,0,1,165,529.05],width:12}]
+]){
+ const rejected=g.review([...groupedFields.slice(0,-1),...additions]);
+ assert.equal(rejected.eligibleForManualTransfer,false);
+ assert.equal(rejected.candidates.socialInsurance,undefined);
+ assert.deepEqual(rejected.reasons,["CODE_G26_AMOUNT_CONFLICT"]);
+ assert.equal(g.canConfirmSocialZero(rejected),false);
+ assert.equal(g.confirmSocialZero(rejected),null);
+}
 console.log("PUBLIC_PDF_GCODES_EVERY_DIGIT_POSITION_SYNTHETIC_PASS");
