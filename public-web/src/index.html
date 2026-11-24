@@ -136,6 +136,34 @@
             <button type="button" class="secondary" id="sourceFamilyAdd">原票年の親族を追加</button>
             <label class="confirm"><input type="checkbox" name="sourceFamilyReviewed"> 原票年の家族全員の明細、年齢・合計所得・適用条件、その他未対応控除がないことを原票等で確認しました。</label>
           </fieldset>
+          <fieldset class="conditions family-panel" id="targetInsurancePanel">
+            <legend>試算対象年の保険料明細（生命保険・地震保険）</legend>
+            <p>控除証明書等の年間支払保険料（剰余金・割戻金控除後、円単位）を区分別に入力。空欄は0円。地震保険・旧長期損害保険の両方に該当する同一契約は、所得税・住民税で共通の適用区分を確認できる場合のみ片方へ入力してください。</p>
+            <div class="fields">
+              <label>新一般生命保険料<input type="text" inputmode="numeric" autocomplete="off" spellcheck="false" name="targetInsurance_generalNew" maxlength="12" placeholder="0"></label>
+              <label>旧一般生命保険料<input type="text" inputmode="numeric" autocomplete="off" spellcheck="false" name="targetInsurance_generalOld" maxlength="12" placeholder="0"></label>
+              <label>介護医療保険料<input type="text" inputmode="numeric" autocomplete="off" spellcheck="false" name="targetInsurance_medicalNew" maxlength="12" placeholder="0"></label>
+              <label>新個人年金保険料<input type="text" inputmode="numeric" autocomplete="off" spellcheck="false" name="targetInsurance_pensionNew" maxlength="12" placeholder="0"></label>
+              <label>旧個人年金保険料<input type="text" inputmode="numeric" autocomplete="off" spellcheck="false" name="targetInsurance_pensionOld" maxlength="12" placeholder="0"></label>
+              <label>地震保険料<input type="text" inputmode="numeric" autocomplete="off" spellcheck="false" name="targetInsurance_earthquake" maxlength="12" placeholder="0"></label>
+              <label>旧長期損害保険料<input type="text" inputmode="numeric" autocomplete="off" spellcheck="false" name="targetInsurance_longTermOld" maxlength="12" placeholder="0"></label>
+            </div>
+            <label class="confirm"><input type="checkbox" name="insuranceReviewed"> 年間支払額・新旧契約・控除対象・重複なし・家族条件を確認しました（該当なしの確認も含む）。</label>
+          </fieldset>
+          <fieldset class="conditions family-panel" id="sourceInsurancePanel">
+            <legend>原票年分の保険料明細（OCR取込時のみ）</legend>
+            <p>控除証明書等の年間支払保険料（剰余金・割戻金控除後、円単位）を区分別に入力。空欄は0円。地震保険・旧長期損害保険の両方に該当する同一契約は、所得税・住民税で共通の適用区分を確認できる場合のみ片方へ入力してください。</p>
+            <div class="fields">
+              <label>新一般生命保険料<input type="text" inputmode="numeric" autocomplete="off" spellcheck="false" name="sourceInsurance_generalNew" maxlength="12" placeholder="0"></label>
+              <label>旧一般生命保険料<input type="text" inputmode="numeric" autocomplete="off" spellcheck="false" name="sourceInsurance_generalOld" maxlength="12" placeholder="0"></label>
+              <label>介護医療保険料<input type="text" inputmode="numeric" autocomplete="off" spellcheck="false" name="sourceInsurance_medicalNew" maxlength="12" placeholder="0"></label>
+              <label>新個人年金保険料<input type="text" inputmode="numeric" autocomplete="off" spellcheck="false" name="sourceInsurance_pensionNew" maxlength="12" placeholder="0"></label>
+              <label>旧個人年金保険料<input type="text" inputmode="numeric" autocomplete="off" spellcheck="false" name="sourceInsurance_pensionOld" maxlength="12" placeholder="0"></label>
+              <label>地震保険料<input type="text" inputmode="numeric" autocomplete="off" spellcheck="false" name="sourceInsurance_earthquake" maxlength="12" placeholder="0"></label>
+              <label>旧長期損害保険料<input type="text" inputmode="numeric" autocomplete="off" spellcheck="false" name="sourceInsurance_longTermOld" maxlength="12" placeholder="0"></label>
+            </div>
+            <label class="confirm"><input type="checkbox" name="sourceInsuranceReviewed"> 年間支払額・新旧契約・控除対象・重複なし・家族条件を確認しました（該当なしの確認も含む）。</label>
+          </fieldset>
           <label class="confirm"><input type="checkbox" name="correctedSourceReviewed"> OCRで取り込んだ金額を手修正した場合、原票・見込額の根拠を再照合しました（変更前のOCR判定は無効）</label>
           <label class="confirm"><input type="checkbox" name="forecastReviewed"> 前年の源泉徴収票を使う場合、給与・社会保険料・給与所得額・所得控除額を試算対象年の見込額に補正し、扶養等の条件を改めて確認しました（前年資料を使わない場合は不要）</label>
           <label class="confirm"><input type="checkbox" name="acknowledgedExclusions" required> 上記の該当有無を確認しました（チェックがない場合は計算を停止します）</label>
