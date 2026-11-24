@@ -59,17 +59,26 @@
  body.batch-print .batch-panel .notice,
  body.batch-print .batch-panel .smallprint,
  body.batch-print .batch-panel #batchStatus,
- body.batch-print .batch-table .batch-candidate,
- body.batch-print .batch-table .batch-check,
  body.batch-print .batch-table select,
- body.batch-print .batch-table th:nth-child(4),
  body.batch-print .batch-table th:nth-child(5),
+ body.batch-print .batch-table td:nth-child(5),
  body.batch-print .batch-table th:nth-child(6),
+ body.batch-print .batch-table td:nth-child(6),
  body.batch-print .batch-table th:nth-child(7),
+ body.batch-print .batch-table td:nth-child(7),
  body.batch-print .batch-table th:nth-child(8),
+ body.batch-print .batch-table td:nth-child(8),
  body.batch-print .batch-table th:nth-child(9),
- body.batch-print .batch-table th:nth-child(10),
- body.batch-print .batch-table td:nth-child(8){display:none!important}
+ body.batch-print .batch-table td:nth-child(9),
+ body.batch-print .batch-table th:nth-child(11),
+ body.batch-print .batch-table td:nth-child(11),
+ body.batch-print .batch-table th:nth-child(12),
+ body.batch-print .batch-table td:nth-child(12),
+ body.batch-print .batch-table th:nth-child(13),
+ body.batch-print .batch-table td:nth-child(13),
+ body.batch-print .batch-table th:nth-child(20),
+ body.batch-print .batch-table td:nth-child(20){display:none!important}
+ body.batch-print .batch-print-value{display:inline!important}
  body.batch-print .batch-viewport{overflow:visible}
  body.batch-print .batch-table{min-width:0;font-size:9px;width:100%;table-layout:auto}
  body.batch-print .batch-table th,
@@ -91,3 +100,7 @@
 @media print{.batch-deduction-manual{outline:2px solid #000;background:#fff !important}.batch-override-tag{color:#000}}
 
 .batch-table td.batch-deduction-applied{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+
+.batch-print-value{display:none}
+.batch-table .batch-comparison{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+@media print{body.batch-print .batch-table .batch-comparison{white-space:normal}}
