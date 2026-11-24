@@ -1649,3 +1649,76 @@ console.log(JSON.stringify({schema:"web-high-salary-tax-integration/v1",highCase
  assert.equal(matched,10);
  console.log(JSON.stringify({schema:"web-excel-v41836-additional-deduction-regression/v1",matched,excelEvidenceRun:45285773301,excelEvidenceJob:138082615703,excelNewExecution:false,release:"HOLD"}));
 }
+
+// Existing Windows COM evidence, NOT a new Excel execution:
+// tools/verify_excel.ps1 @ 0ec8b7388d6e95a6d9aefd54bcb61a4f40ad25a6
+// https://github.com/tanaka456jp/Furusato_nouzei/actions/runs/45285773301/job/138082615703
+// QA_STAGE under23-salary-adjustment-yen-boundaries-pass and
+// prior-year-projection-independent-resident-compare-pass.
+// Synthetic data only; representative age 14 for the under-16 count.
+{
+ let adjustmentCases=0,projectionCases=0;
+ for(const year of [2025,2026])for(const [gross,expected] of [
+  [8500000,0],[8500001,1],[8500009,1],[8500010,1],
+  [8500011,2],[9000001,50001],[9999999,150000],[10000001,150000]
+ ]){
+  const input={year,grossSalary:gross,selfSpecialDisability:false,spouse:null,relatives:[],conditions:"annual-resident-salary-only-adjustment-facts-reviewed"};
+  const control=salaryAdjustment.calculate(input);
+  const child=salaryAdjustment.calculate({...input,relatives:[adjMember(14,0)]});
+  assert.equal(control.status,"COMPONENTS_ONLY");
+  assert.equal(child.status,"COMPONENTS_ONLY");
+  assert.equal(control.calculation.salaryIncomeAfterAdjustmentYen-child.calculation.salaryIncomeAfterAdjustmentYen,expected);
+  assert.equal(child.calculation.salaryAdjustmentYen,expected);
+  assert.equal(Number.isInteger(child.calculation.salaryIncomeAfterAdjustmentYen),true);
+  assert.equal(child.donationLimitYen,null);
+  adjustmentCases++;
+ }
+ for(const [under,old,oldLife,newLife,earth,lifePaid,pensionPaid,earthPaid,nd,rl,re,rd,rt,levy,limit] of [
+  [false,1705902,65000,65000,10902,50000,50000,10902,1745902,53000,5451,1488451,3711000,368500,107000],
+  [true,1670000,40000,60000,0,120000,0,0,1730000,28000,0,1458000,3742000,371600,108000]
+ ]){
+  const relatives=under?[relative(14)]:[];
+  const premiums={...premiumsZero,generalNew:lifePaid,pensionNew:pensionPaid,earthquake:earthPaid};
+  const original={year:2025,gross:7000000,salaryIncome:5200000,social:1000000,deductions:old,
+   indicators:{hasLifeInsurance:true,...(under?{hasDependents:true}:{}),...(earth?{hasEarthquakeInsurance:true}:{})},
+   spouse:null,relatives,reviewed:true,premiums,insuranceReviewed:true};
+  const historical=sourceFamily.reconcile(original,engine);
+  assert.equal(historical.status,"RECONCILED");
+  assert.deepEqual([historical.calculation.deductionsYen,historical.calculation.lifeYen,historical.calculation.earthquakeYen],[old,oldLife,earth]);
+  const forecast=familyTax.calculate({year:2026,salaryIncome:5200000,socialInsurance:1000000,municipality:"designated",spouse:null,
+   relatives:relatives.map(x=>({...x,age:x.age+1})),conditions:"salary-basic-social-family-insurance-only-reviewed",premiums});
+  assert.equal(forecast.status,"ESTIMATE");
+  const c=forecast.calculation;
+  assert.deepEqual([c.nationalDeductionsYen,c.insurance.national.lifeYen,c.insurance.national.earthquakeYen,c.insurance.resident.lifeYen,c.insurance.resident.earthquakeYen,c.residentDeductionsYen,c.residentTaxableYen,c.residentIncomeLevyYen,forecast.donationLimitYen],[nd,newLife,earth,rl,re,rd,rt,levy,limit]);
+  assert.equal(sourceFamily.reconcile({...original,deductions:nd},engine).status,"HOLD");
+  projectionCases++;
+ }
+ assert.equal(adjustmentCases,16);
+ assert.equal(projectionCases,2);
+ console.log(JSON.stringify({schema:"web-excel-v41836-adjustment-projection-regression/v1",adjustmentCases,projectionCases,excelEvidenceJob:138082615703,excelNewExecution:false,release:"HOLD"}));
+}
+// Independent medical deduction evidence; NOT Excel COM evidence.
+// NTA No.1000 worked example and No.1120 ordinary medical deduction:
+// https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1000.htm
+// https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1120.htm
+// Only exact integer 5% thresholds here; fractional-yen rounding is
+// deliberately not certified by these examples.
+{
+ let medicalCases=0;
+ for(const year of [2025,2026])for(const [income,net,threshold,ded] of [
+  [4360000,440000,100000,340000],
+  [1000000,49999,50000,0],[1000000,50000,50000,0],[1000000,50001,50000,1],
+  [1999980,300000,99999,200001],[2000000,300000,100000,200000],
+  [5200000,2099999,100000,1999999],[5200000,2100000,100000,2000000],
+  [5200000,2100001,100000,2000000]
+ ]){
+  const out=medicalDeductions.calculateNet({year,salaryIncome:income,netEligibleYen:net});
+  assert.equal(out.status,"COMPONENTS_ONLY");
+  assert.deepEqual([out.calculation.thresholdYen,out.calculation.nationalDeductionYen,out.calculation.residentDeductionYen],[threshold,ded,ded]);
+  assert.equal(out.calculation.requiresFilingToClaim,ded>0);
+  assert.equal(out.donationLimitYen,null);
+  medicalCases++;
+ }
+ assert.equal(medicalCases,18);
+ console.log(JSON.stringify({schema:"web-medical-nta-example-and-boundaries/v1",medicalCases,excelCOM:false,fractionalYenCertified:false,release:"HOLD"}));
+}
