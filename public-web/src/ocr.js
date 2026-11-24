@@ -628,6 +628,7 @@
       if(window.FurusatoPdfGCodes?.verifiedOptional){
         const optional=window.FurusatoPdfGCodes.verifiedOptional(coded,result);
         result.optionalCandidates=optional;
+        result.r8VerifiedLayout=coded?.r8VerifiedLayout===true&&result.year===2026&&Object.keys(optional).some(k=>["sourceInsurance_generalNew","sourceInsurance_generalOld","sourceInsurance_medicalNew","mortgageSourcePossible","mortgageMoveInYear","familySpecialRelativeCount"].includes(k));
       }
       if(includeRecipient&&extracted&&!extracted.emptyTextLayer&&
          window.FurusatoBatchName&&
@@ -859,14 +860,14 @@
       ["mortgageSourceApplied","mortgageSourceApplied",600000,review.sourceIndicators?.hasMortgage===true],
       ["sourceBasicYen","sourceAdjustment_basic",1040000,high],
       ["sourceAdjustmentYen","sourceAdjustment_amount",150000,high],
-      ["mortgageSourcePossible","mortgageSourcePossible",600000,review.year===2025&&review.sourceIndicators?.hasMortgage===true],
-      ["mortgageMoveInYear","mortgageMoveInYear",2025,review.year===2025&&review.sourceIndicators?.hasMortgage===true&&!review.sourceIndicators?.hasNonstandardConditions&&review.optionalCandidates?.mortgageMoveInYear>=2014],
-      ...["generalNew","generalOld","medicalNew","pensionNew","pensionOld","longTermOld"].map(k=>["sourceInsurance_"+k,"sourceInsurance_"+k,100000000,review.year===2025&&review.sourceIndicators?.[k==="longTermOld"?"hasEarthquakeInsurance":"hasLifeInsurance"]===true])]){
+      ["mortgageSourcePossible","mortgageSourcePossible",600000,(review.year===2025||(review.year===2026&&review.r8VerifiedLayout===true))&&review.sourceIndicators?.hasMortgage===true],
+      ["mortgageMoveInYear","mortgageMoveInYear",review.year,(review.year===2025||(review.year===2026&&review.r8VerifiedLayout===true))&&review.sourceIndicators?.hasMortgage===true&&!review.sourceIndicators?.hasNonstandardConditions&&review.optionalCandidates?.mortgageMoveInYear>=2014],
+      ...["generalNew","generalOld","medicalNew","pensionNew","pensionOld","longTermOld"].map(k=>["sourceInsurance_"+k,"sourceInsurance_"+k,100000000,(review.year===2025||(review.year===2026&&review.r8VerifiedLayout===true&&["generalNew","generalOld","medicalNew"].includes(k)))&&review.sourceIndicators?.[k==="longTermOld"?"hasEarthquakeInsurance":"hasLifeInsurance"]===true])]){
       const n=review.optionalCandidates?.[key],field=form.elements.namedItem(name);
       if(active&&field&&Number.isSafeInteger(n)&&n>=0&&n<=max)field.value=String(n);
     }
     if(review.year===2025&&review.sourceIndicators?.hasSpouse===true&&Number.isSafeInteger(review.optionalCandidates?.sourceSpouseIncome)&&review.optionalCandidates.sourceSpouseIncome>0&&review.optionalCandidates.sourceSpouseIncome<=1330000)form.dataset.ocrSpouseIncome=String(review.optionalCandidates.sourceSpouseIncome);
-    const familyCountHints=Object.fromEntries(["familySpecificCount","familyElderlyCount","familyOtherCount","familySpecialRelativeCount","familyUnder16Count"].filter(k=>review.year===2025&&review.sourceIndicators?.hasDependents===true&&Number.isSafeInteger(review.optionalCandidates?.[k])&&review.optionalCandidates[k]>0&&review.optionalCandidates[k]<=30).map(k=>[k,review.optionalCandidates[k]]));
+    const familyCountHints=Object.fromEntries(["familySpecificCount","familyElderlyCount","familyOtherCount","familySpecialRelativeCount","familyUnder16Count"].filter(k=>(review.year===2025||(review.year===2026&&review.r8VerifiedLayout===true&&k==="familySpecialRelativeCount"))&&review.sourceIndicators?.hasDependents===true&&Number.isSafeInteger(review.optionalCandidates?.[k])&&review.optionalCandidates[k]>0&&review.optionalCandidates[k]<=30).map(k=>[k,review.optionalCandidates[k]]));
     if(Object.keys(familyCountHints).length)form.dataset.ocrFamilyCountHints=JSON.stringify(familyCountHints);
     form.dataset.ocrOriginalGross=String(review.candidates.salaryGross);
     form.dataset.ocrOriginalIncome=String(review.candidates.salaryIncomeReference);
