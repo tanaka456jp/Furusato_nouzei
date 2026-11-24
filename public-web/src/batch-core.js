@@ -24,7 +24,7 @@
  function holdRow(page,reason){
   return {page,label:"",year:null,sourceYear:null,candidates:null,originalCandidates:null,sourceIndicators:{},deductionsOverrideActive:false,appliedDeductionsYen:null,sourceValid:false,
    confirmed:false,noExclusions:false,forecastReviewed:false,filing:"one-stop",municipality:"",calculatedMunicipality:null,calculatedFiling:null,residentLevyYen:null,calculationBasis:null,
-   status:"HOLD",donationLimitYen:null,reason:reason||"読取・確認待ち"};
+   trialInput:"",comparison:null,calculatedSnapshot:null,status:"HOLD",donationLimitYen:null,reason:reason||"読取・確認待ち"};
  }
  function fromPage(page,review,targetYear){
   const row=holdRow(page,"原票の確認待ち");
@@ -73,10 +73,25 @@
    (row.sourceYear===row.year||row.sourceYear===row.year-1)&&
    FIELDS.every(k=>safeAmount(row.candidates[k]));
  }
+ // Bind every derived amount to the current row inputs, including edits
+ // made outside the normal UI event path.
+ function snapshot(row){
+  return JSON.stringify([row.page,row.label,row.year,row.sourceYear,row.candidates,
+    row.originalCandidates,row.sourceIndicators,row.sourceValid,row.deductionsOverrideActive,
+    row.confirmed,row.noExclusions,row.forecastReviewed,row.municipality,row.filing,row.trialInput]);
+ }
+ function invalidate(row){
+  row.status="HOLD";row.donationLimitYen=null;row.appliedDeductionsYen=null;
+  row.calculatedMunicipality=null;row.calculatedFiling=null;row.residentLevyYen=null;row.calculationBasis=null;
+  row.comparison=null;row.calculatedSnapshot=null;
+ }
  function edit(row,key,value){
   if(!row||typeof row!=="object")throw Error("BATCH_ROW_INVALID");
   if(key==="label"){
     row.label=String(value??"").slice(0,40);
+  }else if(key==="trialInput"){
+    row.trialInput=String(value??"").slice(0,12);
+    invalidate(row);row.reason="試算寄附額を変更しました。再試算してください";return row;
   }else if(key==="municipality"){
     row.municipality=["standard","designated"].includes(value)?value:"";
   }else if(key==="year"||key==="sourceYear"){
@@ -95,14 +110,12 @@
     [2025,2026].includes(row.year)&&
     FIELDS.every(k=>safeAmount(row.candidates[k]));
   row.confirmed=false;row.noExclusions=false;row.forecastReviewed=false;
-  row.status="HOLD";row.donationLimitYen=null;row.appliedDeductionsYen=null;
-  row.calculatedMunicipality=null;row.calculatedFiling=null;row.residentLevyYen=null;row.calculationBasis=null;
+  invalidate(row);
   row.reason="手入力を変更しました。原票と試算対象年の見込額・控除条件を再確認してください";
   return row;
  }
- function calculate(row,engine,displayGuard,selectedReference){
-  row.status="HOLD";row.donationLimitYen=null;row.appliedDeductionsYen=null;
-  row.calculatedMunicipality=null;row.calculatedFiling=null;row.residentLevyYen=null;row.calculationBasis=null;
+ function calculate(row,engine,displayGuard,selectedReference,localEngine){
+  invalidate(row);
   // Bad page/year/amount or a changed choice must never publish an amount.
   if(!canEstimate(row)){
     row.reason="参照源泉票の年分・試算対象年・4金額を確認できません";
@@ -181,6 +194,34 @@
     row.reason="計算内訳の整合性を確認できません";
     return row;
    }
+   // Separate comparison from the accepted primary ceiling. Invalid trial
+   // input suppresses trial amounts, not the independently verified limits.
+   let comparison=null;
+   if(localEngine&&typeof localEngine.oneStopReference==="function"&&
+      typeof localEngine.filingPrefix==="function"&&typeof localEngine.filingTrial==="function"){
+    const args={year:row.year,salaryIncome:calc.salaryIncomeYen,socialInsurance:social,
+      municipality:row.municipality,conditions:"basic-only-reviewed"};
+    const one=localEngine.oneStopReference(args),prefix=localEngine.filingPrefix(args);
+    if(one.status==="ESTIMATE"&&prefix.status==="ESTIMATE"&&
+       safeAmount(one.donationLimitYen)&&safeAmount(prefix.donationLimitYen)){
+     const donation=row.trialInput===""?one.donationLimitYen:
+       /^(0|[1-9][0-9]{0,11})$/.test(row.trialInput)?Number(row.trialInput):null;
+     const trial=localEngine.filingTrial(args,donation);
+     comparison={oneStop:one.donationLimitYen,filing:prefix.donationLimitYen,
+      trial:null,trialStatus:"HOLD"};
+     const t=trial.calculation;
+     if(trial.status==="ESTIMATE"&&t&&safeAmount(t.donationYen)&&t.donationYen===donation&&
+        Number.isSafeInteger(t.selfPayYen)&&safeAmount(t.excessOver2000Yen)&&
+        safeAmount(t.nationalSavingYen)&&safeAmount(t.residentSavingYen)&&
+        t.selfPayYen===donation-t.nationalSavingYen-t.residentSavingYen&&
+        t.excessOver2000Yen===Math.max(0,t.selfPayYen-2000)){
+      comparison.trial={donation:t.donationYen,selfPay:t.selfPayYen,excess:t.excessOver2000Yen};
+      comparison.trialStatus="確定申告参考";
+     }
+    }
+   }
+   row.comparison=comparison;
+   row.calculatedSnapshot=snapshot(row);
    row.appliedDeductionsYen=basic+social;
    row.donationLimitYen=selected.amount;
    row.residentLevyYen=selected.residentLevy;
@@ -194,7 +235,7 @@
     :"対応条件内の概算（確定額ではありません）");
    return row;
   }catch(_){
-   row.reason="計算異常";
+   invalidate(row);row.reason="計算異常";
    return row;
   }
  }
@@ -217,20 +258,25 @@
    (row.sourceYear===row.year||row.forecastReviewed===true)&&
    ["one-stop","return"].includes(row.filing)&&row.calculatedFiling===row.filing&&
    ["standard","designated"].includes(row.municipality)&&row.calculatedMunicipality===row.municipality&&
+   row.calculatedSnapshot===snapshot(row)&&
    safeAmount(row.residentLevyYen)&&typeof row.calculationBasis==="string"&&
    row.status===(row.sourceYear<row.year?"前年参考概算":"概算")&&
    safeAmount(row.appliedDeductionsYen)&&safeAmount(row.donationLimitYen);
+ }
+ function outputComparison(row){
+  return canOutputEstimate(row)&&row.comparison?row.comparison:null;
  }
  function csv(rows){
   if(!Array.isArray(rows)||rows.length>MAX_ROWS)
    throw Error("BATCH_CSV_ROWS_INVALID");
   const header=["PDFページ","氏名","参照源泉票年分","試算対象年","給与支払金額",
    "給与所得控除後の金額","所得控除合計の入力値","所得控除合計の計算使用額","所得控除合計の入力区分","社会保険料等","手続き",
-   "寄附上限額の概算","状態","確認状況","課税自治体区分","住民税所得割（選択自治体）","寄附参考額の計算方式"];
+   "寄附上限額の概算","状態","確認状況","課税自治体区分","住民税所得割（選択自治体）","寄附参考額の計算方式","ワンストップ参考上限","確定申告参考上限（千円刻み）","試算寄附額（入力・空欄は自動）","確定申告試算寄附額","確定申告自己負担見込額","2,000円超過額","任意寄附額試算状態"];
   const lines=[header.map(csvValue).join(",")];
   for(const r of rows){
    const v=r.sourceValid?r.candidates:null;
    const accepted=canOutputEstimate(r);
+   const comparison=outputComparison(r);
    lines.push([r.page,labelFor(r),r.sourceYear??"",r.year??"",
     v?.salaryGross??"",v?.salaryIncomeReference??"",
     v?.deductionsReference??"",
@@ -242,10 +288,11 @@
     !accepted&&(r.status==="概算"||r.status==="前年参考概算")
       ?"確認状態が変わりました。再試算してください":r.reason,
     r.municipality==="standard"?"標準市町村":r.municipality==="designated"?"政令指定都市":"未確認",
-    accepted?r.residentLevyYen:"",accepted?r.calculationBasis:""].map(csvValue).join(","));
+    accepted?r.residentLevyYen:"",accepted?r.calculationBasis:"",comparison?.oneStop??"",comparison?.filing??"",
+    r.trialInput,comparison?.trial?.donation??"",comparison?.trial?.selfPay??"",comparison?.trial?.excess??"",comparison?.trialStatus??"HOLD"].map(csvValue).join(","));
   }
   // UTF-8 BOM is an intentional local Excel compatibility aid.
   return "\ufeff"+lines.join("\r\n")+"\r\n";
  }
- return Object.freeze({FIELDS,MAX_ROWS,fromPage,holdRow,edit,canEstimate,canOutputEstimate,calculate,labelFor,csv});
+ return Object.freeze({FIELDS,MAX_ROWS,fromPage,holdRow,edit,canEstimate,canOutputEstimate,outputComparison,invalidate,calculate,labelFor,csv});
 }));
