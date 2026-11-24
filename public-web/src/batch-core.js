@@ -113,12 +113,15 @@
   // Frozen source-year snapshot, separate from editable forecast amounts.
   row.originalCandidates=Object.freeze({...row.candidates});
   row.socialZeroEligible=review.schema==="furusato-positioned-gcodes/v1"&&review.eligibleForManualTransfer===false&&Array.isArray(review.reasons)&&review.reasons.length===1&&review.reasons[0]==="CODE_G26_AMOUNT_UNVERIFIED"&&review.candidates.socialInsurance===undefined&&FIELDS.filter(k=>k!=="socialInsurance").every(k=>safeAmount(row.originalCandidates[k]));
-  if(review.year===2025&&review.eligibleForManualTransfer===true&&row.sourceIndicators.hasSpouse===true&&Number.isSafeInteger(review.optionalCandidates?.sourceSpouseIncome)&&review.optionalCandidates.sourceSpouseIncome>0&&review.optionalCandidates.sourceSpouseIncome<=1330000)row.spouseIncomeHint=review.optionalCandidates.sourceSpouseIncome;
+  // Partial blank-social rows may retain review-only candidates, but
+  // sourceValid, consent and estimate eligibility remain unchanged.
+  const optionalReview=review.eligibleForManualTransfer===true||row.socialZeroEligible;
+  if(review.year===2025&&optionalReview&&row.sourceIndicators.hasSpouse===true&&Number.isSafeInteger(review.optionalCandidates?.sourceSpouseIncome)&&review.optionalCandidates.sourceSpouseIncome>0&&review.optionalCandidates.sourceSpouseIncome<=1330000)row.spouseIncomeHint=review.optionalCandidates.sourceSpouseIncome;
   // Read-only hints: no ages, incomes, household rows or attestations invented.
-  if(review.year===2025&&review.eligibleForManualTransfer===true&&row.sourceIndicators.hasDependents===true){
+  if(review.year===2025&&optionalReview&&row.sourceIndicators.hasDependents===true){
    row.familyCountHints=Object.freeze(Object.fromEntries(["familySpecificCount","familyElderlyCount","familyOtherCount","familySpecialRelativeCount","familyUnder16Count"].filter(k=>Number.isSafeInteger(review.optionalCandidates?.[k])&&review.optionalCandidates[k]>0&&review.optionalCandidates[k]<=30).map(k=>[k,review.optionalCandidates[k]])));
   }
-  if(review.eligibleForManualTransfer===true){
+  if(optionalReview){
    for(const [key,max,active] of [["mortgageSourceApplied",600000,row.sourceIndicators.hasMortgage===true],["sourceBasicYen",1040000,isHigh(row.originalCandidates.salaryGross)],["sourceAdjustmentYen",150000,isHigh(row.originalCandidates.salaryGross)],
     ["mortgageSourcePossible",600000,review.year===2025&&row.sourceIndicators.hasMortgage===true],
     ["mortgageMoveInYear",2025,review.year===2025&&row.sourceIndicators.hasMortgage===true&&!row.sourceIndicators.hasNonstandardConditions&&review.optionalCandidates?.mortgageMoveInYear>=2014],
