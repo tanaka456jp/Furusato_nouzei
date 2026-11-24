@@ -88,6 +88,23 @@ function type(idx,key,value){
  assert.equal(second.children[8].querySelector("input").value,"1000000");
  assert.equal(second.querySelector(".batch-resident-levy").textContent,"374,500円");
  assert.equal(second.children.length,d.querySelectorAll("#batchTable th").length);
+ assert.equal(second.querySelector(".batch-trial-status").textContent,"確定申告参考");
+ type(1,"trialInput","120000");
+ assert.equal(choose(1,"confirmed").checked,true);
+ assert.equal(d.querySelector("#batchRows tr:nth-child(2) .batch-result").textContent,"—");
+ assert.equal(d.getElementById("batchDownload").disabled,true);
+ d.getElementById("batchCalculate").click();
+ const current=()=>d.querySelector("#batchRows tr:nth-child(2)");
+ assert.deepEqual([...current().querySelectorAll(".batch-comparison")].map(x=>x.textContent),
+ ["109,000円","109,000円","120,000円","9,104円","7,104円"]);
+ choose(1,"trialInput").value="3000";
+ win.dispatchEvent(new win.Event("beforeprint"));
+ assert.equal(current().querySelector(".batch-trial-status").textContent,"HOLD");
+ assert.ok([...current().querySelectorAll(".batch-comparison")].every(x=>x.textContent==="—"));
+ d.getElementById("batchCalculate").click();
+ assert.equal(current().querySelector(".batch-trial-status").textContent,"確定申告参考");
+ assert.match(current().textContent,/1,896円/);
+ assert.equal(current().querySelectorAll(".batch-print-value").length,4);
  type(0,"label","架空改姓");
  assert.doesNotMatch(d.querySelector("#batchRows tr:nth-child(1)").textContent,/57,000円/,
   "A name edit must erase stale amount without losing keyboard focus");
