@@ -245,3 +245,43 @@ for(const changed of [{municipality:""},{municipality:"unknown"},{municipality:"
 console.log(JSON.stringify({schema:"web-resident-levy-v1",standardMatches,
  designatedOracleMatches,lowAdjustmentCases:4,municipalRoundingCases:2,
  actualDesignatedExcelCOM:false,uiIntegrated:false,release:"HOLD"}));
+
+
+// Separate special-credit caps must each be respected, not just their sum.
+// The exact theoretical reference is NOT a final assessed self-pay guarantee.
+let checkedMunicipalReferences=0;
+for(const [year,gross,social,income,pooled,assessed,legacyLimit] of excelObserved){
+ for(const municipality of ["standard","designated"]){
+  const input={...localArgs,year,salaryIncome:income,socialInsurance:social,municipality};
+  const out=local.oneStopReference(input);
+  assert.equal(out.status,"ESTIMATE",year+"/"+gross+"/"+municipality);
+  const c=out.calculation;
+  const cityShare=municipality==="standard"?3n:4n;
+  // Independently test both constraints with integer inequalities, rather
+  // than duplicate the production division and floor formula.
+  const base=BigInt(c.exactReferenceYen-2000);
+  const d=BigInt(c.specialDenominator);
+  const cityBudget=BigInt(c.city.assessedYen)*100000n;
+  const prefBudget=BigInt(c.prefecture.assessedYen)*100000n;
+  assert.ok(base*d*cityShare<=cityBudget);
+  assert.ok(base*d*(5n-cityShare)<=prefBudget);
+  const next=base+1n;
+  assert.ok(next*d*cityShare>cityBudget||next*d*(5n-cityShare)>prefBudget||
+    c.exactReferenceYen===Math.floor(income*.3));
+  assert.equal(out.donationLimitYen,Math.floor(c.exactReferenceYen/1000)*1000);
+  assert.ok(out.donationLimitYen<=legacyLimit);
+  checkedMunicipalReferences++;
+ }
+}
+// Low national taxable income is still HOLD despite a positive local levy.
+assert.equal(local.oneStopReference({...localArgs,socialInsurance:4723000}).status,"HOLD");
+assert.equal(local.oneStopReference({...localArgs,municipality:"unknown"}).status,"HOLD");
+// Explicitly reject unsupported modes/credits rather than silently ignore them.
+for(const extra of [{filing:"return"},{hasMortgage:true},{residentCredit:1}]){
+ const held=local.oneStopReference({...localArgs,...extra});
+ assert.equal(held.status,"HOLD");
+ assert.equal(held.calculation,null);
+}
+console.log(JSON.stringify({schema:"web-municipal-one-stop-reference/v1",
+ checkedMunicipalReferences,individualCaps:true,exactReferenceOnly:true,
+ filingSupported:false,release:"HOLD"}));
