@@ -133,6 +133,12 @@
    cell(tr,isEstimate?yen(r.donationLimitYen):"—","batch-result");
    cell(tr,isEstimate?r.status:("HOLD："+((r.status==="概算"||r.status==="前年参考概算")?
      "確認状態が変わりました。再試算してください":r.reason)),"batch-reason");
+   const municipality=cell(tr,"");
+   const municipalitySelect=formControl("select",{"aria-label":"対象者 "+r.page+" の課税自治体区分","data-row":String(i),"data-field":"municipality"});
+   for(const [value,text] of [["","未確認"],["standard","標準市町村"],["designated","政令指定都市"]])
+    municipalitySelect.appendChild(formControl("option",{value,text}));
+   municipalitySelect.value=r.municipality;municipality.appendChild(municipalitySelect);
+   cell(tr,isEstimate?yen(r.residentLevyYen):"—","batch-resident-levy");
    body.appendChild(tr);
   });
   updateButtons();
@@ -141,6 +147,7 @@
   computed=false;
   for(const row of rows){
    row.status="HOLD";row.donationLimitYen=null;row.appliedDeductionsYen=null;
+   row.calculatedMunicipality=null;row.calculatedFiling=null;row.residentLevyYen=null;row.calculationBasis=null;
    row.reason=row.sourceValid?"再試算・個別確認待ち":
      "原票を安全に読み取れませんでした";
   }
@@ -221,6 +228,7 @@
  });
  function invalidateEditedRow(row){
   row.status="HOLD";row.donationLimitYen=null;row.appliedDeductionsYen=null;
+  row.calculatedMunicipality=null;row.calculatedFiling=null;row.residentLevyYen=null;row.calculationBasis=null;
   row.reason="入力が変更されました。対象年見込額・控除条件の再確認待ち";
   computed=false;
   // Do not rebuild the table while typing (that would steal focus).
@@ -228,7 +236,7 @@
   // and screenshots cannot retain an estimate for an edited recipient.
   const index=rows.indexOf(row),tr=body.children[index];
   if(tr){
-   const amounts=tr.querySelectorAll(".batch-result,.batch-deduction-applied");
+   const amounts=tr.querySelectorAll(".batch-result,.batch-deduction-applied,.batch-resident-levy");
    const reason=tr.querySelector(".batch-reason");
    amounts.forEach(el=>{el.textContent="—";});
    if(reason)reason.textContent="HOLD："+row.reason;
@@ -251,7 +259,7 @@
   const row=rows[idx];
   if(key==="label"||monetary.includes(key)){
    core.edit(row,key,ev.target.value);
-  }else if(key==="sourceYear"||key==="year"){
+  }else if(key==="sourceYear"||key==="year"||key==="municipality"){
    core.edit(row,key,ev.target.value);
   }else if(key==="filing"&&["one-stop","return"].includes(ev.target.value)){
    row.filing=ev.target.value;
@@ -271,7 +279,8 @@
   if(running||!rows.length)return;
   const engine=window.FurusatoEngine;
   const guard=window.FurusatoEstimateGuard?.canDisplayEstimate;
-  rows.forEach(row=>core.calculate(row,engine,guard));
+  const selectedReference=window.FurusatoEstimateGuard?.selectedReference;
+  rows.forEach(row=>core.calculate(row,engine,guard,selectedReference));
   computed=true;render();
   const allowed=rows.filter(core.canOutputEstimate).length;
   say("対象 "+rows.length+"件：概算 "+allowed+"件、HOLD "+(rows.length-allowed)+
