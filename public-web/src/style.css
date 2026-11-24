@@ -111,3 +111,9 @@
 .family-relative .confirm,.family-relative button{grid-column:1/-1;margin:0}
 @media(max-width:700px){.family-relative{grid-template-columns:1fr}}
 @media print{.family-panel{display:none!important}}
+
+.batch-family-editor{min-width:270px!important;vertical-align:top!important}
+.batch-family-editor label{display:block;margin:6px 0;font-size:12px}
+.batch-family-editor textarea{display:block;width:100%;font:inherit;border:1px solid #9eaeb9;border-radius:6px;padding:6px;resize:vertical}
+.batch-family-result{text-align:right;font-variant-numeric:tabular-nums}
+@media print{.batch-family-editor{display:none!important}}
