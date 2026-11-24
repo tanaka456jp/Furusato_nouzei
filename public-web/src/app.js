@@ -29,6 +29,7 @@
     var input = {
       year: get("year").value,
       filing: get("filing").value,
+      municipality: get("municipality").value,
       incomeType: "salary",
       salaryGross: get("salaryGross").value.trim(),
       socialInsurance: get("socialInsurance").value.trim(),
@@ -229,10 +230,38 @@
     return result.donationLimitYen<=round1000(Math.min(
       calc.preliminaryLimitYen,calc.residentDonationIncomeCapYen));
   }
+  // The existing shared engine remains unchanged. A second WEB-only gate
+  // validates an explicit municipality and applies its one-stop ceiling.
+  function selectedReference(result,input){
+    if(!canDisplayEstimate(result,input)||!["standard","designated"].includes(input.municipality)||
+       !["one-stop","return"].includes(input.filing))return null;
+    var engine=window.FurusatoResidentLevy;
+    if(!engine||typeof engine.oneStopReference!=="function")return null;
+    var calc=result.calculation;
+    var local=engine.oneStopReference({year:result.year,salaryIncome:calc.salaryIncomeYen,
+      socialInsurance:calc.socialInsuranceYen,municipality:input.municipality,
+      conditions:"basic-only-reviewed"});
+    var c=local&&local.calculation;
+    if(!local||local.status!=="ESTIMATE"||!c||c.municipality!==input.municipality||
+       c.residentTaxableYen!==calc.residentTaxTaxableYen||
+       c.pooledComparisonYen!==calc.residentIncomeLevyYen||
+       c.nationalTaxableYen!==calc.incomeTaxTaxableYen||
+       !Number.isSafeInteger(c.residentIncomeLevyYen)||c.residentIncomeLevyYen<=0||
+       c.residentIncomeLevyYen!==c.city.assessedYen+c.prefecture.assessedYen||
+       !Number.isSafeInteger(local.donationLimitYen)||local.donationLimitYen<2000||
+       local.donationLimitYen%1000!==0||
+       !Number.isSafeInteger(c.exactReferenceYen)||
+       local.donationLimitYen!==Math.floor(c.exactReferenceYen/1000)*1000)return null;
+    // Return filing still uses the pre-existing shared conservative
+    // comparison of BOTH standard jurisdictions, not a one-stop formula.
+    return {amount:input.filing==="one-stop"?Math.min(result.donationLimitYen,local.donationLimitYen):result.donationLimitYen,
+      residentLevy:c.residentIncomeLevyYen,exactReference:input.filing==="one-stop"?c.exactReferenceYen:null,
+      basis:input.filing==="one-stop"?"自治体別ワンストップ参考":"確定申告・標準2区分の保守的参考"};
+  }
   // Share the same strict display guard with the local multi-person batch.
   // The batch calculation must never use a weaker amount display policy.
   window.FurusatoEstimateGuard=Object.freeze({
-    canDisplayEstimate:canDisplayEstimate
+    canDisplayEstimate:canDisplayEstimate,selectedReference:selectedReference
   });
   var printableInputSnapshot=null,printableResult=null;
   var overrideNotice=document.getElementById("deductionsOverrideStatus");
@@ -245,7 +274,8 @@
   function render(result,input) {
     output.replaceChildren();
     output.hidden = false;
-    var isEstimate=canDisplayEstimate(result,input);
+    var selected=selectedReference(result,input);
+    var isEstimate=!!selected;
     printableInputSnapshot=isEstimate?JSON.stringify(input):null;
     printableResult=isEstimate?result:null;
     output.className = isEstimate ? "result" : "result hold";
@@ -260,11 +290,14 @@
       var ul = add("ul", output);
       var reasons = result && Array.isArray(result.reasons) && result.reasons.length
         ? result.reasons : ["計算結果を確認できません。再入力しても解消しない場合は利用を中止してください。"];
+      if(input&&!["standard","designated"].includes(input.municipality))
+        reasons=["課税自治体の標準税率区分を確認・選択してください。"];
       reasons.slice(0, 24).forEach(function (text) { add("li", ul, String(text)); });
       return;
     }
     add("h3", output, "寄附上限額の概算（対応条件内）");
-    add("p", output, yen(result.donationLimitYen), "amount");
+    add("p", output, yen(selected.amount), "amount");
+    add("p", output, (input.municipality==="standard"?"標準市町村":"政令指定都市")+" ／ "+selected.basis, "muted");
     add("p", output, "概算であり、自己負担2,000円を必ず保証するものではありません。申告前に制度・控除・住民税額を確認してください。", "muted");
     var details = add("details", output);
     add("summary", details, "計算根拠を表示");
@@ -279,8 +312,9 @@
       ["所得控除合計（手入力上書き）", input.deductionsOverride!==""?
         strictYen(input.deductionsOverride):null],
       ["所得税の課税所得", calc.incomeTaxTaxableYen],
-      ["住民税所得割の概算（合算基準）", calc.residentIncomeLevyYen],
-      ["寄附限度額の概算（合算基準）", calc.donationLimitYen]
+      ["住民税所得割の概算（選択自治体）", selected.residentLevy],
+      ["寄附限度額の概算（千円単位）", selected.amount],
+      ["ワンストップ理論参考上限（1円単位）", selected.exactReference]
     ].forEach(function (pair) {
       if (Number.isFinite(pair[1])) {
         add("dt", dl, pair[0]);
@@ -294,7 +328,7 @@
        typeof window.FurusatoResidentLevy.oneStopReference==="function"){
       var section=add("section",details,undefined,"municipal-comparison");
       add("h4",section,"自治体別ワンストップ参考額（比較検証）");
-      add("p",section,"標準税率の2区分を比較します。主表示は従来の合算方式です。実際の自治体・控除条件の確認が必要です。");
+      add("p",section,"標準税率の2区分を比較します。主表示は選択した自治体の保守的な参考額です。実際の自治体・控除条件の確認が必要です。");
       ["standard","designated"].forEach(function(municipality){
         var local=window.FurusatoResidentLevy.oneStopReference({
           year:result.year,salaryIncome:calc.salaryIncomeYen,
@@ -328,7 +362,7 @@
     var selected=document.getElementById("slipFile");
     if(JSON.stringify(current)!==printableInputSnapshot||
        (selected&&selected.files&&selected.files.length>0)||
-       !canDisplayEstimate(printableResult,current)){
+       !selectedReference(printableResult,current)){
       render({status:"HOLD",reasons:[
         "印刷前に入力・原票の選択状態が変わりました。改めて試算してください。"
       ]},current);
@@ -366,7 +400,7 @@
     var target=event.target;
     if(!target||target===conditionsConfirmation)return;
     var name=target.name;
-    if(name==="year"||name==="filing"||
+    if(name==="year"||name==="filing"||name==="municipality"||
        name==="salaryGross"||name==="socialInsurance"||
        name==="salaryIncomeReference"||name==="deductionsReference"||
        name==="deductionsOverride"||
