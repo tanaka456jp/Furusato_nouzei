@@ -1602,3 +1602,50 @@ console.log(JSON.stringify({schema:"web-high-salary-tax-integration/v1",highCase
  }
  console.log(JSON.stringify({schema:"web-mortgage-independent-rational-oracle/v1",trials,holds,excelCOM:false,release:"HOLD"}));
  }
+
+// Cross-version regression against successful Windows Excel assertions,
+// not a new Excel execution. Synthetic cases transcribed from
+// tools/verify_excel.ps1 at 0ec8b7388d6e95a6d9aefd54bcb61a4f40ad25a6.
+// Run 45285773301 / job 138082615703 completed successfully and logged
+// family-mortgage-donation-matrix-pass and both
+// insurance-cross-tax-independent-compare-{2025,2026}-pass.
+// https://github.com/tanaka456jp/Furusato_nouzei/actions/runs/45285773301/job/138082615703
+// For age bands that Excel supplies as counts, representative ages are
+// used, with zero income, domestic eligible relatives; no actual tax data.
+// Mortgage prefix is a component-level conservative reference, not a
+// standalone UI estimate. Never promote this test to release approval.
+{
+ const base={salaryIncome:5200000,socialInsurance:1000000,municipality:"standard",conditions:"salary-basic-social-family-only-reviewed",spouse:null,relatives:[]};
+ let matched=0;
+ for(const [year,kind,ded,levy,lim,nat,house] of [
+ [2025,0,1630000,374500,109000,286500,13500],
+ [2025,1,2010000,341500,87000,221500,78500],
+ [2025,2,2390000,308500,79000,183500,97500],
+ [2025,3,2640000,296500,76000,158500,97500],
+ [2026,0,1670000,374500,109000,278500,21500],
+ [2026,1,2050000,341500,87000,217500,82500],
+ [2026,2,2430000,308500,79000,179500,97500],
+ [2026,3,2680000,296500,76000,154500,97500]
+ ]){
+  const input={...base,year,spouse:kind?spouse(0):null,relatives:kind===2?[relative(16),relative(14),relative(12)]:kind===3?[relative(20)]:[]};
+  const out=familyTax.calculate(input);
+  assert.equal(out.status,"ESTIMATE");
+  const mortgage=familyTax.mortgagePrefix({tax:input,housing:{moveInYear:2024,capClass:"standard5",possibleYen:300000,eligibilityReviewed:true},filing:"one-stop"});
+  assert.equal(mortgage.status,"COMPONENTS_ONLY");
+  assert.equal(mortgage.donationLimitYen,null);
+  assert.deepEqual([out.calculation.nationalDeductionsYen,out.calculation.residentIncomeLevyYen,mortgage.calculation.conservativePrefixYen,mortgage.calculation.atPrefix.before.preCreditIncomeTaxYen,mortgage.calculation.atPrefix.before.residentHousingYen],[ded,levy,lim,nat,house],year+"/"+kind);
+  matched++;
+ }
+ for(const [year,under,life,pension,earth,ded,levy,lim,lifed,earthd] of [
+ [2025,0,50000,50000,10902,1705902,368500,107000,65000,10902],
+ [2026,1,120000,0,0,1730000,371600,108000,60000,0]
+ ]){
+  const input={...base,year,relatives:under?[relative(14)]:[],conditions:"salary-basic-social-family-insurance-only-reviewed",premiums:{generalNew:life,generalOld:0,medicalNew:0,pensionNew:pension,pensionOld:0,earthquake:earth,longTermOld:0}};
+  const out=familyTax.calculate(input);
+  assert.equal(out.status,"ESTIMATE");
+  assert.deepEqual([out.calculation.nationalDeductionsYen,out.calculation.residentIncomeLevyYen,out.donationLimitYen,out.calculation.insurance.national.lifeYen,out.calculation.insurance.national.earthquakeYen],[ded,levy,lim,lifed,earthd],String(year));
+  matched++;
+ }
+ assert.equal(matched,10);
+ console.log(JSON.stringify({schema:"web-excel-v41836-additional-deduction-regression/v1",matched,excelEvidenceRun:45285773301,excelEvidenceJob:138082615703,excelNewExecution:false,release:"HOLD"}));
+}
