@@ -155,7 +155,7 @@
           </fieldset>
           <fieldset class="conditions family-panel" id="targetOtherPanel">
             <legend>試算対象年のその他所得控除（手入力・検証版）</legend>
-            <p>給与収入850万円以下の手入力試算に対応。OCR原票との接続は未対応です。社会保険料等の入力額にはiDeCo・小規模企業共済等掛金を含め、その内書き額を下に入力してください（二重控除しません）。親族ごとの障害区分は上の家族明細で指定します。</p>
+            <p>給与収入850万円以下の手入力・確認済みOCR原票の試算に対応。社会保険料等の入力額にはiDeCo・小規模企業共済等掛金を含め、その内書き額を下に入力してください（二重控除しません）。親族ごとの障害区分は上の家族明細で指定します。</p>
             <div class="fields">
               <label>本人の障害区分<select name="targetOther_self"><option value="none">該当なし</option><option value="ordinary">障害者</option><option value="special">特別障害者</option></select></label>
               <label>配偶者の障害区分<select name="targetOther_spouse"><option value="none">該当なし</option><option value="ordinary">障害者</option><option value="special">特別障害者</option><option value="cohabitingSpecial">同居特別障害者</option></select></label>
@@ -165,6 +165,19 @@
               <label class="confirm"><input type="checkbox" name="targetOther_student"> 勤労学生控除</label>
             </div>
             <label class="confirm"><input type="checkbox" name="otherReviewed"> その他所得控除の全適用要件、親族の障害区分・同居、婚姻・生計同一の子、学校・所得条件及び掛金の内書きを確認しました（該当なしを含む）。</label>
+          </fieldset>
+          <fieldset class="conditions family-panel" id="sourceOtherPanel">
+            <legend>原票年分のその他所得控除（OCR取込時のみ）</legend>
+            <p>原票年分の所得控除を別途確認してください。原票の社会保険料等に含まれる小規模企業共済等掛金の内書き（G25）を入力してください。原票年の親族ごとの障害区分は原票年の家族明細で指定します。</p>
+            <div class="fields">
+              <label>本人の障害区分<select name="sourceOther_self"><option value="none">該当なし</option><option value="ordinary">障害者</option><option value="special">特別障害者</option></select></label>
+              <label>配偶者の障害区分<select name="sourceOther_spouse"><option value="none">該当なし</option><option value="ordinary">障害者</option><option value="special">特別障害者</option><option value="cohabitingSpecial">同居特別障害者</option></select></label>
+              <label>寡婦・ひとり親<select name="sourceOther_marital"><option value="none">該当なし</option><option value="widowDivorced">寡婦（離婚）</option><option value="widowBereaved">寡婦（死別等）</option><option value="singleParentFather">ひとり親（父）</option><option value="singleParentMother">ひとり親（母）</option></select></label>
+              <label>ひとり親の子の明細番号（上から1、2…）<input type="text" inputmode="numeric" autocomplete="off" name="sourceOther_child" maxlength="2"></label>
+              <label>小規模企業共済等掛金（社会保険料等の内書き・円）<input type="text" inputmode="numeric" autocomplete="off" name="sourceOther_contribution" maxlength="12" placeholder="0"></label>
+              <label class="confirm"><input type="checkbox" name="sourceOther_student"> 勤労学生控除</label>
+            </div>
+            <label class="confirm"><input type="checkbox" name="sourceOtherReviewed"> その他所得控除の全適用要件、親族の障害区分・同居、婚姻・生計同一の子、学校・所得条件及び掛金の内書きを確認しました（該当なしを含む）。</label>
           </fieldset>
           <fieldset class="conditions family-panel" id="sourceInsurancePanel">
             <legend>原票年分の保険料明細（OCR取込時のみ）</legend>
@@ -197,7 +210,7 @@
         <section class="aside-card">
           <p class="eyebrow">適用範囲</p>
           <h2>対応しない場合はHOLD</h2>
-          <p>給与850万円超、未確認の家族・保険料控除、住宅ローン控除、その他所得、自治体差等は実務確認が必要です。家族・保険料控除・その他所得控除は手入力の限定検証です。その他所得控除のOCR原票照合は未接続です。一括計算も確認済み保険料明細に対応します。入力を変更して停止理由を消すのではなく、税額を個別に確認してください。</p>
+          <p>給与850万円超、未確認の家族・保険料控除、住宅ローン控除、その他所得、自治体差等は実務確認が必要です。家族・保険料控除・その他所得控除は手入力の限定検証です。その他所得控除の原票明細も別途確認してください。未解決のOCR検出条件はHOLDします。一括計算も確認済み保険料明細に対応します。入力を変更して停止理由を消すのではなく、税額を個別に確認してください。</p>
         </section>
         <section class="aside-card">
           <p class="eyebrow">税制根拠</p>

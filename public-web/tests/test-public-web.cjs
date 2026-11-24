@@ -68,6 +68,8 @@ dom.window.eval(engine);
 dom.window.eval(fs.readFileSync(path.join(out,"resident-levy.js"),"utf8"));
 dom.window.eval(fs.readFileSync(path.join(out,"family-deductions.js"),"utf8"));
 dom.window.eval(fs.readFileSync(path.join(out,"insurance-deductions.js"),"utf8"));
+for(const moduleName of ["other-deductions.js","medical-deductions.js","salary-adjustment.js"])
+ dom.window.eval(fs.readFileSync(path.join(out,moduleName),"utf8"));
 dom.window.eval(fs.readFileSync(path.join(out,"family-tax.js"),"utf8"));
 dom.window.eval(fs.readFileSync(path.join(out,"family-source.js"),"utf8"));
 dom.window.eval(app);
@@ -638,6 +640,33 @@ rawSubmit();assert.equal(view.className,"result");
 assert.match(view.textContent,/その他所得控除（所得税・掛金含む）270,000円/);
 disability.value="special";disability.dispatchEvent(new Event("change",{bubbles:true}));
 assert.equal(field("otherReviewed").checked,false);assert.equal(view.hidden,true);
+form.reset();
+// Prior-year reviewed other deductions: retain the original tax year and
+// the G26 combined amount, independently of the current-year estimate.
+field("year").value="2026";field("municipality").value="standard";
+field("salaryGross").value="7000000";field("socialInsurance").value="1000000";
+field("deductionsReference").value="1900000";
+form.dataset.ocrYear="2025";form.dataset.ocrOriginalGross="7000000";
+form.dataset.ocrOriginalIncome="5200000";form.dataset.ocrOriginalSocial="1000000";
+form.dataset.ocrOriginalDeductions="1900000";
+for(const prefix of ["target","source"]){
+ field(prefix+"Other_self").value="ordinary";field(prefix+"Other_contribution").value="120000";
+}
+for(const name of ["familyReviewed","sourceFamilyReviewed","forecastReviewed","insuranceReviewed","sourceInsuranceReviewed","otherReviewed","acknowledgedExclusions"])field(name).checked=true;
+rawSubmit();assert.equal(view.className,"result hold",view.textContent);
+field("sourceOtherReviewed").checked=true;rawSubmit();assert.equal(view.className,"result",view.textContent);
+const srcValues=Object.fromEntries([...view.querySelectorAll("details dt")].map(dt=>[dt.textContent,dt.nextElementSibling.textContent]));
+assert.equal(srcValues["原票年の所得控除合計（照合済）"],"1,900,000円");
+assert.equal(srcValues["所得控除合計（自動算定）"],"1,940,000円");
+assert.equal(srcValues["原票年の内書き掛金（照合済）"],"120,000円");
+field("sourceOther_self").value="none";rawSubmit();assert.equal(view.className,"result hold");
+field("sourceOther_self").value="ordinary";rawSubmit();assert.equal(view.className,"result");
+form.dataset.ocrSourceIndicators="hasNonstandardConditions";rawSubmit();assert.equal(view.className,"result hold");
+delete form.dataset.ocrSourceIndicators;
+field("sourceOther_contribution").value="120001";field("sourceOther_contribution").dispatchEvent(new Event("input",{bubbles:true}));
+assert.equal(field("sourceOtherReviewed").checked,false);assert.equal(field("otherReviewed").checked,false);assert.equal(view.hidden,true);
+form.dispatchEvent(new Event("family-source-reset"));
+assert.equal(field("sourceOther_contribution").value,"");assert.equal(field("sourceOther_self").value,"none");
 form.reset();
 dom.window.close();
 console.log("PUBLIC_WEB_STATIC_AND_BROWSER_SYNTHETIC_PASS; no network; ads off; deploy off");
