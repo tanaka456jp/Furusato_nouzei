@@ -116,16 +116,17 @@
   // Partial blank-social rows may retain review-only candidates, but
   // sourceValid, consent and estimate eligibility remain unchanged.
   const optionalReview=review.eligibleForManualTransfer===true||row.socialZeroEligible;
+  const r8=review.year===2026&&review.r8VerifiedLayout===true;
   if(review.year===2025&&optionalReview&&row.sourceIndicators.hasSpouse===true&&Number.isSafeInteger(review.optionalCandidates?.sourceSpouseIncome)&&review.optionalCandidates.sourceSpouseIncome>0&&review.optionalCandidates.sourceSpouseIncome<=1330000)row.spouseIncomeHint=review.optionalCandidates.sourceSpouseIncome;
   // Read-only hints: no ages, incomes, household rows or attestations invented.
-  if(review.year===2025&&optionalReview&&row.sourceIndicators.hasDependents===true){
-   row.familyCountHints=Object.freeze(Object.fromEntries(["familySpecificCount","familyElderlyCount","familyOtherCount","familySpecialRelativeCount","familyUnder16Count"].filter(k=>Number.isSafeInteger(review.optionalCandidates?.[k])&&review.optionalCandidates[k]>0&&review.optionalCandidates[k]<=30).map(k=>[k,review.optionalCandidates[k]])));
+  if((review.year===2025||r8)&&optionalReview&&row.sourceIndicators.hasDependents===true){
+   row.familyCountHints=Object.freeze(Object.fromEntries(["familySpecificCount","familyElderlyCount","familyOtherCount","familySpecialRelativeCount","familyUnder16Count"].filter(k=>(!r8||k==="familySpecialRelativeCount")&&Number.isSafeInteger(review.optionalCandidates?.[k])&&review.optionalCandidates[k]>0&&review.optionalCandidates[k]<=30).map(k=>[k,review.optionalCandidates[k]])));
   }
   if(optionalReview){
    for(const [key,max,active] of [["mortgageSourceApplied",600000,row.sourceIndicators.hasMortgage===true],["sourceBasicYen",1040000,isHigh(row.originalCandidates.salaryGross)],["sourceAdjustmentYen",150000,isHigh(row.originalCandidates.salaryGross)],
-    ["mortgageSourcePossible",600000,review.year===2025&&row.sourceIndicators.hasMortgage===true],
-    ["mortgageMoveInYear",2025,review.year===2025&&row.sourceIndicators.hasMortgage===true&&!row.sourceIndicators.hasNonstandardConditions&&review.optionalCandidates?.mortgageMoveInYear>=2014],
-    ...["generalNew","generalOld","medicalNew","pensionNew","pensionOld","longTermOld"].map(k=>["sourceInsurance_"+k,100000000,review.year===2025&&row.sourceIndicators[k==="longTermOld"?"hasEarthquakeInsurance":"hasLifeInsurance"]===true])]){
+    ["mortgageSourcePossible",600000,(review.year===2025||r8)&&row.sourceIndicators.hasMortgage===true],
+    ["mortgageMoveInYear",review.year,(review.year===2025||r8)&&row.sourceIndicators.hasMortgage===true&&!row.sourceIndicators.hasNonstandardConditions&&review.optionalCandidates?.mortgageMoveInYear>=2014],
+    ...["generalNew","generalOld","medicalNew","pensionNew","pensionOld","longTermOld"].map(k=>["sourceInsurance_"+k,100000000,(review.year===2025||(r8&&["generalNew","generalOld","medicalNew"].includes(k)))&&row.sourceIndicators[k==="longTermOld"?"hasEarthquakeInsurance":"hasLifeInsurance"]===true])]){
     const n=review.optionalCandidates?.[key];if(active&&Number.isSafeInteger(n)&&n>=0&&n<=max)row[key]=String(n);
    }
   }
