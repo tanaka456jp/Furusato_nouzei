@@ -285,3 +285,85 @@ for(const extra of [{filing:"return"},{hasMortgage:true},{residentCredit:1}]){
 console.log(JSON.stringify({schema:"web-municipal-one-stop-reference/v1",
  checkedMunicipalReferences,individualCaps:true,exactReferenceOnly:true,
  filingSupported:false,release:"HOLD"}));
+
+
+// Independent integer/rational filing audit. Recompute tax bands, local
+// credits and final bills from synthetic inputs, not the production outputs.
+function independentFiling(year,income,social,municipality,donation){
+ const I=BigInt(income),S=BigInt(social),D=BigInt(donation);
+ const basic=BigInt(year===2025?(income<=1320000?950000:income<=3360000?880000:income<=4890000?680000:630000):(income<=4890000?1040000:670000));
+ const max0=n=>n>0n?n:0n;
+ const floorTaxable=n=>max0(n)/1000n*1000n;
+ const tax=t=>{
+  // Sum marginal slices instead of the production quick deduction formula.
+  const v=(t<1950000n?t:1950000n)/20n+
+    (max0(t-1950000n)<1350000n?max0(t-1950000n):1350000n)/10n+
+    max0(t-3300000n)/5n;
+  return v+v*21n/1000n;
+ };
+ const nationalBefore=floorTaxable(I-S-basic);
+ const nationalAfter=floorTaxable(I-S-basic-D+2000n);
+ const nationalSaving=tax(nationalBefore)-tax(nationalAfter);
+ const localTaxable=floorTaxable(I-S-430000n);
+ const adjusted=localTaxable-50000n-max0(basic-480000n);
+ const ratio=adjusted<=1950000n?84895n:adjusted<=3300000n?79790n:69580n;
+ const adjustment=localTaxable<50000n?localTaxable:50000n;
+ // Use exact rational units with 5,000,000 as denominator, distinct
+ // from production's 500,000; compute each final levy independently.
+ const shares=municipality==="standard"?[3n,2n]:[4n,1n];
+ const local=shares.map(share=>{
+  const before=(localTaxable*2n-adjustment)*share*50000n;
+  const regular=(D-2000n)*share*100000n;
+  const special=(D-2000n)*ratio*share*10n;
+  const capped=special<before/5n?special:before/5n;
+  const credit=(regular+capped+4999999n)/5000000n;
+  const beforeBill=before/500000000n*100n;
+  const afterBill=max0(before-credit*5000000n)/500000000n*100n;
+  return beforeBill-afterBill;
+ });
+ return [nationalSaving,local[0],local[1],D-nationalSaving-local[0]-local[1]].map(Number);
+}
+let filingTrials=0,filingPrefixes=0;
+for(const [year,gross,social,income,pooled,assessed,legacyLimit] of excelObserved){
+ for(const municipality of ["standard","designated"]){
+  const input={...localArgs,year,salaryIncome:income,socialInsurance:social,municipality};
+  for(const donation of new Set([2000,2001,2999,3000,legacyLimit,legacyLimit+1000,Math.floor(income*.3)])){
+   const actual=local.filingTrial(input,donation);
+   assert.equal(actual.status,"ESTIMATE",year+"/"+gross+"/"+municipality+"/"+donation);
+   const c=actual.calculation;
+   const expected=independentFiling(year,income,social,municipality,donation);
+   assert.deepEqual([c.nationalSavingYen,c.city.savingYen,c.prefecture.savingYen,c.selfPayYen],expected);
+   assert.equal(c.excessOver2000Yen,Math.max(0,expected[3]-2000));
+   assert.equal(c.within2000,expected[3]<=2000);
+   filingTrials++;
+  }
+  let ceiling=2000,firstFailure=null;
+  for(let d=3000;d<=Math.floor(income*.3);d+=1000){
+   if(independentFiling(year,income,social,municipality,d)[3]>2000){firstFailure=d;break;}
+   ceiling=d;
+  }
+  const prefix=local.filingPrefix(input);
+  assert.equal(prefix.status,"ESTIMATE");
+  assert.equal(prefix.donationLimitYen,ceiling);
+  assert.equal(prefix.calculation.firstFailureYen,firstFailure);
+  filingPrefixes++;
+ }
+}
+for(const [municipality,donation,national,city,pref,selfPay] of [
+ ["standard",3000,204,500,400,1896],
+ ["standard",109000,21849,51100,34100,1951],
+ ["standard",120000,24096,52100,34700,9104],
+ ["designated",109000,21849,68200,17100,1851],
+ ["designated",120000,24096,69400,17400,9104]
+]){
+ const c=local.filingTrial({...localArgs,municipality},donation).calculation;
+ assert.deepEqual([c.nationalSavingYen,c.city.savingYen,c.prefecture.savingYen,c.selfPayYen],[national,city,pref,selfPay]);
+}
+for(const bad of [1999,-1,3000.5,"3000",1560001,NaN,Infinity]){
+ const out=local.filingTrial(localArgs,bad);
+ assert.equal(out.status,"HOLD");assert.equal(out.calculation,null);
+}
+assert.equal(local.filingTrial({...localArgs,hasMortgage:true},3000).status,"HOLD");
+assert.equal(local.filingPrefix({...localArgs,municipality:""}).status,"HOLD");
+console.log(JSON.stringify({schema:"web-salary-filing-trial/v1",filingTrials,filingPrefixes,
+ mortgageSupported:false,actualExcelFilingCOM:false,release:"HOLD"}));
