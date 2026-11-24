@@ -112,6 +112,10 @@
     safeAmount(review.candidates[k])).map(k=>[k,review.candidates[k]]));
   // Frozen source-year snapshot, separate from editable forecast amounts.
   row.originalCandidates=Object.freeze({...row.candidates});
+  // Read-only hints: no ages, incomes, household rows or attestations invented.
+  if(review.year===2025&&review.eligibleForManualTransfer===true&&row.sourceIndicators.hasDependents===true){
+   row.familyCountHints=Object.freeze(Object.fromEntries(["familySpecificCount","familyElderlyCount","familyOtherCount","familySpecialRelativeCount","familyUnder16Count"].filter(k=>Number.isSafeInteger(review.optionalCandidates?.[k])&&review.optionalCandidates[k]>0&&review.optionalCandidates[k]<=30).map(k=>[k,review.optionalCandidates[k]])));
+  }
   if(review.eligibleForManualTransfer===true){
    for(const [key,max,active] of [["mortgageSourceApplied",600000,row.sourceIndicators.hasMortgage===true],["sourceBasicYen",1040000,isHigh(row.originalCandidates.salaryGross)],["sourceAdjustmentYen",150000,isHigh(row.originalCandidates.salaryGross)],
     ["mortgageSourcePossible",600000,review.year===2025&&row.sourceIndicators.hasMortgage===true],

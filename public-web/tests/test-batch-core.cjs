@@ -598,5 +598,10 @@ assert.equal(premiumPrefill.targetInsurance_generalNew,"");
 assert.equal(premiumPrefill.sourceInsurance_earthquake,"");
 assert.equal(premiumPrefill.insuranceReviewed,false);assert.equal(premiumPrefill.mortgageReviewed,false);
 runFamily(premiumPrefill);assert.equal(premiumPrefill.status,"HOLD");assert.equal(premiumPrefill.donationLimitYen,null);
+// Counts are review hints only, not manufactured household inputs.
+const countRow=fixture(1,{year:2025,eligibleForManualTransfer:true,sourceIndicators:{hasDependents:true},candidates:{salaryGross:7000000,salaryIncomeReference:5200000,socialInsurance:1000000,deductionsReference:1630000},optionalCandidates:{familySpecificCount:2,familyUnder16Count:1,familyOtherCount:99}},2026);
+assert.deepEqual(countRow.familyCountHints,{familySpecificCount:2,familyUnder16Count:1});
+assert.equal(countRow.familySourceText,"");assert.equal(countRow.familyTargetText,"");assert.equal(countRow.familyReviewed,false);
+runFamily(countRow);assert.equal(countRow.status,"HOLD");assert.equal(countRow.donationLimitYen,null);
 dom.window.close();
 console.log("PUBLIC_BATCH_PER_PAGE_LOCAL_SAFETY_SYNTHETIC_PASS; no private slips; no deploy");

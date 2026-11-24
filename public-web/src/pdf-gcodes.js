@@ -102,6 +102,36 @@
   const date=new Date(Date.UTC(y,month-1,day));
   return date.getUTCFullYear()===y&&date.getUTCMonth()===month-1&&date.getUTCDate()===day?{detected:true,moveInYear:y}:{detected:true};
  }
+ // R7 count slots use their own narrow window; the monetary 45-125pt
+ // window would include several neighbouring people-count columns.
+ const R7_COUNTS=Object.freeze({"G13":["familySpecificCount",187.22],"G16":["familyElderlyCount",269.78],"G18":["familyOtherCount",324.7],"G72":["familySpecialRelativeCount",379.98],"G20":["familyUnder16Count",435.25]});
+ function familyCounts(spans,year){
+  if(year!==2025)return {values:{},flags:{}};
+  const values={},flags={};
+  const layout=Object.entries(R7_COUNTS).map(([code,[key,x]])=>({key,x,marks:anchors(spans,code)}));
+  // Require the complete known column geometry, not an isolated G-code.
+  if(layout.some(v=>v.marks.length!==1))return {values,flags};
+  const base=layout[0].marks[0];
+  if(layout.some(v=>Math.abs(v.marks[0].x-base.x-(v.x-layout[0].x))>1.5||Math.abs(v.marks[0].y-base.y)>1.5))return {values,flags};
+  function count(mark){
+   const candidates=spans.filter(s=>s.x-mark.x>=12&&s.x-mark.x<=23&&Math.abs(s.y-mark.y)<=3.5&&/^[0-9]{1,2}$/.test(s.s)).sort((a,b)=>a.x-b.x);
+   if(candidates.length===0)return null;
+   const raw=candidates.length===1?candidates[0].s:candidates.length===2&&candidates.every(s=>s.s.length===1)&&candidates[1].x-candidates[0].x>=2&&candidates[1].x-candidates[0].x<=7?candidates.map(s=>s.s).join(""):"";
+   return /^(?:0|[1-9][0-9]?)$/.test(raw)&&Number(raw)<=30?Number(raw):null;
+  }
+  for(const v of layout){
+   const n=count(v.marks[0]);
+   if(n!==null&&n>0){values[v.key]=n;flags.hasDependents=true;}
+  }
+  // Positive count of non-resident relatives or secondary salary claims
+  // is outside the supported ordinary household route. No inferred zero.
+  for(const [code,x,flag] of [["G14",214.5,"hasNonstandardConditions"],["G17",297.42,"hasNonstandardConditions"],["G19",352.34,"hasNonstandardConditions"],["G73",407.61,"hasNonstandardConditions"],["G21",462.54,"hasDisability"],["G22",490.17,"hasDisability"],["G23",517.81,"hasDisability"],["G24",545.45,"hasNonstandardConditions"]]){
+   const marks=anchors(spans,code);
+   if(marks.length>1){flags.hasNonstandardConditions=true;continue;}
+   if(marks.length===1&&Math.abs(marks[0].x-base.x-(x-layout[0].x))<=1.5&&Math.abs(marks[0].y-base.y)<=1.5&&count(marks[0])>0)flags[flag]=true;
+  }
+  return {values,flags};
+ }
  function review(items){
   const spans=spansOf(items),reasons=[],candidates={};
   const sourceYearAnchor=anchors(spans,"L01");
@@ -162,6 +192,8 @@
    const amount=optionalAmount(anchor,high);
    if(amount!==null&&amount<=max&&(!flag||amount>0)){optionalCandidates[key]=amount;if(flag)sourceIndicators[flag]=true;}
   }
+  const counts=familyCounts(spans,year);
+  Object.assign(sourceIndicators,counts.flags);Object.assign(optionalCandidates,counts.values);
   const date=housingDate(spans,year);
   if(date.detected)sourceIndicators.hasMortgage=true;
   if(date.multiple)sourceIndicators.hasNonstandardConditions=true;
@@ -186,6 +218,9 @@
   for(const [key,max,flag] of Object.values({...REVIEW_AMOUNTS,...(coded.year===2025?R7_AMOUNTS:{})})){
    const n=coded.optionalCandidates?.[key];
    if(Number.isSafeInteger(n)&&n>=0&&n<=max&&(!flag||(n>0&&coded.sourceIndicators?.[flag]===true)))result[key]=n;
+  }
+  if(coded.year===2025&&coded.sourceIndicators?.hasDependents===true)for(const [key] of Object.values(R7_COUNTS)){
+   const n=coded.optionalCandidates?.[key];if(Number.isSafeInteger(n)&&n>0&&n<=30)result[key]=n;
   }
   const moveIn=coded.optionalCandidates?.mortgageMoveInYear;
   if(coded.year===2025&&coded.sourceIndicators?.hasMortgage===true&&!coded.sourceIndicators?.hasNonstandardConditions&&

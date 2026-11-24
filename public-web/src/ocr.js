@@ -702,11 +702,12 @@
       li.textContent=field.label+"："+r.candidates[field.key].toLocaleString("ja-JP")+"円";
       ul.appendChild(li);
     });
-    const optionalLabels={mortgageMoveInYear:"居住開始年（西暦）",mortgageSourceApplied:"住宅借入金等特別控除額（G29）",sourceBasicYen:"基礎控除額（G46）",sourceAdjustmentYen:"所得金額調整控除額（G47）",mortgageSourcePossible:"住宅借入金等特別控除可能額（G36）",sourceInsurance_generalNew:"新生命保険料（G30）",sourceInsurance_generalOld:"旧生命保険料（G31）",sourceInsurance_medicalNew:"介護医療保険料（G32）",sourceInsurance_pensionNew:"新個人年金保険料（G33）",sourceInsurance_pensionOld:"旧個人年金保険料（G34）",sourceInsurance_longTermOld:"旧長期損害保険料（G45）"};
+    const countLabels={"familySpecificCount":"特定扶養親族","familyElderlyCount":"老人扶養親族","familyOtherCount":"その他の控除対象扶養親族","familySpecialRelativeCount":"特定親族","familyUnder16Count":"16歳未満の扶養親族"};
+    const optionalLabels={...countLabels,mortgageMoveInYear:"居住開始年（西暦）",mortgageSourceApplied:"住宅借入金等特別控除額（G29）",sourceBasicYen:"基礎控除額（G46）",sourceAdjustmentYen:"所得金額調整控除額（G47）",mortgageSourcePossible:"住宅借入金等特別控除可能額（G36）",sourceInsurance_generalNew:"新生命保険料（G30）",sourceInsurance_generalOld:"旧生命保険料（G31）",sourceInsurance_medicalNew:"介護医療保険料（G32）",sourceInsurance_pensionNew:"新個人年金保険料（G33）",sourceInsurance_pensionOld:"旧個人年金保険料（G34）",sourceInsurance_longTermOld:"旧長期損害保険料（G45）"};
     for(const [key,label] of Object.entries(optionalLabels)){
       const n=r.optionalCandidates?.[key];
       if(Number.isSafeInteger(n)&&n>=0){
-        const li=document.createElement("li");li.textContent=label+"："+(key==="mortgageMoveInYear"?String(n)+"年":n.toLocaleString("ja-JP")+"円")+"（原票照合候補）";ul.appendChild(li);
+        const li=document.createElement("li");li.textContent=label+"："+(Object.prototype.hasOwnProperty.call(countLabels,key)?String(n)+"人":key==="mortgageMoveInYear"?String(n)+"年":n.toLocaleString("ja-JP")+"円")+"（原票照合候補）";ul.appendChild(li);
       }
     }
     report.appendChild(ul);

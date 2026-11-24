@@ -168,8 +168,11 @@
    cell(tr,yen(comparison?.trial?.excess),"batch-comparison");
    cell(tr,comparison?.trialStatus??"HOLD","batch-trial-status");
    const familyCell=cell(tr,"","batch-family-editor");
-   const details=formControl("details");details.open=openFamilyRows.has(i);
+   const details=formControl("details");details.open=openFamilyRows.has(i)||Object.keys(r.familyCountHints||{}).length>0;
    details.appendChild(formControl("summary",{text:"家族明細を入力・確認"}));
+   const countLabels={"familySpecificCount":"特定扶養親族","familyElderlyCount":"老人扶養親族","familyOtherCount":"その他の控除対象扶養親族","familySpecialRelativeCount":"特定親族","familyUnder16Count":"16歳未満の扶養親族"};
+   const hints=Object.entries(r.familyCountHints||{}).map(([k,n])=>countLabels[k]+"："+n+"人");
+   if(hints.length)details.appendChild(formControl("p",{class:"batch-family-count-hint",text:"原票年の人数候補："+hints.join("／")+"。原票と照合し、個々の年齢・所得を入力してください。記載なしは0人と断定しません。"}));
    for(const [key,title] of [["familySourceText","原票年の家族"],["familyTargetText","試算年の家族"]]){
     const label=formControl("label",{text:title});
     const area=formControl("textarea",{"data-row":String(i),"data-field":key,
