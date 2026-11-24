@@ -104,3 +104,10 @@
 .batch-print-value{display:none}
 .batch-table .batch-comparison{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
 @media print{body.batch-print .batch-table .batch-comparison{white-space:normal}}
+
+.family-panel{border:1px solid #dbe4e9;border-radius:10px;padding:14px;min-width:0}
+.family-panel .fields{margin-top:10px}
+.family-relative{border:1px solid #dbe4e9;padding:12px;border-radius:8px;margin:12px 0;min-width:0;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.family-relative .confirm,.family-relative button{grid-column:1/-1;margin:0}
+@media(max-width:700px){.family-relative{grid-template-columns:1fr}}
+@media print{.family-panel{display:none!important}}
