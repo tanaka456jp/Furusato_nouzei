@@ -141,7 +141,7 @@
  // made outside the normal UI event path.
  function snapshot(row){
   return JSON.stringify([row.page,row.label,row.year,row.sourceYear,row.candidates,
-    row.originalCandidates,row.sourceIndicators,row.sourceValid,row.deductionsOverrideActive,
+    row.originalCandidates,row.sourceIndicators,row.familyCountHints,row.sourceValid,row.deductionsOverrideActive,
     row.confirmed,row.noExclusions,row.forecastReviewed,row.municipality,row.filing,row.trialInput,
     row.originalYear,row.familySourceText,row.familyTargetText,row.familyReviewed,row.insuranceReviewed,row.otherReviewed,...OTHER_FIELDS.map(k=>row[k]),...MEDICAL_FIELDS.map(k=>row[k]),row.highReviewed,...HIGH_FIELDS.map(k=>row[k]),row.mortgageReviewed,...MORTGAGE_FIELDS.map(k=>row[k]),
     ...PREMIUM_FIELDS.map(k=>row[k])]);
@@ -299,6 +299,7 @@
    const original=sourceEngine.reconcile({year:row.sourceYear,gross:o.salaryGross,
     salaryIncome:o.salaryIncomeReference,social:o.socialInsurance,deductions:o.deductionsReference,
     indicators,...source,reviewed:true,
+    ...(Object.keys(row.familyCountHints||{}).length?{countHints:row.familyCountHints}:{}),
     ...(insured?{premiums:sourcePremiums,insuranceReviewed:true}:{}),
     ...(other?{otherDeductions:sourceOther,otherReviewed:true,sourceContributionYen:sourceOther.smallEnterpriseContributions}:{}),
     ...(sourceHigh?{adjustmentFacts:sourceFacts,sourceBasicYen:sourceBasic,sourceAdjustmentYen:sourceAdjustment,adjustmentReviewed:true}:{})},engine);

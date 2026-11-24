@@ -603,5 +603,29 @@ const countRow=fixture(1,{year:2025,eligibleForManualTransfer:true,sourceIndicat
 assert.deepEqual(countRow.familyCountHints,{familySpecificCount:2,familyUnder16Count:1});
 assert.equal(countRow.familySourceText,"");assert.equal(countRow.familyTargetText,"");assert.equal(countRow.familyReviewed,false);
 runFamily(countRow);assert.equal(countRow.status,"HOLD");assert.equal(countRow.donationLimitYen,null);
+// A missing under-16 child can leave income-tax deduction totals unchanged.
+function countFixture(hints={familySpecificCount:1,familyUnder16Count:1}){
+ const row=fixture(1,{year:2025,eligibleForManualTransfer:true,sourceIndicators:{hasDependents:true},candidates:{salaryGross:7000000,salaryIncomeReference:5200000,socialInsurance:1000000,deductionsReference:2260000},optionalCandidates:hints},2026);
+ batch.edit(row,"familySourceText","R,20,0,0\nR,10,0,0");batch.edit(row,"familyTargetText","R,21,0,0\nR,11,0,0");
+ Object.assign(row,{confirmed:true,noExclusions:true,forecastReviewed:true,familyReviewed:true});return row;
+}
+const matchCounts=countFixture();runFamily(matchCounts);
+assert.equal(matchCounts.status,"前年参考概算",matchCounts.reason);
+assert.equal(batch.canOutputEstimate(matchCounts),true);
+const originalHints=matchCounts.familyCountHints;
+matchCounts.familyCountHints={familySpecificCount:1,familyUnder16Count:2};
+assert.equal(batch.canOutputEstimate(matchCounts),false);
+runFamily(matchCounts);assert.equal(matchCounts.status,"HOLD");assert.equal(matchCounts.donationLimitYen,null);
+matchCounts.familyCountHints=originalHints;
+for(const text of ["R,20,0,0","R,20,0,0\nR,10,0,0\nR,8,0,0","R,20,0,0\nR,10,580001,0"]){
+ const row=countFixture();batch.edit(row,"familySourceText",text);
+ Object.assign(row,{confirmed:true,noExclusions:true,forecastReviewed:true,familyReviewed:true});
+ runFamily(row);assert.equal(row.status,"HOLD",row.reason);assert.match(row.reason,/16歳未満/);
+ assert.equal(row.donationLimitYen,null);assert.equal(batch.canOutputEstimate(row),false);
+}
+// A change in the forecast household is permitted; only the original year is compared.
+const forecastCounts=countFixture();batch.edit(forecastCounts,"familyTargetText","R,21,0,0");
+Object.assign(forecastCounts,{confirmed:true,noExclusions:true,forecastReviewed:true,familyReviewed:true});
+runFamily(forecastCounts);assert.equal(forecastCounts.status,"前年参考概算",forecastCounts.reason);
 dom.window.close();
 console.log("PUBLIC_BATCH_PER_PAGE_LOCAL_SAFETY_SYNTHETIC_PASS; no private slips; no deploy");

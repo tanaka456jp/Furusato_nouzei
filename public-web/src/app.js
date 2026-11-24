@@ -74,6 +74,10 @@
           key:"hasNonstandardConditions"]=true;
       });
     }
+    if(form.dataset.ocrFamilyCountHints!==undefined){
+      try{input.sourceFamilyCountHints=JSON.parse(form.dataset.ocrFamilyCountHints);}
+      catch(_){input.sourceFamilyCountHints=null;}
+    }
     // Re-attest a previously transferred OCR source after editing figures.
     // This must NOT bypass cancellation/failed OCR: only explicit edits to
     // an already transferred source may set ocrManualReviewRequired.
@@ -434,6 +438,7 @@
         gross:strictYen(input.sourceOriginalGross),salaryIncome:strictYen(sf.originalIncome),
         social:strictYen(input.sourceOriginalSocial),deductions:strictYen(input.sourceOriginalDeductions),
         indicators:indicators,
+        ...(input.sourceFamilyCountHints!==undefined?{countHints:input.sourceFamilyCountHints}:{}),
         spouse:sourceSpouse,relatives:sourceRelatives,
         reviewed:sf.reviewed,...(si?{premiums:sourcePremiums,insuranceReviewed:true}:{}),
         ...(so?{otherDeductions:sourceOther,otherReviewed:true,sourceContributionYen:sourceOther.smallEnterpriseContributions}:{}),
@@ -841,6 +846,8 @@
     conditionsConfirmation.checked=false;invalidateEstimate();
   }
   function resetSourceFamily(){
+    delete form.dataset.ocrFamilyCountHints;
+    document.getElementById("sourceFamilyCountHints").textContent="";
     document.getElementById("premiumCopyStatus").textContent="";
     form.elements.namedItem("medicalNetPaidYen").value="";
     ["mortgageSourceApplied","mortgageSourcePossible","mortgageMoveInYear","mortgageCapClass"].forEach(function(name){form.elements.namedItem(name).value="";});
@@ -936,6 +943,16 @@
     if(["hasSpouse","hasDependents","hasLifeInsurance","hasEarthquakeInsurance","hasMortgage","hasIncomeAdjustment","salaryGross"].includes(event.target.name))revealRelevantPanels();
   });
   form.addEventListener("ocr-source-transferred",revealRelevantPanels);
+  form.addEventListener("ocr-source-transferred",function(){
+    var note=document.getElementById("sourceFamilyCountHints"),labels={"familySpecificCount":"特定扶養親族","familyElderlyCount":"老人扶養親族","familyOtherCount":"その他の控除対象扶養親族","familySpecialRelativeCount":"特定親族","familyUnder16Count":"16歳未満の扶養親族"};
+    note.textContent="";
+    if(!form.dataset.ocrFamilyCountHints)return;
+    try{
+      var hints=JSON.parse(form.dataset.ocrFamilyCountHints);
+      var parts=Object.keys(labels).filter(k=>Number.isSafeInteger(hints[k])&&hints[k]>0&&hints[k]<=30).map(k=>labels[k]+"："+hints[k]+"人");
+      if(parts.length){note.textContent="原票年の人数候補："+parts.join("／")+"。原票年の明細と照合します。未読取欄は0人と断定しません。";openOptional("sourceFamilyPanelFold");}
+    }catch(_){note.textContent="原票の扶養人数候補を確認してください。";}
+  });
   var basicConfirm=document.getElementById("confirmBasicForecast");
   function updateBasicForecast(){
     var source=Number(form.dataset.ocrYear),target=Number(form.elements.namedItem("year").value);
@@ -997,6 +1014,8 @@
     form.classList.remove("deduction-override-active");
     if(overrideNotice)overrideNotice.hidden=true;
     delete form.dataset.ocrYear;
+    delete form.dataset.ocrFamilyCountHints;
+    document.getElementById("sourceFamilyCountHints").textContent="";
     delete form.dataset.ocrOriginalGross;
     delete form.dataset.ocrOriginalIncome;
     delete form.dataset.ocrOriginalSocial;

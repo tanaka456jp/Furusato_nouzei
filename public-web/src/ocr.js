@@ -854,6 +854,8 @@
       const n=review.optionalCandidates?.[key],field=form.elements.namedItem(name);
       if(active&&field&&Number.isSafeInteger(n)&&n>=0&&n<=max)field.value=String(n);
     }
+    const familyCountHints=Object.fromEntries(["familySpecificCount","familyElderlyCount","familyOtherCount","familySpecialRelativeCount","familyUnder16Count"].filter(k=>review.year===2025&&review.sourceIndicators?.hasDependents===true&&Number.isSafeInteger(review.optionalCandidates?.[k])&&review.optionalCandidates[k]>0&&review.optionalCandidates[k]<=30).map(k=>[k,review.optionalCandidates[k]]));
+    if(Object.keys(familyCountHints).length)form.dataset.ocrFamilyCountHints=JSON.stringify(familyCountHints);
     form.dataset.ocrOriginalGross=String(review.candidates.salaryGross);
     form.dataset.ocrOriginalIncome=String(review.candidates.salaryIncomeReference);
     form.dataset.ocrOriginalSocial=String(review.candidates.socialInsurance);

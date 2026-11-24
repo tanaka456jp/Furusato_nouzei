@@ -853,5 +853,15 @@ assert.equal(field("forecastReviewed").checked,false);assert.equal(field("acknow
 form.dataset.ocrReviewPending="true";document.getElementById("confirmBasicForecast").click();
 assert.equal(field("forecastReviewed").checked,false);assert.equal(field("acknowledgedExclusions").checked,false);
 form.reset();assert.equal(document.getElementById("confirmBasicForecast").hidden,true);
+// Source-year counts survive the transfer and are removed on reset.
+form.dataset.ocrYear="2025";form.dataset.ocrSourceIndicators="hasDependents";
+form.dataset.ocrFamilyCountHints=JSON.stringify({familySpecificCount:1,familyUnder16Count:2});
+form.dispatchEvent(new Event("ocr-source-transferred"));
+assert.match(document.getElementById("sourceFamilyCountHints").textContent,/16歳未満の扶養親族：2人/);
+assert.equal(document.getElementById("sourceFamilyPanelFold").open,true);
+assert.equal(field("sourceFamilyReviewed").checked,false);
+form.dispatchEvent(new Event("family-source-reset"));
+assert.equal(form.dataset.ocrFamilyCountHints,undefined);
+assert.equal(document.getElementById("sourceFamilyCountHints").textContent,"");
 dom.window.close();
 console.log("PUBLIC_WEB_STATIC_AND_BROWSER_SYNTHETIC_PASS; no network; ads off; deploy off");
