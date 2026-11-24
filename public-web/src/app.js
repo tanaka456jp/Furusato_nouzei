@@ -30,6 +30,7 @@
       year: get("year").value,
       filing: get("filing").value,
       municipality: get("municipality").value,
+      donationTrial: get("donationTrial").value.trim(),
       incomeType: "salary",
       salaryGross: get("salaryGross").value.trim(),
       socialInsurance: get("socialInsurance").value.trim(),
@@ -345,6 +346,39 @@
           "（千円未満切捨て）");
       });
     }
+    // Filing comparison is independent of the currently chosen filing mode.
+    // Only display after the existing source and municipal guards accepted.
+    var filingSection=add("section",details,undefined,"filing-trial");
+    add("h4",filingSection,"確定申告した場合の寄附額・自己負担比較");
+    var trialEngine=window.FurusatoResidentLevy;
+    var trialArgs={year:result.year,salaryIncome:calc.salaryIncomeYen,
+      socialInsurance:calc.socialInsuranceYen,municipality:input.municipality,
+      conditions:"basic-only-reviewed"};
+    if(trialEngine&&typeof trialEngine.filingTrial==="function"&&typeof trialEngine.filingPrefix==="function"){
+      var oneStop=trialEngine.oneStopReference(trialArgs);
+      var prefix=trialEngine.filingPrefix(trialArgs);
+      if(oneStop.status==="ESTIMATE"&&prefix.status==="ESTIMATE"){
+        var trialAmount=input.donationTrial===""?oneStop.donationLimitYen:strictYen(input.donationTrial);
+        var trial=trialEngine.filingTrial(trialArgs,trialAmount);
+        var trialDl=add("dl",filingSection);
+        [["ワンストップ参考上限",oneStop.donationLimitYen],
+         ["確定申告・自己負担2,000円以内の保守的参考上限（千円刻み）",prefix.donationLimitYen]]
+          .forEach(function(pair){add("dt",trialDl,pair[0]);add("dd",trialDl,yen(pair[1]));});
+        if(trial.status==="ESTIMATE"){
+          var t=trial.calculation;
+          [["試算寄附額",t.donationYen],["所得税（寄附前）",t.nationalBefore.incomeTax],
+           ["所得税（寄附後）",t.nationalAfter.incomeTax],
+           ["復興特別所得税（寄附前）",t.nationalBefore.reconstruction],
+           ["復興特別所得税（寄附後）",t.nationalAfter.reconstruction],
+           ["住民税所得割（寄附前）",t.city.beforeYen+t.prefecture.beforeYen],
+           ["住民税所得割（寄附後）",t.city.afterYen+t.prefecture.afterYen],
+           ["実質自己負担見込額",t.selfPayYen],
+           ["2,000円超過額",t.excessOver2000Yen]]
+            .forEach(function(pair){add("dt",trialDl,pair[0]);add("dd",trialDl,yen(pair[1]));});
+        }else add("p",filingSection,"任意寄附額の試算：HOLD（"+trial.reason+"）");
+        add("p",filingSection,"千円刻みで最初の超過まで確認した参考値です。住民税の端数等により自己負担が2,000円未満となる試算もあります。住宅ローン控除等は未対応です。確定額ではありません。","muted");
+      }else add("p",filingSection,"確定申告比較：HOLD");
+    }else add("p",filingSection,"確定申告比較：HOLD");
     add("p", details, "所得年 " + result.year +
       "年 ／ 住民税 " + result.residentYear + "年度 ／ エンジン " +
       String(result.version || "未検証"), "muted");
