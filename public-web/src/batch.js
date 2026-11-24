@@ -139,6 +139,18 @@
     municipalitySelect.appendChild(formControl("option",{value,text}));
    municipalitySelect.value=r.municipality;municipality.appendChild(municipalitySelect);
    cell(tr,isEstimate?yen(r.residentLevyYen):"—","batch-resident-levy");
+   const comparison=core.outputComparison(r);
+   cell(tr,yen(comparison?.oneStop),"batch-comparison");
+   cell(tr,yen(comparison?.filing),"batch-comparison");
+   const trialCell=cell(tr,"","batch-trial-input");
+   const trialControl=formControl("input",{type:"text",inputMode:"numeric",maxLength:"12",autocomplete:"off",
+    "aria-label":"対象者 "+r.page+" の試算寄附額（円、空欄は自動）",
+    "data-row":String(i),"data-field":"trialInput",placeholder:"空欄は自動"});
+   trialControl.value=r.trialInput;trialCell.appendChild(trialControl);
+   cell(tr,yen(comparison?.trial?.donation),"batch-comparison");
+   cell(tr,yen(comparison?.trial?.selfPay),"batch-comparison");
+   cell(tr,yen(comparison?.trial?.excess),"batch-comparison");
+   cell(tr,comparison?.trialStatus??"HOLD","batch-trial-status");
    body.appendChild(tr);
   });
   updateButtons();
@@ -146,8 +158,7 @@
  function clearEstimates(){
   computed=false;
   for(const row of rows){
-   row.status="HOLD";row.donationLimitYen=null;row.appliedDeductionsYen=null;
-   row.calculatedMunicipality=null;row.calculatedFiling=null;row.residentLevyYen=null;row.calculationBasis=null;
+   core.invalidate(row);
    row.reason=row.sourceValid?"再試算・個別確認待ち":
      "原票を安全に読み取れませんでした";
   }
@@ -227,8 +238,7 @@
   }
  });
  function invalidateEditedRow(row){
-  row.status="HOLD";row.donationLimitYen=null;row.appliedDeductionsYen=null;
-  row.calculatedMunicipality=null;row.calculatedFiling=null;row.residentLevyYen=null;row.calculationBasis=null;
+  core.invalidate(row);
   row.reason="入力が変更されました。対象年見込額・控除条件の再確認待ち";
   computed=false;
   // Do not rebuild the table while typing (that would steal focus).
@@ -236,10 +246,11 @@
   // and screenshots cannot retain an estimate for an edited recipient.
   const index=rows.indexOf(row),tr=body.children[index];
   if(tr){
-   const amounts=tr.querySelectorAll(".batch-result,.batch-deduction-applied,.batch-resident-levy");
+   const amounts=tr.querySelectorAll(".batch-result,.batch-deduction-applied,.batch-resident-levy,.batch-comparison");
    const reason=tr.querySelector(".batch-reason");
    amounts.forEach(el=>{el.textContent="—";});
    if(reason)reason.textContent="HOLD："+row.reason;
+   const trialStatus=tr.querySelector(".batch-trial-status");if(trialStatus)trialStatus.textContent="HOLD";
   }
   updateButtons();
  }
@@ -247,7 +258,7 @@
   const idx=Number(ev.target?.dataset?.row);
   const key=ev.target?.dataset?.field;
   if(!Number.isSafeInteger(idx)||!rows[idx])return;
-  if(key==="label"||monetary.includes(key)){
+  if(key==="label"||key==="trialInput"||monetary.includes(key)){
    core.edit(rows[idx],key,ev.target.value);
    invalidateEditedRow(rows[idx]);
   }
@@ -257,7 +268,7 @@
   const key=ev.target?.dataset?.field;
   if(!Number.isSafeInteger(idx)||!rows[idx])return;
   const row=rows[idx];
-  if(key==="label"||monetary.includes(key)){
+  if(key==="label"||key==="trialInput"||monetary.includes(key)){
    core.edit(row,key,ev.target.value);
   }else if(key==="sourceYear"||key==="year"||key==="municipality"){
    core.edit(row,key,ev.target.value);
@@ -280,14 +291,35 @@
   const engine=window.FurusatoEngine;
   const guard=window.FurusatoEstimateGuard?.canDisplayEstimate;
   const selectedReference=window.FurusatoEstimateGuard?.selectedReference;
-  rows.forEach(row=>core.calculate(row,engine,guard,selectedReference));
+  rows.forEach(row=>core.calculate(row,engine,guard,selectedReference,window.FurusatoResidentLevy));
   computed=true;render();
   const allowed=rows.filter(core.canOutputEstimate).length;
   say("対象 "+rows.length+"件：概算 "+allowed+"件、HOLD "+(rows.length-allowed)+
     "件。前年資料は見込額としての確認が必要です。HOLDの金額は空欄です。");
  });
+ // Browser autofill or programmatic edits may bypass input/change events.
+ function reconcileLiveInputs(){
+  let changed=false;
+  for(const element of body.querySelectorAll("[data-row][data-field]")){
+   const row=rows[Number(element.dataset.row)],key=element.dataset.field;
+   if(!row)continue;
+   const actual=element.type==="checkbox"?element.checked:element.value;
+   const expected=monetary.includes(key)?String(row.candidates?.[key]??""):
+    element.type==="checkbox"?row[key]:String(row[key]??"");
+   // Missing target year is visually represented by the default 2026.
+   if(key==="year"&&row.year===null&&actual==="2026")continue;
+   if(actual!==expected){
+    if(element.type==="checkbox")row[key]=false;
+    else if(key==="filing"){row.filing=actual;row.confirmed=false;row.noExclusions=false;row.forecastReviewed=false;}
+    else core.edit(row,key,actual);
+    invalidateEditedRow(row);changed=true;
+   }
+  }
+  if(changed)render();
+  return !changed;
+ }
  function validOutput(){
-  return computed&&!running&&rows.length>0;
+  return reconcileLiveInputs()&&computed&&!running&&rows.length>0;
  }
  download.addEventListener("click",()=>{
   if(!validOutput())return;
@@ -307,6 +339,7 @@
   document.body.classList.add("batch-print");
   try{window.print();}catch(_){document.body.classList.remove("batch-print");}
  });
+ window.addEventListener("beforeprint",()=>{reconcileLiveInputs();});
  window.addEventListener("afterprint",()=>{
   document.body.classList.remove("batch-print");
  });
