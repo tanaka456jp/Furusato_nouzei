@@ -19,7 +19,7 @@
   const self=input?.method==="selfMedication";
   const keys=["year","salaryIncome","method","groups","conditions"];
   if(self)keys.push("healthMeasureReviewed");
-  if(!exact(input,keys)||![2025,2026].includes(input.year)||!valid(input.salaryIncome,8050000)||
+  if(!exact(input,keys)||![2025,2026].includes(input.year)||!valid(input.salaryIncome,18050000)||
      !["ordinary","selfMedication"].includes(input.method)||
      input.conditions!=="annual-salary-only-eligible-paid-expenses-compensation-reviewed"||
      !Array.isArray(input.groups)||input.groups.length>1000||

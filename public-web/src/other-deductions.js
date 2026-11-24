@@ -31,7 +31,7 @@
     "smallEnterpriseContributions","conditions"])||
      input.conditions!=="salary-only-adult-other-deductions-reviewed"||
      !family||!input.family||
-     !integer(input.family.taxpayerIncome,8050000)||
+     !integer(input.family.taxpayerIncome,18050000)||
      !integer(input.smallEnterpriseContributions,100000000)||
      typeof input.workingStudent!=="boolean"||
      !reliefKinds.includes(input.maritalRelief))

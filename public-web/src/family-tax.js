@@ -21,7 +21,7 @@
   (income<=4890000?1040000:income<=6550000?670000:620000);
  function national(taxable){
   const incomeTax=taxable<=1950000?taxable*5/100:
-   taxable<=3300000?taxable*10/100-97500:taxable<=6950000?taxable*20/100-427500:taxable*23/100-636000;
+   taxable<=3300000?taxable*10/100-97500:taxable<=6950000?taxable*20/100-427500:taxable<=9000000?taxable*23/100-636000:taxable*33/100-1536000;
   const reconstruction=Math.floor(incomeTax*21/1000);
   return {taxable,incomeTax,reconstruction,total:incomeTax+reconstruction};
  }
@@ -40,7 +40,7 @@
   if(withMedical)keys.push("medicalDeductions");
   if(!input||typeof input!=="object"||Array.isArray(input)||
     Object.keys(input).length!==keys.length||!keys.every(k=>Object.prototype.hasOwnProperty.call(input,k))||
-    ![2025,2026].includes(input.year)||!valid(input.salaryIncome,highDetails?8050000:6550000)||
+    ![2025,2026].includes(input.year)||!valid(input.salaryIncome,highDetails?18050000:6550000)||
     !valid(withOther?input.socialAndContributions:input.socialInsurance,8500000)||!["standard","designated"].includes(input.municipality)||
     (!withInsurance&&input.conditions!=="salary-basic-social-family-only-reviewed")||!family||
     typeof family.calculate!=="function")
@@ -102,7 +102,10 @@
    Math.max(50000,difference-(localTaxable-2000000));
   const specialBase=localTaxable-difference-Math.max(0,nationalBasic-480000);
   if(specialBase<0)return hold("特例控除割合の適用区分を個別確認してください");
-  const specialRate=specialBase<=1950000?5:specialBase<=3300000?10:specialBase<=6950000?20:23;
+  // With gross salary <=20m and salary-only income, neither national taxable
+  // nor the resident special-rate base can reach the 40% band.
+  if(nationalTaxable>=18000000||specialBase>18000000)return hold("高額所得の税率区分は対象外です");
+  const specialRate=specialBase<=1950000?5:specialBase<=3300000?10:specialBase<=6950000?20:specialBase<=9000000?23:33;
   const ratio=90000-specialRate*1021;
   const share=input.municipality==="standard"?3:4;
   function part(s){
@@ -196,8 +199,8 @@
   const keys=["socialAndContributions","municipality","spouse","relatives","conditions","premiums","otherDeductions"];
   if(medicalClaim)keys.push("medicalDeductions");
   if(!exact(tax,keys)||(!medicalClaim&&tax.conditions!=="salary-basic-social-family-insurance-other-only-reviewed")||
-     !adj||!valid(adj.grossSalary,10000000)||adj.grossSalary<8500000)
-   return hold("高額給与は850万円以上1,000万円以下の確認済み条件のみ試算できます");
+     !adj||!valid(adj.grossSalary,20000000)||adj.grossSalary<8500000)
+   return hold("高額給与は850万円以上2,000万円以下の確認済み条件のみ試算できます");
   const result=salaryAdjustment.calculate(adj);
   if(result.status!=="COMPONENTS_ONLY")return hold(result.reason);
   const facts=result.calculation,d=tax.otherDeductions?.disability;
