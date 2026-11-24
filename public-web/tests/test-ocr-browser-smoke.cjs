@@ -164,6 +164,31 @@ async function main(){
   await familyField("acknowledgedExclusions").check();
   await page.locator('#calculator button[type="submit"]').click();
   assert.equal(await page.locator("#result .amount").textContent(),"53,000円");
+  // Reviewed premiums and household, same synthetic 2026 case.
+  await familyField("hasLifeInsurance").check();
+  await familyField("hasEarthquakeInsurance").check();
+  await familyField("targetInsurance_generalNew").fill("120000");
+  await familyField("targetInsurance_earthquake").fill("50000");
+  await familyField("familyReviewed").check();
+  await familyField("acknowledgedExclusions").check();
+  await page.locator('#calculator button[type="submit"]').click();
+  assert.equal(await page.locator("#result").getAttribute("class"),"result hold");
+  await familyField("insuranceReviewed").check();
+  await familyField("acknowledgedExclusions").check();
+  await page.locator('#calculator button[type="submit"]').click();
+  assert.equal(await page.locator("#result .amount").textContent(),"51,000円");
+  assert.match(await page.locator("#result").textContent(),/特例：適用/);
+  await familyField("targetInsurance_generalNew").fill("80000");
+  assert.equal(await familyField("insuranceReviewed").isChecked(),false);
+  assert.equal(await familyField("familyReviewed").isChecked(),false);
+  assert.equal(await page.locator("#result").isHidden(),true);
+  await familyField("targetInsurance_generalNew").fill("120000");
+  await familyField("familyReviewed").check();
+  await familyField("insuranceReviewed").check();
+  await familyField("acknowledgedExclusions").check();
+  await page.locator('#calculator button[type="submit"]').click();
+  assert.equal(await page.locator("#result .amount").textContent(),"51,000円");
+
   await page.locator('#familyRelatives [data-family="income"]').evaluate(el=>{el.value="850001";});
   await page.evaluate(()=>window.dispatchEvent(new Event("beforeprint")));
   assert.equal(await page.locator("#result").getAttribute("class"),"result hold");
