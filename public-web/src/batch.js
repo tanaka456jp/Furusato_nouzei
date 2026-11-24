@@ -151,6 +151,10 @@
    cell(tr,yen(comparison?.trial?.selfPay),"batch-comparison");
    cell(tr,yen(comparison?.trial?.excess),"batch-comparison");
    cell(tr,comparison?.trialStatus??"HOLD","batch-trial-status");
+   for(const select of tr.querySelectorAll("select")){
+    const span=document.createElement("span");span.className="batch-print-value";
+    span.textContent=select.selectedOptions[0]?.textContent??"未確認";select.parentNode.appendChild(span);
+   }
    body.appendChild(tr);
   });
   updateButtons();
@@ -287,7 +291,7 @@
   computed=false;render();
  });
  calculate.addEventListener("click",()=>{
-  if(running||!rows.length)return;
+  if(running||!rows.length||!reconcileLiveInputs())return;
   const engine=window.FurusatoEngine;
   const guard=window.FurusatoEstimateGuard?.canDisplayEstimate;
   const selectedReference=window.FurusatoEstimateGuard?.selectedReference;
