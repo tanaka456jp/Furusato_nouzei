@@ -573,3 +573,91 @@ for(const invalid of [{salaryIncome:4759999},{deductions:3030001},{reviewed:fals
 assert.equal(sourceFamily.reconcile({...source2025,spouse:null,relatives:[],deductions:2020000},engine).status,"HOLD");
 console.log(JSON.stringify({schema:"web-family-source-reconciliation/v1",normalCases:2,holdCases:16,
  originalYearIndependent:true,release:"HOLD"}));
+
+
+// Insurance components: independent integer quarter-yen marginal-band oracle.
+// Every candidate remains COMPONENTS_ONLY, never a donation estimate.
+const insurance=require("../dist/insurance-deductions.js");
+const premiumsZero={generalNew:0,generalOld:0,medicalNew:0,pensionNew:0,pensionOld:0,earthquake:0,longTermOld:0};
+const insBase={year:2026,family:{...baseFamily},premiums:premiumsZero,
+ conditions:"eligible-net-premiums-and-contract-selection-reviewed"};
+let insuranceCases=0;
+function insCheck(year,relatives,premiums,expected,sp=null){
+ const result=insurance.calculate({...insBase,year,family:{...baseFamily,year,relatives,spouse:sp},
+  premiums:{...premiumsZero,...premiums}});
+ assert.equal(result.status,"COMPONENTS_ONLY");
+ assert.equal(result.donationLimitYen,null);
+ const c=result.calculation;
+ assert.deepEqual([c.national.lifeYen,c.resident.lifeYen,c.national.earthquakeYen,c.resident.earthquakeYen],expected,
+  JSON.stringify({year,relatives,premiums,sp}));
+ assert.equal(c.national.totalYen,expected[0]+expected[2]);
+ assert.equal(c.resident.totalYen,expected[1]+expected[3]);
+ assert.equal(c.adjustmentDifferenceYen,0);
+ insuranceCases++;return c;
+}
+function progressive(n,a,b,c){
+ const v=BigInt(n),A=BigInt(a),B=BigInt(b),C=BigInt(c);
+ const min=(x,y)=>x<y?x:y,max0=x=>x>0n?x:0n;
+ return Number((4n*min(v,A)+2n*min(max0(v-A),B-A)+min(max0(v-B),C-B)+3n)/4n);
+}
+const nStd=n=>progressive(n,20000,40000,80000);
+const nEnhanced=n=>progressive(n,30000,60000,120000);
+const nLegacy=n=>progressive(n,25000,50000,100000);
+const rStd=n=>progressive(n,12000,32000,56000);
+const rLegacy=n=>progressive(n,15000,40000,70000);
+const edges=[0,1,12000,15000,20000,25000,30000,32000,40000,50000,56000,60000,70000,80000,100000,120000];
+const boundary=[...new Set(edges.flatMap(x=>[Math.max(0,x-1),x,x+1]))];
+for(const year of [2025,2026]){
+ for(const amount of boundary){
+  const child=[relative(15,0)];
+  insCheck(year,child,{generalNew:amount},[year===2026?nEnhanced(amount):nStd(amount),rStd(amount),0,0]);
+  insCheck(year,[],{generalNew:amount},[nStd(amount),rStd(amount),0,0]);
+  insCheck(year,child,{generalOld:amount},[nLegacy(amount),rLegacy(amount),0,0]);
+  insCheck(year,child,{medicalNew:amount},[nStd(amount),rStd(amount),0,0]);
+  insCheck(year,child,{pensionNew:amount},[nStd(amount),rStd(amount),0,0]);
+  insCheck(year,child,{pensionOld:amount},[nLegacy(amount),rLegacy(amount),0,0]);
+ }
+ for(const [a,b] of [[1,1],[20001,25001],[80000,60000],[80000,60001],[120000,100000],
+  [0,100000],[120000,0],[30001,15001],[80000,46001]]){
+  const child=[relative(15,0)];
+  const n=year===2026?nEnhanced(a):nStd(a);
+  const r=rStd(a),o=nLegacy(b),ro=rLegacy(b);
+  const cap=year===2026?60000:40000;
+  insCheck(year,child,{generalNew:a,generalOld:b},
+   [Math.max(n,o,Math.min(cap,n+o)),Math.max(r,ro,Math.min(28000,r+ro)),0,0]);
+  insCheck(year,child,{pensionNew:a,pensionOld:b},
+   [Math.max(nStd(a),o,Math.min(40000,nStd(a)+o)),Math.max(r,ro,Math.min(28000,r+ro)),0,0]);
+ }
+ for(const a of [0,1,4999,5000,5001,9999,10000,10001,14999,15000,15001,19999,20000,20001,49999,50000,50001]){
+  const oldNational=a<=10000?a:Math.min(15000,Math.ceil((a+10000)/2));
+  const oldResident=a<=5000?a:Math.min(10000,Math.ceil((a+5000)/2));
+  insCheck(year,[],{earthquake:a},[0,0,Math.min(50000,a),Math.min(25000,Math.ceil(a/2))]);
+  insCheck(year,[],{longTermOld:a},[0,0,oldNational,oldResident]);
+  insCheck(year,[],{earthquake:40000,longTermOld:a},[0,0,Math.min(50000,40000+oldNational),Math.min(25000,20000+oldResident)]);
+ }
+}
+for(const [age,income,eligible] of [[0,0,true],[15,620000,true],[16,620000,true],[22,620000,true],
+ [22,620001,false],[22,1230000,false],[23,0,false],[70,0,false]]){
+ const c=insCheck(2026,[relative(age,income)],{generalNew:120000},[eligible?60000:40000,28000,0,0]);
+ assert.equal(c.eligibleUnder23,eligible);assert.equal(c.enhancedGeneral,eligible);
+}
+insCheck(2026,[],{generalNew:120000},[40000,28000,0,0],spouse(0,22));
+insCheck(2025,[relative(20,600000)],{generalNew:120000},[40000,28000,0,0]);
+insCheck(2026,[relative(20,600000)],{generalNew:120000},[60000,28000,0,0]);
+for(const year of [2025,2026]){
+ insCheck(year,[relative(15)],Object.fromEntries(Object.keys(premiumsZero).map(k=>[k,200000])),
+  [120000,70000,50000,25000]);
+}
+for(const invalid of [{year:2027},{year:"2026"},{conditions:""},
+ {premiums:{...premiumsZero,generalNew:-1}},{premiums:{...premiumsZero,earthquake:1.5}},
+ {premiums:{...premiumsZero,generalOld:"10000"}},{premiums:{generalNew:10000}},
+ {premiums:{...premiumsZero,duplicateDualContract:true}},
+ {family:{...baseFamily,year:2025}},{family:{...baseFamily,conditions:""}},
+ {family:{...baseFamily,relatives:[{...relative(15),eligibilityReviewed:false}]}},
+ {hasMortgage:true}]){
+ const held=insurance.calculate({...insBase,...invalid});
+ assert.equal(held.status,"HOLD");assert.equal(held.calculation,null);
+ assert.equal(held.donationLimitYen,null);
+}
+console.log(JSON.stringify({schema:"web-insurance-deductions/v1",insuranceCases,
+ independentBoundaryOracle:true,uiIntegrated:false,actualExcelCOM:false,release:"HOLD"}));
