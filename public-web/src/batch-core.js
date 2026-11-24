@@ -198,6 +198,15 @@
   }
   return {spouse,relatives};
  }
+ // Explicit basic confirmation, never a detail attestation.
+ function confirmBasic(row){
+  if(!canEstimate(row)||!["standard","designated"].includes(row.municipality)||
+     !["one-stop","return"].includes(row.filing)||
+     Object.entries(row.sourceIndicators||{}).some(([k,v])=>v!==true||!allowedIndicators(row).includes(k)))return false;
+  row.confirmed=true;row.noExclusions=true;row.forecastReviewed=row.sourceYear!==row.year;
+  invalidate(row);row.reason="基本確認済み。該当する控除の個別明細を確認して試算してください";
+  return true;
+ }
  function familyDetailsActive(row){
   return row.familySourceText!==""||row.familyTargetText!==""||row.familyReviewed===true||insuranceActive(row)||otherActive(row);
  }
@@ -611,5 +620,5 @@
   // UTF-8 BOM is an intentional local Excel compatibility aid.
   return "\ufeff"+lines.join("\r\n")+"\r\n";
  }
- return Object.freeze({FIELDS,MAX_ROWS,PREMIUM_FIELDS,PREMIUM_KEYS,OTHER_FIELDS,MEDICAL_FIELDS,MEDICAL_SUMMARY_KEYS,HIGH_FIELDS,HIGH_SUMMARY_KEYS,highActive,MORTGAGE_FIELDS,MORTGAGE_SUMMARY_KEYS,mortgageActive,copySourcePremiums,fromPage,holdRow,edit,canEstimate,canOutputEstimate,outputComparison,invalidate,calculate,labelFor,csv});
+ return Object.freeze({FIELDS,MAX_ROWS,PREMIUM_FIELDS,PREMIUM_KEYS,OTHER_FIELDS,MEDICAL_FIELDS,MEDICAL_SUMMARY_KEYS,HIGH_FIELDS,HIGH_SUMMARY_KEYS,highActive,MORTGAGE_FIELDS,MORTGAGE_SUMMARY_KEYS,mortgageActive,copySourcePremiums,confirmBasic,fromPage,holdRow,edit,canEstimate,canOutputEstimate,outputComparison,invalidate,calculate,labelFor,csv});
 }));

@@ -576,5 +576,17 @@ batch.edit(copyRow,"sourceInsurance_generalNew","bad");
 assert.equal(batch.copySourcePremiums(copyRow),false);
 assert.equal(copyRow.targetInsurance_generalNew,"120000");
 const emptyCopy=fixture(1,basic2026);assert.equal(batch.copySourcePremiums(emptyCopy),false);
+// Grouped basic confirmation is per recipient, explicit, and not a detail attestation.
+const grouped=fixture(1,basic2026);
+assert.equal(batch.confirmBasic(grouped),true);
+assert.equal(grouped.confirmed,true);assert.equal(grouped.noExclusions,true);assert.equal(grouped.forecastReviewed,false);
+assert.equal(grouped.familyReviewed,false);assert.equal(grouped.insuranceReviewed,false);assert.equal(grouped.mortgageReviewed,false);
+assert.equal(grouped.donationLimitYen,null);
+const priorGrouped=fixture(1,{...basic2026,year:2025},2026);
+assert.equal(batch.confirmBasic(priorGrouped),true);assert.equal(priorGrouped.forecastReviewed,true);
+batch.edit(priorGrouped,"socialInsurance","1100000");assert.equal(priorGrouped.confirmed,false);assert.equal(priorGrouped.forecastReviewed,false);
+const badGrouped=fixture(1,basic2026);badGrouped.sourceIndicators.hasOtherIncome=true;
+assert.equal(batch.confirmBasic(badGrouped),false);assert.equal(badGrouped.confirmed,false);
+const unselected=fixture(1,basic2026);unselected.municipality="";assert.equal(batch.confirmBasic(unselected),false);
 dom.window.close();
 console.log("PUBLIC_BATCH_PER_PAGE_LOCAL_SAFETY_SYNTHETIC_PASS; no private slips; no deploy");

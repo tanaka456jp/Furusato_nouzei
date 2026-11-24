@@ -936,6 +936,26 @@
     if(["hasSpouse","hasDependents","hasLifeInsurance","hasEarthquakeInsurance","hasMortgage","hasIncomeAdjustment","salaryGross"].includes(event.target.name))revealRelevantPanels();
   });
   form.addEventListener("ocr-source-transferred",revealRelevantPanels);
+  var basicConfirm=document.getElementById("confirmBasicForecast");
+  function updateBasicForecast(){
+    var source=Number(form.dataset.ocrYear),target=Number(form.elements.namedItem("year").value);
+    basicConfirm.hidden=!([2025,2026].includes(source)&&target===source+1);
+  }
+  basicConfirm.addEventListener("click",function(){
+    updateBasicForecast();
+    var snapshot=getInput();
+    if(basicConfirm.hidden||snapshot.sourceReviewPending||
+       strictYen(snapshot.salaryGross)===null||strictYen(snapshot.socialInsurance)===null||
+       !["standard","designated"].includes(snapshot.municipality))return;
+    form.elements.namedItem("forecastReviewed").checked=true;
+    conditionsConfirmation.checked=true;invalidateEstimate();
+    document.getElementById("basicForecastStatus").textContent="基本確認済み。該当する個別控除は別途確認してください。";
+  });
+  form.addEventListener("ocr-source-transferred",updateBasicForecast);
+  form.addEventListener("family-source-reset",function(){basicConfirm.hidden=true;document.getElementById("basicForecastStatus").textContent="";});
+  form.elements.namedItem("year").addEventListener("change",updateBasicForecast);
+  for(const event of ["input","change"])form.addEventListener(event,function(){document.getElementById("basicForecastStatus").textContent="";});
+  updateBasicForecast();
   form.elements.namedItem("salaryGross").addEventListener("input",function(){if(strictYen(this.value.trim())>8500000)revealRelevantPanels();});
   form.elements.namedItem("medicalNetPaidYen").addEventListener("input",function(){
     var n=strictYen(this.value.trim());
@@ -971,6 +991,7 @@
   form.addEventListener("reset", function () {
     printableInputSnapshot=null;printableResult=null;
     optionalPanelIds.forEach(function(id){document.getElementById(id).open=false;});
+    basicConfirm.hidden=true;document.getElementById("basicForecastStatus").textContent="";
     document.getElementById("premiumCopyStatus").textContent="";
     familyRows.replaceChildren();sourceFamilyRows.replaceChildren();adjustmentRows.replaceChildren();sourceAdjustmentRows.replaceChildren();
     form.classList.remove("deduction-override-active");

@@ -152,3 +152,5 @@
  .batch-table tbody td button{max-width:100%;white-space:normal}
  .batch-table tbody td .batch-override-tag{grid-column:1/-1}
 }
+
+.batch-basic-note{display:block;min-width:125px;text-align:left;font-size:11px;line-height:1.5;margin:6px 0;color:#52687b}.batch-confirm-basic{font-size:12px;padding:6px;min-width:125px;white-space:normal}.batch-confirm-basic:disabled{opacity:.65}.batch-basic-note,.batch-confirm-basic{overflow-wrap:anywhere}@media screen and (max-width:700px){.batch-table .batch-basic-note,.batch-table .batch-confirm-basic{grid-column:1/-1;min-width:0}.batch-confirm-basic{width:100%}}@media print{.batch-basic-note,.batch-confirm-basic,#confirmBasicForecast,#basicForecastStatus{display:none!important}}

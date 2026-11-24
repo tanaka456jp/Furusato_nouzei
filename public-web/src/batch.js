@@ -138,6 +138,13 @@
      disabled:!r.sourceValid||(field==="forecastReviewed"&&r.sourceYear===r.year)
     });
     td.appendChild(checkbox);
+    if(field==="confirmed"){
+     const complete=r.confirmed&&r.noExclusions&&(r.sourceYear===r.year||r.forecastReviewed);
+     td.appendChild(formControl("span",{class:"batch-basic-note",text:r.sourceYear===r.year?
+      "原票の年分・4金額・追加控除や未対応条件の有無を確認済みの場合に押してください。":
+      "原票の年分・4金額、試算年への見込額補正、追加控除や未対応条件の有無を確認済みの場合に押してください。"}));
+     td.appendChild(formControl("button",{type:"button",class:"secondary batch-confirm-basic","data-confirm-basic":String(i),disabled:!r.sourceValid||complete,text:complete?"基本確認済み":"原票・見込額・適用条件をまとめて確認"}));
+    }
    }
    cell(tr,isEstimate?yen(r.donationLimitYen):"—","batch-result");
    cell(tr,isEstimate?r.status:("HOLD："+((r.status==="概算"||r.status==="前年参考概算")?
@@ -360,11 +367,19 @@
    if(reason)reason.textContent="HOLD："+row.reason;
    for(const checkbox of tr.querySelectorAll('input[type="checkbox"][data-field]'))
     checkbox.checked=row[checkbox.dataset.field]===true;
+   const basic=tr.querySelector("[data-confirm-basic]");if(basic){const complete=row.confirmed&&row.noExclusions&&(row.sourceYear===row.year||row.forecastReviewed);basic.disabled=!row.sourceValid||complete;basic.textContent=complete?"基本確認済み":"原票・見込額・適用条件をまとめて確認";}
    const trialStatus=tr.querySelector(".batch-trial-status");if(trialStatus)trialStatus.textContent="HOLD";
   }
   updateButtons();
  }
  body.addEventListener("click",ev=>{
+  const basic=ev.target?.closest?.("[data-confirm-basic]");
+  if(basic){
+   if(running||!body.contains(basic)||!reconcileLiveInputs())return;
+   const i=Number(basic.dataset.confirmBasic),row=rows[i];
+   if(!Number.isSafeInteger(i)||!row||!core.confirmBasic(row)){say("原票年分・金額・自治体区分・未対応条件を確認してください。");return;}
+   invalidateEditedRow(row);render();say("対象者 "+row.page+" の基本確認を反映しました。該当する個別控除は別途確認してください。");return;
+  }
   const button=ev.target?.closest?.("[data-copy-premiums]");
   if(!button||running||!body.contains(button)||!reconcileLiveInputs())return;
   const i=Number(button.dataset.copyPremiums),row=rows[i];

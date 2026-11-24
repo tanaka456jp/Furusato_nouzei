@@ -80,6 +80,12 @@ function type(idx,key,value){
  assert.equal(choose(0,"year").value,"2026");
  assert.equal(choose(0,"deductionsReference").value,"1430000");
  assert.equal(choose(0,"municipality").value,"");
+ d.querySelector('[data-confirm-basic="0"]').click();assert.equal(choose(0,"confirmed").checked,false);
+ change(0,"municipality","standard");
+ d.querySelector('[data-confirm-basic="0"]').click();
+ assert.equal(choose(0,"confirmed").checked,true);assert.equal(choose(0,"noExclusions").checked,true);assert.equal(choose(0,"forecastReviewed").checked,true);
+ assert.equal(choose(0,"familyReviewed").checked,false);assert.equal(choose(1,"confirmed").checked,false);
+ change(0,"socialInsurance","750000");assert.equal(choose(0,"confirmed").checked,false);
  change(0,"municipality","standard");
  change(0,"deductionsReference","1790000");
  change(0,"confirmed",true);

@@ -837,5 +837,21 @@ for(const id of ["mortgagePanel","familyPanelFold","sourceFamilyPanelFold","targ
 assert.equal(field("mortgageReviewed").checked,false);assert.equal(field("sourceInsuranceReviewed").checked,false);
 form.reset();
 for(const id of foldIds)assert.equal(document.getElementById(id).open,false,id);
+// Explicit prior-year basic confirmation never approves detailed deductions.
+field("year").value="2026";field("municipality").value="standard";
+field("salaryGross").value="7000000";field("socialInsurance").value="1000000";
+form.dataset.ocrYear="2025";form.dataset.ocrOriginalGross="7000000";
+form.dataset.ocrOriginalIncome="5200000";form.dataset.ocrOriginalSocial="1000000";form.dataset.ocrOriginalDeductions="1630000";
+form.dispatchEvent(new Event("ocr-source-transferred"));
+assert.equal(document.getElementById("confirmBasicForecast").hidden,false);
+document.getElementById("confirmBasicForecast").click();
+assert.equal(field("forecastReviewed").checked,true);assert.equal(field("acknowledgedExclusions").checked,true);
+assert.equal(field("sourceFamilyReviewed").checked,false);assert.equal(field("mortgageReviewed").checked,false);
+assert.equal(field("correctedSourceReviewed").checked,false);
+field("socialInsurance").value="1100000";field("socialInsurance").dispatchEvent(new Event("input",{bubbles:true}));
+assert.equal(field("forecastReviewed").checked,false);assert.equal(field("acknowledgedExclusions").checked,false);
+form.dataset.ocrReviewPending="true";document.getElementById("confirmBasicForecast").click();
+assert.equal(field("forecastReviewed").checked,false);assert.equal(field("acknowledgedExclusions").checked,false);
+form.reset();assert.equal(document.getElementById("confirmBasicForecast").hidden,true);
 dom.window.close();
 console.log("PUBLIC_WEB_STATIC_AND_BROWSER_SYNTHETIC_PASS; no network; ads off; deploy off");
