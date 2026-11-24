@@ -187,3 +187,61 @@ assert.deepEqual(differences,[],"current browser engine differs from real Excel 
 assert.equal(assessedMatches,24,"municipal rounding gap changed; review separate assessed-levy test");
 // Do not treat agreement in this limited sample as approval of other deductions,
 // exact 1-yen ceilings, municipal rounding, or physical device acceptance.
+
+
+// WEB-only municipality calculation: test actual Excel assessed amounts,
+// not the old combined levy. Independent rational/integer test expression
+// is also applied to designated-city cases (not Excel COM evidence).
+const local=require("../src/resident-levy.js");
+const localArgs={year:2026,salaryIncome:5200000,socialInsurance:1000000,
+ municipality:"standard",conditions:"basic-only-reviewed"};
+let standardMatches=0,designatedOracleMatches=0;
+for(const [year,gross,social,income,pooled,assessed] of excelObserved){
+ const args={...localArgs,year,salaryIncome:income,socialInsurance:social};
+ const standard=local.calculate(args);
+ assert.equal(standard.status,"ESTIMATE");
+ assert.equal(standard.calculation.residentIncomeLevyYen,assessed,"Excel assessed standard city: "+year+"/"+gross);
+ assert.equal(standard.calculation.pooledComparisonYen,pooled);
+ assert.equal(standard.donationLimitYen,null);
+ standardMatches++;
+ const designated=local.calculate({...args,municipality:"designated"});
+ assert.equal(designated.status,"ESTIMATE");
+ const taxable=Math.trunc((income-social-430000)/1000)*1000;
+ // All Excel comparison cases exceed 50,000 of local taxable income.
+ assert.ok(taxable>=50000);
+ const before=(taxable/10)-2500;
+ const city=Math.floor(before*4/500)*100;
+ const prefecture=Math.floor(before/500)*100;
+ assert.equal(designated.calculation.city.assessedYen,city);
+ assert.equal(designated.calculation.prefecture.assessedYen,prefecture);
+ assert.equal(designated.calculation.residentIncomeLevyYen,city+prefecture);
+ designatedOracleMatches++;
+}
+for(const year of [2025,2026]){
+ for(const [municipality,expectedCity,expectedPref,expectedAdjustment] of [
+  ["standard",1400,900,2350],["designated",1800,400,2350]
+ ]){
+  const out=local.calculate({...localArgs,year,municipality,socialInsurance:4723000});
+  assert.equal(out.status,"ESTIMATE");
+  assert.equal(out.calculation.residentTaxableYen,47000);
+  assert.equal(out.calculation.residentAdjustmentYen,expectedAdjustment);
+  assert.equal(out.calculation.city.assessedYen,expectedCity);
+  assert.equal(out.calculation.prefecture.assessedYen,expectedPref);
+  assert.equal(out.calculation.referenceSpecialCapYen,(expectedCity+expectedPref)/5);
+ }
+ // 100-yen separation boundary from the Excel tax scope.
+ const out=local.calculate({...localArgs,year,socialInsurance:999000});
+ assert.equal(out.calculation.pooledComparisonYen,374600);
+ assert.equal(out.calculation.residentIncomeLevyYen,374500);
+}
+for(const changed of [{municipality:""},{municipality:"unknown"},{municipality:"toString"},
+ {conditions:""},{conditions:true},{year:2024},{year:"2026"},{salaryIncome:450000},
+ {salaryIncome:6550001},{socialInsurance:-1},{socialInsurance:1.5},
+ {socialInsurance:5200000},{hasMortgage:true}]){
+ const out=local.calculate({...localArgs,...changed});
+ assert.equal(out.status,"HOLD",JSON.stringify(changed));
+ assert.equal(out.calculation,null);
+}
+console.log(JSON.stringify({schema:"web-resident-levy-v1",standardMatches,
+ designatedOracleMatches,lowAdjustmentCases:4,municipalRoundingCases:2,
+ actualDesignatedExcelCOM:false,uiIntegrated:false,release:"HOLD"}));
