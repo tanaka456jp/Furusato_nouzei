@@ -87,3 +87,103 @@ for(const input of [
  assert.equal(out.donationLimitYen,null);
 }
 console.log("PUBLIC_2025_2026_INDEPENDENT_ONE_STOP_DONATION_FIXTURES_SYNTHETIC_PASS; release HOLD");
+
+ 
+// Fresh WEB comparison against the *actual* Excel v4.18.36 COM observations,
+// not the earlier pinned GAS results. Synthetic inputs and numeric outputs only.
+// Excel HEAD 0ec8b7388d6e95a6d9aefd54bcb61a4f40ad25a6
+// Actions run 45285773301, job 138082615703, final 44/44 sequence:
+// https://github.com/tanaka456jp/Furusato_nouzei/actions/runs/45285773301/job/138082615703
+// All 41 rows were xlDone; the 7m -> 5m -> 7m control restored its values.
+// Inputs are from gas/parity/cases.cjs at 347aae5756b90c05a10b2ffe6123b0ce09e3fc01,
+// verified byte-identical at WEB HEAD ced2bc1c878781d69047b5f5661ee8eab7b03701.
+// year, gross, social, salary income, pooled levy, assessed standard-city levy,
+// 1000-yen one-stop ceiling. Pooled levy is NOT the assessed municipal levy.
+const excelObserved=[
+ [2025,1899999,100000,1249999,69400,69300,18000],
+ [2025,1900000,100000,1250000,69500,69500,18000],
+ [2025,1900001,100000,1250000,69500,69500,18000],
+ [2025,2200000,100000,1460000,90500,90500,23000],
+ [2025,2500000,100000,1670000,111500,111500,28000],
+ [2025,3299999,1000000,2227200,77200,77100,20000],
+ [2025,3300000,1000000,2230000,77500,77500,20000],
+ [2025,3599999,1000000,2437200,98200,98100,25000],
+ [2025,3600000,1000000,2440000,98500,98500,25000],
+ [2025,4899999,1000000,3476800,202100,202000,49000],
+ [2025,4900000,1000000,3480000,202500,202500,49000],
+ [2025,5000000,1000000,3560000,210500,210500,51000],
+ [2025,5812500,1000000,4209600,275400,275300,71000],
+ [2025,6599999,1000000,4836800,338100,338000,86000],
+ [2025,6600000,1000000,4840000,338500,338500,86000],
+ [2025,7000000,1000000,5200000,374500,374500,109000],
+ [2025,8000000,1000000,6100000,464500,464500,135000],
+ [2025,8500000,1000000,6550000,509500,509500,148000],
+ [2026,2190999,100000,1450999,89500,89500,23000],
+ [2026,2191000,100000,1451000,89600,89500,23000],
+ [2026,2192999,100000,1451000,89600,89500,23000],
+ [2026,2193000,100000,1453000,89800,89700,23000],
+ [2026,2195999,100000,1453000,89800,89700,23000],
+ [2026,2196000,100000,1456000,90100,90000,23000],
+ [2026,2199999,100000,1456000,90100,90000,23000],
+ [2026,2200000,100000,1460000,90500,90500,23000],
+ [2026,2200001,100000,1460000,90500,90500,23000],
+ [2026,2500000,100000,1670000,111500,111500,28000],
+ [2026,3299999,1000000,2227200,77200,77100,20000],
+ [2026,3300000,1000000,2230000,77500,77500,20000],
+ [2026,3599999,1000000,2437200,98200,98100,25000],
+ [2026,3600000,1000000,2440000,98500,98500,25000],
+ [2026,4899999,1000000,3476800,202100,202000,49000],
+ [2026,4900000,1000000,3480000,202500,202500,49000],
+ [2026,5000000,1000000,3560000,210500,210500,51000],
+ [2026,5812500,1000000,4209600,275400,275300,71000],
+ [2026,6599999,1000000,4836800,338100,338000,86000],
+ [2026,6600000,1000000,4840000,338500,338500,86000],
+ [2026,7000000,1000000,5200000,374500,374500,109000],
+ [2026,8000000,1000000,6100000,464500,464500,135000],
+ [2026,8500000,1000000,6550000,509500,509500,148000]
+];
+const currentCases=require("../../gas/parity/cases.cjs");
+assert.equal(excelObserved.length,41);
+assert.equal(currentCases.length,41);
+// Test the exact browser-distributed script, not the historical pinned engine.
+// The build runs before this test in public-web-review.yml.
+const browserEnginePath=path.resolve(__dirname,"../dist/engine.js");
+const builtScript=fs.readFileSync(browserEnginePath,"utf8");
+assert.equal(builtScript,script,"browser engine differs from current source");
+const browserContext={};
+vm.runInNewContext(builtScript,browserContext,{timeout:3000,filename:"dist/engine.js"});
+const webEngine=browserContext.FurusatoEngine;
+const differences=[];
+let pooledMatches=0,assessedMatches=0,limitMatches=0,incomeMatches=0;
+for(const [i,row] of excelObserved.entries()){
+ const [year,gross,social,income,pooled,assessed,limit]=row;
+ const c=currentCases[i];
+ assert.equal(c.id,"Y"+year+"_G"+gross);
+ assert.equal(c.year,year);assert.equal(c.salaryGross,gross);
+ assert.equal(c.socialInsurance,social);assert.equal(c.filing,"one-stop");
+ assert.ok(pooled-assessed===0||pooled-assessed===100);
+ const actual=webEngine.calculate({year,incomeType:"salary",filing:c.filing,
+   salaryGross:gross,socialInsurance:social,acknowledgedExclusions:true});
+ if(actual.status!=="ESTIMATE"||!actual.calculation){
+   differences.push({id:c.id,status:actual.status,reasons:actual.reasons});
+   continue;
+ }
+ const calc=actual.calculation;
+ const checks=[["salaryIncome",calc.salaryIncomeYen,income],
+  ["pooledLevy",calc.residentIncomeLevyYen,pooled],
+  ["oneStop1000",actual.donationLimitYen,limit]];
+ for(const [field,observed,expected] of checks)
+   if(observed!==expected)differences.push({id:c.id,field,observed,expected});
+ if(calc.salaryIncomeYen===income)incomeMatches++;
+ if(calc.residentIncomeLevyYen===pooled)pooledMatches++;
+ if(calc.residentIncomeLevyYen===assessed)assessedMatches++;
+ if(actual.donationLimitYen===limit)limitMatches++;
+}
+console.log(JSON.stringify({schema:"web-excel-v41836-pooled-parity/v1",
+ excelRun:45285773301,excelJob:138082615703,checked:41,
+ incomeMatches,pooledMatches,assessedMatches,limitMatches,differences,
+ municipalityParityCertified:false,filingParityCertified:false,release:"HOLD"}));
+assert.deepEqual(differences,[],"current browser engine differs from real Excel observations");
+assert.equal(assessedMatches,24,"municipal rounding gap changed; review separate assessed-levy test");
+// Do not treat agreement in this limited sample as approval of other deductions,
+// exact 1-yen ceilings, municipal rounding, or physical device acceptance.
