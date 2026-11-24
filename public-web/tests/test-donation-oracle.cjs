@@ -661,3 +661,92 @@ for(const invalid of [{year:2027},{year:"2026"},{conditions:""},
 }
 console.log(JSON.stringify({schema:"web-insurance-deductions/v1",insuranceCases,
  independentBoundaryOracle:true,uiIntegrated:false,actualExcelCOM:false,release:"HOLD"}));
+
+
+// Combined tax model: separately hand-calculated national and local
+// insurance deductions, statutory personal difference, municipal rounding.
+// Source household facts stay constant; 2026 U23 eligibility changes.
+let insuranceTaxCases=0,insuranceTaxTrials=0,insuranceZeroParity=0;
+const insuranceTaxInput={...familyTaxInput,conditions:"salary-basic-social-family-insurance-only-reviewed",
+ premiums:{...premiumsZero,generalNew:120000,earthquake:50000},
+ salaryIncome:4760000,socialInsurance:1340000,spouse:spouse(600000),relatives:[relative(20,600000)]};
+for(const [year,municipality,nDed,nTax,adj,base,cityRaw,prefRaw,city,pref,limit,prefixLimit,expected60] of [
+ [2025,"standard",3120000,1640000,2500,1907000,12792000,8528000,127900,85200,52000,2000,[2961,29100,19300,8639]],
+ [2025,"designated",3120000,1640000,2500,1907000,17056000,4264000,170500,42600,52000,2000,[2961,38700,9700,8639]],
+ [2026,"standard",3500000,1260000,6150,1317000,12573000,8382000,125700,83800,51000,10000,[2961,28600,19100,9339]],
+ [2026,"designated",3500000,1260000,6150,1317000,16764000,4191000,167600,41900,51000,10000,[2961,38200,9600,9239]]
+]){
+ const input={...insuranceTaxInput,year,municipality};
+ const result=familyTax.calculate(input),c=result.calculation;
+ assert.equal(result.status,"ESTIMATE");
+ assert.deepEqual([c.nationalDeductionsYen,c.nationalTaxableYen,c.residentDeductionsYen,c.residentTaxableYen,
+  c.adjustmentYen,c.residentSpecialBaseYen,c.specialRatePercent,c.city.assessedYen,c.prefecture.assessedYen,
+  result.donationLimitYen],
+  [nDed,nTax,2603000,2157000,adj,base,5,city,pref,limit]);
+ assert.deepEqual([c.insurance.national.totalYen,c.insurance.resident.totalYen,c.personalDifferenceYen],
+  [year===2026?110000:90000,53000,year===2026?280000:50000]);
+ assert.deepEqual([c.city.beforeRounding100,c.prefecture.beforeRounding100],[cityRaw,prefRaw]);
+ // BigInt reference uses pre-computed national/municipal tax bases,
+ // independent of the production family/insurance components.
+ function expectedTrial(d){
+  const D=BigInt(d),B=D-2000n,n=BigInt(nTax);
+  const after=n>B?(n-B)/1000n*1000n:0n;
+  const tax=x=>x/20n+(x/20n)*21n/1000n;
+  const ns=tax(n)-tax(after);
+  const shares=municipality==="standard"?[3n,2n]:[4n,1n];
+  const savings=shares.map((s,i)=>{
+   const levy=BigInt(i?prefRaw:cityRaw),assessed=BigInt(i?pref:city);
+   const a=B*84895n*s,cap=levy*1000n;
+   const credit=(B*s*10000n+(a<cap?a:cap)+499999n)/500000n;
+   const remainder=levy>credit*100n?levy-credit*100n:0n;
+   return assessed-remainder/10000n*100n;
+  });
+  return [ns,...savings,D-ns-savings[0]-savings[1]].map(Number);
+ }
+ assert.deepEqual(expectedTrial(60000),expected60);
+ for(const d of [2000,2001,2999,3000,limit,limit+1000,60000,120000,1428000]){
+  const t=familyTax.filingTrial(input,d).calculation;
+  assert.deepEqual([t.nationalSavingYen,t.city.savingYen,t.prefecture.savingYen,t.selfPayYen],expectedTrial(d));
+  insuranceTaxTrials++;
+ }
+ let ceiling=2000;
+ for(let d=3000;d<=1428000;d+=1000){
+  if(expectedTrial(d)[3]>2000)break;
+  ceiling=d;
+ }
+ assert.equal(ceiling,prefixLimit);
+ assert.equal(familyTax.filingPrefix(input).donationLimitYen,ceiling);
+ insuranceTaxCases++;
+}
+// With all premiums zero, every pre-existing observed Excel salary case
+// must remain unchanged for both municipal categories and both filing paths.
+for(const [year,gross,social,income,pooled,assessed,legacyLimit] of excelObserved){
+ for(const municipality of ["standard","designated"]){
+  const baseline={...familyTaxInput,year,salaryIncome:income,socialInsurance:social,municipality};
+  const extended={...baseline,conditions:"salary-basic-social-family-insurance-only-reviewed",premiums:{...premiumsZero}};
+  const a=familyTax.calculate(baseline),b=familyTax.calculate(extended);
+  assert.equal(b.status,a.status);
+  const {insurance:unused,...rest}=b.calculation;
+  assert.deepEqual(rest,a.calculation);
+  assert.equal(a.donationLimitYen,b.donationLimitYen);
+  assert.deepEqual(familyTax.filingTrial(extended,3000),familyTax.filingTrial(baseline,3000));
+  assert.deepEqual(familyTax.filingPrefix(extended),familyTax.filingPrefix(baseline));
+  insuranceZeroParity++;
+ }
+}
+// Explicit review marker and complete, exact premium fields are mandatory.
+for(const invalid of [
+ {conditions:"salary-basic-social-family-only-reviewed"},
+ {premiums:undefined},{premiums:{...premiumsZero,generalNew:-1}},
+ {premiums:{...premiumsZero,earthquake:0.5}},
+ {premiums:{...premiumsZero,unknown:0}},
+ {relatives:[{...relative(20),eligibilityReviewed:false}]},
+ {hasMortgage:true}
+]){
+ const input={...insuranceTaxInput,...invalid};
+ assert.equal(familyTax.calculate(input).status,"HOLD");
+ assert.equal(familyTax.filingTrial(input,3000).status,"HOLD");
+ assert.equal(familyTax.filingPrefix(input).status,"HOLD");
+}
+console.log(JSON.stringify({schema:"web-insurance-tax-integration/v1",insuranceTaxCases,insuranceTaxTrials,
+ insuranceZeroParity,independentTrialOracle:true,actualExcelInsuranceCOM:false,uiIntegrated:false,release:"HOLD"}));
