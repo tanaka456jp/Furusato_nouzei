@@ -1405,3 +1405,51 @@ console.log(JSON.stringify({schema:"web-high-salary-tax-integration/v1",highCase
  console.log(JSON.stringify({schema:"web-upper-salary-tax-integration/v1",upperCases,upperTrials,upperHoldCases,
   independentMarginalBandOracle:true,highGrossMax:20000000,maxApplicableRate:33,uiIntegrated:false,actualExcelCOM:false,release:"HOLD"}));
 }
+
+// Original-year other deductions: no medical expense deduction or mortgage
+// is allowed into a year-end withholding slip's deduction reconciliation.
+{
+ const source={...insuredSource,sourceContributionYen:240000,otherReviewed:true,
+  otherDeductions:{disability:{self:"ordinary",spouse:"none",relatives:["none"]},
+   maritalRelief:"none",childIndex:null,workingStudent:false,smallEnterpriseContributions:240000},
+  indicators:{...insuredSource.indicators,hasDisability:true,hasSmallEnterpriseContributions:true}};
+ let sourceOtherCases=0,sourceOtherHoldCases=0;
+ for(const [year,total,basic,life] of [[2025,3390000,680000,40000],[2026,3770000,1040000,60000]]){
+  const input={...source,year,deductions:total};
+  const result=sourceFamily.reconcile(input,engine);assert.equal(result.status,"RECONCILED",result.reason);
+  assert.deepEqual(result.calculation,{year,salaryIncomeYen:4760000,basicYen:basic,familyYen:1010000,
+   deductionsYen:total,socialInsuranceOnlyYen:1100000,sourceContributionYen:240000,
+   otherYen:510000,otherWithoutContributionsYen:270000,
+   lifeYen:life,earthquakeYen:50000,insuranceYen:life+50000,enhancedGeneral:year===2026});
+  // Removing G25 from the reviewed combined social amount's breakdown
+  // must not alter the total, when the source no longer indicates G25.
+  const {hasSmallEnterpriseContributions:unused,...indicators}=input.indicators;
+  const zero={...input,indicators,sourceContributionYen:0,
+   otherDeductions:{...input.otherDeductions,smallEnterpriseContributions:0}};
+  const z=sourceFamily.reconcile(zero,engine);assert.equal(z.status,"RECONCILED");
+  assert.equal(z.calculation.deductionsYen,total);
+  assert.equal(z.calculation.socialInsuranceOnlyYen,1340000);
+  sourceOtherCases+=2;
+ }
+ const validSource={...source,deductions:3390000};
+ for(const patch of [
+  {otherReviewed:false},{otherReviewed:undefined},{sourceContributionYen:240001},
+  {sourceContributionYen:-1},{sourceContributionYen:1340001},
+  {otherDeductions:{...source.otherDeductions,smallEnterpriseContributions:240001}},
+  {otherDeductions:{...source.otherDeductions,unknown:true}},
+  {deductions:3630000},{deductions:3390001},{year:2026},
+  {medicalDeductions:{method:"ordinary"}},{indicators:{hasMortgage:true}},
+  {indicators:{...source.indicators,hasWidow:true}},
+  {indicators:{...source.indicators,hasSingleParent:true}},
+  {indicators:{...source.indicators,hasWorkingStudent:true}},
+  {sourceContributionYen:0,otherDeductions:{...source.otherDeductions,smallEnterpriseContributions:0}},
+  {otherDeductions:{...source.otherDeductions,disability:{self:"none",spouse:"none",relatives:["none"]}},deductions:3120000},
+  {insuranceReviewed:false},{premiums:undefined},{gross:8500001}
+ ]){
+  const result=sourceFamily.reconcile({...validSource,...patch},engine);
+  assert.equal(result.status,"HOLD",JSON.stringify(patch));assert.equal(result.calculation,null);
+  sourceOtherHoldCases++;
+ }
+ console.log(JSON.stringify({schema:"web-other-source-reconciliation/v1",sourceOtherCases,sourceOtherHoldCases,
+  g25IncludedInG26:true,originalYearIndependent:true,uiIntegrated:false,release:"HOLD"}));
+}
