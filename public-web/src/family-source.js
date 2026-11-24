@@ -11,6 +11,8 @@
   const keys=["year","gross","salaryIncome","social","deductions","indicators","spouse","relatives","reviewed"];
   const withCountHints=!!input&&Object.prototype.hasOwnProperty.call(input,"countHints");
   if(withCountHints)keys.push("countHints");
+  const withSpouseHint=!!input&&Object.prototype.hasOwnProperty.call(input,"spouseIncomeHint");
+  if(withSpouseHint)keys.push("spouseIncomeHint");
   const withInsurance=!!input&&Object.prototype.hasOwnProperty.call(input,"premiums");
   if(withInsurance)keys.push("premiums","insuranceReviewed");
   const withOther=!!input&&Object.prototype.hasOwnProperty.call(input,"otherDeductions");
@@ -62,6 +64,7 @@
   const f=family.calculate(household);
   if(f.status!=="COMPONENTS_ONLY")return hold(f.reason);
   const c=f.calculation;
+  if(withSpouseHint&&(input.year!==2025||!input.indicators.hasSpouse||!amount(input.spouseIncomeHint,1330000)||input.spouseIncomeHint===0||input.spouse?.income!==input.spouseIncomeHint))return hold("原票年の配偶者の合計所得（G43）が明細と一致しません");
   if(input.indicators.hasSpouse&&!c.items.some(x=>["spouse","elderly-spouse","spouse-special"].includes(x.kind)))
    return hold("原票の配偶者控除の検出結果と明細が一致しません");
   if(input.indicators.hasDependents&&!c.items.some(x=>x.kind==="relative-special"||x.kind==="under16"||x.kind.startsWith("dependent-")))

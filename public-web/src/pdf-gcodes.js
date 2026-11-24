@@ -192,6 +192,26 @@
    const amount=optionalAmount(anchor,high);
    if(amount!==null&&amount<=max&&(!flag||amount>0)){optionalCandidates[key]=amount;if(flag)sourceIndicators[flag]=true;}
   }
+  // R7 G43: spouse total income, not salary receipts or deduction.
+  // The heading and neighbouring G44 must match the verified printed layout.
+  if(year===2025){
+   const marks=anchors(spans,"G43"),next=anchors(spans,"G44");
+   const heading=spans.filter(i=>i.s==="配偶者の合計所得");
+   if(marks.length===1&&next.length===1&&heading.length===1){
+    const x=marks[0],n=next[0],h=heading[0];
+    if(Math.abs(n.x-x.x-104.18)<=2&&Math.abs(n.y-x.y-15.94)<=2&&
+       Math.abs(h.x-x.x-28.46)<=2&&Math.abs(h.y-x.y-31.93)<=2){
+     const nearby=spans.filter(i=>Math.abs(i.y-x.y)<=3.5&&i.x-x.x>=45&&i.x-x.x<=103&&/^[0-9,]+$/.test(i.s));
+     const compact=nearby.filter(i=>i.s.length>1),digits=nearby.filter(i=>i.s.length===1);
+     if(compact.length<=1&&!(compact.length&&digits.length)){
+      const income=optionalAmount(x,103);
+      if(income!==null&&income>0&&income<=1330000){
+       optionalCandidates.sourceSpouseIncome=income;sourceIndicators.hasSpouse=true;
+      }
+     }
+    }
+   }
+  }
   const counts=familyCounts(spans,year);
   Object.assign(sourceIndicators,counts.flags);Object.assign(optionalCandidates,counts.values);
   const date=housingDate(spans,year);
@@ -222,6 +242,8 @@
   if(coded.year===2025&&coded.sourceIndicators?.hasDependents===true)for(const [key] of Object.values(R7_COUNTS)){
    const n=coded.optionalCandidates?.[key];if(Number.isSafeInteger(n)&&n>0&&n<=30)result[key]=n;
   }
+  const spouse=coded.optionalCandidates?.sourceSpouseIncome;
+  if(coded.year===2025&&coded.sourceIndicators?.hasSpouse===true&&Number.isSafeInteger(spouse)&&spouse>0&&spouse<=1330000)result.sourceSpouseIncome=spouse;
   const moveIn=coded.optionalCandidates?.mortgageMoveInYear;
   if(coded.year===2025&&coded.sourceIndicators?.hasMortgage===true&&!coded.sourceIndicators?.hasNonstandardConditions&&
      Number.isSafeInteger(moveIn)&&moveIn>=2014&&moveIn<=2025)result.mortgageMoveInYear=moveIn;

@@ -65,7 +65,7 @@
     }
     if(form.dataset.ocrSourceIndicators){
       // Strict whitelist prevents a malformed local marker from weakening HOLD.
-      var recognized=["hasLifeInsurance","hasEarthquakeInsurance",
+      var recognized=["hasSpouse","hasLifeInsurance","hasEarthquakeInsurance",
         "hasMortgage","hasIncomeAdjustment","hasDependents",
         "hasNonstandardConditions"];
       input.sourceIndicators={};
@@ -74,6 +74,7 @@
           key:"hasNonstandardConditions"]=true;
       });
     }
+    if(form.dataset.ocrSpouseIncome!==undefined)input.sourceSpouseIncomeHint=strictYen(form.dataset.ocrSpouseIncome);
     if(form.dataset.ocrFamilyCountHints!==undefined){
       try{input.sourceFamilyCountHints=JSON.parse(form.dataset.ocrFamilyCountHints);}
       catch(_){input.sourceFamilyCountHints=null;}
@@ -439,6 +440,7 @@
         social:strictYen(input.sourceOriginalSocial),deductions:strictYen(input.sourceOriginalDeductions),
         indicators:indicators,
         ...(input.sourceFamilyCountHints!==undefined?{countHints:input.sourceFamilyCountHints}:{}),
+        ...(input.sourceSpouseIncomeHint!==undefined?{spouseIncomeHint:input.sourceSpouseIncomeHint}:{}),
         spouse:sourceSpouse,relatives:sourceRelatives,
         reviewed:sf.reviewed,...(si?{premiums:sourcePremiums,insuranceReviewed:true}:{}),
         ...(so?{otherDeductions:sourceOther,otherReviewed:true,sourceContributionYen:sourceOther.smallEnterpriseContributions}:{}),
@@ -847,7 +849,7 @@
   }
   function resetSourceFamily(){
     document.getElementById("familyCopyStatus").textContent="";
-    delete form.dataset.ocrFamilyCountHints;
+    delete form.dataset.ocrFamilyCountHints;delete form.dataset.ocrSpouseIncome;
     document.getElementById("sourceFamilyCountHints").textContent="";
     document.getElementById("premiumCopyStatus").textContent="";
     form.elements.namedItem("medicalNetPaidYen").value="";
@@ -951,7 +953,7 @@
     var flags=(form.dataset.ocrSourceIndicators||"").split(",");
     var imported=!!form.dataset.ocrYear;
     var sourceHigh=Number(form.dataset.ocrOriginalGross)>8500000,targetHigh=strictYen(get("salaryGross").value.trim())>8500000;
-    var family=get("hasSpouse").checked||get("hasDependents").checked||flags.includes("hasDependents");
+    var family=get("hasSpouse").checked||get("hasDependents").checked||flags.includes("hasDependents")||flags.includes("hasSpouse");
     var insurance=get("hasLifeInsurance").checked||get("hasEarthquakeInsurance").checked||
       flags.includes("hasLifeInsurance")||flags.includes("hasEarthquakeInsurance");
     if(family||targetHigh||sourceHigh)openOptional("familyPanelFold");
@@ -1040,7 +1042,7 @@
     form.classList.remove("deduction-override-active");
     if(overrideNotice)overrideNotice.hidden=true;
     delete form.dataset.ocrYear;
-    delete form.dataset.ocrFamilyCountHints;
+    delete form.dataset.ocrFamilyCountHints;delete form.dataset.ocrSpouseIncome;
     document.getElementById("sourceFamilyCountHints").textContent="";
     delete form.dataset.ocrOriginalGross;
     delete form.dataset.ocrOriginalIncome;

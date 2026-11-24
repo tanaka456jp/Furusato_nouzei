@@ -112,6 +112,7 @@
     safeAmount(review.candidates[k])).map(k=>[k,review.candidates[k]]));
   // Frozen source-year snapshot, separate from editable forecast amounts.
   row.originalCandidates=Object.freeze({...row.candidates});
+  if(review.year===2025&&review.eligibleForManualTransfer===true&&row.sourceIndicators.hasSpouse===true&&Number.isSafeInteger(review.optionalCandidates?.sourceSpouseIncome)&&review.optionalCandidates.sourceSpouseIncome>0&&review.optionalCandidates.sourceSpouseIncome<=1330000)row.spouseIncomeHint=review.optionalCandidates.sourceSpouseIncome;
   // Read-only hints: no ages, incomes, household rows or attestations invented.
   if(review.year===2025&&review.eligibleForManualTransfer===true&&row.sourceIndicators.hasDependents===true){
    row.familyCountHints=Object.freeze(Object.fromEntries(["familySpecificCount","familyElderlyCount","familyOtherCount","familySpecialRelativeCount","familyUnder16Count"].filter(k=>Number.isSafeInteger(review.optionalCandidates?.[k])&&review.optionalCandidates[k]>0&&review.optionalCandidates[k]<=30).map(k=>[k,review.optionalCandidates[k]])));
@@ -141,7 +142,7 @@
  // made outside the normal UI event path.
  function snapshot(row){
   return JSON.stringify([row.page,row.label,row.year,row.sourceYear,row.candidates,
-    row.originalCandidates,row.sourceIndicators,row.familyCountHints,row.sourceValid,row.deductionsOverrideActive,
+    row.originalCandidates,row.sourceIndicators,row.familyCountHints,row.spouseIncomeHint,row.sourceValid,row.deductionsOverrideActive,
     row.confirmed,row.noExclusions,row.forecastReviewed,row.municipality,row.filing,row.trialInput,
     row.originalYear,row.familySourceText,row.familyTargetText,row.familyReviewed,row.insuranceReviewed,row.otherReviewed,...OTHER_FIELDS.map(k=>row[k]),...MEDICAL_FIELDS.map(k=>row[k]),row.highReviewed,...HIGH_FIELDS.map(k=>row[k]),row.mortgageReviewed,...MORTGAGE_FIELDS.map(k=>row[k]),
     ...PREMIUM_FIELDS.map(k=>row[k])]);
@@ -317,6 +318,7 @@
     salaryIncome:o.salaryIncomeReference,social:o.socialInsurance,deductions:o.deductionsReference,
     indicators,...source,reviewed:true,
     ...(Object.keys(row.familyCountHints||{}).length?{countHints:row.familyCountHints}:{}),
+    ...(row.spouseIncomeHint!==undefined?{spouseIncomeHint:row.spouseIncomeHint}:{}),
     ...(insured?{premiums:sourcePremiums,insuranceReviewed:true}:{}),
     ...(other?{otherDeductions:sourceOther,otherReviewed:true,sourceContributionYen:sourceOther.smallEnterpriseContributions}:{}),
     ...(sourceHigh?{adjustmentFacts:sourceFacts,sourceBasicYen:sourceBasic,sourceAdjustmentYen:sourceAdjustment,adjustmentReviewed:true}:{})},engine);

@@ -130,4 +130,13 @@ assert.equal(secondary.sourceIndicators.hasNonstandardConditions,true);
 assert.equal(g.review([...parts,...counts,countToken(187.22,"99")]).optionalCandidates.familySpecificCount,undefined);
 assert.equal(g.review([...parts,...counts,countToken(187.22,"0")]).optionalCandidates.familySpecificCount,undefined);
 assert.equal(g.verifiedOptional({...family,year:2026},{...family,year:2026}).familySpecificCount,undefined);
+// G43 is read only with matching heading and neighbouring slot.
+const spouseSlots=[["G43",270.13,352.95,11],["G44",374.31,368.89,11],["配偶者の合計所得",298.59,384.88,44],["720000",337.72,352.33,36]].map(([str,x,y,width])=>({str,transform:[1,0,0,1,x,y],width}));
+const spouseReview=g.review([...parts,...spouseSlots]);
+assert.equal(spouseReview.optionalCandidates.sourceSpouseIncome,720000);
+assert.equal(spouseReview.sourceIndicators.hasSpouse,true);
+assert.equal(g.verifiedOptional(spouseReview,spouseReview).sourceSpouseIncome,720000);
+assert.equal(g.review([...parts,...spouseSlots.filter(x=>x.str!=="G44")]).optionalCandidates.sourceSpouseIncome,undefined);
+assert.equal(g.review([...parts,...spouseSlots,{...spouseSlots[3],str:"800000"}]).optionalCandidates.sourceSpouseIncome,undefined);
+assert.equal(g.verifiedOptional({...spouseReview,year:2026},{...spouseReview,year:2026}).sourceSpouseIncome,undefined);
 console.log("PUBLIC_PDF_GCODES_EVERY_DIGIT_POSITION_SYNTHETIC_PASS");

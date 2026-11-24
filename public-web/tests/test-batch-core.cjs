@@ -644,5 +644,16 @@ batch.edit(familyCopy,"familySourceText","なし");batch.edit(familyCopy,"otherT
 assert.equal(batch.copySourceFamily(familyCopy),false);
 batch.edit(familyCopy,"otherTargetText","");assert.equal(batch.copySourceFamily(familyCopy),true);
 assert.equal(familyCopy.familyTargetText,"なし");
+// Spouse income is independent evidence, never a fabricated age.
+const spouseHintRow=fixture(1,{year:2025,eligibleForManualTransfer:true,sourceIndicators:{hasSpouse:true},candidates:{salaryGross:7000000,salaryIncomeReference:5200000,socialInsurance:1000000,deductionsReference:2010000},optionalCandidates:{sourceSpouseIncome:720000}},2026);
+assert.equal(spouseHintRow.spouseIncomeHint,720000);assert.equal(spouseHintRow.familySourceText,"");
+assert.equal(spouseHintRow.familyReviewed,false);
+batch.edit(spouseHintRow,"familySourceText","S,40,730000");batch.edit(spouseHintRow,"familyTargetText","S,41,730000");
+Object.assign(spouseHintRow,{confirmed:true,noExclusions:true,forecastReviewed:true,familyReviewed:true});
+runFamily(spouseHintRow);assert.equal(spouseHintRow.status,"HOLD");assert.equal(spouseHintRow.donationLimitYen,null);
+assert.match(spouseHintRow.reason,/G43/);
+batch.edit(spouseHintRow,"familySourceText","S,40,720000");
+Object.assign(spouseHintRow,{confirmed:true,noExclusions:true,forecastReviewed:true,familyReviewed:true});
+runFamily(spouseHintRow);assert.notEqual(spouseHintRow.donationLimitYen,null);
 dom.window.close();
 console.log("PUBLIC_BATCH_PER_PAGE_LOCAL_SAFETY_SYNTHETIC_PASS; no private slips; no deploy");
