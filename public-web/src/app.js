@@ -345,7 +345,7 @@
     var f=input.familyDetails,year=Number(input.year),gross=strictYen(input.salaryGross),social=strictYen(input.socialInsurance);
     var file=document.getElementById("slipFile");
     if(!f||!f.reviewed||!input.acknowledgedExclusions)
-      return fail("家族明細と適用条件を確認してください。");
+      return fail(input.mortgageDetails?"住宅借入金等特別控除・家族明細・適用条件を確認してください。":"家族明細と適用条件を確認してください。");
     if(input.sourceReviewPending||(form.dataset.ocrReviewPending==="true"&&
        !(form.dataset.ocrManualReviewRequired==="true"&&form.elements.namedItem("correctedSourceReviewed").checked))||
        (file&&file.files&&file.files.length))
@@ -355,7 +355,7 @@
        input.sourceOriginalDeductions!==undefined;
     var original=null,ip=input.insuranceDetails,si=input.sourceInsurance,od=input.otherDetails,so=input.sourceOtherDetails,md=input.medicalDetails,hd=input.mortgageDetails;
     var housing=null,housingSource=null;
-    if(hd&&(!imported||hd.reviewed!==true))return fail("住宅ローン控除は原票を取り込み、控除額・入居年・継続適用を確認してください。");
+    if(hd&&(!imported||hd.reviewed!==true))return fail("住宅借入金等特別控除（住宅ローン控除）は原票を取り込み、控除額・入居年・継続適用を確認してください。");
     var ad=input.adjustmentDetails,high=gross!==null&&gross>8500000;
     if((ad&&!high)||(high&&(!ad||!ad.reviewed||!od||!od.reviewed||!ip||!ip.reviewed)))
       return fail("高額給与の所得金額調整控除・その他所得控除・保険料を確認してください。");
