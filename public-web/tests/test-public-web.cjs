@@ -715,5 +715,44 @@ m1.querySelector('[data-medical="paid"]').dispatchEvent(new Event("input",{bubbl
 assert.equal(field("medicalReviewed").checked,false);assert.equal(view.hidden,true);
 form.reset();assert.equal(document.getElementById("medicalGroups").children.length,0);
 assert.equal(field("medicalMethod").value,"");assert.equal(field("medicalReviewed").checked,false);
+// High salary manual UI: derived income, independent adjustment witnesses,
+ // no high salary imported source until the source UI is connected.
+field("year").value="2026";field("municipality").value="standard";
+field("salaryGross").value="9000000";field("socialInsurance").value="1000000";
+function attestHigh(){for(const name of ["familyReviewed","insuranceReviewed","otherReviewed","adjustmentReviewed","acknowledgedExclusions"])field(name).checked=true;}
+attestHigh();field("adjustmentReviewed").checked=false;rawSubmit();assert.equal(view.className,"result hold");
+field("adjustmentReviewed").checked=true;rawSubmit();assert.equal(view.className,"result",view.textContent);
+const highValues=()=>Object.fromEntries([...view.querySelectorAll("details dt")].map(dt=>[dt.textContent,dt.nextElementSibling.textContent]));
+assert.equal(highValues()["所得金額調整控除後の給与所得"],"7,050,000円");
+assert.equal(highValues()["所得金額調整控除"],"0円");
+field("hasIncomeAdjustment").checked=true;rawSubmit();assert.equal(view.className,"result hold");
+document.getElementById("adjustmentAdd").click();
+const extra=document.querySelector("#adjustmentRelatives .adjustment-relative");
+extra.querySelector('[data-adjustment="age"]').value="10";
+extra.querySelector('[data-adjustment="income"]').value="0";
+attestHigh();rawSubmit();assert.equal(view.className,"result",view.textContent);
+assert.equal(highValues()["所得金額調整控除"],"50,000円");
+assert.equal(highValues()["所得金額調整控除後の給与所得"],"7,000,000円");
+assert.equal(highValues()["所得税家族控除"],"0円");
+field("salaryIncomeReference").value="7050000";rawSubmit();assert.equal(view.className,"result hold");
+field("salaryIncomeReference").value="";
+field("salaryGross").value="20000000";rawSubmit();assert.equal(view.className,"result",view.textContent);
+assert.equal(highValues()["所得金額調整控除"],"150,000円");
+assert.equal(highValues()["所得金額調整控除後の給与所得"],"17,900,000円");
+field("salaryGross").value="20000001";rawSubmit();assert.equal(view.className,"result hold");
+field("salaryGross").value="20000000";
+form.dataset.ocrYear="2025";rawSubmit();assert.equal(view.className,"result hold");delete form.dataset.ocrYear;
+field("hasMedical").checked=true;field("medicalMethod").value="ordinary";field("filing").value="return";
+addMedical("300000","0");attestHigh();field("medicalReviewed").checked=true;
+rawSubmit();assert.equal(view.className,"result",view.textContent);
+assert.equal(highValues()["医療費控除額（所得税・住民税）"],"200,000円");
+assert.equal(highValues()["ワンストップ参考上限"],undefined);
+field("filing").value="one-stop";rawSubmit();assert.equal(view.className,"result hold");
+field("filing").value="return";rawSubmit();assert.equal(view.className,"result");
+extra.querySelector('[data-adjustment="age"]').value="23";
+extra.querySelector('[data-adjustment="age"]').dispatchEvent(new Event("input",{bubbles:true}));
+assert.equal(field("adjustmentReviewed").checked,false);assert.equal(view.hidden,true);
+form.reset();assert.equal(document.getElementById("adjustmentRelatives").children.length,0);
+assert.equal(field("adjustmentReviewed").checked,false);
 dom.window.close();
 console.log("PUBLIC_WEB_STATIC_AND_BROWSER_SYNTHETIC_PASS; no network; ads off; deploy off");

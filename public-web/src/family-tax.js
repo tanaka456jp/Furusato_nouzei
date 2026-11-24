@@ -145,7 +145,9 @@
  function medicalFilingCalculation(input){
   if(input?.conditions!=="salary-basic-social-family-insurance-other-medical-filing-reviewed")
    return hold("医療費控除の確定申告条件を確認してください");
-  const ref=calculateCore(input,true);
+  return filingDisplay(calculateCore(input,true));
+ }
+ function filingDisplay(ref){
   if(ref.status!=="ESTIMATE")return ref;
   const {exactReferenceYen,roundedReferenceYen,city,prefecture,...rest}=ref.calculation;
   const {referenceLimitYen:cityRef,...cityDetails}=city;
@@ -220,6 +222,11 @@
   return calculateCore({...tax,year:adj.year,salaryIncome:facts.salaryIncomeAfterAdjustmentYen},filing,facts);
  }
  function highSalaryCalculate(request){return highCore(request,false);}
+ function highSalaryMedicalFilingCalculation(request){
+  if(request?.tax?.conditions!=="salary-basic-social-family-insurance-other-medical-filing-reviewed")
+   return hold("医療費控除の確定申告条件を確認してください");
+  return filingDisplay(highCore(request,true));
+ }
  function highSalaryFilingTrial(request,donation){
   const ref=highCore(request,true);
   if(ref.status!=="ESTIMATE")return ref;
@@ -242,5 +249,5 @@
   return {status:"ESTIMATE",donationLimitYen:ceiling,release:"HOLD",calculation:{
    ...medicalFilingMetadata(c),salaryAdjustment:c.salaryAdjustment,firstFailureYen:firstFailure,stopOnFirstFailure:true}};
  }
- return Object.freeze({calculate,medicalFilingCalculation,filingTrial,filingPrefix,highSalaryCalculate,highSalaryFilingTrial,highSalaryFilingPrefix});
+ return Object.freeze({calculate,medicalFilingCalculation,filingTrial,filingPrefix,highSalaryCalculate,highSalaryMedicalFilingCalculation,highSalaryFilingTrial,highSalaryFilingPrefix});
 }));
