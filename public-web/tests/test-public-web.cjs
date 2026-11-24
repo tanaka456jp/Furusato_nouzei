@@ -406,5 +406,45 @@ dom.window.dispatchEvent(new Event("beforeprint"));
 assert.equal(view.className,"result hold");
 assert.equal(view.querySelector(".amount"),null);
 form.reset();
+// Filing trial is independent of the primary one-stop reference.
+field("year").value="2026";field("filing").value="one-stop";
+field("salaryGross").value="7000000";field("socialInsurance").value="1000000";
+field("municipality").value="standard";field("acknowledgedExclusions").checked=true;
+field("donationTrial").value="120000";rawSubmit();
+assert.equal(view.className,"result");
+assert.equal(view.querySelector(".amount").textContent,"109,000円");
+const trialView=()=>view.querySelector(".filing-trial");
+function trialValue(label){
+ const item=[...trialView().querySelectorAll("dt")].find(x=>x.textContent===label);
+ return item?.nextElementSibling?.textContent;
+}
+assert.equal(trialValue("試算寄附額"),"120,000円");
+assert.equal(trialValue("実質自己負担見込額"),"9,104円");
+assert.equal(trialValue("2,000円超過額"),"7,104円");
+assert.equal(trialValue("所得税（寄附前）"),"278,500円");
+assert.equal(trialValue("所得税（寄附後）"),"254,900円");
+assert.equal(trialValue("住民税所得割（寄附後）"),"287,700円");
+field("donationTrial").value="3000";
+field("donationTrial").dispatchEvent(new Event("input",{bubbles:true}));
+assert.equal(view.hidden,true);
+rawSubmit();
+assert.equal(trialValue("試算寄附額"),"3,000円");
+assert.equal(trialValue("実質自己負担見込額"),"1,896円");
+assert.equal(trialValue("2,000円超過額"),"0円");
+// A silent amount mutation must prevent printing the previous trial.
+field("donationTrial").value="5000";
+dom.window.dispatchEvent(new Event("beforeprint"));
+assert.equal(view.className,"result hold");
+assert.equal(view.querySelector(".filing-trial"),null);
+field("donationTrial").value="1999";rawSubmit();
+assert.equal(view.className,"result");
+assert.match(trialView().textContent,/任意寄附額の試算：HOLD/);
+assert.equal(trialValue("実質自己負担見込額"),undefined);
+field("donationTrial").value="";rawSubmit();
+assert.equal(trialValue("試算寄附額"),"109,000円");
+field("hasMortgage").checked=true;rawSubmit();
+assert.equal(view.className,"result hold");
+assert.equal(view.querySelector(".filing-trial"),null);
+form.reset();
 dom.window.close();
 console.log("PUBLIC_WEB_STATIC_AND_BROWSER_SYNTHETIC_PASS; no network; ads off; deploy off");
