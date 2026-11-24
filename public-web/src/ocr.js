@@ -623,6 +623,12 @@
       // not silently erase a positive finding.
       if(coded&&coded.sourceIndicators&&Object.keys(coded.sourceIndicators).length)
         result.sourceIndicators=Object.assign({},coded.sourceIndicators);
+      // Only copy optional numeric candidates when the independently read
+      // source year and all four required amounts match the selected route.
+      if(window.FurusatoPdfGCodes?.verifiedOptional){
+        const optional=window.FurusatoPdfGCodes.verifiedOptional(coded,result);
+        if(Object.keys(optional).length)result.optionalCandidates=optional;
+      }
       if(includeRecipient&&extracted&&!extracted.emptyTextLayer&&
          window.FurusatoBatchName&&
          typeof window.FurusatoBatchName.extract==="function"){
@@ -696,6 +702,13 @@
       li.textContent=field.label+"："+r.candidates[field.key].toLocaleString("ja-JP")+"円";
       ul.appendChild(li);
     });
+    const optionalLabels={mortgageSourceApplied:"住宅借入金等特別控除額（G29）",sourceBasicYen:"基礎控除額（G46）",sourceAdjustmentYen:"所得金額調整控除額（G47）"};
+    for(const [key,label] of Object.entries(optionalLabels)){
+      const n=r.optionalCandidates?.[key];
+      if(Number.isSafeInteger(n)&&n>=0){
+        const li=document.createElement("li");li.textContent=label+"："+n.toLocaleString("ja-JP")+"円（原票照合候補）";ul.appendChild(li);
+      }
+    }
     report.appendChild(ul);
     var y=document.createElement("p");
     y.textContent="所得年："+r.year+"年（申告年分と一致することを確認）";
@@ -827,6 +840,16 @@
     // DOM, never in logs/network or the exported result. They are stable
     // audit evidence after the user changes forecast figures.
     form.dispatchEvent(new Event("family-source-reset"));
+    // Prefill reviewed candidates only. Do not infer missing values as zero
+    // or check a review checkbox; original and target conditions still need confirmation.
+    const high=review.candidates.salaryGross>8500000;
+    for(const [key,name,max,active] of [
+      ["mortgageSourceApplied","mortgageSourceApplied",600000,review.sourceIndicators?.hasMortgage===true],
+      ["sourceBasicYen","sourceAdjustment_basic",1040000,high],
+      ["sourceAdjustmentYen","sourceAdjustment_amount",150000,high]]){
+      const n=review.optionalCandidates?.[key],field=form.elements.namedItem(name);
+      if(active&&field&&Number.isSafeInteger(n)&&n>=0&&n<=max)field.value=String(n);
+    }
     form.dataset.ocrOriginalGross=String(review.candidates.salaryGross);
     form.dataset.ocrOriginalIncome=String(review.candidates.salaryIncomeReference);
     form.dataset.ocrOriginalSocial=String(review.candidates.socialInsurance);

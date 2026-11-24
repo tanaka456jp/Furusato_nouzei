@@ -546,5 +546,19 @@ const mortgageMed=mortgageFixture();batch.edit(mortgageMed,"medicalNetPaidYen","
  mortgageMed.confirmed=true;mortgageMed.noExclusions=true;mortgageMed.forecastReviewed=true;mortgageMed.mortgageReviewed=true;
  runFamily(mortgageMed);assert.equal(mortgageMed.status,"前年参考概算",mortgageMed.reason);
  assert.equal(mortgageMed.comparison.oneStop,null);assert.equal(mortgageMed.medicalSummary.nationalDeductionYen,200000);
+// Review-only G-code numeric prefills. No confirmation is inherited.
+const autoHigh=fixture(1,{year:2025,eligibleForManualTransfer:true,sourceIndicators:{hasMortgage:true,hasIncomeAdjustment:true},
+ candidates:{salaryGross:9000000,salaryIncomeReference:7000000,socialInsurance:1000000,deductionsReference:1580000},
+ optionalCandidates:{sourceBasicYen:580000,sourceAdjustmentYen:50000,mortgageSourceApplied:50000}},2026);
+assert.equal(autoHigh.sourceBasicYen,"580000");assert.equal(autoHigh.sourceAdjustmentYen,"50000");
+assert.equal(autoHigh.mortgageSourceApplied,"50000");assert.equal(autoHigh.mortgageSourcePossible,"");
+assert.equal(autoHigh.confirmed,false);assert.equal(autoHigh.highReviewed,false);assert.equal(autoHigh.mortgageReviewed,false);
+runFamily(autoHigh);assert.equal(autoHigh.status,"HOLD");assert.equal(autoHigh.donationLimitYen,null);
+const optionalLow=fixture(1,{...basic2026,optionalCandidates:{sourceBasicYen:670000,sourceAdjustmentYen:0,mortgageSourceApplied:200000}});
+assert.equal(optionalLow.sourceBasicYen,"");assert.equal(optionalLow.sourceAdjustmentYen,"");assert.equal(optionalLow.mortgageSourceApplied,"");
+const malformedOptional=fixture(1,{year:2025,eligibleForManualTransfer:true,sourceIndicators:{hasMortgage:true},
+ candidates:{salaryGross:9000000,salaryIncomeReference:7050000,socialInsurance:1000000,deductionsReference:1580000},
+ optionalCandidates:{sourceBasicYen:"580000",sourceAdjustmentYen:-1,mortgageSourceApplied:600001}},2026);
+assert.equal(malformedOptional.sourceBasicYen,"");assert.equal(malformedOptional.sourceAdjustmentYen,"");assert.equal(malformedOptional.mortgageSourceApplied,"");
 dom.window.close();
 console.log("PUBLIC_BATCH_PER_PAGE_LOCAL_SAFETY_SYNTHETIC_PASS; no private slips; no deploy");

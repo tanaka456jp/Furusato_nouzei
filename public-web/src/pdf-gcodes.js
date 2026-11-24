@@ -23,6 +23,7 @@
   G27:"hasLifeInsurance",G28:"hasEarthquakeInsurance",
   G29:"hasMortgage",G47:"hasIncomeAdjustment",G74:"hasDependents"
  });
+ const REVIEW_AMOUNTS=Object.freeze({G29:["mortgageSourceApplied",600000],G46:["sourceBasicYen",1040000],G47:["sourceAdjustmentYen",150000]});
  const CODES=Object.freeze(["L01",...Object.keys(FIELDS)]);
  const token=/^[0-9,]$/;
  function spansOf(items){
@@ -111,15 +112,43 @@
    const amount=optionalAmount(marks[0]);
    if(amount!==null&&amount>0)sourceIndicators[flag]=true;
   }
+  const optionalCandidates={};
+  // Unlike a positive warning flag, a prefilled amount must have an
+  // unambiguous numeric representation. Reject overlapping representations,
+  // duplicate compact tokens and conflicting nearby digit sequences.
+  for(const [code,[key,max]] of Object.entries(REVIEW_AMOUNTS)){
+   const marks=anchors(spans,code);
+   if(marks.length!==1)continue;
+   const anchor=marks[0];
+   const nearby=spans.filter(i=>Math.abs(i.y-anchor.y)<=3.5&&i.x-anchor.x>=45&&i.x-anchor.x<=125&&/^[0-9,]+$/.test(i.s));
+   const compact=nearby.filter(i=>i.s.length>1);
+   const digits=nearby.filter(i=>i.s.length===1);
+   if(compact.length>1||(compact.length&&digits.length))continue;
+   const amount=optionalAmount(anchor);
+   if(amount!==null&&amount<=max)optionalCandidates[key]=amount;
+  }
   return {
    schema:"furusato-positioned-gcodes/v1",
    status:"REQUIRES_SOURCE_REVIEW",year,
    candidates, // Each numeric field independently validated; missing fields stay blank.
    sourceIndicators, // Only categorical flags; no raw OCR or identifying fields.
+   optionalCandidates, // Review-only, never evidence of an absent deduction.
    reasons,
    eligibleForManualTransfer:reasons.length===0,
    autoApproved:false,originalCompared:false
   };
  }
- return Object.freeze({review});
+ function verifiedOptional(coded,selected){
+  if(!coded?.eligibleForManualTransfer||!selected?.eligibleForManualTransfer||
+     ![2025,2026].includes(coded.year)||coded.year!==selected.year||
+     Object.values(FIELDS).some(k=>!Number.isSafeInteger(coded.candidates?.[k])||coded.candidates[k]!==selected.candidates?.[k]))
+   return {};
+  const result={};
+  for(const [key,max] of Object.values(REVIEW_AMOUNTS)){
+   const n=coded.optionalCandidates?.[key];
+   if(Number.isSafeInteger(n)&&n>=0&&n<=max)result[key]=n;
+  }
+  return result;
+ }
+ return Object.freeze({review,verifiedOptional});
 }));

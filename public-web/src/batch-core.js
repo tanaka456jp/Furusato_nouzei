@@ -112,6 +112,11 @@
     safeAmount(review.candidates[k])).map(k=>[k,review.candidates[k]]));
   // Frozen source-year snapshot, separate from editable forecast amounts.
   row.originalCandidates=Object.freeze({...row.candidates});
+  if(review.eligibleForManualTransfer===true){
+   for(const [key,max,active] of [["mortgageSourceApplied",600000,row.sourceIndicators.hasMortgage===true],["sourceBasicYen",1040000,isHigh(row.originalCandidates.salaryGross)],["sourceAdjustmentYen",150000,isHigh(row.originalCandidates.salaryGross)]]){
+    const n=review.optionalCandidates?.[key];if(active&&Number.isSafeInteger(n)&&n>=0&&n<=max)row[key]=String(n);
+   }
+  }
   row.sourceValid=review.eligibleForManualTransfer===true&&
     [2025,2026].includes(row.year)&&
     FIELDS.every(k=>safeAmount(row.candidates[k]));
