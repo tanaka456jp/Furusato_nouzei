@@ -43,7 +43,7 @@
   return items.filter(i=>typeof i?.str==="string"&&i.str.length>0&&
    i.str.length<=36&&Array.isArray(i.transform)&&i.transform.length===6&&
    Number.isFinite(i.transform[4])&&Number.isFinite(i.transform[5])&&
-   Number.isFinite(i.width)&&i.width>=0&&i.width<=70)
+   Number.isFinite(i.width)&&i.width>=0&&(i.width<=70||(i.str==="住宅借入金等特別控除可能額"&&i.width<=80)))
    .map(i=>({s:i.str,x:i.transform[4],y:i.transform[5],w:i.width}));
  }
  function anchors(spans,code){
