@@ -95,5 +95,68 @@
     incomeCapYen:incomeCap,exactReferenceYen:exactReference,roundedReferenceYen:rounded},
     donationLimitYen:rounded,release:"HOLD"};
  }
- return Object.freeze({calculate,oneStopReference});
+ // Exact-yen national tax liability (not year-end withholding or
+ // payment balance), and separately rounded municipal tax liabilities.
+ // Salary-only, no other donations, no tax credits or housing.
+ // https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1155.htm
+ // https://www.city.matsudo.chiba.jp/kurashi/zeikin_top/kojiin/shikenminzei/kihu.html
+ function nationalTax(taxable){
+  const base=taxable<=1950000?taxable*5/100:
+   taxable<=3300000?taxable*10/100-97500:taxable*20/100-427500;
+  const reconstruction=Math.floor(base*21/1000);
+  return {taxable,incomeTax:base,reconstruction,total:base+reconstruction};
+ }
+ function filingTrial(input,donation){
+  const ref=oneStopReference(input);
+  if(ref.status!=="ESTIMATE")return ref;
+  const c=ref.calculation;
+  // Stay inside the currently audited local 30% donation scope. Do not
+  // silently clamp a larger requested donation and report a false net cost.
+  if(!Number.isSafeInteger(donation)||donation<2000||donation>c.incomeCapYen)
+   return hold("試算寄附額は2,000円以上・給与所得の30%以内の整数で入力してください");
+  const base=donation-2000;
+  const basic=input.year===2025?
+   (input.salaryIncome<=1320000?950000:input.salaryIncome<=3360000?880000:input.salaryIncome<=4890000?680000:630000):
+   (input.salaryIncome<=4890000?1040000:670000);
+  const before=nationalTax(c.nationalTaxableYen);
+  const after=nationalTax(Math.floor(Math.max(0,input.salaryIncome-basic-input.socialInsurance-base)/1000)*1000);
+  // Each local credit: basic plus capped special, rounded UP to one yen.
+  // Preserve the pre-final-rounding levy as in the shared filing engine.
+  // 500,000 units per yen avoids binary fractional-yen decisions.
+  function part(p,share){
+   const before100=Math.round(p.beforeRoundingYen*100);
+   const special=Math.min(before100*1000,base*c.specialDenominator*share);
+   const regular=base*share*10000;
+   const credit=Math.floor((regular+special+499999)/500000);
+   const assessedAfter=Math.max(0,Math.floor((before100-credit*100)/10000))*100;
+   return {beforeYen:p.assessedYen,afterYen:assessedAfter,creditYen:credit,
+     savingYen:p.assessedYen-assessedAfter};
+  }
+  const share=input.municipality==="standard"?3:4;
+  const city=part(c.city,share),prefecture=part(c.prefecture,5-share);
+  const nationalSaving=before.total-after.total;
+  const localSaving=city.savingYen+prefecture.savingYen;
+  const net=donation-nationalSaving-localSaving;
+  return {status:"ESTIMATE",calculation:{donationYen:donation,municipality:input.municipality,
+   nationalBefore:before,nationalAfter:after,city,prefecture,
+   nationalSavingYen:nationalSaving,residentSavingYen:localSaving,
+   selfPayYen:net,excessOver2000Yen:Math.max(0,net-2000),
+   within2000:net<=2000},release:"HOLD"};
+ }
+ function filingPrefix(input){
+  const ref=oneStopReference(input);
+  if(ref.status!=="ESTIMATE")return ref;
+  // Stop on first failed thousand-yen candidate: a later rounded tax
+  // bill can pass again, so binary search is not a valid strict-prefix proof.
+  let ceiling=2000,firstFailure=null;
+  for(let d=3000;d<=ref.calculation.incomeCapYen;d+=1000){
+   const trial=filingTrial(input,d);
+   if(trial.status!=="ESTIMATE")return trial;
+   if(!trial.calculation.within2000){firstFailure=d;break;}
+   ceiling=d;
+  }
+  return {status:"ESTIMATE",donationLimitYen:ceiling,
+   calculation:{firstFailureYen:firstFailure,stopOnFirstFailure:true},release:"HOLD"};
+ }
+ return Object.freeze({calculate,oneStopReference,filingTrial,filingPrefix});
 }));
