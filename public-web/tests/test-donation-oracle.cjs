@@ -1188,3 +1188,105 @@ assert.equal(familyTax.calculate({...familyTaxInput,salaryIncome:7000000}).statu
 assert.equal(familyTax.calculate({...familyTaxInput,salaryAdjustmentYen:50000}).status,"HOLD");
 console.log(JSON.stringify({schema:"web-salary-adjustment/v1",salaryAdjustmentCases,salaryAdjustmentHoldCases,
  independentLiteralCases:true,donationIntegrated:false,uiIntegrated:false,release:"HOLD"}));
+
+// High salary integration: the salary adjustment is derived from gross and
+// independent eligibility, not an externally supplied adjusted income.
+const highTax={socialAndContributions:800000,municipality:"standard",spouse:null,relatives:[],
+ conditions:"salary-basic-social-family-insurance-other-only-reviewed",premiums:{...premiumsZero},
+ otherDeductions:{disability:{self:"none",spouse:"none",relatives:[]},
+  maritalRelief:"none",childIndex:null,workingStudent:false,smallEnterpriseContributions:100000}};
+const highBase={adjustment:{...adjBase,relatives:[adjMember(10,0)]},tax:highTax};
+let highCases=0,highTrials=0,highHoldCases=0;
+for(const year of [2025,2026])for(const municipality of ["standard","designated"]){
+ for(const [gross,qualifies,income,social] of [
+  [8500000,true,6550000,800000],[8500001,true,6550000,800000],
+  [8500001,false,6550001,800000],[9000000,true,7000000,800000],
+  [9000000,false,7050000,800000],[10000000,true,7900000,800000],
+  [10000000,false,8050000,0],[10000000,false,8050000,480000],
+  [10000000,false,8050000,480001],[10000000,false,8050000,520000],
+  [10000000,false,8050000,520001]
+ ]){
+  const input={adjustment:{...adjBase,year,grossSalary:gross,relatives:qualifies?[adjMember(10,0)]:[]},
+   tax:{...highTax,municipality,socialAndContributions:social,
+    otherDeductions:{...highTax.otherDeductions,smallEnterpriseContributions:Math.min(100000,social)}}};
+  const basic=income<=6550000?(year===2025?630000:670000):(year===2025?580000:620000);
+  const nDed=basic+social,rDed=430000+social;
+  const nTax=Math.floor((income-nDed)/1000)*1000,rTax=Math.floor((income-rDed)/1000)*1000;
+  const specialBase=rTax-50000-(basic-480000),rate=specialBase<=6950000?20:23;
+  const ratio=BigInt(90000-rate*1021),shares=municipality==="standard"?[3n,2n]:[4n,1n];
+  const raw=shares.map(s=>BigInt(rTax)*s*2n-50000n*s);
+  const assessed=raw.map(x=>x/10000n*100n);
+  const tax=x=>{
+   const national=x<=1950000n?x*5n/100n:x<=3300000n?x*10n/100n-97500n:
+    x<=6950000n?x*20n/100n-427500n:x*23n/100n-636000n;
+   return national+national*21n/1000n;
+  };
+  const result=familyTax.highSalaryCalculate(input);assert.equal(result.status,"ESTIMATE",result.reason);
+  const c=result.calculation;
+  assert.deepEqual([c.salaryAdjustment.salaryIncomeAfterAdjustmentYen,c.nationalBasicYen,c.nationalDeductionsYen,
+   c.residentDeductionsYen,c.nationalTaxableYen,c.residentTaxableYen,c.residentSpecialBaseYen,
+   c.specialRatePercent,c.nationalBefore.total,c.adjustmentYen,c.city.assessedYen,c.prefecture.assessedYen],
+   [income,basic,nDed,rDed,nTax,rTax,specialBase,rate,Number(tax(BigInt(nTax))),2500,...assessed.map(Number)]);
+  const limits=shares.map((s,i)=>2000n+assessed[i]*100000n/(ratio*s));
+  assert.equal(result.donationLimitYen,Math.floor(Math.min(...limits.map(Number))/1000)*1000);
+  function oracle(d){
+   const base=BigInt(d)-2000n;
+   // Use the unfloored national base; odd gross and social amounts matter.
+   const afterBase=BigInt(income-nDed)-base;
+   const after=afterBase>0n?afterBase/1000n*1000n:0n;
+   const ns=tax(BigInt(nTax))-tax(after);
+   const local=shares.map((s,i)=>{
+    const a=base*ratio*s,cap=raw[i]*1000n;
+    const credit=(base*s*10000n+(a<cap?a:cap)+499999n)/500000n;
+    const remaining=raw[i]-credit*100n;
+    return assessed[i]-(remaining>0n?remaining/10000n*100n:0n);
+   });
+   return [ns,...local,BigInt(d)-ns-local[0]-local[1]].map(Number);
+  }
+  for(const d of [2000,2001,2999,3000,100000,result.donationLimitYen,result.donationLimitYen+1000,300000]){
+   const a=familyTax.highSalaryFilingTrial(input,d);assert.equal(a.status,"ESTIMATE",a.reason);
+   const x=a.calculation;
+   assert.deepEqual([x.nationalSavingYen,x.city.savingYen,x.prefecture.savingYen,x.selfPayYen],oracle(d));
+   highTrials++;
+  }
+  let ceiling=2000;
+  for(let d=3000;d<=Math.floor(income*3/10);d+=1000){if(oracle(d)[3]>2000)break;ceiling=d;}
+  assert.equal(familyTax.highSalaryFilingPrefix(input).donationLimitYen,ceiling);
+  highCases++;
+ }
+}
+// A claimed dependent is only a subset of the adjustment witnesses.
+// An unclaimed child can still qualify the taxpayer for salary adjustment.
+const claimed={...highBase,tax:{...highTax,relatives:[relative(10,0)],
+ otherDeductions:{...highTax.otherDeductions,disability:{self:"none",spouse:"none",relatives:["none"]}}}};
+assert.equal(familyTax.highSalaryCalculate(claimed).status,"ESTIMATE");
+assert.equal(familyTax.highSalaryCalculate(highBase).calculation.salaryAdjustment.salaryAdjustmentYen,50000);
+const highMedical={...highBase,tax:{...highTax,
+ conditions:"salary-basic-social-family-insurance-other-medical-filing-reviewed",
+ medicalDeductions:{method:"ordinary",groups:[medicalGroup(200000)],conditions:medicalBase.conditions}}};
+assert.equal(familyTax.highSalaryCalculate(highMedical).status,"HOLD");
+assert.equal(familyTax.highSalaryFilingTrial(highMedical,100000).calculation.medical.nationalDeductionYen,100000);
+assert.equal(familyTax.highSalaryFilingPrefix(highMedical).calculation.oneStopAllowed,false);
+for(const bad of [
+ {...highBase,adjustment:{...highBase.adjustment,grossSalary:10000001}},
+ {...highBase,adjustment:{...highBase.adjustment,grossSalary:8499999}},
+ {...highBase,tax:{...highTax,salaryIncome:7000000}},
+ {...highBase,tax:{...highTax,year:2026}},
+ {...highBase,adjustment:{...highBase.adjustment,selfSpecialDisability:true}},
+ {...highBase,tax:{...highTax,spouse:spouse(0)}},
+ {...claimed,adjustment:{...claimed.adjustment,relatives:[]}},
+ {...claimed,tax:{...claimed.tax,relatives:[relative(10,0),relative(10,0)],
+  otherDeductions:{...claimed.tax.otherDeductions,disability:{self:"none",spouse:"none",relatives:["none","none"]}}}},
+ {...highBase,tax:{...highTax,otherDeductions:{...highTax.otherDeductions,smallEnterpriseContributions:800001}}},
+ {...highBase,adjustment:{...highBase.adjustment,conditions:"unreviewed"}},
+ {...highBase,tax:{...highTax,hasMortgage:true}},
+ {...highBase,tax:{...highTax,conditions:"salary-basic-social-family-only-reviewed"}}
+]){
+ for(const result of [familyTax.highSalaryCalculate(bad),familyTax.highSalaryFilingTrial(bad,3000),familyTax.highSalaryFilingPrefix(bad)]){
+  assert.equal(result.status,"HOLD");assert.equal(result.donationLimitYen,null);assert.equal(result.calculation,null);
+ }
+ highHoldCases++;
+}
+assert.equal(familyTax.calculate({...familyTaxInput,salaryIncome:7000000}).status,"HOLD");
+console.log(JSON.stringify({schema:"web-high-salary-tax-integration/v1",highCases,highTrials,highHoldCases,
+ independentBigInt:true,highGrossMax:10000000,uiIntegrated:false,actualExcelCOM:false,release:"HOLD"}));

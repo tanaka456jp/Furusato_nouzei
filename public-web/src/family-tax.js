@@ -10,22 +10,22 @@
  * https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1155.htm
  */
 (function(root,factory){
- if(typeof module==="object"&&module.exports)module.exports=factory(require("./family-deductions.js"),require("./insurance-deductions.js"),require("./other-deductions.js"),require("./medical-deductions.js"));
- else root.FurusatoFamilyTax=factory(root.FurusatoFamilyDeductions,root.FurusatoInsuranceDeductions,root.FurusatoOtherDeductions,root.FurusatoMedicalDeductions);
-}(typeof window!=="undefined"?window:this,function(family,insurance,other,medical){
+ if(typeof module==="object"&&module.exports)module.exports=factory(require("./family-deductions.js"),require("./insurance-deductions.js"),require("./other-deductions.js"),require("./medical-deductions.js"),require("./salary-adjustment.js"));
+ else root.FurusatoFamilyTax=factory(root.FurusatoFamilyDeductions,root.FurusatoInsuranceDeductions,root.FurusatoOtherDeductions,root.FurusatoMedicalDeductions,root.FurusatoSalaryAdjustment);
+}(typeof window!=="undefined"?window:this,function(family,insurance,other,medical,salaryAdjustment){
  const valid=(n,max)=>Number.isSafeInteger(n)&&n>=0&&n<=max;
  const hold=reason=>({status:"HOLD",reason,calculation:null,donationLimitYen:null,release:"HOLD"});
  const floor1000=n=>Math.floor(Math.max(0,n)/1000)*1000;
  const basic=(year,income)=>year===2025?
-  (income<=1320000?950000:income<=3360000?880000:income<=4890000?680000:630000):
-  (income<=4890000?1040000:670000);
+  (income<=1320000?950000:income<=3360000?880000:income<=4890000?680000:income<=6550000?630000:580000):
+  (income<=4890000?1040000:income<=6550000?670000:620000);
  function national(taxable){
   const incomeTax=taxable<=1950000?taxable*5/100:
-   taxable<=3300000?taxable*10/100-97500:taxable*20/100-427500;
+   taxable<=3300000?taxable*10/100-97500:taxable<=6950000?taxable*20/100-427500:taxable*23/100-636000;
   const reconstruction=Math.floor(incomeTax*21/1000);
   return {taxable,incomeTax,reconstruction,total:incomeTax+reconstruction};
  }
- function calculateCore(input,filing){
+ function calculateCore(input,filing,highDetails=null){
   // The new path accepts the combined amount (G26), NEVER an ambiguous
   // socialInsurance amount. G25 is included in it, not an extra deduction.
   const withMedical=input?.conditions==="salary-basic-social-family-insurance-other-medical-filing-reviewed";
@@ -40,7 +40,7 @@
   if(withMedical)keys.push("medicalDeductions");
   if(!input||typeof input!=="object"||Array.isArray(input)||
     Object.keys(input).length!==keys.length||!keys.every(k=>Object.prototype.hasOwnProperty.call(input,k))||
-    ![2025,2026].includes(input.year)||!valid(input.salaryIncome,6550000)||
+    ![2025,2026].includes(input.year)||!valid(input.salaryIncome,highDetails?8050000:6550000)||
     !valid(withOther?input.socialAndContributions:input.socialInsurance,8500000)||!["standard","designated"].includes(input.municipality)||
     (!withInsurance&&input.conditions!=="salary-basic-social-family-only-reviewed")||!family||
     typeof family.calculate!=="function")
@@ -102,7 +102,7 @@
    Math.max(50000,difference-(localTaxable-2000000));
   const specialBase=localTaxable-difference-Math.max(0,nationalBasic-480000);
   if(specialBase<0)return hold("特例控除割合の適用区分を個別確認してください");
-  const specialRate=specialBase<=1950000?5:specialBase<=3300000?10:20;
+  const specialRate=specialBase<=1950000?5:specialBase<=3300000?10:specialBase<=6950000?20:23;
   const ratio=90000-specialRate*1021;
   const share=input.municipality==="standard"?3:4;
   function part(s){
@@ -124,7 +124,7 @@
   if(rounded<2000)return hold("寄附控除の参考上限を確認できません");
   return {status:"ESTIMATE",donationLimitYen:rounded,release:"HOLD",calculation:{
    year:input.year,residentYear:input.year+1,municipality:input.municipality,
-   family:c,...(withInsurance?{insurance:insuranceDetails}:{}),
+   ...(highDetails?{salaryAdjustment:highDetails}:{}),family:c,...(withInsurance?{insurance:insuranceDetails}:{}),
    ...(withOther?{other:otherDetails,socialInsuranceOnlyYen:socialOnly,socialAndContributionsYen:input.socialAndContributions}:{}),
    ...(withMedical?{medical:medicalDetails}:{}),
    nationalBasicYen:nationalBasic,nationalDeductionsYen:nationalDeductions,
@@ -183,5 +183,67 @@
   return {status:"ESTIMATE",donationLimitYen:ceiling,release:"HOLD",
     calculation:{...medicalFilingMetadata(ref.calculation),firstFailureYen:firstFailure,stopOnFirstFailure:true}};
  }
- return Object.freeze({calculate,filingTrial,filingPrefix});
+ // Explicit high-salary entry points: never accept an externally supplied
+ // adjusted income, and never widen the existing UI's reviewed conditions.
+ function highCore(request,filing){
+  const exact=(x,ks)=>x&&typeof x==="object"&&!Array.isArray(x)&&
+   Object.keys(x).length===ks.length&&ks.every(k=>Object.prototype.hasOwnProperty.call(x,k));
+  if(!exact(request,["adjustment","tax"])||!salaryAdjustment||
+     typeof salaryAdjustment.calculate!=="function")
+   return hold("給与収入・所得金額調整控除の事実と税額計算条件を確認してください");
+  const adj=request.adjustment,tax=request.tax;
+  const medicalClaim=tax?.conditions==="salary-basic-social-family-insurance-other-medical-filing-reviewed";
+  const keys=["socialAndContributions","municipality","spouse","relatives","conditions","premiums","otherDeductions"];
+  if(medicalClaim)keys.push("medicalDeductions");
+  if(!exact(tax,keys)||(!medicalClaim&&tax.conditions!=="salary-basic-social-family-insurance-other-only-reviewed")||
+     !adj||!valid(adj.grossSalary,10000000)||adj.grossSalary<8500000)
+   return hold("高額給与は850万円以上1,000万円以下の確認済み条件のみ試算できます");
+  const result=salaryAdjustment.calculate(adj);
+  if(result.status!=="COMPONENTS_ONLY")return hold(result.reason);
+  const facts=result.calculation,d=tax.otherDeductions?.disability;
+  const special=k=>k==="special"||k==="cohabitingSpecial";
+  if(!d||!Array.isArray(d.relatives)||!Array.isArray(tax.relatives)||
+     d.relatives.length!==tax.relatives.length||adj.selfSpecialDisability!==(d.self==="special"))
+   return hold("本人・扶養親族の特別障害者区分が一致しません");
+  if((tax.spouse===null)!==(adj.spouse===null)||
+     (tax.spouse!==null&&(!tax.spouse||tax.spouse.income!==adj.spouse.income||
+       special(d.spouse)!==adj.spouse.specialDisability)))
+   return hold("同一生計配偶者の所得・障害区分が一致しません");
+  // Claimed relatives must match distinct reviewed witnesses; witnesses not
+  // claimed here may be claimed by the other spouse for family deductions.
+  const available=adj.relatives.slice();
+  for(let i=0;i<tax.relatives.length;i++){
+   const member=tax.relatives[i];
+   if(!member)return hold("扶養親族の確認が必要です");
+   const j=available.findIndex(x=>x.age===member.age&&x.income===member.income&&
+      x.specialDisability===special(d.relatives[i]));
+   if(j<0)return hold("扶養親族と所得金額調整控除の確認明細が一致しません");
+   available.splice(j,1);
+  }
+  return calculateCore({...tax,year:adj.year,salaryIncome:facts.salaryIncomeAfterAdjustmentYen},filing,facts);
+ }
+ function highSalaryCalculate(request){return highCore(request,false);}
+ function highSalaryFilingTrial(request,donation){
+  const ref=highCore(request,true);
+  if(ref.status!=="ESTIMATE")return ref;
+  const c=ref.calculation;
+  const trial=trialFromCalculation(c,c.salaryAdjustment.salaryIncomeAfterAdjustmentYen,donation);
+  if(trial.status==="ESTIMATE")trial.calculation.salaryAdjustment=c.salaryAdjustment;
+  return trial;
+ }
+ function highSalaryFilingPrefix(request){
+  const ref=highCore(request,true);
+  if(ref.status!=="ESTIMATE")return ref;
+  const c=ref.calculation;
+  let ceiling=2000,firstFailure=null;
+  for(let d=3000;d<=c.incomeCapYen;d+=1000){
+   const trial=trialFromCalculation(c,c.salaryAdjustment.salaryIncomeAfterAdjustmentYen,d);
+   if(trial.status!=="ESTIMATE")return trial;
+   if(!trial.calculation.within2000){firstFailure=d;break;}
+   ceiling=d;
+  }
+  return {status:"ESTIMATE",donationLimitYen:ceiling,release:"HOLD",calculation:{
+   ...medicalFilingMetadata(c),salaryAdjustment:c.salaryAdjustment,firstFailureYen:firstFailure,stopOnFirstFailure:true}};
+ }
+ return Object.freeze({calculate,filingTrial,filingPrefix,highSalaryCalculate,highSalaryFilingTrial,highSalaryFilingPrefix});
 }));
