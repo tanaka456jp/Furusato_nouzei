@@ -1512,3 +1512,93 @@ console.log(JSON.stringify({schema:"web-high-salary-tax-integration/v1",highCase
  console.log(JSON.stringify({schema:"web-high-salary-source-reconciliation/v1",highSourceCases,highSourceHoldCases,
   g04g05g46g47Reviewed:true,g25IncludedInG26:true,sourceYearIndependent:true,uiIntegrated:false,release:"HOLD"}));
 }
+
+ // Separate rational oracle for continuing mortgage interaction. This is
+ // an independent calculation of synthetic amounts, NOT Excel COM evidence.
+ // NTA 1155, 1210; Yokohama city R8 tax credits:
+ // https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1155.htm
+ // https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1210.htm
+ // https://www.city.yokohama.lg.jp/kurashi/koseki-zei-hoken/zeikin/y-shizei/kojin-shiminzei-kenminzei/kojin-shiminzei-shosai/zeigakukoujoR8.html
+ {
+ const ft=require("../src/family-tax.js");
+ const min=(a,b)=>a<b?a:b,max=(a,b)=>a>b?a:b;
+ const ceil=(a,b)=>(a+b-1n)/b;
+ const down=n=>max(0n,n)/1000n*1000n;
+ function taxSlices(t){
+  let value=0n,lower=0n;
+  for(const [upper,rate] of [[1950000n,5n],[3300000n,10n],[6950000n,20n],[9000000n,23n],[18000000n,33n]]){
+   value+=max(0n,min(t,upper)-lower)*rate/100n;lower=upper;
+  }
+  return value;
+ }
+ // income, social, national basic (independently tabulated), medical net.
+ const inputs=[
+  [2025,2020000,450000,880000,0],
+  [2026,2020000,450000,1040000,0],
+  [2025,3560000,750000,680000,0],
+  [2026,3560000,750000,1040000,0],
+  [2025,5200000,1000000,630000,0],
+  [2026,5200000,1000000,670000,0],
+  [2026,5200000,1000000,670000,300000]
+ ];
+ function independentMortgage(input,housing,mode,donation){
+  const [year,income,social,basic,medicalNet]=input;
+  const I=BigInt(income),S=BigInt(social),B=BigInt(basic),D=BigInt(donation)-2000n;
+  const M=medicalNet===0?0n:min(2000000n,max(0n,BigInt(medicalNet)-min(100000n,I/20n)));
+  const localTaxable=down(I-S-430000n-M);
+  const specialBase=localTaxable-50000n-max(0n,B-480000n);
+  const ratio=specialBase<=1950000n?84895n:specialBase<=3300000n?79790n:69580n;
+  const rates=housing.capClass==="transitional7"?[7n,136500n]:[5n,97500n];
+  const shares= housing.municipality==="standard"?[3n,2n]:[4n,1n];
+  const potential=BigInt(housing.possibleYen);
+  function state(d){
+   const taxable=down(I-S-B-M-d),ordinary=taxSlices(taxable);
+   if(ordinary===0n)return null;
+   const credit=min(ordinary,potential),remainder=ordinary-credit;
+   const housingCap=min(rates[1],(taxable+(housing.moveInYear<=2025?max(0n,B-480000n):0n))*rates[0]/100n);
+   return {nationalCredit:credit,residentCredit:min(potential-credit,housingCap),housingCap,finalTax:remainder+remainder*21n/1000n};
+  }
+  const before=state(0n),after=state(mode==="return"?D:0n);
+  if(!before||!after)return null;
+  function bills(st,d,oneStop){
+   return shares.map(share=>{
+    // Independent rational units: 5,000,000 * ratio per yen.
+    const unit=5000000n*ratio;
+    const adjusted=(localTaxable*2n-min(localTaxable,50000n))*share*50000n*ratio;
+    const baseCredit=d*share*100000n*ratio;
+    const special=min(d*share*ratio*10n*ratio,adjusted/5n);
+    const supplemental=oneStop?special*(90000n-ratio)/ratio:0n;
+    const donationCredit=ceil(baseCredit+special+supplemental,unit);
+    const housingCredit=st.residentCredit*share*unit/5n;
+    return max(0n,adjusted-housingCredit-donationCredit*unit)/(unit*100n)*100n;
+   });
+  }
+  const beforeBills=bills(before,0n,false),afterBills=bills(after,D,mode==="one-stop");
+  const ns=before.finalTax-after.finalTax,rs=beforeBills[0]+beforeBills[1]-afterBills[0]-afterBills[1];
+  return [before.nationalCredit,before.residentCredit,before.housingCap,after.nationalCredit,after.residentCredit,after.housingCap,ns,rs,BigInt(donation)-ns-rs,...beforeBills,...afterBills].map(Number);
+ }
+ let trials=0,holds=0;
+ for(const input of inputs){
+  const [year,income,social,basic,medicalNet]=input;
+  for(const municipality of ["standard","designated"])
+  for(const [moveInYear,capClass] of [[2020,"standard5"],[2020,"transitional7"],[2026,"standard5"]])
+  for(const possibleYen of [10000,70000,180000,300000,500000])
+  for(const filing of ["one-stop","return"]){
+   if(moveInYear>year||(moveInYear===year&&filing==="one-stop")||(medicalNet&&filing==="one-stop"))continue;
+   const housing={moveInYear,capClass,possibleYen,eligibilityReviewed:true};
+   const tax={year,salaryIncome:income,socialInsurance:social,municipality,spouse:null,relatives:[],conditions:"salary-basic-social-family-only-reviewed",...(medicalNet?{medicalNetPaidYen:medicalNet}:{})};
+   for(const donation of [2000,3000,17000,50000,100000,200000]){
+    const out=ft.mortgageTrial({tax,housing,filing},donation);
+    const expected=independentMortgage(input,{...housing,municipality},filing,donation);
+    if(!expected){assert.equal(out.status,"HOLD");assert.equal(out.donationLimitYen,null);holds++;continue;}
+    assert.equal(out.status,"COMPONENTS_ONLY",JSON.stringify({input,housing,filing,donation}));
+    assert.equal(out.donationLimitYen,null);
+    const c=out.calculation;
+    const actual=[c.before.nationalHousingYen,c.before.residentHousingYen,c.before.localCapYen,c.after.nationalHousingYen,c.after.residentHousingYen,c.after.localCapYen,c.nationalSavingYen,c.residentSavingYen,c.selfPayYen,...c.localBefore,...c.localAfter.map(x=>x.assessedYen)];
+    assert.deepEqual(actual,expected,JSON.stringify({input,housing,filing,donation,municipality}));
+    trials++;
+   }
+  }
+ }
+ console.log(JSON.stringify({schema:"web-mortgage-independent-rational-oracle/v1",trials,holds,excelCOM:false,release:"HOLD"}));
+ }
