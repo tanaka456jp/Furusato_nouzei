@@ -49,8 +49,9 @@
   return el;
  }
  function render(){
-  const openFamilyRows=new Set([...body.children].map((tr,i)=>tr.querySelector(".batch-family-editor:not(.batch-insurance-editor) details")?.open?i:-1));
+  const openFamilyRows=new Set([...body.children].map((tr,i)=>tr.querySelector(".batch-family-editor:not(.batch-insurance-editor):not(.batch-other-editor) details")?.open?i:-1));
   const openInsuranceRows=new Set([...body.children].map((tr,i)=>tr.querySelector(".batch-insurance-editor details")?.open?i:-1));
+  const openOtherRows=new Set([...body.children].map((tr,i)=>tr.querySelector(".batch-other-editor details")?.open?i:-1));
   body.replaceChildren();
   table.hidden=rows.length===0;
   rows.forEach((r,i)=>{
@@ -194,6 +195,20 @@
    for(const k of ["sourceTotal","nationalLife","residentLife","nationalEarth","residentEarth"])
     cell(tr,isEstimate?yen(r.insuranceSummary?.[k]):"—","batch-insurance-result");
    cell(tr,isEstimate&&r.insuranceSummary?(r.insuranceSummary.enhanced?"適用":"対象外"):"—","batch-insurance-result");
+   const otherCell=cell(tr,"","batch-family-editor batch-other-editor");
+   const otherDetails=formControl("details");otherDetails.open=openOtherRows.has(i);
+   otherDetails.appendChild(formControl("summary",{text:"その他所得控除明細を入力・確認"}));
+   otherDetails.appendChild(formControl("p",{text:"該当なしは「なし」。本人,配偶者,寡婦等,子番号,学生,掛金,親族ごとの障害区分（家族明細順）。障害: none/ordinary/special/cohabitingSpecial。寡婦等: none/widowDivorced/widowBereaved/singleParentFather/singleParentMother。子なし=0、学生なし=0・あり=1、掛金は社会保険料等の内書き。例（親族なし）: ordinary,none,none,0,0,120000"}));
+   for(const [key,title] of [["otherSourceText","原票年"],["otherTargetText","試算年"]]){
+    const label=formControl("label",{text:title+"のその他所得控除"});
+    const field=formControl("textarea",{"data-row":String(i),"data-field":key,rows:"3",maxlength:"3000",autocomplete:"off","aria-label":"対象者 "+r.page+" "+title+"のその他所得控除"});
+    field.value=r[key];label.appendChild(field);otherDetails.appendChild(label);
+   }
+   const otherReview=formControl("label",{text:" 原票年・試算年の障害区分・婚姻・子・学校・所得・内書き掛金・全適用要件を確認済み"});
+   otherReview.prepend(formControl("input",{type:"checkbox","data-row":String(i),"data-field":"otherReviewed",checked:r.otherReviewed,"aria-label":"対象者 "+r.page+" のその他所得控除確認済み"}));
+   otherDetails.appendChild(otherReview);otherCell.appendChild(otherDetails);
+   for(const k of ["sourceTotal","sourceContribution","national","resident","contribution","socialOnly"])
+    cell(tr,isEstimate?yen(r.otherSummary?.[k]):"—","batch-other-result");
    for(const select of tr.querySelectorAll("select")){
     const span=document.createElement("span");span.className="batch-print-value";
     span.textContent=select.selectedOptions[0]?.textContent??"未確認";select.parentNode.appendChild(span);
@@ -293,7 +308,7 @@
   // and screenshots cannot retain an estimate for an edited recipient.
   const index=rows.indexOf(row),tr=body.children[index];
   if(tr){
-   const amounts=tr.querySelectorAll(".batch-result,.batch-deduction-applied,.batch-resident-levy,.batch-comparison,.batch-family-result,.batch-insurance-result");
+   const amounts=tr.querySelectorAll(".batch-result,.batch-deduction-applied,.batch-resident-levy,.batch-comparison,.batch-family-result,.batch-insurance-result,.batch-other-result");
    const reason=tr.querySelector(".batch-reason");
    amounts.forEach(el=>{el.textContent="—";});
    if(reason)reason.textContent="HOLD："+row.reason;
@@ -307,7 +322,7 @@
   const idx=Number(ev.target?.dataset?.row);
   const key=ev.target?.dataset?.field;
   if(!Number.isSafeInteger(idx)||!rows[idx])return;
-  if(key==="label"||key==="trialInput"||key==="familySourceText"||key==="familyTargetText"||core.PREMIUM_FIELDS.includes(key)||monetary.includes(key)){
+  if(key==="label"||key==="trialInput"||key==="familySourceText"||key==="familyTargetText"||(core.PREMIUM_FIELDS.includes(key)||core.OTHER_FIELDS.includes(key))||monetary.includes(key)){
    core.edit(rows[idx],key,ev.target.value);
    invalidateEditedRow(rows[idx]);
   }
@@ -317,20 +332,20 @@
   const key=ev.target?.dataset?.field;
   if(!Number.isSafeInteger(idx)||!rows[idx])return;
   const row=rows[idx];
-  if(key==="familySourceText"||key==="familyTargetText"||core.PREMIUM_FIELDS.includes(key)){
+  if(key==="familySourceText"||key==="familyTargetText"||(core.PREMIUM_FIELDS.includes(key)||core.OTHER_FIELDS.includes(key))){
    // The input listener already records typing; avoid replacing the editor
    // on blur, which could swallow a click on the confirmation checkbox.
    if(row[key]!==ev.target.value){core.edit(row,key,ev.target.value);invalidateEditedRow(row);}
    return;
   }
-  if(key==="label"||key==="trialInput"||core.PREMIUM_FIELDS.includes(key)||monetary.includes(key)){
+  if(key==="label"||key==="trialInput"||(core.PREMIUM_FIELDS.includes(key)||core.OTHER_FIELDS.includes(key))||monetary.includes(key)){
    core.edit(row,key,ev.target.value);
   }else if(key==="sourceYear"||key==="year"||key==="municipality"){
    core.edit(row,key,ev.target.value);
   }else if(key==="filing"&&["one-stop","return"].includes(ev.target.value)){
    row.filing=ev.target.value;
-   row.confirmed=false;row.noExclusions=false;row.forecastReviewed=false;row.familyReviewed=false;row.insuranceReviewed=false;
-  }else if(["confirmed","noExclusions","forecastReviewed","familyReviewed","insuranceReviewed"].includes(key)){
+   row.confirmed=false;row.noExclusions=false;row.forecastReviewed=false;row.familyReviewed=false;row.insuranceReviewed=false;row.otherReviewed=false;
+  }else if(["confirmed","noExclusions","forecastReviewed","familyReviewed","insuranceReviewed","otherReviewed"].includes(key)){
    row[key]=ev.target.checked===true;
   }else return;
   invalidateEditedRow(row);
@@ -365,7 +380,7 @@
    if(key==="year"&&row.year===null&&actual==="2026")continue;
    if(actual!==expected){
     if(element.type==="checkbox")row[key]=false;
-    else if(key==="filing"){row.filing=actual;row.confirmed=false;row.noExclusions=false;row.forecastReviewed=false;row.familyReviewed=false;row.insuranceReviewed=false;}
+    else if(key==="filing"){row.filing=actual;row.confirmed=false;row.noExclusions=false;row.forecastReviewed=false;row.familyReviewed=false;row.insuranceReviewed=false;row.otherReviewed=false;}
     else core.edit(row,key,actual);
     invalidateEditedRow(row);changed=true;
    }

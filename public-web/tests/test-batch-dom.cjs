@@ -13,6 +13,7 @@ win.eval(script("engine.js"));
 win.eval(script("resident-levy.js"));
 win.eval(script("family-deductions.js"));
 win.eval(script("insurance-deductions.js"));
+for(const name of ["other-deductions.js","medical-deductions.js","salary-adjustment.js"])win.eval(script(name));
 win.eval(script("family-tax.js"));
 win.eval(script("family-source.js"));
 win.eval(script("app.js"));
@@ -176,6 +177,21 @@ function type(idx,key,value){
  assert.equal(current().querySelector(".batch-result").textContent,"109,000円");
  assert.equal(choose(0,"insuranceReviewed").checked,false);
  assert.equal(d.getElementById("batchDownload").disabled,true);
+ reviews[0]={year:2025,eligibleForManualTransfer:true,sourceIndicators:{hasDisability:true},
+  candidates:{salaryGross:7000000,salaryIncomeReference:5200000,socialInsurance:1000000,deductionsReference:1900000}};
+ d.getElementById("batchScan").click();
+ for(let n=0;n<12&&d.querySelectorAll("#batchRows tr").length<2;n++)await new Promise(resolve=>setImmediate(resolve));
+ change(0,"municipality","standard");
+ for(const key of ["familySourceText","familyTargetText"])change(0,key,"なし");
+ for(const key of ["otherSourceText","otherTargetText"])change(0,key,"ordinary,none,none,0,0,120000");
+ for(const key of ["confirmed","noExclusions","forecastReviewed","familyReviewed","insuranceReviewed"])change(0,key,true);
+ d.getElementById("batchCalculate").click();assert.equal(d.querySelector("#batchRows tr .batch-result").textContent,"—");
+ change(0,"otherReviewed",true);d.getElementById("batchCalculate").click();
+ assert.deepEqual([...d.querySelectorAll("#batchRows tr:first-child .batch-other-result")].map(x=>x.textContent),
+  ["390,000円","120,000円","390,000円","380,000円","120,000円","880,000円"]);
+ choose(0,"otherSourceText").value="なし";win.dispatchEvent(new win.Event("beforeprint"));
+ assert.ok([...d.querySelectorAll("#batchRows tr:first-child .batch-other-result")].every(x=>x.textContent==="—"));
+ assert.equal(choose(0,"otherReviewed").checked,false);
  win.close();
  console.log("PUBLIC_WEB_EDITABLE_BATCH_DOM_FICTIONAL_NAME_2026_PASS");
 })().catch(e=>{console.error(e);process.exitCode=1;win.close();});

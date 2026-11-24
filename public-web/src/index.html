@@ -239,7 +239,7 @@
         <section class="aside-card">
           <p class="eyebrow">適用範囲</p>
           <h2>対応しない場合はHOLD</h2>
-          <p>給与2,000万円超、未確認の高額給与原票・家族・保険料控除、住宅ローン控除、その他所得、自治体差等は実務確認が必要です。家族・保険料控除・その他所得控除は手入力の限定検証です。その他所得控除の原票明細も別途確認してください。未解決のOCR検出条件はHOLDします。一括計算も確認済み保険料明細に対応します。入力を変更して停止理由を消すのではなく、税額を個別に確認してください。</p>
+          <p>給与2,000万円超、未確認の高額給与原票・家族・保険料控除、住宅ローン控除、その他所得、自治体差等は実務確認が必要です。家族・保険料控除・その他所得控除は手入力の限定検証です。その他所得控除の原票明細も別途確認してください。未解決のOCR検出条件はHOLDします。一括計算も確認済み保険料・その他所得控除明細に対応します（給与850万円以下、医療費控除・住宅ローン控除は未対応）。入力を変更して停止理由を消すのではなく、税額を個別に確認してください。</p>
         </section>
         <section class="aside-card">
           <p class="eyebrow">税制根拠</p>
@@ -279,7 +279,7 @@
             <th scope="col">対象年見込額を確認</th>
             <th scope="col">追加控除等の未対応条件なし</th>
             <th scope="col">前年参考額を当年見込額へ補正済み</th>
-            <th scope="col">寄附上限額の概算</th><th scope="col">状態</th><th scope="col">課税自治体区分</th><th scope="col">住民税所得割（選択自治体）</th><th scope="col">ワンストップ参考上限</th><th scope="col">確定申告参考上限（千円刻み）</th><th scope="col" class="batch-trial-input">試算寄附額入力（空欄は自動）</th><th scope="col">確定申告試算寄附額</th><th scope="col">確定申告自己負担見込額</th><th scope="col">2,000円超過額</th><th scope="col">任意寄附額試算状態</th><th scope="col" class="batch-family-editor">家族明細（原票年・試算年）</th><th scope="col">原票所得控除合計（家族照合済）</th><th scope="col">所得税家族控除</th><th scope="col">住民税家族控除</th><th scope="col" class="batch-family-editor batch-insurance-editor">保険料明細（原票年・試算年）</th><th scope="col">原票保険料控除合計（照合済）</th><th scope="col">所得税生命保険料控除</th><th scope="col">住民税生命保険料控除</th><th scope="col">所得税地震保険料控除</th><th scope="col">住民税地震保険料控除</th><th scope="col">23歳未満扶養親族の生命保険料特例</th>
+            <th scope="col">寄附上限額の概算</th><th scope="col">状態</th><th scope="col">課税自治体区分</th><th scope="col">住民税所得割（選択自治体）</th><th scope="col">ワンストップ参考上限</th><th scope="col">確定申告参考上限（千円刻み）</th><th scope="col" class="batch-trial-input">試算寄附額入力（空欄は自動）</th><th scope="col">確定申告試算寄附額</th><th scope="col">確定申告自己負担見込額</th><th scope="col">2,000円超過額</th><th scope="col">任意寄附額試算状態</th><th scope="col" class="batch-family-editor">家族明細（原票年・試算年）</th><th scope="col">原票所得控除合計（家族照合済）</th><th scope="col">所得税家族控除</th><th scope="col">住民税家族控除</th><th scope="col" class="batch-family-editor batch-insurance-editor">保険料明細（原票年・試算年）</th><th scope="col">原票保険料控除合計（照合済）</th><th scope="col">所得税生命保険料控除</th><th scope="col">住民税生命保険料控除</th><th scope="col">所得税地震保険料控除</th><th scope="col">住民税地震保険料控除</th><th scope="col">23歳未満扶養親族の生命保険料特例</th><th scope="col" class="batch-family-editor batch-other-editor">その他所得控除明細（原票年・試算年）</th><th scope="col">原票その他所得控除（掛金含む）</th><th scope="col">原票内書き掛金</th><th scope="col">所得税その他所得控除（掛金含む）</th><th scope="col">住民税その他所得控除（掛金含む）</th><th scope="col">試算内書き掛金</th><th scope="col">試算社会保険料（掛金除く）</th>
           </tr></thead>
           <tbody id="batchRows"></tbody>
         </table>

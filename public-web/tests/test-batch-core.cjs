@@ -359,7 +359,7 @@ assert.equal(insuredRow.donationLimitYen,51000);
 assert.equal(insuredRow.appliedDeductionsYen,3500000);
 assert.equal(batch.canOutputEstimate(insuredRow),true);
 assert.deepEqual(columns(insuredRow).slice(24,27),["3120000","1010000","780000"]);
-assert.deepEqual(columns(insuredRow).slice(27),["90000","60000","28000","50000","25000","適用"]);
+assert.deepEqual(columns(insuredRow).slice(27,33),["90000","60000","28000","50000","25000","適用"]);
 assert.equal(insuredRow.comparison.filing,10000);
 for(const mutate of [
  r=>{r.insuranceReviewed=false;},r=>{r.sourceInsurance_generalNew="0";},
@@ -367,7 +367,7 @@ for(const mutate of [
 ]){
  const r=insuredFixture();runFamily(r);assert.equal(batch.canOutputEstimate(r),true);
  mutate(r);assert.equal(batch.canOutputEstimate(r),false);
- assert.deepEqual(columns(r).slice(27),["","","","","",""]);
+ assert.deepEqual(columns(r).slice(27,33),["","","","","",""]);
 }
 for(const [key,value] of [["sourceInsurance_generalNew","0"],["targetInsurance_generalNew","bad"],
  ["targetInsurance_generalNew","-1"],["targetInsurance_generalNew","100000001"]]){
@@ -382,5 +382,29 @@ runFamily(same);assert.equal(same.status,"HOLD");
 batch.edit(insuredRow,"trialInput","60000");runFamily(insuredRow);
 assert.equal(insuredRow.comparison.trial.selfPay,9339);
 assert.equal(insuredRow.insuranceReviewed,true);
+// Other deductions: reviewed original-year total and G25 within G26.
+function otherFixture(){
+ const r=fixture(1,{year:2025,eligibleForManualTransfer:true,sourceIndicators:{hasDisability:true,hasSmallEnterpriseContributions:true},
+  candidates:{salaryGross:7000000,salaryIncomeReference:5200000,socialInsurance:1000000,deductionsReference:1900000}},2026);
+ for(const k of ["familySourceText","familyTargetText"])batch.edit(r,k,"なし");
+ for(const k of ["otherSourceText","otherTargetText"])batch.edit(r,k,"ordinary,none,none,0,0,120000");
+ attest(r);r.insuranceReviewed=true;r.otherReviewed=true;return r;
+}
+const otherRow=otherFixture();otherRow.otherReviewed=false;runFamily(otherRow);assert.equal(otherRow.status,"HOLD");
+otherRow.otherReviewed=true;runFamily(otherRow);assert.equal(otherRow.status,"前年参考概算",otherRow.reason);
+assert.equal(otherRow.appliedDeductionsYen,1940000);
+assert.deepEqual(columns(otherRow).slice(33),["390000","120000","390000","380000","120000","880000"]);
+assert.equal(batch.canOutputEstimate(otherRow),true);
+for(const mutate of [
+ r=>{r.otherReviewed=false;},r=>{r.otherSourceText="なし";},r=>{r.otherTargetText="なし";},r=>{r.sourceIndicators.hasMortgage=true;}
+]){
+ const r=otherFixture();runFamily(r);assert.equal(batch.canOutputEstimate(r),true);
+ mutate(r);assert.equal(batch.canOutputEstimate(r),false);
+ assert.deepEqual(columns(r).slice(33),["","","","","",""]);
+}
+for(const bad of ["ordinary,none,none,0,0,1000001","ordinary,none,none,0,0,-1","ordinary,none,none,0,0,120000,special","ordinary,none,none,1,0,120000"]){
+ const r=otherFixture();batch.edit(r,"otherTargetText",bad);attest(r);r.insuranceReviewed=true;r.otherReviewed=true;
+ runFamily(r);assert.equal(r.status,"HOLD");assert.equal(r.donationLimitYen,null);
+}
 dom.window.close();
 console.log("PUBLIC_BATCH_PER_PAGE_LOCAL_SAFETY_SYNTHETIC_PASS; no private slips; no deploy");
