@@ -24,7 +24,7 @@ function syntheticRasterFile(name,type="image/png",size=1024){
 const doc=new JSDOM(html,{url:"https://local-review.invalid/",runScripts:"outside-only"});
 const win=doc.window,dom=win.document;
 function evaluate(name){win.eval(fs.readFileSync(path.join(dir,name),"utf8"));}
-let external=0,calls=0,closed=0,recheckWrong=false,roiCalls=0;
+let external=0,calls=0,closed=0,recheckWrong=false,roiCalls=0,separateMode=false,separateConflict=false;
 win.fetch=()=>{external++;throw Error("REMOTE_REQUEST_FORBIDDEN");};
 win.createImageBitmap=async()=>({width:1200,height:800,close(){}});
 win.HTMLCanvasElement.prototype.getContext=function(){
@@ -45,12 +45,41 @@ const blocks=[{paragraphs:[{lines:lines.map((row,i)=>({
  text:row[1]+" "+row[2],
  bbox:{x0:80,y0:115+160*i,x1:770,y1:155+160*i}
 }))}]}];
+
+const tableText="令和8年分 給与所得の源泉徴収票\n支払金額\n給与所得控除後の金額\n所得控除の額の合計額\n源泉徴収税額\n7,000,000円\n5,200,000円\n1,670,000円\n285,800円\n社会保険料等の金額\n生命保険料の控除額\n1,000,000円";
+function tableBlocks(){
+ const line=(text,x0,y0,x1,y1)=>({text,bbox:{x0,y0,x1,y1}});
+ return [{paragraphs:[{lines:[
+  line("支払金額",90,200,230,224),
+  line("給与所得控除後の金額",320,200,500,224),
+  line("所得控除の額の合計額",590,200,770,224),
+  line("源泉徴収税額",880,200,1020,224),
+  line("7,000,000円",140,240,235,260),
+  line("5,200,000円",385,240,480,260),
+  line("1,670,000円",655,240,750,260),
+  line("285,800円",905,240,995,260),
+  line("社会保険料等の金額",100,400,250,424),
+  line("生命保険料の控除額",365,400,520,424),
+  line("1,000,000円",150,440,245,460)
+ ]}]}];
+}
 win.FurusatoImageQuality={assessCanvas:()=>({status:"REVIEW"})};
 win.FurusatoPerspective={tryRectify:()=>({status:"UNVERIFIED",canvas:null})};
 win.Tesseract={OEM:{LSTM_ONLY:1},createWorker:async()=>{
  roiCalls=0;
  return {recognize:async(_image,options,output)=>{
   calls++;
+  if(separateMode){
+   if(output?.blocks){
+    const geometry=tableBlocks();
+    if(separateConflict&&roiCalls===1)geometry[0].paragraphs[0].lines[4].text="7,100,000円";
+    roiCalls++;
+    return {data:{text:tableText,blocks:geometry,confidence:95}};
+   }
+   const idx=roiCalls-2;roiCalls++;
+   const value=lines[idx]?.[2];
+   return {data:{text:recheckWrong&&idx===2?"1,970,000円":value,confidence:94}};
+  }
   if(output?.blocks)return {data:{text:full,confidence:95,blocks}};
   // Immediately following global full OCR is the enhanced whole-page read.
   if(roiCalls===0){
@@ -97,6 +126,30 @@ async function main(){
  assert.equal(calls-before,6);
  assert.equal(transfer.disabled,true,"mismatched field reread must disable transfer");
  assert.match(dom.getElementById("slipReview").textContent,/HOLD|保留|停止/);
+ assert.equal(dom.getElementById("slipReview").textContent.includes("1,970,000"),false);
+ separateMode=true;recheckWrong=false;
+ file("separate.png");
+ const sepBefore=calls;
+ await run();
+ assert.equal(calls-sepBefore,6);
+ assert.equal(transfer.disabled,false);
+ assert.equal(form.elements.namedItem("salaryGross").value,"");
+ assert.equal(dom.getElementById("slipConfirm").checked,false);
+ transfer.click();
+ assert.equal(form.elements.namedItem("salaryGross").value,"");
+ separateConflict=true;
+ file("separate-disagree.png");
+ const badBefore=calls;
+ await run();
+ assert.equal(calls-badBefore,2);
+ assert.equal(transfer.disabled,true);
+ assert.equal(dom.getElementById("slipReview").textContent.includes("7,100,000"),false);
+ separateConflict=false;recheckWrong=true;
+ file("separate-crop-disagree.png");
+ const cropBefore=calls;
+ await run();
+ assert.equal(calls-cropBefore,6);
+ assert.equal(transfer.disabled,true);
  assert.equal(dom.getElementById("slipReview").textContent.includes("1,970,000"),false);
  assert.equal(external,0);
  doc.window.close();

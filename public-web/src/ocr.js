@@ -460,14 +460,46 @@
       ensureCurrent();
       var a=await worker.recognize(original,{}, {text:true,blocks:true});
       ensureCurrent();
-      var b=await worker.recognize(enhanced);
+      // Request enhanced geometry only if the first read has a strictly
+      // bounded, complete table plan. No added OCR pass for unrelated pages.
+      var regions=window.FurusatoOcrRegions;
+      var firstPlan=regions?.planSeparate?.(a?.data?.blocks,original.width,original.height,
+        window.FurusatoSlipReview.reviewText(a?.data?.text));
+      var b=firstPlan?.status==="READY"
+        ?await worker.recognize(enhanced,{}, {text:true,blocks:true})
+        :await worker.recognize(enhanced);
       ensureCurrent();
       // Whole-page OCR confidence includes irrelevant names/addresses.
       // Compare the required tax fields and tax year only, with no
       // identity-field recognition scoring or automatic approval.
       var compared=window.FurusatoSlipReview.compareAttempts(
         a?.data?.text,b?.data?.text);
-      // Do not use regional reads to invent fields or override global HOLD.
+      // Recover separate label/value rows only with matching complete
+      // table geometry and amounts from both passes, then crop rereads.
+      // Explicit year/field conflicts never qualify for this route.
+      if(!compared.eligibleForManualTransfer&&firstPlan?.status==="READY"){
+        const second=regions.planSeparate(b?.data?.blocks,enhanced.width,enhanced.height,
+          window.FurusatoSlipReview.reviewText(b?.data?.text));
+        const agreed=regions.agreeSeparate(firstPlan,second);
+        if(agreed.status!=="READY")return compared;
+        const values=[];
+        for(const region of agreed.rectangles){
+          ensureCurrent();
+          const crop=document.createElement("canvas");
+          try{
+            crop.width=region.width*3;crop.height=region.height*3;
+            const ctx=crop.getContext("2d");
+            if(!ctx)throw Error("FIELD_REGION_CANVAS_UNAVAILABLE");
+            ctx.fillStyle="#fff";ctx.fillRect(0,0,crop.width,crop.height);
+            ctx.drawImage(original,region.left,region.top,region.width,region.height,0,0,crop.width,crop.height);
+            const rec=await worker.recognize(crop);
+            ensureCurrent();
+            values.push({key:region.key,text:rec?.data?.text,confidence:rec?.data?.confidence});
+          }finally{crop.width=0;crop.height=0;}
+        }
+        const checked=regions.assessSeparate(values,agreed);
+        return checked.eligibleForManualTransfer===true?checked:compared;
+      }
       // If the original OCR returns exact positions for all four labels,
       // re-read the four crops at 2x size and VETO disagreement.
       if(compared.eligibleForManualTransfer&&
