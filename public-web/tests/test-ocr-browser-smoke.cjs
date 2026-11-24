@@ -407,7 +407,7 @@ async function main(){
     ["109,000円","109,000円","3,000円","1,896円","0円"]);
   // Explicit family review of a synthetic no-family slip, then reject a
   // contradictory target-year family and leave the other taxpayer intact.
-  await firstRow.locator(".batch-family-editor summary").click();
+  await firstRow.locator(".batch-family-editor:not(.batch-insurance-editor) summary").click();
   await firstRow.locator('[data-field="familySourceText"]').fill("なし");
   await firstRow.locator('[data-field="familyTargetText"]').fill("なし");
   await firstRow.locator('[data-field="confirmed"]').check();
@@ -423,6 +423,30 @@ async function main(){
   await firstRow.locator('[data-field="confirmed"]').check();
   await firstRow.locator('[data-field="noExclusions"]').check();
   await firstRow.locator('[data-field="familyReviewed"]').check();
+  await page.locator("#batchCalculate").click();
+  assert.equal(await firstRow.locator(".batch-result").textContent(),"—");
+  assert.equal(await secondRow.locator(".batch-result").textContent(),"109,000円");
+  // Same-year synthetic no-insurance source: reviewed zeros must retain
+  // the existing reference, while conflicting original premiums HOLD.
+  await firstRow.locator('[data-field="familyTargetText"]').fill("なし");
+  await firstRow.locator(".batch-insurance-editor summary").click();
+  await firstRow.locator('[data-field="sourceInsurance_generalNew"]').fill("0");
+  await firstRow.locator('[data-field="targetInsurance_generalNew"]').fill("0");
+  await firstRow.locator('[data-field="confirmed"]').check();
+  await firstRow.locator('[data-field="noExclusions"]').check();
+  await firstRow.locator('[data-field="familyReviewed"]').check();
+  await firstRow.locator('[data-field="insuranceReviewed"]').check();
+  await page.locator("#batchCalculate").click();
+  assert.equal(await firstRow.locator(".batch-result").textContent(),"109,000円");
+  assert.deepEqual(await firstRow.locator(".batch-insurance-result").allTextContents(),["0円","0円","0円","0円","0円","対象外"]);
+  await firstRow.locator('[data-field="sourceInsurance_generalNew"]').fill("120000");
+  assert.equal(await firstRow.locator(".batch-result").textContent(),"—");
+  assert.equal(await firstRow.locator('[data-field="insuranceReviewed"]').isChecked(),false);
+  assert.equal(await secondRow.locator(".batch-result").textContent(),"109,000円");
+  await firstRow.locator('[data-field="confirmed"]').check();
+  await firstRow.locator('[data-field="noExclusions"]').check();
+  await firstRow.locator('[data-field="familyReviewed"]').check();
+  await firstRow.locator('[data-field="insuranceReviewed"]').check();
   await page.locator("#batchCalculate").click();
   assert.equal(await firstRow.locator(".batch-result").textContent(),"—");
   assert.equal(await secondRow.locator(".batch-result").textContent(),"109,000円");
