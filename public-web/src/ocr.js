@@ -119,6 +119,8 @@
     report.replaceChildren();report.hidden=true;
     delete form.dataset.ocrYear;
     delete form.dataset.ocrOriginalGross;
+    delete form.dataset.ocrOriginalIncome;
+    form.dispatchEvent(new Event("family-source-reset"));
     delete form.dataset.ocrOriginalSocial;
     delete form.dataset.ocrOriginalDeductions;
     delete form.dataset.ocrSourceIndicators;
@@ -824,7 +826,9 @@
     // The three arithmetic source values remain solely in this browser's
     // DOM, never in logs/network or the exported result. They are stable
     // audit evidence after the user changes forecast figures.
+    form.dispatchEvent(new Event("family-source-reset"));
     form.dataset.ocrOriginalGross=String(review.candidates.salaryGross);
+    form.dataset.ocrOriginalIncome=String(review.candidates.salaryIncomeReference);
     form.dataset.ocrOriginalSocial=String(review.candidates.socialInsurance);
     form.dataset.ocrOriginalDeductions=String(review.candidates.deductionsReference);
     form.dataset.ocrSourceIndicators=
