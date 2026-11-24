@@ -70,6 +70,9 @@
             <label>寄附金控除の手続き
               <select name="filing" required><option value="one-stop">ワンストップ特例</option><option value="return">確定申告</option></select>
             </label>
+            <label>課税自治体の税率区分 <small>寄附年の翌年1月1日現在の住所地。標準税率のみ対応。</small>
+              <select name="municipality" required><option value="">確認・選択してください</option><option value="standard">標準市町村（6%・4%）</option><option value="designated">政令指定都市（8%・2%）</option></select>
+            </label>
             <label>給与支払金額 <small>年収・源泉徴収票「支払金額」</small>
               <input type="text" inputmode="numeric" autocomplete="off" spellcheck="false" name="salaryGross" placeholder="例：7000000" maxlength="12" required>
             </label>
@@ -160,12 +163,12 @@
             <th scope="col">対象年見込額を確認</th>
             <th scope="col">追加控除等の未対応条件なし</th>
             <th scope="col">前年参考額を当年見込額へ補正済み</th>
-            <th scope="col">寄附上限額の概算</th><th scope="col">状態</th>
+            <th scope="col">寄附上限額の概算</th><th scope="col">状態</th><th scope="col">課税自治体区分</th><th scope="col">住民税所得割（選択自治体）</th>
           </tr></thead>
           <tbody id="batchRows"></tbody>
         </table>
       </div>
-      <p class="smallprint">各対象者の氏名・年分・見込額を確認し、原票照合と未対応条件確認の2つをチェックしてください。前年の源泉票を参考に翌年を試算するときだけ、さらに見込額補正の確認が必要です。未確認・未対応はHOLDで金額非表示。CSVは明示保存のみ生成し、氏名・所得・PDFはサーバーへ送信しません。端末上のCSV・印刷物には個人情報が残ります。</p>
+      <p class="smallprint">各対象者の課税自治体区分を個別に選択し、氏名・年分・見込額を確認し、原票照合と未対応条件確認の2つをチェックしてください。前年の源泉票を参考に翌年を試算するときだけ、さらに見込額補正の確認が必要です。未確認・未対応はHOLDで金額非表示。CSVは明示保存のみ生成し、氏名・所得・PDFはサーバーへ送信しません。端末上のCSV・印刷物には個人情報が残ります。</p>
     </section>
     <section class="explainer">
       <h2>試算前に知っておきたいこと</h2>
