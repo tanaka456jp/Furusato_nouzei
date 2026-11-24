@@ -123,3 +123,32 @@
 .optional-panel>summary,#mortgagePanel>summary{cursor:pointer;font-weight:600;padding:5px 0;overflow-wrap:anywhere}
 .optional-panel>.family-panel{margin:8px 0 0;border:0;padding:4px 0}
 @media print{.optional-panel{display:none!important}}
+
+/* One set of controls and one calculation snapshot in both layouts.
+   Never duplicate recipient inputs, results or print data. */
+.batch-mobile-hint{display:none}
+@media screen and (max-width:700px){
+ .batch-mobile-hint{display:block}
+ .batch-viewport{overflow:visible;min-width:0}
+ .batch-table:not([hidden]){display:block;width:100%;min-width:0;max-width:100%;background:transparent}
+ .batch-table caption{display:block;text-align:left;white-space:normal}
+ .batch-table thead{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);clip-path:inset(50%);white-space:nowrap;border:0}
+ .batch-table tbody{display:block;min-width:0}
+ .batch-table tbody tr{display:block;min-width:0;margin:0 0 18px;border:1px solid #cbdce7;border-radius:12px;overflow:hidden;background:white}
+ .batch-table tbody td{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;align-items:center;min-width:0!important;max-width:100%;padding:10px 12px;border:0;border-bottom:1px solid #e1e9ef;white-space:normal!important;text-align:left!important;overflow-wrap:anywhere;font-size:13px}
+ .batch-table tbody td::before{content:attr(data-column-label);font-weight:650;color:#344e5c;font-size:12px;line-height:1.5}
+ .batch-table tbody td:first-child{background:#e9f2f8;font-weight:750}
+ .batch-table tbody td:last-child{border-bottom:0}
+ .batch-table tbody td.batch-result{background:#f1f7fb;font-size:22px;font-weight:800;color:#0b5e91}
+ .batch-table tbody td.batch-reason{background:#f6f9fa;font-size:12px}
+ .batch-table tbody td[data-mobile-empty="true"]{display:none}
+ .batch-table tbody td:is(.batch-family-editor,.batch-medical-editor,.batch-high-editor,.batch-mortgage-editor){display:block;min-width:0!important}
+ .batch-table tbody td:is(.batch-family-editor,.batch-medical-editor,.batch-high-editor,.batch-mortgage-editor)::before{display:block;margin-bottom:8px}
+ .batch-table tbody td.batch-high-editor:has(details[hidden]){display:none}
+ .batch-table tbody td details{min-width:0}
+ .batch-table tbody td details>summary{cursor:pointer;padding:9px 0;font-size:14px;font-weight:650}
+ .batch-table tbody td input[type=text],.batch-table tbody td select,.batch-table tbody td textarea{min-width:0;width:100%;max-width:100%;font-size:16px;min-height:44px}
+ .batch-table tbody td input[type=checkbox]{width:24px;height:24px}
+ .batch-table tbody td button{max-width:100%;white-space:normal}
+ .batch-table tbody td .batch-override-tag{grid-column:1/-1}
+}

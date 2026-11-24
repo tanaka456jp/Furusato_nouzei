@@ -21,6 +21,10 @@
  const reader=window.FurusatoBatchPdf;
  if(!core||!reader)return;
  let rows=[],generation=0,running=false,computed=false;
+ const headerCells=[...table.querySelectorAll("thead th")];
+ headerCells.forEach((th,i)=>{th.id="batch-col-"+i;th.setAttribute("role","columnheader");});
+ const optionalMobileResults=".batch-family-result,.batch-insurance-result,.batch-other-result,.batch-medical-result,.batch-high-result,.batch-mortgage-result";
+ function refreshMobileEmpty(td){if(td.matches(optionalMobileResults))td.dataset.mobileEmpty=String(td.textContent==="—");}
  const monetary=["salaryGross","salaryIncomeReference",
   "deductionsReference","socialInsurance"];
  const yen=v=>Number.isSafeInteger(v)?
@@ -246,6 +250,14 @@
     const span=document.createElement("span");span.className="batch-print-value";
     span.textContent=select.selectedOptions[0]?.textContent??"未確認";select.parentNode.appendChild(span);
    }
+   // The mobile layout uses the very same editable cells and audit snapshot.
+   // Header text is static UI copy, never derived from source documents.
+   tr.setAttribute("role","row");
+   [...tr.children].forEach((td,i)=>{
+    const heading=headerCells[i];
+    if(heading){td.setAttribute("headers",heading.id);td.dataset.columnLabel=heading.textContent.trim();}
+    td.setAttribute("role","cell");refreshMobileEmpty(td);
+   });
    body.appendChild(tr);
   });
   updateButtons();
@@ -344,7 +356,7 @@
    const amounts=tr.querySelectorAll(".batch-result,.batch-deduction-applied,.batch-resident-levy,.batch-comparison,.batch-family-result,.batch-insurance-result,.batch-other-result,.batch-medical-result,.batch-high-result,.batch-mortgage-result");
    const highDetails=tr.querySelector(".batch-high-editor details");if(highDetails)highDetails.hidden=!core.highActive(row);
    const reason=tr.querySelector(".batch-reason");
-   amounts.forEach(el=>{el.textContent="—";});
+   amounts.forEach(el=>{el.textContent="—";refreshMobileEmpty(el);});
    if(reason)reason.textContent="HOLD："+row.reason;
    for(const checkbox of tr.querySelectorAll('input[type="checkbox"][data-field]'))
     checkbox.checked=row[checkbox.dataset.field]===true;

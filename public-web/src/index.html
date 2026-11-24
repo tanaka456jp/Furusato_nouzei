@@ -294,10 +294,11 @@
       </div>
       <p id="batchStatus" role="status" aria-live="polite">PDFを選択するとページごとに確認できます。確認が終わっていない方の限度額は表示しません。</p>
       <p class="smallprint">家族明細は1人1行で入力します。配偶者は S,年齢,年間合計所得（円）、親族は R,年齢,年間合計所得（円）,同居老親等（該当1・非該当0）。例：S,40,600000 または R,20,600000,0。該当者がいない年は「なし」と入力します。原票年と試算年を個別に入力し、居住者・生計同一・重複控除なし等を確認してください。家族控除なしの従来計算では両方空欄で構いません。保険料控除を使う場合は家族がいない年も「なし」と明示し、原票年・試算年の年間保険料を各区分に入力してください（空欄は0円）。地震保険と旧長期損害保険の両方に該当する同一契約は共通の適用区分を確認済みの場合だけ片方に入力してください。</p>
+      <p class="batch-mobile-hint">スマートフォンでは対象者ごとの縦型表示になります。必要な控除の詳細を開いて確認してください。PCでは一覧表のまま表示します。</p>
       <div class="batch-viewport">
-        <table id="batchTable" class="batch-table" hidden>
+        <table id="batchTable" class="batch-table" role="table" hidden>
           <caption>源泉徴収票の個別試算一覧（HOLDは金額非表示）</caption>
-          <thead><tr>
+          <thead role="rowgroup"><tr role="row">
             <th scope="col">ページ</th><th scope="col">氏名（訂正可）</th>
             <th scope="col">参照源泉票年</th><th scope="col">試算対象年</th>
             <th scope="col">支払金額（見込額）</th>
@@ -309,7 +310,7 @@
             <th scope="col">前年参考額を当年見込額へ補正済み</th>
             <th scope="col">寄附上限額の概算</th><th scope="col">状態</th><th scope="col">課税自治体区分</th><th scope="col">住民税所得割（選択自治体）</th><th scope="col">ワンストップ参考上限</th><th scope="col">確定申告参考上限（千円刻み）</th><th scope="col" class="batch-trial-input">試算寄附額入力（空欄は自動）</th><th scope="col">確定申告試算寄附額</th><th scope="col">確定申告自己負担見込額</th><th scope="col">2,000円超過額</th><th scope="col">任意寄附額試算状態</th><th scope="col" class="batch-family-editor">家族明細（原票年・試算年）</th><th scope="col">原票所得控除合計（家族照合済）</th><th scope="col">所得税家族控除</th><th scope="col">住民税家族控除</th><th scope="col" class="batch-family-editor batch-insurance-editor">保険料明細（原票年・試算年）</th><th scope="col">原票保険料控除合計（照合済）</th><th scope="col">所得税生命保険料控除</th><th scope="col">住民税生命保険料控除</th><th scope="col">所得税地震保険料控除</th><th scope="col">住民税地震保険料控除</th><th scope="col">23歳未満扶養親族の生命保険料特例</th><th scope="col" class="batch-family-editor batch-other-editor">その他所得控除明細（原票年・試算年）</th><th scope="col">原票その他所得控除（掛金含む）</th><th scope="col">原票内書き掛金</th><th scope="col">所得税その他所得控除（掛金含む）</th><th scope="col">住民税その他所得控除（掛金含む）</th><th scope="col">試算内書き掛金</th><th scope="col">試算社会保険料（掛金除く）</th><th scope="col" class="batch-medical-editor">医療費支払額（補填後・任意）</th><th scope="col">医療費控除額（所得税・住民税）</th><th scope="col">補填後の医療費支払額</th><th scope="col">医療費控除の足切額</th><th scope="col" class="batch-high-editor">高額給与の確認（該当者のみ）</th><th scope="col">原票基礎控除額（G46）</th><th scope="col">原票所得金額調整控除額（G47）</th><th scope="col">試算年基礎控除額</th><th scope="col">試算年所得金額調整控除額</th><th scope="col">試算年調整後給与所得</th><th scope="col" class="batch-mortgage-editor">住宅ローン控除（該当者のみ）</th><th scope="col">原票住宅ローン控除額（照合済）</th><th scope="col">試算住宅ローン控除可能額</th><th scope="col">寄附前所得税住宅ローン控除</th><th scope="col">寄附前住民税住宅ローン控除</th>
           </tr></thead>
-          <tbody id="batchRows"></tbody>
+          <tbody id="batchRows" role="rowgroup"></tbody>
         </table>
       </div>
       <p class="smallprint">任意寄附額の空欄はワンストップ参考上限を使用します。自己負担額は確定申告した場合の参考値です。各対象者の課税自治体区分を個別に選択し、氏名・年分・見込額を確認し、原票照合と未対応条件確認の2つをチェックしてください。前年の源泉票を参考に翌年を試算するときだけ、さらに見込額補正の確認が必要です。未確認・未対応はHOLDで金額非表示。CSVは明示保存のみ生成し、氏名・所得・PDFはサーバーへ送信しません。端末上のCSV・印刷物には個人情報が残ります。</p>

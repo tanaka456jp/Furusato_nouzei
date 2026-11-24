@@ -63,6 +63,17 @@ function type(idx,key,value){
  for(let n=0;n<12&&d.querySelectorAll("#batchRows tr").length<2;n++)
   await new Promise(resolve=>setImmediate(resolve));
  assert.equal(d.querySelectorAll("#batchRows tr").length,2);
+ const headers=[...d.querySelectorAll("#batchTable th")];
+ for(const tr of d.querySelectorAll("#batchRows tr")){
+  assert.equal(tr.children.length,headers.length);
+  [...tr.children].forEach((td,i)=>{
+   assert.equal(td.dataset.columnLabel,headers[i].textContent.trim());
+   assert.equal(td.getAttribute("headers"),headers[i].id);
+   assert.equal(td.getAttribute("role"),"cell");
+  });
+ }
+ assert.equal(d.querySelector("#batchRows tr .batch-high-result").dataset.mobileEmpty,"true");
+ assert.equal(d.querySelector("#batchRows tr .batch-result").dataset.mobileEmpty,undefined);
  assert.equal(choose(0,"label").value,"架空一郎");
  assert.equal(choose(1,"label").value,"架空二郎");
  assert.equal(choose(0,"sourceYear").value,"2025");
@@ -220,10 +231,11 @@ function type(idx,key,value){
  const highFirst=d.querySelector("#batchRows tr");
  assert.notEqual(highFirst.querySelector(".batch-result").textContent,"—");
  assert.deepEqual([...highFirst.querySelectorAll(".batch-high-result")].map(x=>x.textContent),["580,000円","50,000円","620,000円","50,000円","7,000,000円"]);
+ assert.ok([...highFirst.querySelectorAll(".batch-high-result")].every(x=>x.dataset.mobileEmpty==="false"));
  assert.equal(highFirst.children.length,d.querySelectorAll("#batchTable th").length);
  choose(0,"sourceAdjustmentYen").value="0";win.dispatchEvent(new win.Event("beforeprint"));
  assert.equal(d.querySelector("#batchRows tr .batch-result").textContent,"—");
- assert.ok([...d.querySelectorAll("#batchRows tr:first-child .batch-high-result")].every(x=>x.textContent==="—"));
+ assert.ok([...d.querySelectorAll("#batchRows tr:first-child .batch-high-result")].every(x=>x.textContent==="—"&&x.dataset.mobileEmpty==="true"));
  // Housing credit source audit; a blank possible amount means full applied credit.
  reviews[0]={year:2025,eligibleForManualTransfer:true,sourceIndicators:{hasMortgage:true},candidates:{salaryGross:7000000,salaryIncomeReference:5200000,socialInsurance:1000000,deductionsReference:1630000}};
  d.getElementById("batchScan").click();
