@@ -67,6 +67,7 @@ dom.window.fetch=()=>{throw Error("no network allowed");};
 dom.window.eval(engine);
 dom.window.eval(fs.readFileSync(path.join(out,"resident-levy.js"),"utf8"));
 dom.window.eval(fs.readFileSync(path.join(out,"family-deductions.js"),"utf8"));
+dom.window.eval(fs.readFileSync(path.join(out,"insurance-deductions.js"),"utf8"));
 dom.window.eval(fs.readFileSync(path.join(out,"family-tax.js"),"utf8"));
 dom.window.eval(fs.readFileSync(path.join(out,"family-source.js"),"utf8"));
 dom.window.eval(app);
@@ -537,5 +538,67 @@ form.dispatchEvent(new Event("family-source-reset"));
 assert.equal(document.querySelectorAll("#sourceFamilyRelatives .family-relative").length,0);
 assert.equal(field("sourceSpouseAge").value,"");assert.equal(field("familyReviewed").checked,false);
 form.reset();assert.equal(form.dataset.ocrOriginalIncome,undefined);
+// Insurance-only manual calculation must also use explicitly reviewed family facts.
+field("year").value="2026";field("municipality").value="standard";
+field("salaryGross").value="7000000";field("socialInsurance").value="1000000";
+field("hasLifeInsurance").checked=true;field("targetInsurance_generalNew").value="120000";
+field("familyReviewed").checked=true;field("acknowledgedExclusions").checked=true;
+rawSubmit();assert.equal(view.className,"result hold");
+field("insuranceReviewed").checked=true;rawSubmit();assert.equal(view.className,"result");
+assert.match(view.textContent,/特例：対象外/);
+field("hasLifeInsurance").checked=false;rawSubmit();assert.equal(view.className,"result hold");
+field("hasLifeInsurance").checked=true;
+field("targetInsurance_generalNew").value="bad";rawSubmit();assert.equal(view.className,"result hold");
+form.reset();
+// Synthetic prior-year source with both family and insurance deductions.
+field("year").value="2026";field("municipality").value="standard";
+field("salaryGross").value="6500000";field("socialInsurance").value="1340000";
+field("salaryIncomeReference").value="4760000";field("deductionsReference").value="3120000";
+form.dataset.ocrYear="2025";form.dataset.ocrOriginalGross="6500000";
+form.dataset.ocrOriginalIncome="4760000";form.dataset.ocrOriginalSocial="1340000";
+form.dataset.ocrOriginalDeductions="3120000";form.dataset.ocrSourceIndicators="hasDependents,hasLifeInsurance,hasEarthquakeInsurance";
+field("hasSpouse").checked=true;field("hasDependents").checked=true;
+field("hasLifeInsurance").checked=true;field("hasEarthquakeInsurance").checked=true;
+field("familySpouseAge").value="41";field("familySpouseIncome").value="600000";
+document.getElementById("familyAdd").click();member("age").value="21";member("income").value="600000";
+field("sourceSpouseAge").value="40";field("sourceSpouseIncome").value="600000";
+document.getElementById("sourceFamilyAdd").click();
+originalMember("age").value="20";originalMember("income").value="600000";
+for(const prefix of ["target","source"]){
+ field(prefix+"Insurance_generalNew").value="120000";
+ field(prefix+"Insurance_earthquake").value="50000";
+}
+for(const name of ["familyReviewed","sourceFamilyReviewed","forecastReviewed","insuranceReviewed","acknowledgedExclusions"])
+ field(name).checked=true;
+rawSubmit();assert.equal(view.className,"result hold");
+field("sourceInsuranceReviewed").checked=true;rawSubmit();assert.equal(view.className,"result");
+assert.equal(view.querySelector(".amount").textContent,"51,000円");
+assert.match(view.textContent,/特例：適用/);
+assert.match(view.textContent,/3,120,000円/);assert.match(view.textContent,/3,500,000円/);
+const insuredValues=Object.fromEntries([...view.querySelectorAll("details dt")].map(dt=>[dt.textContent,dt.nextElementSibling.textContent]));
+assert.equal(insuredValues["生命保険料控除（所得税）"],"60,000円");
+assert.equal(insuredValues["生命保険料控除（住民税）"],"28,000円");
+assert.equal(insuredValues["地震保険料控除（所得税）"],"50,000円");
+assert.equal(insuredValues["地震保険料控除（住民税）"],"25,000円");
+assert.equal(insuredValues["原票年の保険料控除合計（照合済）"],"90,000円");
+field("sourceInsurance_generalNew").value="0";rawSubmit();assert.equal(view.className,"result hold");
+field("sourceInsurance_generalNew").value="120000";rawSubmit();assert.equal(view.className,"result");
+field("targetInsurance_generalNew").value="80000";
+dom.window.dispatchEvent(new Event("beforeprint"));
+assert.equal(view.className,"result hold");assert.equal(view.querySelector(".amount"),null);
+field("targetInsurance_generalNew").value="120000";
+field("targetInsurance_generalNew").dispatchEvent(new Event("input",{bubbles:true}));
+for(const name of ["familyReviewed","sourceFamilyReviewed","forecastReviewed","insuranceReviewed","sourceInsuranceReviewed","acknowledgedExclusions"])
+ assert.equal(field(name).checked,false);
+for(const name of ["familyReviewed","sourceFamilyReviewed","forecastReviewed","insuranceReviewed","sourceInsuranceReviewed","acknowledgedExclusions"])
+ field(name).checked=true;
+rawSubmit();assert.equal(view.className,"result");
+form.dataset.ocrSourceIndicators+=",hasMortgage";rawSubmit();assert.equal(view.className,"result hold");
+form.dispatchEvent(new Event("family-source-reset"));
+assert.equal(field("sourceInsurance_generalNew").value,"");
+assert.equal(field("sourceInsuranceReviewed").checked,false);
+assert.equal(view.hidden,true);
+form.reset();assert.equal(field("targetInsurance_generalNew").value,"");
+assert.equal(field("insuranceReviewed").checked,false);
 dom.window.close();
 console.log("PUBLIC_WEB_STATIC_AND_BROWSER_SYNTHETIC_PASS; no network; ads off; deploy off");
