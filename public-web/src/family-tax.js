@@ -29,9 +29,9 @@
   // The new path accepts the combined amount (G26), NEVER an ambiguous
   // socialInsurance amount. G25 is included in it, not an extra deduction.
   const groupedMedical=input?.conditions==="salary-basic-social-family-insurance-other-medical-filing-reviewed";
-  const directMedical=!!input&&Object.prototype.hasOwnProperty.call(input,"medicalDeductionYen");
-  const withMedical=groupedMedical||directMedical;
-  if(groupedMedical&&directMedical)return hold("医療費控除の二重入力はできません");
+  const netMedical=!!input&&Object.prototype.hasOwnProperty.call(input,"medicalNetPaidYen");
+  const withMedical=groupedMedical||netMedical;
+  if(groupedMedical&&netMedical)return hold("医療費控除の二重入力はできません");
   // Never expose a one-stop estimate with a medical deduction claim,
   // even for a zero deduction. All annual donations belong in the return.
   if(withMedical&&!filing)return hold("医療費控除を申告する場合はワンストップ特例を利用できません。確定申告方式を選択してください");
@@ -41,7 +41,7 @@
   if(withInsurance)keys.push("premiums");
   if(withOther)keys.push("otherDeductions");
   if(groupedMedical)keys.push("medicalDeductions");
-  if(directMedical)keys.push("medicalDeductionYen");
+  if(netMedical)keys.push("medicalNetPaidYen");
   if(!input||typeof input!=="object"||Array.isArray(input)||
     Object.keys(input).length!==keys.length||!keys.every(k=>Object.prototype.hasOwnProperty.call(input,k))||
     ![2025,2026].includes(input.year)||!valid(input.salaryIncome,highDetails?18050000:6550000)||
@@ -81,10 +81,12 @@
    if(otherDetails.residentIncomeLevyExempt)return hold("住民税所得割非課税のため寄附上限試算対象外です");
   }
   let medicalDetails=null;
-  if(directMedical){
-   const n=input.medicalDeductionYen;
-   if(!valid(n,2000000)||n===0)return hold("医療費控除額は1円以上200万円以下で入力してください");
-   medicalDetails={method:"direct",nationalDeductionYen:n,residentDeductionYen:n,requiresFilingToClaim:true,oneStopAllowedWhenClaimed:false};
+  if(netMedical){
+   const n=input.medicalNetPaidYen;
+   if(!valid(n,100000000000)||n===0||!medical||typeof medical.calculateNet!=="function")return hold("補填後の対象医療費支払額を確認してください");
+   const result=medical.calculateNet({year:input.year,salaryIncome:income,netEligibleYen:n});
+   if(result.status!=="COMPONENTS_ONLY")return hold(result.reason);
+   medicalDetails=result.calculation;
   }else if(groupedMedical){
    const m=input.medicalDeductions;
    const mk=["method","groups","conditions"];
@@ -151,7 +153,7 @@
  // Filing-only display basis. Do not expose the one-stop reference ceiling
  // or the component reference ceilings for medical claims.
  function medicalFilingCalculation(input){
-  if(input?.conditions!=="salary-basic-social-family-insurance-other-medical-filing-reviewed"&&!Object.prototype.hasOwnProperty.call(input||{},"medicalDeductionYen"))
+  if(input?.conditions!=="salary-basic-social-family-insurance-other-medical-filing-reviewed"&&!Object.prototype.hasOwnProperty.call(input||{},"medicalNetPaidYen"))
    return hold("医療費控除の確定申告条件を確認してください");
   return filingDisplay(calculateCore(input,true));
  }
@@ -221,7 +223,7 @@
   const medicalClaim=tax?.conditions==="salary-basic-social-family-insurance-other-medical-filing-reviewed";
   const keys=["socialAndContributions","municipality","spouse","relatives","conditions","premiums","otherDeductions"];
   if(medicalClaim)keys.push("medicalDeductions");
-  if(tax&&Object.prototype.hasOwnProperty.call(tax,"medicalDeductionYen"))keys.push("medicalDeductionYen");
+  if(tax&&Object.prototype.hasOwnProperty.call(tax,"medicalNetPaidYen"))keys.push("medicalNetPaidYen");
   if(!exact(tax,keys)||(!medicalClaim&&tax.conditions!=="salary-basic-social-family-insurance-other-only-reviewed")||
      !adj||!valid(adj.grossSalary,20000000)||adj.grossSalary<8500000)
    return hold("高額給与は850万円以上2,000万円以下の確認済み条件のみ試算できます");
@@ -232,7 +234,7 @@
  }
  function highSalaryCalculate(request){return highCore(request,false);}
  function highSalaryMedicalFilingCalculation(request){
-  if(request?.tax?.conditions!=="salary-basic-social-family-insurance-other-medical-filing-reviewed"&&!Object.prototype.hasOwnProperty.call(request?.tax||{},"medicalDeductionYen"))
+  if(request?.tax?.conditions!=="salary-basic-social-family-insurance-other-medical-filing-reviewed"&&!Object.prototype.hasOwnProperty.call(request?.tax||{},"medicalNetPaidYen"))
    return hold("医療費控除の確定申告条件を確認してください");
   return filingDisplay(highCore(request,true));
  }

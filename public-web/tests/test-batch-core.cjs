@@ -407,9 +407,9 @@ for(const bad of ["ordinary,none,none,0,0,1000001","ordinary,none,none,0,0,-1","
  runFamily(r);assert.equal(r.status,"HOLD");assert.equal(r.donationLimitYen,null);
 }
 // Direct amount: no additional blank household or premium review.
-function medicalFixture(amount="200000",withOther=true){
+function medicalFixture(amount="300000",withOther=true){
  const r=withOther?otherFixture():fixture(1,basic2026);
- r.filing="return";batch.edit(r,"medicalDeductionYen",amount);
+ r.filing="return";batch.edit(r,"medicalNetPaidYen",amount);
  r.confirmed=true;r.noExclusions=true;
  if(withOther){attest(r);r.insuranceReviewed=true;r.otherReviewed=true;}
  return r;
@@ -422,25 +422,42 @@ assert.equal(med.comparison.oneStop,null);
 assert.equal(med.donationLimitYen,med.comparison.filing);
 assert.equal(med.comparison.trial.donation,med.comparison.filing);
 assert.equal(batch.canOutputEstimate(med),true);
-assert.deepEqual(columns(med).slice(39),["200000"]);
+assert.deepEqual(columns(med).slice(39),["200000","300000","100000"]);
 assert.equal(columns(med)[17],"");
-const simple=medicalFixture("88000",false);runFamily(simple);
+const simple=medicalFixture("188000",false);runFamily(simple);
 assert.equal(simple.status,"概算",simple.reason);
 assert.equal(simple.familyReviewed,false);
 assert.equal(simple.appliedDeductionsYen,1758000);
 assert.equal(simple.comparison.oneStop,null);
 assert.equal(batch.canOutputEstimate(simple),true);
 for(const change of [
- r=>{r.filing="one-stop";},r=>{r.medicalDeductionYen="bad";},
- r=>{r.medicalDeductionYen="-1";},r=>{r.medicalDeductionYen="2000001";},
+ r=>{r.filing="one-stop";},r=>{r.medicalNetPaidYen="bad";},
+ r=>{r.medicalNetPaidYen="-1";},r=>{r.medicalNetPaidYen="100000000001";},
  r=>{r.sourceIndicators.hasMedical=true;},
  r=>{r.originalCandidates={...r.originalCandidates,deductionsReference:2100000};}
 ]){
  const r=medicalFixture();runFamily(r);assert.equal(batch.canOutputEstimate(r),true);
  change(r);assert.equal(batch.canOutputEstimate(r),false);
- assert.deepEqual(columns(r).slice(39),[""]);
+ assert.deepEqual(columns(r).slice(39),["","",""]);
  runFamily(r);assert.equal(r.status,"HOLD",r.reason);assert.equal(r.donationLimitYen,null);
 }
-batch.edit(med,"medicalDeductionYen","300000");assert.equal(batch.canOutputEstimate(med),false);
+batch.edit(med,"medicalNetPaidYen","400000");assert.equal(batch.canOutputEstimate(med),false);
+// Ordinary net input: statutory threshold and cap, including sub-yen 5%.
+const medEngine=require("../dist/medical-deductions.js");
+for(const [income,net,threshold,deduction] of [[1000000,300000,50000,250000],[1500001,300000,75000,225000],[1999999,300000,99999,200001],[2000000,300000,100000,200000],[5200000,100000,100000,0],[5200000,50000,100000,0],[5200000,2100001,100000,2000000]]){
+ const res=medEngine.calculateNet({year:2026,salaryIncome:income,netEligibleYen:net});
+ assert.equal(res.status,"COMPONENTS_ONLY");assert.equal(res.calculation.thresholdYen,threshold);
+ assert.equal(res.calculation.nationalDeductionYen,deduction);assert.equal(res.calculation.residentDeductionYen,deduction);
+}
+for(const bad of [-1,1.5,100000000001,"300000",NaN])assert.equal(medEngine.calculateNet({year:2026,salaryIncome:5200000,netEligibleYen:bad}).status,"HOLD");
+const lowGross=2500000,lowIncome=win.FurusatoEngine.salaryIncome(lowGross,2026);
+const low=fixture(1,{year:2026,eligibleForManualTransfer:true,candidates:{salaryGross:lowGross,salaryIncomeReference:lowIncome,socialInsurance:0,deductionsReference:1040000}});
+low.filing="return";batch.edit(low,"medicalNetPaidYen","300000");low.confirmed=true;low.noExclusions=true;runFamily(low);
+assert.equal(low.status,"概算",low.reason);
+assert.equal(low.medicalSummary.thresholdYen,Math.floor(lowIncome/20));
+assert.equal(low.medicalSummary.nationalDeductionYen,300000-Math.floor(lowIncome/20));
+assert.equal(low.appliedDeductionsYen,1040000+low.medicalSummary.nationalDeductionYen);
+const zero=medicalFixture("50000",false);runFamily(zero);assert.equal(zero.status,"概算",zero.reason);assert.equal(zero.medicalSummary.nationalDeductionYen,0);
+const cap=medicalFixture("2500000",false);runFamily(cap);assert.equal(cap.status,"概算",cap.reason);assert.equal(cap.medicalSummary.nationalDeductionYen,2000000);
 dom.window.close();
 console.log("PUBLIC_BATCH_PER_PAGE_LOCAL_SAFETY_SYNTHETIC_PASS; no private slips; no deploy");

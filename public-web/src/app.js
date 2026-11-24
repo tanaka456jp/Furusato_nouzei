@@ -121,7 +121,7 @@
     var sourceOther=readOther("source","sourceOtherReviewed","#sourceFamilyRelatives");
     if(activeOther(other))input.otherDetails=other;
     if(activeOther(sourceOther))input.sourceOtherDetails=sourceOther;
-    var med=get("medicalDeductionYen").value.trim();
+    var med=get("medicalNetPaidYen").value.trim();
     if(med!==""&&med!=="0"){input.hasMedical=true;input.medicalDetails={amount:med};}
     function readAdjustment(reviewName,container){
       return {reviewed:get(reviewName).checked===true,
@@ -354,8 +354,8 @@
     var sa=input.sourceAdjustmentDetails,sourceGross=strictYen(input.sourceOriginalGross),sourceHigh=sourceGross!==null&&sourceGross>8500000;
     if((sa&&!sourceHigh)||(sourceHigh&&(!sa||!sa.reviewed||!so||!so.reviewed||!si||!si.reviewed)))
       return fail("原票年分の高額給与・G46・G47・その他所得控除・保険料の確認が必要です。");
-    if(md&&(!input.hasMedical||input.filing!=="return"||strictYen(md.amount)===null||strictYen(md.amount)<1||strictYen(md.amount)>2000000))
-      return fail("医療費控除額は1円以上200万円以下で入力し、確定申告方式を選択してください。");
+    if(md&&(!input.hasMedical||input.filing!=="return"||strictYen(md.amount)===null||strictYen(md.amount)<1||strictYen(md.amount)>100000000000))
+      return fail("補填後の対象医療費支払額を正しく入力し、確定申告方式を選択してください。");
     if(so&&!imported)return fail("原票が取り込まれていません。原票のその他所得控除明細をクリアしてください。");
     if(imported&&(od||so)&&(!od||!so||!so.reviewed||!si||!si.reviewed))return fail("原票年分・試算年分のその他所得控除と保険料明細の確認が必要です。");
     if(od&&(!od.reviewed||!ip||ip.reviewed!==true))
@@ -463,7 +463,7 @@
       args.conditions="salary-basic-social-family-insurance-other-only-reviewed";
       args.otherDeductions=targetOther;
     }
-    if(md)args.medicalDeductionYen=strictYen(md.amount);
+    if(md)args.medicalNetPaidYen=strictYen(md.amount);
     var request=null,adjustmentResult=null;
     if(high){
       var adjustment=buildAdjustment(year,gross,ad,targetOther,args.spouse,args.relatives,targetPremiums);
@@ -486,7 +486,7 @@
     if(!c||c.year!==year||c.municipality!==input.municipality||
        (!!c.other!==!!od)||(!!c.medical!==!!md)||(!!c.salaryAdjustment!==high)||
        (high&&JSON.stringify(c.salaryAdjustment)!==JSON.stringify(adjustmentResult.calculation))||
-       (md&&(c.filingOnly!==true||c.oneStopAllowed!==false||result.donationLimitYen!==null||c.medical.nationalDeductionYen!==c.medical.residentDeductionYen||c.medical.nationalDeductionYen!==strictYen(md.amount)))||
+       (md&&(c.filingOnly!==true||c.oneStopAllowed!==false||result.donationLimitYen!==null||c.medical.nationalDeductionYen!==c.medical.residentDeductionYen||c.medical.method!=="ordinaryNet"||c.medical.netEligibleYen!==strictYen(md.amount)||c.medical.thresholdYen!==Math.min(100000,Math.floor(income/20))||c.medical.nationalDeductionYen!==Math.min(2000000,Math.max(0,strictYen(md.amount)-Math.min(100000,Math.floor(income/20))))))||
        (od&&(c.socialAndContributionsYen!==social||c.socialInsuranceOnlyYen!==social-contribution||c.other.contributions.nationalYen!==contribution))||
        c.nationalDeductionsYen!==c.nationalBasicYen+social+c.family.nationalFamilyDeductionYen+(c.insurance?.national.totalYen??0)+(od?c.other.nationalOtherDeductionYen-contribution:0)+(md?c.medical.nationalDeductionYen:0)||
        c.residentDeductionsYen!==430000+social+c.family.residentFamilyDeductionYen+(c.insurance?.resident.totalYen??0)+(od?c.other.residentOtherDeductionYen-contribution:0)+(md?c.medical.residentDeductionYen:0)||
@@ -536,8 +536,8 @@
     if(!c.medical)pairs.splice(pairs.length-1,0,["ワンストップ参考上限",result.oneStop]);
     if(c.medical){
       add("p",details,"医療費控除を申告するためワンストップ特例は利用できません。すべてのふるさと納税を確定申告に含めてください。","muted");
-      add("p",details,"入力した控除額を使用（支払医療費からの算定は行いません）。","muted");
-      pairs.push(["医療費控除額（所得税・住民税）",c.medical.nationalDeductionYen]);
+      add("p",details,"通常の医療費控除：補填後の対象医療費と対象年の合計所得金額から自動計算。","muted");
+      pairs.push(["補填後の医療費支払額",c.medical.netEligibleYen],["医療費控除の足切額",c.medical.thresholdYen],["医療費控除額（所得税・住民税）",c.medical.nationalDeductionYen]);
     }
     if(c.salaryAdjustment){
       pairs.push(["給与収入",c.salaryAdjustment.grossSalaryYen],["給与所得控除",c.salaryAdjustment.salaryDeductionYen],
@@ -791,6 +791,7 @@
     conditionsConfirmation.checked=false;invalidateEstimate();
   }
   function resetSourceFamily(){
+    form.elements.namedItem("medicalNetPaidYen").value="";
     sourceFamilyRows.replaceChildren();sourceAdjustmentRows.replaceChildren();
     ["sourceAdjustment_basic","sourceAdjustment_amount"].forEach(function(name){form.elements.namedItem(name).value="";});
     ["sourceSpouseAge","sourceSpouseIncome"].forEach(function(name){form.elements.namedItem(name).value="";});
@@ -844,9 +845,9 @@
   }
   document.getElementById("adjustmentAdd").addEventListener("click",function(){addAdjustmentRow(adjustmentRows);});
   document.getElementById("sourceAdjustmentAdd").addEventListener("click",function(){addAdjustmentRow(sourceAdjustmentRows);});
-  form.elements.namedItem("medicalDeductionYen").addEventListener("input",function(){
+  form.elements.namedItem("medicalNetPaidYen").addEventListener("input",function(){
     var n=strictYen(this.value.trim());
-    if(n!==null&&n>0&&n<=2000000)form.elements.namedItem("filing").value="return";
+    if(n!==null&&n>0&&n<=100000000000)form.elements.namedItem("filing").value="return";
   });
   document.getElementById("familyAdd").addEventListener("click",function(){addFamilyRow(familyRows);});
   document.getElementById("sourceFamilyAdd").addEventListener("click",function(){addFamilyRow(sourceFamilyRows);});

@@ -618,8 +618,8 @@ assert.equal(otherValues["所得控除合計（自動算定）"],"1,940,000円")
 assert.equal(otherValues["住民税所得控除合計"],"1,690,000円");
 field("targetOther_contribution").value="1000001";rawSubmit();assert.equal(view.className,"result hold");
 field("targetOther_contribution").value="120000";rawSubmit();assert.equal(view.className,"result");
-field("medicalDeductionYen").value="bad";rawSubmit();assert.equal(view.className,"result hold");
-field("medicalDeductionYen").value="";rawSubmit();assert.equal(view.className,"result");
+field("medicalNetPaidYen").value="bad";rawSubmit();assert.equal(view.className,"result hold");
+field("medicalNetPaidYen").value="";rawSubmit();assert.equal(view.className,"result");
 form.dataset.ocrYear="2025";rawSubmit();assert.equal(view.className,"result hold");delete form.dataset.ocrYear;
 rawSubmit();assert.equal(view.className,"result");
 field("targetOther_contribution").value="130000";dom.window.dispatchEvent(new Event("beforeprint"));
@@ -668,24 +668,26 @@ assert.equal(field("sourceOtherReviewed").checked,false);assert.equal(field("oth
 form.dispatchEvent(new Event("family-source-reset"));
 assert.equal(field("sourceOther_contribution").value,"");assert.equal(field("sourceOther_self").value,"none");
 form.reset();
-// Direct deduction only, no additional family/insurance review for basic salary.
+// Net medical expenses only, no additional family/insurance review for basic salary.
 field("year").value="2026";field("municipality").value="standard";
 field("salaryGross").value="7000000";field("socialInsurance").value="1000000";
-field("medicalDeductionYen").value="200000";
+field("medicalNetPaidYen").value="300000";
 field("acknowledgedExclusions").checked=true;rawSubmit();assert.equal(view.className,"result hold");
-field("medicalDeductionYen").dispatchEvent(new Event("input",{bubbles:true}));
+field("medicalNetPaidYen").dispatchEvent(new Event("input",{bubbles:true}));
 assert.equal(field("filing").value,"return");
 field("acknowledgedExclusions").checked=true;rawSubmit();assert.equal(view.className,"result",view.textContent);
 const medicalValues=()=>Object.fromEntries([...view.querySelectorAll("details dt")].map(dt=>[dt.textContent,dt.nextElementSibling.textContent]));
 assert.equal(medicalValues()["医療費控除額（所得税・住民税）"],"200,000円");
+assert.equal(medicalValues()["補填後の医療費支払額"],"300,000円");
+assert.equal(medicalValues()["医療費控除の足切額"],"100,000円");
 assert.equal(medicalValues()["所得控除合計（自動算定）"],"1,870,000円");
 assert.equal(medicalValues()["住民税所得控除合計"],"1,630,000円");
 assert.equal(medicalValues()["ワンストップ参考上限"],undefined);
 assert.match(view.textContent,/ワンストップ特例は利用できません/);
-for(const bad of ["-1","2000001","1.5","abc"]){field("medicalDeductionYen").value=bad;rawSubmit();assert.equal(view.className,"result hold");}
-field("medicalDeductionYen").value="88000";rawSubmit();assert.equal(view.className,"result",view.textContent);
+for(const bad of ["-1","100000000001","1.5","abc"]){field("medicalNetPaidYen").value=bad;rawSubmit();assert.equal(view.className,"result hold");}
+field("medicalNetPaidYen").value="188000";rawSubmit();assert.equal(view.className,"result",view.textContent);
 assert.equal(medicalValues()["医療費控除額（所得税・住民税）"],"88,000円");
-field("medicalDeductionYen").value="200000";
+field("medicalNetPaidYen").value="300000";
 form.dataset.ocrYear="2025";form.dataset.ocrOriginalGross="7000000";
 form.dataset.ocrOriginalIncome="5200000";form.dataset.ocrOriginalSocial="1000000";
 form.dataset.ocrOriginalDeductions="1630000";field("deductionsReference").value="1630000";
@@ -694,11 +696,11 @@ assert.equal(medicalValues()["原票年の所得控除合計（照合済）"],"1
 assert.equal(medicalValues()["所得控除合計（自動算定）"],"1,870,000円");
 form.dataset.ocrOriginalDeductions="1830000";rawSubmit();assert.equal(view.className,"result hold");
 form.dataset.ocrOriginalDeductions="1630000";rawSubmit();assert.equal(view.className,"result");
-field("medicalDeductionYen").value="100001";
+field("medicalNetPaidYen").value="100001";
 dom.window.dispatchEvent(new Event("beforeprint"));assert.equal(view.className,"result hold");
-field("medicalDeductionYen").dispatchEvent(new Event("input",{bubbles:true}));
+field("medicalNetPaidYen").dispatchEvent(new Event("input",{bubbles:true}));
 assert.equal(view.hidden,true);
-form.reset();assert.equal(field("medicalDeductionYen").value,"");
+form.reset();assert.equal(field("medicalNetPaidYen").value,"");
 // High salary manual UI: derived income, independent adjustment witnesses,
  // no high salary imported source until the source UI is connected.
 field("year").value="2026";field("municipality").value="standard";
@@ -726,7 +728,7 @@ assert.equal(highValues()["所得金額調整控除後の給与所得"],"17,900,
 field("salaryGross").value="20000001";rawSubmit();assert.equal(view.className,"result hold");
 field("salaryGross").value="20000000";
 form.dataset.ocrYear="2025";rawSubmit();assert.equal(view.className,"result hold");delete form.dataset.ocrYear;
-field("medicalDeductionYen").value="200000";field("filing").value="return";attestHigh();
+field("medicalNetPaidYen").value="300000";field("filing").value="return";attestHigh();
 rawSubmit();assert.equal(view.className,"result",view.textContent);
 assert.equal(highValues()["医療費控除額（所得税・住民税）"],"200,000円");
 assert.equal(highValues()["ワンストップ参考上限"],undefined);

@@ -210,9 +210,9 @@
    for(const k of ["sourceTotal","sourceContribution","national","resident","contribution","socialOnly"])
     cell(tr,isEstimate?yen(r.otherSummary?.[k]):"—","batch-other-result");
    const medicalCell=cell(tr,"","batch-medical-editor");
-   const amount=formControl("input",{type:"text",inputmode:"numeric",maxlength:"7",autocomplete:"off","data-row":String(i),"data-field":"medicalDeductionYen","aria-label":"対象者 "+r.page+" 計算済み医療費控除額（任意）",placeholder:"空欄＝なし",title:"支払額ではなく控除額。入力時は確定申告方式"});
-   amount.value=r.medicalDeductionYen;medicalCell.appendChild(amount);
-   cell(tr,isEstimate?yen(r.medicalSummary?.nationalDeductionYen):"—","batch-medical-result");
+   const amount=formControl("input",{type:"text",inputmode:"numeric",maxlength:"12",autocomplete:"off","data-row":String(i),"data-field":"medicalNetPaidYen","aria-label":"対象者 "+r.page+" 補填後の対象医療費支払額（任意）",placeholder:"空欄＝なし",title:"補填対象ごとの差引残額の合計。補填金の余りは他の医療費から差し引かない。通常の医療費控除を自動計算"});
+   amount.value=r.medicalNetPaidYen;medicalCell.appendChild(amount);
+   for(const key of core.MEDICAL_SUMMARY_KEYS)cell(tr,isEstimate?yen(r.medicalSummary?.[key]):"—","batch-medical-result");
    for(const select of tr.querySelectorAll("select")){
     const span=document.createElement("span");span.className="batch-print-value";
     span.textContent=select.selectedOptions[0]?.textContent??"未確認";select.parentNode.appendChild(span);
@@ -328,7 +328,7 @@
   if(!Number.isSafeInteger(idx)||!rows[idx])return;
   if(key==="label"||key==="trialInput"||key==="familySourceText"||key==="familyTargetText"||(core.PREMIUM_FIELDS.includes(key)||core.OTHER_FIELDS.includes(key)||core.MEDICAL_FIELDS.includes(key))||monetary.includes(key)){
    core.edit(rows[idx],key,ev.target.value);
-   if(key==="medicalDeductionYen"&&/^[1-9][0-9]{0,6}$/.test(ev.target.value)&&Number(ev.target.value)<=2000000){
+   if(key==="medicalNetPaidYen"&&/^[1-9][0-9]{0,11}$/.test(ev.target.value)&&Number(ev.target.value)<=100000000000){
     rows[idx].filing="return";body.children[idx].querySelector('[data-field="filing"]').value="return";
    }
    invalidateEditedRow(rows[idx]);
@@ -343,7 +343,7 @@
    // The input listener already records typing; avoid replacing the editor
    // on blur, which could swallow a click on the confirmation checkbox.
    if(row[key]!==ev.target.value){core.edit(row,key,ev.target.value);
-    if(key==="medicalDeductionYen"&&/^[1-9][0-9]{0,6}$/.test(ev.target.value)&&Number(ev.target.value)<=2000000){
+    if(key==="medicalNetPaidYen"&&/^[1-9][0-9]{0,11}$/.test(ev.target.value)&&Number(ev.target.value)<=100000000000){
      row.filing="return";body.children[idx].querySelector('[data-field="filing"]').value="return";
     }
     invalidateEditedRow(row);}

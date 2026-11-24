@@ -21,12 +21,12 @@
  const PREMIUM_KEYS=Object.freeze(["generalNew","generalOld","medicalNew","pensionNew","pensionOld","earthquake","longTermOld"]);
  const PREMIUM_FIELDS=Object.freeze(["source","target"].flatMap(prefix=>PREMIUM_KEYS.map(k=>prefix+"Insurance_"+k)));
  const OTHER_FIELDS=Object.freeze(["otherSourceText","otherTargetText"]);
- const MEDICAL_FIELDS=Object.freeze(["medicalDeductionYen"]);
- const MEDICAL_SUMMARY_KEYS=Object.freeze(["nationalDeductionYen"]);
- function medicalActive(row){return row.medicalDeductionYen!==""&&row.medicalDeductionYen!=="0";}
+ const MEDICAL_FIELDS=Object.freeze(["medicalNetPaidYen"]);
+ const MEDICAL_SUMMARY_KEYS=Object.freeze(["nationalDeductionYen","netEligibleYen","thresholdYen"]);
+ function medicalActive(row){return row.medicalNetPaidYen!==""&&row.medicalNetPaidYen!=="0";}
  function parseMedical(row){
-  const raw=row.medicalDeductionYen;
-  return typeof raw==="string"&&/^[1-9][0-9]{0,6}$/.test(raw)&&Number(raw)<=2000000?Number(raw):null;
+  const raw=row.medicalNetPaidYen;
+  return typeof raw==="string"&&/^[1-9][0-9]{0,11}$/.test(raw)&&Number(raw)<=100000000000?Number(raw):null;
  }
  const OTHER_FLAGS=Object.freeze(["hasDisability","hasWidow","hasSingleParent","hasWorkingStudent","hasSmallEnterpriseContributions"]);
  function otherActive(row){return row.otherReviewed===true||OTHER_FIELDS.some(k=>row[k]!=="");}
@@ -52,7 +52,7 @@
  function holdRow(page,reason){
   return {page,label:"",year:null,sourceYear:null,candidates:null,originalCandidates:null,sourceIndicators:{},deductionsOverrideActive:false,appliedDeductionsYen:null,sourceValid:false,
    confirmed:false,noExclusions:false,forecastReviewed:false,filing:"one-stop",municipality:"",calculatedMunicipality:null,calculatedFiling:null,residentLevyYen:null,calculationBasis:null,
-   trialInput:"",familySourceText:"",familyTargetText:"",familyReviewed:false,insuranceReviewed:false,otherSourceText:"",otherTargetText:"",otherReviewed:false,otherSummary:null,medicalDeductionYen:"",medicalSummary:null,...Object.fromEntries(PREMIUM_FIELDS.map(k=>[k,""])),originalYear:null,familySummary:null,insuranceSummary:null,comparison:null,calculatedSnapshot:null,status:"HOLD",donationLimitYen:null,reason:reason||"読取・確認待ち"};
+   trialInput:"",familySourceText:"",familyTargetText:"",familyReviewed:false,insuranceReviewed:false,otherSourceText:"",otherTargetText:"",otherReviewed:false,otherSummary:null,medicalNetPaidYen:"",medicalSummary:null,...Object.fromEntries(PREMIUM_FIELDS.map(k=>[k,""])),originalYear:null,familySummary:null,insuranceSummary:null,comparison:null,calculatedSnapshot:null,status:"HOLD",donationLimitYen:null,reason:reason||"読取・確認待ち"};
  }
  function fromPage(page,review,targetYear){
   const row=holdRow(page,"原票の確認待ち");
@@ -237,8 +237,8 @@
    if(medical){
     const amount=parseMedical(row);
     if(amount===null||row.filing!=="return"){
-     row.reason="医療費控除額（1円～200万円）と確定申告方式を確認してください";return row;}
-    args.medicalDeductionYen=amount;
+     row.reason="補填後の医療費支払額と確定申告方式を確認してください";return row;}
+    args.medicalNetPaidYen=amount;
    }
    const one=medical?familyEngine.medicalFilingCalculation(args):familyEngine.calculate(args);
    if(one.status!=="ESTIMATE"){row.reason=one.reason;return row;}
@@ -252,7 +252,7 @@
       (!!c.medical!==medical)||
       (medical?(c.filingOnly!==true||c.oneStopAllowed!==false||one.donationLimitYen!==null||
         !safeAmount(c.medical.nationalDeductionYen)||c.medical.nationalDeductionYen!==c.medical.residentDeductionYen||
-        c.medical.method!=="direct"||c.medical.nationalDeductionYen!==parseMedical(row)):
+        c.medical.method!=="ordinaryNet"||c.medical.netEligibleYen!==parseMedical(row)||c.medical.thresholdYen!==Math.min(100000,Math.floor(income/20))||c.medical.nationalDeductionYen!==Math.min(2000000,Math.max(0,parseMedical(row)-Math.min(100000,Math.floor(income/20))))):
         (!safeAmount(one.donationLimitYen)||one.donationLimitYen<2000||
         one.donationLimitYen!==Math.floor(c.exactReferenceYen/1000)*1000))||
       (row.deductionsOverrideActive&&v.deductionsReference!==c.nationalDeductionsYen)){
@@ -460,7 +460,7 @@
    throw Error("BATCH_CSV_ROWS_INVALID");
   const header=["PDFページ","氏名","参照源泉票年分","試算対象年","給与支払金額",
    "給与所得控除後の金額","所得控除合計の入力値","所得控除合計の計算使用額","所得控除合計の入力区分","社会保険料等","手続き",
-   "寄附上限額の概算","状態","確認状況","課税自治体区分","住民税所得割（選択自治体）","寄附参考額の計算方式","ワンストップ参考上限","確定申告参考上限（千円刻み）","試算寄附額（入力・空欄は自動）","確定申告試算寄附額","確定申告自己負担見込額","2,000円超過額","任意寄附額試算状態","原票所得控除合計（家族照合済）","所得税家族控除","住民税家族控除","原票保険料控除合計（照合済）","所得税生命保険料控除","住民税生命保険料控除","所得税地震保険料控除","住民税地震保険料控除","23歳未満扶養親族の生命保険料特例","原票その他所得控除（掛金含む・照合済）","原票内書き掛金","所得税その他所得控除（掛金含む）","住民税その他所得控除（掛金含む）","試算内書き掛金","試算社会保険料（掛金除く）","医療費控除額（所得税・住民税）"];
+   "寄附上限額の概算","状態","確認状況","課税自治体区分","住民税所得割（選択自治体）","寄附参考額の計算方式","ワンストップ参考上限","確定申告参考上限（千円刻み）","試算寄附額（入力・空欄は自動）","確定申告試算寄附額","確定申告自己負担見込額","2,000円超過額","任意寄附額試算状態","原票所得控除合計（家族照合済）","所得税家族控除","住民税家族控除","原票保険料控除合計（照合済）","所得税生命保険料控除","住民税生命保険料控除","所得税地震保険料控除","住民税地震保険料控除","23歳未満扶養親族の生命保険料特例","原票その他所得控除（掛金含む・照合済）","原票内書き掛金","所得税その他所得控除（掛金含む）","住民税その他所得控除（掛金含む）","試算内書き掛金","試算社会保険料（掛金除く）","医療費控除額（所得税・住民税）","補填後の医療費支払額","医療費控除の足切額"];
   const lines=[header.map(csvValue).join(",")];
   for(const r of rows){
    const v=r.sourceValid?r.candidates:null;

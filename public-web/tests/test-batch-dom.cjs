@@ -193,15 +193,15 @@ function type(idx,key,value){
  assert.ok([...d.querySelectorAll("#batchRows tr:first-child .batch-other-result")].every(x=>x.textContent==="—"));
  assert.equal(choose(0,"otherReviewed").checked,false);
  // Direct amount on a basic second row: no additional family confirmations.
- change(1,"medicalDeductionYen","200000");
+ change(1,"medicalNetPaidYen","300000");
  assert.equal(choose(1,"filing").value,"return");
  change(1,"municipality","standard");change(1,"confirmed",true);change(1,"noExclusions",true);
  d.getElementById("batchCalculate").click();
  assert.notEqual(current().querySelector(".batch-result").textContent,"—");
  assert.equal(current().querySelector(".batch-comparison").textContent,"—");
- assert.deepEqual([...current().querySelectorAll(".batch-medical-result")].map(x=>x.textContent),["200,000円"]);
+ assert.deepEqual([...current().querySelectorAll(".batch-medical-result")].map(x=>x.textContent),["200,000円","300,000円","100,000円"]);
  assert.equal(d.querySelector("#batchRows tr").children.length,d.querySelectorAll("#batchTable th").length);
- choose(1,"medicalDeductionYen").value="100000";win.dispatchEvent(new win.Event("beforeprint"));
+ choose(1,"medicalNetPaidYen").value="100000";win.dispatchEvent(new win.Event("beforeprint"));
  assert.ok([...current().querySelectorAll(".batch-medical-result")].every(x=>x.textContent==="—"));
  assert.equal(current().querySelector(".batch-result").textContent,"—");
  win.close();

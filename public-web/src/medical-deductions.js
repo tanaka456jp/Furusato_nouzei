@@ -49,5 +49,21 @@
    residentDeductionYen:deduction,adjustmentDifferenceYen:0,
    requiresFilingToClaim:true,oneStopAllowedWhenClaimed:false}};
  }
- return Object.freeze({calculate});
+ // The UI receives a single already-net amount, never gross medical expenses.
+ // NTA No.1120; Toyonaka individual resident tax deduction guidance:
+ // https://www.city.toyonaka.osaka.jp/kurashi/sizei/kojin/gimusyatokeisan/syotokukoujyo.html
+ // Round the resulting positive deduction up to yen (equivalently floor 5%).
+ function calculateNet(input){
+  if(!exact(input,["year","salaryIncome","netEligibleYen"])||
+     ![2025,2026].includes(input.year)||!valid(input.salaryIncome,18050000)||
+     !valid(input.netEligibleYen,100000000000))
+   return hold("補填後の対象医療費支払額と合計所得金額を確認してください");
+  const threshold=Math.min(100000,Math.floor(input.salaryIncome/20));
+  const deduction=Math.min(2000000,Math.max(0,input.netEligibleYen-threshold));
+  return {status:"COMPONENTS_ONLY",donationLimitYen:null,release:"HOLD",calculation:{
+   method:"ordinaryNet",netEligibleYen:input.netEligibleYen,thresholdYen:threshold,
+   nationalDeductionYen:deduction,residentDeductionYen:deduction,
+   requiresFilingToClaim:deduction>0,oneStopAllowedWhenClaimed:false}};
+ }
+ return Object.freeze({calculate,calculateNet});
 }));
