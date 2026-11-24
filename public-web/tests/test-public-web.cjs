@@ -69,10 +69,19 @@ dom.window.eval(fs.readFileSync(path.join(out,"resident-levy.js"),"utf8"));
 dom.window.eval(app);
 const form=document.querySelector("#calculator"),view=document.querySelector("#result");
 function field(name){return form.elements.namedItem(name);}
-function submit(){form.dispatchEvent(new Event("submit",{bubbles:true,cancelable:true}));}
+function rawSubmit(){form.dispatchEvent(new Event("submit",{bubbles:true,cancelable:true}));}
+function submit(){
+ // Every pre-existing synthetic success case explicitly selects a standard municipality.
+ if(field("municipality").value==="")field("municipality").value="standard";
+ rawSubmit();
+}
 field("salaryGross").value="7000000";
 field("socialInsurance").value="1000000";
 field("acknowledgedExclusions").checked=true;
+assert.equal(field("municipality").value,"");
+rawSubmit();
+assert.equal(view.className,"result hold");
+assert.doesNotMatch(view.textContent,/109,000円/);
 submit();
 assert.equal(view.hidden,false);
 assert.equal(view.className,"result");
@@ -84,6 +93,17 @@ assert.match(localComparison.textContent,/政令指定都市：所得割 374,500
 assert.match(localComparison.textContent,/市町村 224,700円・道府県 149,800円/);
 assert.match(localComparison.textContent,/市町村 299,600円・道府県 74,900円/);
 assert.equal((localComparison.textContent.match(/寄附参考額 109,000円/g)||[]).length,2);
+assert.match(view.textContent,/標準市町村 ／ 自治体別ワンストップ参考/);
+field("municipality").value="designated";
+field("municipality").dispatchEvent(new Event("change",{bubbles:true}));
+assert.equal(view.hidden,true);
+assert.equal(field("acknowledgedExclusions").checked,false);
+rawSubmit();assert.equal(view.className,"result hold");
+field("acknowledgedExclusions").checked=true;rawSubmit();
+assert.match(view.textContent,/政令指定都市 ／ 自治体別ワンストップ参考/);
+field("municipality").value="standard";
+field("municipality").dispatchEvent(new Event("change",{bubbles:true}));
+field("acknowledgedExclusions").checked=true;rawSubmit();
 
 assert.match(view.textContent,/寄附上限額の概算/);
 // Even if a future tax engine misreports success, mismatched output year,
