@@ -380,6 +380,27 @@ async function main(){
   await page.locator("#batchCalculate").click();
   assert.deepEqual(await firstRow.locator(".batch-comparison").allTextContents(),
     ["109,000円","109,000円","3,000円","1,896円","0円"]);
+  // Explicit family review of a synthetic no-family slip, then reject a
+  // contradictory target-year family and leave the other taxpayer intact.
+  await firstRow.locator(".batch-family-editor summary").click();
+  await firstRow.locator('[data-field="familySourceText"]').fill("なし");
+  await firstRow.locator('[data-field="familyTargetText"]').fill("なし");
+  await firstRow.locator('[data-field="confirmed"]').check();
+  await firstRow.locator('[data-field="noExclusions"]').check();
+  await firstRow.locator('[data-field="familyReviewed"]').check();
+  await page.locator("#batchCalculate").click();
+  assert.equal(await firstRow.locator(".batch-result").textContent(),"109,000円");
+  assert.deepEqual(await firstRow.locator(".batch-family-result").allTextContents(),["1,670,000円","0円","0円"]);
+  await firstRow.locator('[data-field="familyTargetText"]').fill("S,40,0");
+  assert.equal(await firstRow.locator(".batch-result").textContent(),"—");
+  assert.equal(await firstRow.locator('[data-field="familyReviewed"]').isChecked(),false);
+  assert.equal(await secondRow.locator(".batch-result").textContent(),"109,000円");
+  await firstRow.locator('[data-field="confirmed"]').check();
+  await firstRow.locator('[data-field="noExclusions"]').check();
+  await firstRow.locator('[data-field="familyReviewed"]').check();
+  await page.locator("#batchCalculate").click();
+  assert.equal(await firstRow.locator(".batch-result").textContent(),"—");
+  assert.equal(await secondRow.locator(".batch-result").textContent(),"109,000円");
   assert.equal(await page.locator("#batchDownload").isEnabled(),true);
   await page.locator("#batchClear").click();
   assert.equal(await page.locator("#batchRows tr").count(),0);
