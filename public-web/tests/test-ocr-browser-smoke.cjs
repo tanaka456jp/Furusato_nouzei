@@ -137,6 +137,40 @@ async function main(){
   });
   const url="http://127.0.0.1:"+server.address().port+"/index.html";
   await page.goto(url,{waitUntil:"load",timeout:30000});
+  // Real browser manual family route (fictional amounts only).
+  const familyField=name=>page.locator('#calculator [name="'+name+'"]');
+  await familyField("year").selectOption("2025");
+  await familyField("municipality").selectOption("standard");
+  await familyField("salaryGross").fill("6500000");
+  await familyField("socialInsurance").fill("1340000");
+  await familyField("hasSpouse").check();
+  await familyField("hasDependents").check();
+  await familyField("familySpouseAge").fill("40");
+  await familyField("familySpouseIncome").fill("600000");
+  await page.locator("#familyAdd").click();
+  await page.locator('#familyRelatives [data-family="age"]').fill("20");
+  await page.locator('#familyRelatives [data-family="income"]').fill("600000");
+  await familyField("acknowledgedExclusions").check();
+  await page.locator('#calculator button[type="submit"]').click();
+  assert.equal(await page.locator("#result").getAttribute("class"),"result hold");
+  await familyField("familyReviewed").check();
+  await familyField("acknowledgedExclusions").check();
+  await page.locator('#calculator button[type="submit"]').click();
+  assert.equal(await page.locator("#result .amount").textContent(),"56,000円");
+  await familyField("year").selectOption("2026");
+  assert.equal(await familyField("familyReviewed").isChecked(),false);
+  assert.equal(await page.locator("#result").isHidden(),true);
+  await familyField("familyReviewed").check();
+  await familyField("acknowledgedExclusions").check();
+  await page.locator('#calculator button[type="submit"]').click();
+  assert.equal(await page.locator("#result .amount").textContent(),"53,000円");
+  await page.locator('#familyRelatives [data-family="income"]').evaluate(el=>{el.value="850001";});
+  await page.evaluate(()=>window.dispatchEvent(new Event("beforeprint")));
+  assert.equal(await page.locator("#result").getAttribute("class"),"result hold");
+  await page.locator('#calculator button[type="reset"]').click();
+  assert.equal(await page.locator("#familyRelatives .family-relative").count(),0);
+  assert.equal(await familyField("familyReviewed").isChecked(),false);
+
   const status=await page.evaluate(async function(){
    if(typeof Tesseract==="undefined"||!Tesseract.createWorker)
     throw Error("TESSERACT_NOT_LOADED");
