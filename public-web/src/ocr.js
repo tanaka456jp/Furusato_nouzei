@@ -702,11 +702,11 @@
       li.textContent=field.label+"："+r.candidates[field.key].toLocaleString("ja-JP")+"円";
       ul.appendChild(li);
     });
-    const optionalLabels={mortgageSourceApplied:"住宅借入金等特別控除額（G29）",sourceBasicYen:"基礎控除額（G46）",sourceAdjustmentYen:"所得金額調整控除額（G47）",mortgageSourcePossible:"住宅借入金等特別控除可能額（G36）",sourceInsurance_generalNew:"新生命保険料（G30）",sourceInsurance_generalOld:"旧生命保険料（G31）",sourceInsurance_medicalNew:"介護医療保険料（G32）",sourceInsurance_pensionNew:"新個人年金保険料（G33）",sourceInsurance_pensionOld:"旧個人年金保険料（G34）",sourceInsurance_longTermOld:"旧長期損害保険料（G45）"};
+    const optionalLabels={mortgageMoveInYear:"居住開始年（西暦）",mortgageSourceApplied:"住宅借入金等特別控除額（G29）",sourceBasicYen:"基礎控除額（G46）",sourceAdjustmentYen:"所得金額調整控除額（G47）",mortgageSourcePossible:"住宅借入金等特別控除可能額（G36）",sourceInsurance_generalNew:"新生命保険料（G30）",sourceInsurance_generalOld:"旧生命保険料（G31）",sourceInsurance_medicalNew:"介護医療保険料（G32）",sourceInsurance_pensionNew:"新個人年金保険料（G33）",sourceInsurance_pensionOld:"旧個人年金保険料（G34）",sourceInsurance_longTermOld:"旧長期損害保険料（G45）"};
     for(const [key,label] of Object.entries(optionalLabels)){
       const n=r.optionalCandidates?.[key];
       if(Number.isSafeInteger(n)&&n>=0){
-        const li=document.createElement("li");li.textContent=label+"："+n.toLocaleString("ja-JP")+"円（原票照合候補）";ul.appendChild(li);
+        const li=document.createElement("li");li.textContent=label+"："+(key==="mortgageMoveInYear"?String(n)+"年":n.toLocaleString("ja-JP")+"円")+"（原票照合候補）";ul.appendChild(li);
       }
     }
     report.appendChild(ul);
@@ -848,6 +848,7 @@
       ["sourceBasicYen","sourceAdjustment_basic",1040000,high],
       ["sourceAdjustmentYen","sourceAdjustment_amount",150000,high],
       ["mortgageSourcePossible","mortgageSourcePossible",600000,review.year===2025&&review.sourceIndicators?.hasMortgage===true],
+      ["mortgageMoveInYear","mortgageMoveInYear",2025,review.year===2025&&review.sourceIndicators?.hasMortgage===true&&!review.sourceIndicators?.hasNonstandardConditions&&review.optionalCandidates?.mortgageMoveInYear>=2014],
       ...["generalNew","generalOld","medicalNew","pensionNew","pensionOld","longTermOld"].map(k=>["sourceInsurance_"+k,"sourceInsurance_"+k,100000000,review.year===2025&&review.sourceIndicators?.[k==="longTermOld"?"hasEarthquakeInsurance":"hasLifeInsurance"]===true])]){
       const n=review.optionalCandidates?.[key],field=form.elements.namedItem(name);
       if(active&&field&&Number.isSafeInteger(n)&&n>=0&&n<=max)field.value=String(n);

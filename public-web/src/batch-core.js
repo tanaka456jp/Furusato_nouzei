@@ -115,6 +115,7 @@
   if(review.eligibleForManualTransfer===true){
    for(const [key,max,active] of [["mortgageSourceApplied",600000,row.sourceIndicators.hasMortgage===true],["sourceBasicYen",1040000,isHigh(row.originalCandidates.salaryGross)],["sourceAdjustmentYen",150000,isHigh(row.originalCandidates.salaryGross)],
     ["mortgageSourcePossible",600000,review.year===2025&&row.sourceIndicators.hasMortgage===true],
+    ["mortgageMoveInYear",2025,review.year===2025&&row.sourceIndicators.hasMortgage===true&&!row.sourceIndicators.hasNonstandardConditions&&review.optionalCandidates?.mortgageMoveInYear>=2014],
     ...["generalNew","generalOld","medicalNew","pensionNew","pensionOld","longTermOld"].map(k=>["sourceInsurance_"+k,100000000,review.year===2025&&row.sourceIndicators[k==="longTermOld"?"hasEarthquakeInsurance":"hasLifeInsurance"]===true])]){
     const n=review.optionalCandidates?.[key];if(active&&Number.isSafeInteger(n)&&n>=0&&n<=max)row[key]=String(n);
    }

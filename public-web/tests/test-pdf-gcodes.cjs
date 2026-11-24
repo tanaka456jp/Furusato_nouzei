@@ -94,4 +94,23 @@ assert.equal(newer.year,2026);assert.deepEqual(newer.optionalCandidates,{});
 assert.deepEqual(g.verifiedOptional({...r7,year:2026},{...r7,year:2026}),{});
 const duplicateR7=g.review([...parts,...r7Slots,{str:"G30",transform:[1,0,0,1,77,350],width:15}]);
 assert.equal(duplicateR7.optionalCandidates.sourceInsurance_generalNew,undefined);
+// Synthetic date geometry; no personal dates or original PDF bytes.
+const dateTokens=(era="令和",y="3",m="2",d="28")=>[
+ ["居住開始年月日",265,438,65],["年",287,429.5,6],["月",309,429.5,6],["日",331,429.5,6],
+ [era,256,415.5,24],[y,287,415.5,6],[m,309,415.5,6],[d,331,415.5,12]
+].map(([str,x,y,width])=>({str,transform:[1,0,0,1,x,y],width}));
+const dateResult=g.review([...parts,...dateTokens()]);
+assert.equal(dateResult.optionalCandidates.mortgageMoveInYear,2021);
+assert.equal(dateResult.sourceIndicators.hasMortgage,true);
+assert.equal(g.verifiedOptional(dateResult,dateResult).mortgageMoveInYear,2021);
+assert.equal(g.review([...parts,...dateTokens("平成","30","12","31")]).optionalCandidates.mortgageMoveInYear,2018);
+for(const a of [dateTokens("令和","3","2","29"),dateTokens("令和","1","4","30"),dateTokens("平成","31","5","1"),dateTokens("令和","9","1","1")]){
+ const result=g.review([...parts,...a]);assert.equal(result.optionalCandidates.mortgageMoveInYear,undefined);assert.equal(result.sourceIndicators.hasMortgage,true);
+}
+const secondDate=g.review([...parts,...dateTokens(),{str:"令和",transform:[1,0,0,1,256,399],width:24}]);
+assert.equal(secondDate.sourceIndicators.hasNonstandardConditions,true);
+assert.equal(secondDate.optionalCandidates.mortgageMoveInYear,undefined);
+assert.equal(g.review([...parts,...dateTokens().filter(p=>p.str!=="月")]).optionalCandidates.mortgageMoveInYear,undefined);
+assert.equal(g.verifiedOptional({...dateResult,optionalCandidates:{mortgageMoveInYear:2013}},dateResult).mortgageMoveInYear,undefined);
+assert.equal(g.verifiedOptional({...dateResult,sourceIndicators:{hasMortgage:true,hasNonstandardConditions:true}},dateResult).mortgageMoveInYear,undefined);
 console.log("PUBLIC_PDF_GCODES_EVERY_DIGIT_POSITION_SYNTHETIC_PASS");

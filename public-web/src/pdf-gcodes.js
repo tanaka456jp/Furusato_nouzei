@@ -71,6 +71,37 @@
   const yen=Number(value.replace(/,/g,""));
   return Number.isSafeInteger(yen)&&yen>=0&&yen<=1000000000000?yen:null;
  }
+ // R7 form: exact heading and three printed column markers establish
+ // the first date row. Dates are never inferred from arbitrary page numbers.
+ // Only the Gregorian YEAR is returned; a second acquisition is unsupported.
+ function housingDate(spans,year){
+  if(year!==2025)return {};
+  const heading=spans.filter(s=>s.s==="居住開始年月日");
+  if(heading.length!==1)return {};
+  const a=heading[0];
+  function near(dx,dy,rx,ry){return spans.filter(s=>Math.abs(s.x-a.x-dx)<=rx&&Math.abs(s.y-a.y-dy)<=ry);}
+  const markers=[[22,"年"],[44,"月"],[66,"日"]];
+  if(markers.some(([dx,text])=>near(dx,-8.5,4,2).filter(s=>s.s===text).length!==1))return {};
+  const era=near(-9,-22.5,5,2).filter(s=>["令和","平成"].includes(s.s));
+  // Multiple dates/loans are not supported. Any second-row date evidence
+  // blocks calculation rather than guessing which credit to use.
+  const second=spans.filter(s=>s.x>=a.x-14&&s.x<=a.x+73&&Math.abs(s.y-a.y+39)<=3&&/^(?:令和|平成|[0-9]{1,2})$/.test(s.s));
+  if(second.length)return {detected:true,multiple:true};
+  if(era.length!==1)return era.length?{detected:true}:{};
+  function read(dx){
+   const group=near(dx,-22.5,5,2).filter(s=>/^[0-9]{1,2}$/.test(s.s)).sort((x,y)=>x.x-y.x);
+   if(group.length===1)return Number(group[0].s);
+   if(group.length===2&&group.every(s=>s.s.length===1)&&group[1].x-group[0].x>=2&&group[1].x-group[0].x<=7)return Number(group.map(s=>s.s).join(""));
+   return null;
+  }
+  const eraYear=read(22),month=read(44),day=read(66);
+  if(!eraYear||!month||!day||eraYear>31||month>12||day>31)return {detected:true};
+  const y=(era[0].s==="令和"?2018:1988)+eraYear;
+  if(y<2014||y>year||(era[0].s==="平成"&&(y>2019||(y===2019&&month>4)))||
+     (era[0].s==="令和"&&y===2019&&month<5))return {detected:true};
+  const date=new Date(Date.UTC(y,month-1,day));
+  return date.getUTCFullYear()===y&&date.getUTCMonth()===month-1&&date.getUTCDate()===day?{detected:true,moveInYear:y}:{detected:true};
+ }
  function review(items){
   const spans=spansOf(items),reasons=[],candidates={};
   const sourceYearAnchor=anchors(spans,"L01");
@@ -131,6 +162,10 @@
    const amount=optionalAmount(anchor,high);
    if(amount!==null&&amount<=max&&(!flag||amount>0)){optionalCandidates[key]=amount;if(flag)sourceIndicators[flag]=true;}
   }
+  const date=housingDate(spans,year);
+  if(date.detected)sourceIndicators.hasMortgage=true;
+  if(date.multiple)sourceIndicators.hasNonstandardConditions=true;
+  if(date.moveInYear!==undefined)optionalCandidates.mortgageMoveInYear=date.moveInYear;
   return {
    schema:"furusato-positioned-gcodes/v1",
    status:"REQUIRES_SOURCE_REVIEW",year,
@@ -152,6 +187,9 @@
    const n=coded.optionalCandidates?.[key];
    if(Number.isSafeInteger(n)&&n>=0&&n<=max&&(!flag||(n>0&&coded.sourceIndicators?.[flag]===true)))result[key]=n;
   }
+  const moveIn=coded.optionalCandidates?.mortgageMoveInYear;
+  if(coded.year===2025&&coded.sourceIndicators?.hasMortgage===true&&!coded.sourceIndicators?.hasNonstandardConditions&&
+     Number.isSafeInteger(moveIn)&&moveIn>=2014&&moveIn<=2025)result.mortgageMoveInYear=moveIn;
   return result;
  }
  return Object.freeze({review,verifiedOptional});

@@ -589,7 +589,8 @@ const badGrouped=fixture(1,basic2026);badGrouped.sourceIndicators.hasOtherIncome
 assert.equal(batch.confirmBasic(badGrouped),false);assert.equal(badGrouped.confirmed,false);
 const unselected=fixture(1,basic2026);unselected.municipality="";assert.equal(batch.confirmBasic(unselected),false);
 // R7 prefill is source-year only and never approves a result.
-const premiumPrefill=fixture(1,{year:2025,eligibleForManualTransfer:true,sourceIndicators:{hasLifeInsurance:true,hasEarthquakeInsurance:true,hasMortgage:true},candidates:{salaryGross:7000000,salaryIncomeReference:5200000,socialInsurance:1000000,deductionsReference:1630000},optionalCandidates:{sourceInsurance_generalNew:123456,sourceInsurance_longTermOld:12345,mortgageSourcePossible:345678}},2026);
+const premiumPrefill=fixture(1,{year:2025,eligibleForManualTransfer:true,sourceIndicators:{hasLifeInsurance:true,hasEarthquakeInsurance:true,hasMortgage:true},candidates:{salaryGross:7000000,salaryIncomeReference:5200000,socialInsurance:1000000,deductionsReference:1630000},optionalCandidates:{sourceInsurance_generalNew:123456,sourceInsurance_longTermOld:12345,mortgageSourcePossible:345678,mortgageMoveInYear:2021}},2026);
+assert.equal(premiumPrefill.mortgageMoveInYear,"2021");assert.equal(premiumPrefill.mortgageCapClass,"");
 assert.equal(premiumPrefill.sourceInsurance_generalNew,"123456");
 assert.equal(premiumPrefill.sourceInsurance_longTermOld,"12345");
 assert.equal(premiumPrefill.mortgageSourcePossible,"345678");
