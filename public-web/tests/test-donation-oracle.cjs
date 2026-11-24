@@ -967,3 +967,66 @@ for(const change of [
  }
 }
 console.log(JSON.stringify({schema:"web-other-tax-integration/v1",integratedOtherCases,integratedOtherTrials,holdCases:10,release:"HOLD"}));
+
+ 
+// Medical deduction components only; separate mutually exclusive routes.
+const medicalDeductions=require("../dist/medical-deductions.js");
+assert.equal(fs.readFileSync(path.resolve(__dirname,"../dist/medical-deductions.js"),"utf8"),
+ fs.readFileSync(path.resolve(__dirname,"../src/medical-deductions.js"),"utf8"));
+const medicalGroup=(paidYen,reimbursedYen=0)=>({paidYen,reimbursedYen,eligibilityReviewed:true});
+const medicalBase={year:2025,salaryIncome:3000000,method:"ordinary",groups:[],
+ conditions:"annual-salary-only-eligible-paid-expenses-compensation-reviewed"};
+let medicalCases=0,medicalHoldCases=0;
+for(const year of [2025,2026]){
+ const b={...medicalBase,year};
+ for(const [income,groups,threshold,net,applied,ignored,deduction] of [
+  [3000000,[],100000,0,0,0,0],
+  [3000000,[medicalGroup(99999)],100000,99999,0,0,0],
+  [3000000,[medicalGroup(100000)],100000,100000,0,0,0],
+  [3000000,[medicalGroup(100001)],100000,100001,0,0,1],
+  [1200000,[medicalGroup(90000)],60000,90000,0,0,30000],
+  [1999980,[medicalGroup(100000)],99999,100000,0,0,1],
+  [2000000,[medicalGroup(100001)],100000,100001,0,0,1],
+  [0,[medicalGroup(10000)],0,10000,0,0,10000],
+  [3000000,[medicalGroup(80000,120000),medicalGroup(180000,20000)],100000,160000,100000,40000,60000],
+  [3000000,[medicalGroup(100000,1000000),medicalGroup(300000)],100000,300000,100000,900000,200000],
+  [3000000,[medicalGroup(2099999)],100000,2099999,0,0,1999999],
+  [3000000,[medicalGroup(2100000)],100000,2100000,0,0,2000000],
+  [3000000,[medicalGroup(3000000)],100000,3000000,0,0,2000000]
+ ]){
+  const x=medicalDeductions.calculate({...b,salaryIncome:income,groups});
+  assert.equal(x.status,"COMPONENTS_ONLY",x.reason);const c=x.calculation;
+  assert.deepEqual([c.thresholdYen,c.netEligibleYen,c.reimbursementAppliedYen,c.excessReimbursementIgnoredYen,
+   c.nationalDeductionYen,c.residentDeductionYen,c.adjustmentDifferenceYen,c.requiresFilingToClaim,
+   c.oneStopAllowedWhenClaimed,x.donationLimitYen,x.release],
+   [threshold,net,applied,ignored,deduction,deduction,0,true,false,null,"HOLD"]);
+  medicalCases++;
+ }
+ for(const [groups,net,deduction] of [
+  [[medicalGroup(11999)],11999,0],[[medicalGroup(12000)],12000,0],
+  [[medicalGroup(12001)],12001,1],[[medicalGroup(99999)],99999,87999],
+  [[medicalGroup(100000)],100000,88000],[[medicalGroup(200000)],200000,88000],
+  [[medicalGroup(5000,9000),medicalGroup(30000,1000)],29000,17000]
+ ]){
+  const x=medicalDeductions.calculate({...b,method:"selfMedication",healthMeasureReviewed:true,groups});
+  assert.equal(x.status,"COMPONENTS_ONLY",x.reason);const c=x.calculation;
+  assert.deepEqual([c.thresholdYen,c.capYen,c.netEligibleYen,c.nationalDeductionYen,c.residentDeductionYen,
+   c.adjustmentDifferenceYen,c.requiresFilingToClaim,c.oneStopAllowedWhenClaimed,x.donationLimitYen],
+   [12000,88000,net,deduction,deduction,0,true,false,null]);
+  medicalCases++;
+ }
+}
+for(const change of [
+ {year:2027},{salaryIncome:-1},{salaryIncome:1999999},{salaryIncome:"3000000"},
+ {method:"both"},{method:"selfMedication"},{method:"selfMedication",healthMeasureReviewed:false},
+ {healthMeasureReviewed:true},{groups:[medicalGroup(-1)]},{groups:[medicalGroup(0,-1)]},
+ {groups:[medicalGroup(1.5)]},{groups:[{...medicalGroup(10000),eligibilityReviewed:false}]},
+ {groups:[{...medicalGroup(10000),name:"fictional"}]},{groups:null},
+ {conditions:"unreviewed"},{ordinaryAndSelf:true}
+]){
+ const x=medicalDeductions.calculate({...medicalBase,...change});
+ assert.equal(x.status,"HOLD");assert.equal(x.calculation,null);assert.equal(x.donationLimitYen,null);
+ medicalHoldCases++;
+}
+console.log(JSON.stringify({schema:"web-medical-deductions/v1",medicalCases,medicalHoldCases,
+ independentLiteralCases:true,uiIntegrated:false,donationIntegrated:false,release:"HOLD"}));
