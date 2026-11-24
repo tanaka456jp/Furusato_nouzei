@@ -38,14 +38,16 @@
     var lines=text.split("\n").map(function(x){return x.trim();}).filter(Boolean);
     var yearCandidates=[];
     var header=/給与所得(?:の)?源泉徴収票/.test(text);
-    var years=/(?:令和\s*([78])\s*年分|20(25|26)\s*年分)/g,m;
+    var years=/(?:(令和|平成|昭和)\s*(元|[1-9][0-9]?)\s*年\s*分|(?:^|[^0-9])((?:19|20)[0-9]{2})\s*年\s*分)/g,m;
     while ((m=years.exec(text))) {
-      var y=m[1]?2018+Number(m[1]):2000+Number(m[2]);
+      var y=m[1]?({令和:2018,平成:1988,昭和:1925}[m[1]])+(m[2]==="元"?1:Number(m[2])):Number(m[3]);
       if (yearCandidates.indexOf(y)<0)yearCandidates.push(y);
     }
     var reasons=[];
     if(!header)reasons.push("DOCUMENT_TITLE_UNVERIFIED");
+    const yearUnsupported=yearCandidates.some(y=>![2025,2026].includes(y));
     if(yearCandidates.length!==1)reasons.push("DOCUMENT_YEAR_UNVERIFIED");
+    if(yearUnsupported)reasons.push("DOCUMENT_YEAR_UNSUPPORTED");
     var candidates={},duplicates=[];
     FIELDS.forEach(function(field){
       var values=[];
@@ -71,14 +73,15 @@
     duplicates.forEach(function(key){
       delete candidates[key];reasons.push("FIELD_CONFLICT_"+key);
     });
-    if(!header||yearCandidates.length!==1)candidates={};
+    if(!header||yearCandidates.length!==1||yearUnsupported)candidates={};
     return {
       schema:"furusato-slip-field-review/v1",
       status:"REQUIRES_SOURCE_REVIEW",
-      year:header&&yearCandidates.length===1?yearCandidates[0]:null,
+      year:header&&yearCandidates.length===1&&!yearUnsupported?yearCandidates[0]:null,
       // Explicit contradictory years must veto a positional PDF fallback.
       // No text years is different: PDF.js may split the title/date cells.
       yearConflict:yearCandidates.length>1,
+      yearUnsupported,
       candidates:candidates,
       reasons:Array.from(new Set(reasons)),
       fullyExtracted:reasons.length===0&&FIELDS.every(function(f){return Number.isSafeInteger(candidates[f.key]);}),
@@ -127,6 +130,7 @@
       status:"REQUIRES_SOURCE_REVIEW",
       year:r.fullyExtracted?r.year:null,
       yearConflict:r.yearConflict===true,
+      yearUnsupported:r.yearUnsupported===true,
       candidates:r.fullyExtracted?r.candidates:{},
       reasons:r.reasons,
       eligibleForManualTransfer:r.fullyExtracted,

@@ -100,23 +100,25 @@
    return hold("UNVERIFIED",["LAYOUT_DOCUMENT_TITLE_MISSING"]);
   var years=[];
   for(const v of spans){
-   var m=/^令和([78])年分$/.exec(v.s);
-   if(m)years.push(2018+Number(m[1]));
-   m=/^(2025|2026)年分$/.exec(v.s);
+   const eras={令和:2018,平成:1988,昭和:1925};
+   var m=/^(令和|平成|昭和)(元|[1-9][0-9]?)年分$/.exec(v.s);
+   if(m)years.push(eras[m[1]]+(m[2]==="元"?1:Number(m[2])));
+   m=/^((?:19|20)[0-9]{2})年分$/.exec(v.s);
    if(m)years.push(Number(m[1]));
-   if(v.s!=="令和")continue;
-   const digit=spans.filter(d=>/^[78]$/.test(d.s)&&d.x>v.x+4&&
+   if(!Object.prototype.hasOwnProperty.call(eras,v.s))continue;
+   const digit=spans.filter(d=>/^(?:元|[1-9][0-9]?)$/.test(d.s)&&d.x>v.x+4&&
      d.x<v.x+70&&Math.abs(d.y-v.y)<=6);
    for(const d of digit){
     const suffix=spans.filter(e=>e.s==="年分"&&e.x>d.x+1&&
       e.x<d.x+62&&Math.abs(e.y-v.y)<=6);
-    for(const e of suffix)years.push(2018+Number(d.s));
+    for(const e of suffix)years.push(eras[v.s]+(d.s==="元"?1:Number(d.s)));
    }
   }
   // Two even identical fully parsed years may indicate a merged/slipped page.
   if(years.length!==1)
    return hold(years.length>1?"CONFLICT":"UNVERIFIED",
      ["LAYOUT_YEAR_NOT_UNIQUE"]);
+  if(![2025,2026].includes(years[0]))return hold("CONFLICT",["LAYOUT_YEAR_UNSUPPORTED"]);
   var candidates={},seenIds=new Set(),reasons=[],missing=[];
   for(const f of LABELS){
    const anchors=spans.filter(v=>f.pattern.test(v.s));

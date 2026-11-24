@@ -96,4 +96,23 @@ const missing=review.reviewDigitalPdf("支払金額 7,000,000円\n"+
 assert.equal(missing.eligibleForManualTransfer,false);
 assert.deepEqual(missing.candidates,{});
 assert.equal(review.compareAttempts(sample,sample,100,100).originalCompared,false);
+// Unsupported printed tax years must not be ignored when another
+// supported year happens to occur in the recognition output.
+for(const year of ["令和6年分","令和9年分","令和10年分","2024年分","2027年分","平成30年分","令和元年分","令和 6 年 分"]){
+ const single=sample.replace("令和8年分",year);
+ const unsupported=review.reviewDigitalPdf(single);
+ assert.equal(unsupported.yearUnsupported,true);
+ assert.equal(unsupported.yearConflict,false);
+ assert.equal(unsupported.year,null);
+ assert.equal(unsupported.eligibleForManualTransfer,false);
+ assert.deepEqual(unsupported.candidates,{});
+ const mixed=sample+"\n"+year;
+ const d=review.reviewDigitalPdf(mixed);
+ assert.equal(d.yearConflict,true);
+ assert.equal(d.yearUnsupported,true);
+ assert.equal(d.eligibleForManualTransfer,false);
+ assert.deepEqual(d.candidates,{});
+ assert.equal(review.compareAttempts(mixed,mixed).eligibleForManualTransfer,false);
+}
+assert.equal(review.reviewDigitalPdf(sample+"\n2026年分").eligibleForManualTransfer,true);
 console.log("PUBLIC_OCR_SLIP_CONSENSUS_SYNTHETIC_PASS; no real recognition proof; HOLD");

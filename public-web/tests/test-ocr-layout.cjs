@@ -157,4 +157,18 @@ assert.doesNotMatch(runtime,/await page\.getTextContent\(\)/);
 const maxImage=/var MAX_PDF_IMAGE_PIXELS=16\*1024\*1024/.test(runtime);
 assert.equal(maxImage,true,"PDF image decoder must have a hard pixel cap");
 assert.match(runtime,/maxImageSize:MAX_PDF_IMAGE_PIXELS/);
+for(const year of ["令和6年分","令和9年分","令和10年分","2024年分","平成30年分"]){
+ const only=extract(spans.concat([item("給与所得の源泉徴収票",24,790),item(year,24,750)]));
+ assert.equal(only.positionStatus,"CONFLICT");
+ assert.deepEqual(only.reasons,["LAYOUT_YEAR_UNSUPPORTED"]);
+ assert.equal(only.eligibleForManualTransfer,false);
+ const mixed=extract(separateLabelAndValuePdf.concat([item(year,600,750)]));
+ assert.equal(mixed.positionStatus,"CONFLICT");
+ assert.equal(mixed.eligibleForManualTransfer,false);
+}
+const unsupportedSplit=extract(separateLabelAndValuePdf.map(x=>x.str==="8"?item("6",62,750):x));
+assert.equal(unsupportedSplit.positionStatus,"CONFLICT");
+assert.deepEqual(unsupportedSplit.reasons,["LAYOUT_YEAR_UNSUPPORTED"]);
+assert.match(runtime,/!digital\.yearConflict&&!digital\.yearUnsupported/);
+assert.match(runtime,/digital\.yearUnsupported===true/);
 console.log("PUBLIC_OCR_PDF_POSITION_NEGATIVE_AND_SOURCE_CANDIDATE_AUDIT_SYNTHETIC_PASS; not accuracy proof");
