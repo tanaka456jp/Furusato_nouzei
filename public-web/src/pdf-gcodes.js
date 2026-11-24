@@ -257,9 +257,13 @@
   };
  }
  function verifiedOptional(coded,selected){
-  if(!coded?.eligibleForManualTransfer||!selected?.eligibleForManualTransfer||
+  // Preserve independently matched optional candidates on the exact
+  // blank-social review route, without treating the blank as zero or
+  // changing eligibility. All three other amounts must still match.
+  const partial=canConfirmSocialZero(coded)&&canConfirmSocialZero(selected);
+  if((!partial&&(!coded?.eligibleForManualTransfer||!selected?.eligibleForManualTransfer))||
      ![2025,2026].includes(coded.year)||coded.year!==selected.year||
-     Object.values(FIELDS).some(k=>!Number.isSafeInteger(coded.candidates?.[k])||coded.candidates[k]!==selected.candidates?.[k]))
+     Object.values(FIELDS).some(k=>partial&&k==="socialInsurance"?false:!Number.isSafeInteger(coded.candidates?.[k])||coded.candidates[k]!==selected.candidates?.[k]))
    return {};
   const result={};
   for(const [key,max,flag] of Object.values({...REVIEW_AMOUNTS,...(coded.year===2025?R7_AMOUNTS:{})})){
