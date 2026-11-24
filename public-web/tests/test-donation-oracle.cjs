@@ -777,3 +777,102 @@ const {premiums:unusedPremiums,insuranceReviewed:unusedReview,...missingInsuranc
 assert.equal(sourceFamily.reconcile(missingInsurance,engine).status,"HOLD");
 console.log(JSON.stringify({schema:"web-insurance-source-reconciliation/v1",normalCases:2,holdCases:11,
  sourceYearIndependent:true,release:"HOLD"}));
+
+
+// Other deduction components: independent literal tax table, no UI use yet.
+const otherDeductions=require("../dist/other-deductions.js");
+assert.equal(fs.readFileSync(path.resolve(__dirname,"../dist/other-deductions.js"),"utf8"),
+ fs.readFileSync(path.resolve(__dirname,"../src/other-deductions.js"),"utf8"));
+const otherBase={family:{...baseFamily},disability:{self:"none",spouse:"none",relatives:[]},
+ maritalRelief:"none",childIndex:null,workingStudent:false,smallEnterpriseContributions:0,
+ conditions:"salary-only-adult-other-deductions-reviewed"};
+let otherCases=0,otherHoldCases=0;
+function otherCheck(input,expected){
+ const result=otherDeductions.calculate(input);
+ assert.equal(result.status,"COMPONENTS_ONLY",JSON.stringify(input));
+ assert.equal(result.donationLimitYen,null);assert.equal(result.release,"HOLD");
+ const c=result.calculation;
+ assert.deepEqual([c.nationalOtherDeductionYen,c.residentOtherDeductionYen,c.adjustmentDifferenceYen],expected);
+ otherCases++;return c;
+}
+function otherHold(input){
+ const result=otherDeductions.calculate(input);
+ assert.equal(result.status,"HOLD",JSON.stringify(input));assert.equal(result.calculation,null);
+ assert.equal(result.donationLimitYen,null);otherHoldCases++;
+}
+for(const year of [2025,2026]){
+ const threshold=year===2025?580000:620000;
+ const studentLimit=year===2025?850000:890000;
+ const b={...otherBase,family:{...baseFamily,year}};
+ const table=[["none",[0,0,0]],["ordinary",[270000,260000,10000]],
+  ["special",[400000,300000,100000]],["cohabitingSpecial",[750000,530000,220000]]];
+ for(const [kind,expected] of table){
+  if(kind!=="cohabitingSpecial"){
+   otherCheck({...b,disability:{...b.disability,self:kind}},expected);
+   for(const n of [1349999,1350000,1350001]){
+    const c=otherCheck({...b,family:{...b.family,taxpayerIncome:n},
+     disability:{...b.disability,self:kind}},expected);
+    assert.equal(c.specialResidentExempt,kind!=="none"&&n<=1350000);
+    assert.equal(c.residentIncomeLevyExempt,kind!=="none"&&n<=1350000);
+   }
+  }
+  for(const income of [threshold-1,threshold,threshold+1]){
+   const sp={...b,family:{...b.family,spouse:spouse(income)},disability:{...b.disability,spouse:kind}};
+   if(kind!=="none"&&income>threshold)otherHold(sp);else otherCheck(sp,expected);
+   // Under-16 relatives may qualify for disability even though no ordinary
+   // income deduction is available; special-relative-only claims may not.
+   for(const age of [0,15,16,20,70]){
+    const rel={...b,family:{...b.family,relatives:[relative(age,income)]},
+      disability:{...b.disability,relatives:[kind]}};
+    if(kind!=="none"&&income>threshold)otherHold(rel);else otherCheck(rel,expected);
+   }
+  }
+ }
+ for(const n of [1349999,1350000,1350001,4999999,5000000,5000001]){
+  for(const [maritalRelief,difference] of [["singleParentFather",10000],["singleParentMother",50000]]){
+   for(const childIncome of [threshold,threshold+1]){
+    const q={...b,family:{...b.family,taxpayerIncome:n,relatives:[relative(15,childIncome)]},
+     disability:{...b.disability,relatives:["none"]},maritalRelief,childIndex:0};
+    if(n>5000000||childIncome>threshold)otherHold(q);
+    else{
+     const c=otherCheck(q,[350000,300000,difference]);assert.equal(c.specialResidentExempt,n<=1350000);
+    }
+   }
+  }
+  const widow={...b,family:{...b.family,taxpayerIncome:n},maritalRelief:"widowBereaved"};
+  if(n>5000000)otherHold(widow);else otherCheck(widow,[270000,260000,10000]);
+ }
+ const divorced={...b,family:{...b.family,taxpayerIncome:5000000,relatives:[relative(70,threshold)]},
+  disability:{...b.disability,relatives:["none"]},maritalRelief:"widowDivorced"};
+ otherCheck(divorced,[270000,260000,10000]);
+ otherHold({...divorced,family:{...divorced.family,relatives:[relative(70,threshold+1)]}});
+ for(const n of [0,1,studentLimit-1,studentLimit,studentLimit+1]){
+  const q={...b,family:{...b.family,taxpayerIncome:n},workingStudent:true};
+  if(n===0||n>studentLimit)otherHold(q);else otherCheck(q,[270000,260000,10000]);
+ }
+ otherCheck({...b,smallEnterpriseContributions:276000},[276000,276000,0]);
+ // 27 + 40 + 75 + 27 + 30 (contributions) in ten-thousand yen;
+ // use different disability categories, a bereaved widow and no spouse.
+ const mixed={...b,family:{...b.family,taxpayerIncome:4800000,relatives:[relative(20),relative(70)]},
+  disability:{self:"ordinary",spouse:"none",relatives:["special","cohabitingSpecial"]},
+  maritalRelief:"widowBereaved",smallEnterpriseContributions:300000};
+ otherCheck(mixed,[1990000,1650000,340000]);
+ for(const q of [
+  {...b,conditions:""},{...b,smallEnterpriseContributions:-1},
+  {...b,smallEnterpriseContributions:1.5},{...b,smallEnterpriseContributions:"276000"},
+  {...b,disability:{...b.disability,self:"cohabitingSpecial"}},
+  {...b,disability:{...b.disability,spouse:"ordinary"}},
+  {...b,disability:{...b.disability,relatives:["ordinary"]}},
+  {...b,maritalRelief:"widowDivorced",family:{...b.family,taxpayerIncome:5000000}},
+  {...b,maritalRelief:"singleParentFather",childIndex:0,family:{...b.family,taxpayerIncome:5000000}},
+  {...b,childIndex:0},{...b,workingStudent:"true"},
+  {...b,maritalRelief:"widowBereaved",family:{...b.family,taxpayerIncome:4500000,spouse:spouse(0)}},
+  {...b,unknown:true},{...b,family:{...b.family,conditions:""}}
+ ])otherHold(q);
+}
+// Explicit year boundary: same student income and same child income,
+// but eligible only in 2026 under the new thresholds.
+otherHold({...otherBase,family:{...baseFamily,year:2025,taxpayerIncome:870000},workingStudent:true});
+otherCheck({...otherBase,family:{...baseFamily,year:2026,taxpayerIncome:870000},workingStudent:true},[270000,260000,10000]);
+console.log(JSON.stringify({schema:"web-other-deductions/v1",otherCases,otherHoldCases,
+ independentLiteralTables:true,uiIntegrated:false,actualExcelCOM:false,release:"HOLD"}));
