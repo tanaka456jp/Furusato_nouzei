@@ -181,7 +181,7 @@
         <section class="aside-card">
           <p class="eyebrow">適用範囲</p>
           <h2>対応しない場合はHOLD</h2>
-          <p>給与850万円超、未確認の家族・保険料控除、住宅ローン控除、その他所得、自治体差等は実務確認が必要です。家族・保険料控除は手入力の限定検証です。一括計算の保険料控除は未対応です。入力を変更して停止理由を消すのではなく、税額を個別に確認してください。</p>
+          <p>給与850万円超、未確認の家族・保険料控除、住宅ローン控除、その他所得、自治体差等は実務確認が必要です。家族・保険料控除は手入力の限定検証です。一括計算も確認済み保険料明細に対応します。入力を変更して停止理由を消すのではなく、税額を個別に確認してください。</p>
         </section>
         <section class="aside-card">
           <p class="eyebrow">税制根拠</p>
@@ -195,7 +195,7 @@
       <p class="eyebrow">OPTIONAL · MULTI-PERSON LOCAL REVIEW</p>
       <h2 id="batch-title">複数人を一括試算（複数ページPDF）</h2>
       <p>1ページにつき<strong>1人分の源泉徴収票</strong>があるPDFを、端末内でページ順に読み取ります（最大20ページ・8MB）。受給者氏名はB列相当欄へ入力・訂正でき、参照源泉票の年分と試算対象年を別々に扱います。2025年原票から2026年を試算する場合は2026年の見込額へ修正してください。</p>
-      <p class="notice">同じ方の複数勤務先の源泉徴収票や1ページに複数人分を配置したPDFは自動合算できません。配偶者・扶養親族は各対象者の家族明細から原票年と試算年を照合します。生命保険料控除・住宅ローン控除・複数給与など未対応条件がある方は、確認チェックを付けずHOLDのままにしてください。</p>
+      <p class="notice">同じ方の複数勤務先の源泉徴収票や1ページに複数人分を配置したPDFは自動合算できません。配偶者・扶養親族は各対象者の家族明細から原票年と試算年を照合します。住宅ローン控除・複数給与など未対応条件がある方は、確認チェックを付けずHOLDのままにしてください。</p>
       <label class="batch-file-label">複数ページの源泉徴収票PDF（端末内のみ）
         <input id="batchPdf" type="file" accept="application/pdf">
       </label>
@@ -207,7 +207,7 @@
         <button id="batchClear" type="button" class="secondary">一覧を消去</button>
       </div>
       <p id="batchStatus" role="status" aria-live="polite">PDFを選択するとページごとに確認できます。確認が終わっていない方の限度額は表示しません。</p>
-      <p class="smallprint">家族明細は1人1行で入力します。配偶者は S,年齢,年間合計所得（円）、親族は R,年齢,年間合計所得（円）,同居老親等（該当1・非該当0）。例：S,40,600000 または R,20,600000,0。該当者がいない年は「なし」と入力します。原票年と試算年を個別に入力し、居住者・生計同一・重複控除なし等を確認してください。家族控除なしの従来計算では両方空欄で構いません。</p>
+      <p class="smallprint">家族明細は1人1行で入力します。配偶者は S,年齢,年間合計所得（円）、親族は R,年齢,年間合計所得（円）,同居老親等（該当1・非該当0）。例：S,40,600000 または R,20,600000,0。該当者がいない年は「なし」と入力します。原票年と試算年を個別に入力し、居住者・生計同一・重複控除なし等を確認してください。家族控除なしの従来計算では両方空欄で構いません。保険料控除を使う場合は家族がいない年も「なし」と明示し、原票年・試算年の年間保険料を各区分に入力してください（空欄は0円）。地震保険と旧長期損害保険の両方に該当する同一契約は共通の適用区分を確認済みの場合だけ片方に入力してください。</p>
       <div class="batch-viewport">
         <table id="batchTable" class="batch-table" hidden>
           <caption>源泉徴収票の個別試算一覧（HOLDは金額非表示）</caption>
@@ -221,7 +221,7 @@
             <th scope="col">対象年見込額を確認</th>
             <th scope="col">追加控除等の未対応条件なし</th>
             <th scope="col">前年参考額を当年見込額へ補正済み</th>
-            <th scope="col">寄附上限額の概算</th><th scope="col">状態</th><th scope="col">課税自治体区分</th><th scope="col">住民税所得割（選択自治体）</th><th scope="col">ワンストップ参考上限</th><th scope="col">確定申告参考上限（千円刻み）</th><th scope="col" class="batch-trial-input">試算寄附額入力（空欄は自動）</th><th scope="col">確定申告試算寄附額</th><th scope="col">確定申告自己負担見込額</th><th scope="col">2,000円超過額</th><th scope="col">任意寄附額試算状態</th><th scope="col" class="batch-family-editor">家族明細（原票年・試算年）</th><th scope="col">原票所得控除合計（家族照合済）</th><th scope="col">所得税家族控除</th><th scope="col">住民税家族控除</th>
+            <th scope="col">寄附上限額の概算</th><th scope="col">状態</th><th scope="col">課税自治体区分</th><th scope="col">住民税所得割（選択自治体）</th><th scope="col">ワンストップ参考上限</th><th scope="col">確定申告参考上限（千円刻み）</th><th scope="col" class="batch-trial-input">試算寄附額入力（空欄は自動）</th><th scope="col">確定申告試算寄附額</th><th scope="col">確定申告自己負担見込額</th><th scope="col">2,000円超過額</th><th scope="col">任意寄附額試算状態</th><th scope="col" class="batch-family-editor">家族明細（原票年・試算年）</th><th scope="col">原票所得控除合計（家族照合済）</th><th scope="col">所得税家族控除</th><th scope="col">住民税家族控除</th><th scope="col" class="batch-family-editor batch-insurance-editor">保険料明細（原票年・試算年）</th><th scope="col">原票保険料控除合計（照合済）</th><th scope="col">所得税生命保険料控除</th><th scope="col">住民税生命保険料控除</th><th scope="col">所得税地震保険料控除</th><th scope="col">住民税地震保険料控除</th><th scope="col">23歳未満扶養親族の生命保険料特例</th>
           </tr></thead>
           <tbody id="batchRows"></tbody>
         </table>
