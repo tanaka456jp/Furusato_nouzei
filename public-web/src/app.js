@@ -279,14 +279,38 @@
       ["所得控除合計（手入力上書き）", input.deductionsOverride!==""?
         strictYen(input.deductionsOverride):null],
       ["所得税の課税所得", calc.incomeTaxTaxableYen],
-      ["住民税所得割の概算", calc.residentIncomeLevyYen],
-      ["寄附限度額の概算", calc.donationLimitYen]
+      ["住民税所得割の概算（合算基準）", calc.residentIncomeLevyYen],
+      ["寄附限度額の概算（合算基準）", calc.donationLimitYen]
     ].forEach(function (pair) {
       if (Number.isFinite(pair[1])) {
         add("dt", dl, pair[0]);
         add("dd", dl, yen(pair[1]));
       }
     });
+    // Independent municipality comparison, shown only after the existing
+    // source/condition guard has accepted the salary estimate. No selected
+    // jurisdiction is inferred from the slip or browser location.
+    if(input.filing==="one-stop"&&window.FurusatoResidentLevy&&
+       typeof window.FurusatoResidentLevy.oneStopReference==="function"){
+      var section=add("section",details,undefined,"municipal-comparison");
+      add("h4",section,"自治体別ワンストップ参考額（比較検証）");
+      add("p",section,"標準税率の2区分を比較します。主表示は従来の合算方式です。実際の自治体・控除条件の確認が必要です。");
+      ["standard","designated"].forEach(function(municipality){
+        var local=window.FurusatoResidentLevy.oneStopReference({
+          year:result.year,salaryIncome:calc.salaryIncomeYen,
+          socialInsurance:calc.socialInsuranceYen,municipality:municipality,
+          conditions:"basic-only-reviewed"});
+        var name=municipality==="standard"?"標準市町村":"政令指定都市";
+        if(local.status!=="ESTIMATE"||!local.calculation){
+          add("p",section,name+"：HOLD");return;
+        }
+        var c=local.calculation;
+        add("p",section,name+"：所得割 "+yen(c.residentIncomeLevyYen)+
+          "（市町村 "+yen(c.city.assessedYen)+"・道府県 "+yen(c.prefecture.assessedYen)+
+          "）、寄附参考額 "+yen(local.donationLimitYen)+
+          "（千円未満切捨て）");
+      });
+    }
     add("p", details, "所得年 " + result.year +
       "年 ／ 住民税 " + result.residentYear + "年度 ／ エンジン " +
       String(result.version || "未検証"), "muted");
