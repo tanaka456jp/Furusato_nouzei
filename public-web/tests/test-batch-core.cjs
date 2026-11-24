@@ -311,7 +311,7 @@ attest(familyRow);runFamily(familyRow);
 assert.equal(familyRow.status,"前年参考概算");assert.equal(familyRow.donationLimitYen,53000);
 assert.equal(familyRow.appliedDeductionsYen,3390000);
 assert.equal(batch.canOutputEstimate(familyRow),true);
-assert.deepEqual(columns(familyRow).slice(24),["3030000","1010000","780000"]);
+assert.deepEqual(columns(familyRow).slice(24,27),["3030000","1010000","780000"]);
 assert.doesNotMatch(batch.csv([familyRow]),/S,40|R,20/);
 for(const mutate of [
  r=>{r.familyReviewed=false;},r=>{r.familySourceText="なし";},
@@ -323,7 +323,7 @@ for(const mutate of [
  batch.edit(r,"familyTargetText","S,41,600000\nR,21,600000,0");
  attest(r);runFamily(r);assert.equal(batch.canOutputEstimate(r),true);
  mutate(r);assert.equal(batch.canOutputEstimate(r),false);
- assert.deepEqual(columns(r).slice(24),["","",""]);
+ assert.deepEqual(columns(r).slice(24,27),["","",""]);
 }
 batch.edit(familyRow,"familySourceText","S,40,600000");
 attest(familyRow);runFamily(familyRow);assert.equal(familyRow.status,"HOLD");
@@ -337,5 +337,50 @@ attest(familyRow);runFamily(familyRow);assert.equal(familyRow.donationLimitYen,5
 batch.edit(familyRow,"trialInput","120000");runFamily(familyRow);
 assert.equal(familyRow.comparison.trial.donation,120000);
 assert.equal(familyRow.familyReviewed,true);
+// Insurance and family source-year audit: the same premiums receive
+// different national deductions in 2025 and 2026.
+const insuredReview={...familyReview,sourceIndicators:{hasDependents:true,hasLifeInsurance:true,hasEarthquakeInsurance:true},
+ candidates:{...familyReview.candidates,deductionsReference:3120000}};
+function insuredFixture(){
+ const r=fixture(1,insuredReview,2026);
+ batch.edit(r,"familySourceText","S,40,600000\nR,20,600000,0");
+ batch.edit(r,"familyTargetText","S,41,600000\nR,21,600000,0");
+ for(const prefix of ["source","target"]){
+  batch.edit(r,prefix+"Insurance_generalNew","120000");
+  batch.edit(r,prefix+"Insurance_earthquake","50000");
+ }
+ attest(r);r.insuranceReviewed=true;
+ return r;
+}
+const insuredRow=insuredFixture();
+insuredRow.insuranceReviewed=false;runFamily(insuredRow);assert.equal(insuredRow.status,"HOLD");
+insuredRow.insuranceReviewed=true;runFamily(insuredRow);
+assert.equal(insuredRow.donationLimitYen,51000);
+assert.equal(insuredRow.appliedDeductionsYen,3500000);
+assert.equal(batch.canOutputEstimate(insuredRow),true);
+assert.deepEqual(columns(insuredRow).slice(24,27),["3120000","1010000","780000"]);
+assert.deepEqual(columns(insuredRow).slice(27),["90000","60000","28000","50000","25000","適用"]);
+assert.equal(insuredRow.comparison.filing,10000);
+for(const mutate of [
+ r=>{r.insuranceReviewed=false;},r=>{r.sourceInsurance_generalNew="0";},
+ r=>{r.targetInsurance_generalNew="80000";},r=>{r.sourceIndicators.hasMortgage=true;}
+]){
+ const r=insuredFixture();runFamily(r);assert.equal(batch.canOutputEstimate(r),true);
+ mutate(r);assert.equal(batch.canOutputEstimate(r),false);
+ assert.deepEqual(columns(r).slice(27),["","","","","",""]);
+}
+for(const [key,value] of [["sourceInsurance_generalNew","0"],["targetInsurance_generalNew","bad"],
+ ["targetInsurance_generalNew","-1"],["targetInsurance_generalNew","100000001"]]){
+ const r=insuredFixture();batch.edit(r,key,value);attest(r);r.insuranceReviewed=true;
+ runFamily(r);assert.equal(r.status,"HOLD");assert.equal(r.donationLimitYen,null);
+}
+const same=insuredFixture();batch.edit(same,"year","2025");
+batch.edit(same,"familyTargetText",same.familySourceText);attest(same);same.insuranceReviewed=true;
+runFamily(same);assert.equal(same.donationLimitYen,52000);
+batch.edit(same,"targetInsurance_generalNew","80000");attest(same);same.insuranceReviewed=true;
+runFamily(same);assert.equal(same.status,"HOLD");
+batch.edit(insuredRow,"trialInput","60000");runFamily(insuredRow);
+assert.equal(insuredRow.comparison.trial.selfPay,9339);
+assert.equal(insuredRow.insuranceReviewed,true);
 dom.window.close();
 console.log("PUBLIC_BATCH_PER_PAGE_LOCAL_SAFETY_SYNTHETIC_PASS; no private slips; no deploy");
