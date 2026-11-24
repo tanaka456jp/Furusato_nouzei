@@ -10,9 +10,9 @@
  * https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1155.htm
  */
 (function(root,factory){
- if(typeof module==="object"&&module.exports)module.exports=factory(require("./family-deductions.js"),require("./insurance-deductions.js"));
- else root.FurusatoFamilyTax=factory(root.FurusatoFamilyDeductions,root.FurusatoInsuranceDeductions);
-}(typeof window!=="undefined"?window:this,function(family,insurance){
+ if(typeof module==="object"&&module.exports)module.exports=factory(require("./family-deductions.js"),require("./insurance-deductions.js"),require("./other-deductions.js"));
+ else root.FurusatoFamilyTax=factory(root.FurusatoFamilyDeductions,root.FurusatoInsuranceDeductions,root.FurusatoOtherDeductions);
+}(typeof window!=="undefined"?window:this,function(family,insurance,other){
  const valid=(n,max)=>Number.isSafeInteger(n)&&n>=0&&n<=max;
  const hold=reason=>({status:"HOLD",reason,calculation:null,donationLimitYen:null,release:"HOLD"});
  const floor1000=n=>Math.floor(Math.max(0,n)/1000)*1000;
@@ -26,13 +26,17 @@
   return {taxable,incomeTax,reconstruction,total:incomeTax+reconstruction};
  }
  function calculate(input){
-  const keys=["year","salaryIncome","socialInsurance","municipality","spouse","relatives","conditions"];
-  const withInsurance=input?.conditions==="salary-basic-social-family-insurance-only-reviewed";
+  // The new path accepts the combined amount (G26), NEVER an ambiguous
+  // socialInsurance amount. G25 is included in it, not an extra deduction.
+  const withOther=input?.conditions==="salary-basic-social-family-insurance-other-only-reviewed";
+  const keys=["year","salaryIncome",withOther?"socialAndContributions":"socialInsurance","municipality","spouse","relatives","conditions"];
+  const withInsurance=withOther||input?.conditions==="salary-basic-social-family-insurance-only-reviewed";
   if(withInsurance)keys.push("premiums");
+  if(withOther)keys.push("otherDeductions");
   if(!input||typeof input!=="object"||Array.isArray(input)||
     Object.keys(input).length!==keys.length||!keys.every(k=>Object.prototype.hasOwnProperty.call(input,k))||
     ![2025,2026].includes(input.year)||!valid(input.salaryIncome,6550000)||
-    !valid(input.socialInsurance,8500000)||!["standard","designated"].includes(input.municipality)||
+    !valid(withOther?input.socialAndContributions:input.socialInsurance,8500000)||!["standard","designated"].includes(input.municipality)||
     (!withInsurance&&input.conditions!=="salary-basic-social-family-only-reviewed")||!family||
     typeof family.calculate!=="function")
     return hold("給与所得・家族・自治体・追加控除等の適用条件を確認してください");
@@ -52,14 +56,31 @@
    if(result.status!=="COMPONENTS_ONLY")return hold(result.reason||"保険料控除を確認できません");
    insuranceDetails=result.calculation;
   }
-  const nationalDeductions=nationalBasic+input.socialInsurance+c.nationalFamilyDeductionYen+(insuranceDetails?.national.totalYen??0);
-  const residentDeductions=430000+input.socialInsurance+c.residentFamilyDeductionYen+(insuranceDetails?.resident.totalYen??0);
+  let otherDetails=null,socialOnly=input.socialInsurance;
+  if(withOther){
+   const o=input.otherDeductions;
+   const otherKeys=["disability","maritalRelief","childIndex","workingStudent","smallEnterpriseContributions"];
+   if(!o||typeof o!=="object"||Array.isArray(o)||Object.keys(o).length!==otherKeys.length||
+      !otherKeys.every(k=>Object.prototype.hasOwnProperty.call(o,k))||
+      !valid(o.smallEnterpriseContributions,input.socialAndContributions)||
+      !other||typeof other.calculate!=="function")
+    return hold("社会保険料等の合計額と内書き掛金、その他控除を確認してください");
+   socialOnly=input.socialAndContributions-o.smallEnterpriseContributions;
+   const result=other.calculate({...o,family:household,conditions:"salary-only-adult-other-deductions-reviewed"});
+   if(result.status!=="COMPONENTS_ONLY")return hold(result.reason||"その他所得控除を確認できません");
+   otherDetails=result.calculation;
+   if(otherDetails.residentIncomeLevyExempt)return hold("住民税所得割非課税のため寄附上限試算対象外です");
+  }
+  const nationalDeductions=nationalBasic+socialOnly+c.nationalFamilyDeductionYen+
+    (insuranceDetails?.national.totalYen??0)+(otherDetails?.nationalOtherDeductionYen??0);
+  const residentDeductions=430000+socialOnly+c.residentFamilyDeductionYen+
+    (insuranceDetails?.resident.totalYen??0)+(otherDetails?.residentOtherDeductionYen??0);
   const nationalTaxable=floor1000(income-nationalDeductions);
   const localTaxable=floor1000(income-residentDeductions);
   if(nationalTaxable===0||localTaxable===0)return hold("所得税または住民税の課税所得がないケースは個別確認してください");
   // Insurance deduction differences are not personal deduction differences.
   // Keep the statutory municipal special-rate base separate from actual national taxable.
-  const difference=50000+c.familyAdjustmentDifferenceYen;
+  const difference=50000+c.familyAdjustmentDifferenceYen+(otherDetails?.adjustmentDifferenceYen??0);
   const adjustmentBasis=localTaxable<=2000000?Math.min(localTaxable,difference):
    Math.max(50000,difference-(localTaxable-2000000));
   const specialBase=localTaxable-difference-Math.max(0,nationalBasic-480000);
@@ -86,7 +107,9 @@
   if(rounded<2000)return hold("寄附控除の参考上限を確認できません");
   return {status:"ESTIMATE",donationLimitYen:rounded,release:"HOLD",calculation:{
    year:input.year,residentYear:input.year+1,municipality:input.municipality,
-   family:c,...(withInsurance?{insurance:insuranceDetails}:{}),nationalBasicYen:nationalBasic,nationalDeductionsYen:nationalDeductions,
+   family:c,...(withInsurance?{insurance:insuranceDetails}:{}),
+   ...(withOther?{other:otherDetails,socialInsuranceOnlyYen:socialOnly,socialAndContributionsYen:input.socialAndContributions}:{}),
+   nationalBasicYen:nationalBasic,nationalDeductionsYen:nationalDeductions,
    residentDeductionsYen:residentDeductions,nationalTaxableYen:nationalTaxable,
    residentTaxableYen:localTaxable,nationalBefore:national(nationalTaxable),
    personalDifferenceYen:difference,adjustmentBasisYen:adjustmentBasis,

@@ -876,3 +876,94 @@ otherHold({...otherBase,family:{...baseFamily,year:2025,taxpayerIncome:870000},w
 otherCheck({...otherBase,family:{...baseFamily,year:2026,taxpayerIncome:870000},workingStudent:true},[270000,260000,10000]);
 console.log(JSON.stringify({schema:"web-other-deductions/v1",otherCases,otherHoldCases,
  independentLiteralTables:true,uiIntegrated:false,actualExcelCOM:false,release:"HOLD"}));
+
+ 
+// Other deduction integration: independent synthetic annual salary cases.
+// G25 is a subset of G26. Splitting it must not change combined deduction.
+const integratedOther={disability:{self:"special",spouse:"none",relatives:["ordinary"]},
+ maritalRelief:"singleParentFather",childIndex:0,workingStudent:false,smallEnterpriseContributions:120000};
+const integratedOtherInput={year:2025,salaryIncome:4000000,socialAndContributions:800000,
+ municipality:"standard",spouse:null,relatives:[relative(15)],conditions:"salary-basic-social-family-insurance-other-only-reviewed",
+ premiums:{...premiumsZero,generalNew:120000,earthquake:50000},otherDeductions:integratedOther};
+let integratedOtherCases=0,integratedOtherTrials=0;
+for(const year of [2025,2026])for(const municipality of ["standard","designated"]){
+ const input={...integratedOtherInput,year,municipality};
+ const result=familyTax.calculate(input);assert.equal(result.status,"ESTIMATE",result.reason);
+ const c=result.calculation;
+ const nTax=year===2025?1410000:1030000;
+ const specialBase=year===2025?1487000:1127000;
+ const raw=municipality==="standard"?[10632000,7088000]:[14176000,3544000];
+ const assessed=municipality==="standard"?[106300,70800]:[141700,35400];
+ const shares=municipality==="standard"?[3n,2n]:[4n,1n];
+ assert.deepEqual([c.socialInsuranceOnlyYen,c.socialAndContributionsYen,
+  c.other.nationalOtherDeductionYen,c.other.residentOtherDeductionYen,c.other.adjustmentDifferenceYen],
+  [680000,800000,1140000,980000,120000]);
+ assert.deepEqual([c.nationalDeductionsYen,c.residentDeductionsYen,c.nationalTaxableYen,c.residentTaxableYen,
+  c.personalDifferenceYen,c.adjustmentYen,c.residentSpecialBaseYen,c.specialRatePercent],
+  [4000000-nTax,2143000,nTax,1857000,170000,8500,specialBase,5]);
+ assert.deepEqual([c.city.beforeRounding100,c.prefecture.beforeRounding100],raw);
+ assert.deepEqual([c.city.assessedYen,c.prefecture.assessedYen],assessed);
+ const limits=shares.map((share,i)=>2000n+BigInt(assessed[i])*100000n/(84895n*share));
+ const limit=Math.floor(Math.min(...limits.map(Number))/1000)*1000;
+ assert.equal(result.donationLimitYen,limit);
+ function oracle(d){
+  const base=BigInt(d)-2000n,n=BigInt(nTax);
+  const after=n>base?(n-base)/1000n*1000n:0n;
+  const tax=x=>x/20n+(x/20n)*21n/1000n;
+  const ns=tax(n)-tax(after);
+  const local=shares.map((share,i)=>{
+   const a=base*84895n*share,cap=BigInt(raw[i])*1000n;
+   const credit=(base*share*10000n+(a<cap?a:cap)+499999n)/500000n;
+   const remaining=BigInt(raw[i])-credit*100n;
+   return BigInt(assessed[i])-(remaining>0n?remaining/10000n*100n:0n);
+  });
+  return [ns,...local,BigInt(d)-ns-local[0]-local[1]].map(Number);
+ }
+ for(const d of [2000,2001,3000,limit,limit+1000,60000,120000,1200000]){
+  const out=familyTax.filingTrial(input,d);assert.equal(out.status,"ESTIMATE");
+  const a=out.calculation;
+  assert.deepEqual([a.nationalSavingYen,a.city.savingYen,a.prefecture.savingYen,a.selfPayYen],oracle(d));
+  integratedOtherTrials++;
+ }
+ let ceiling=2000;
+ for(let d=3000;d<=1200000;d+=1000){if(oracle(d)[3]>2000)break;ceiling=d;}
+ assert.equal(familyTax.filingPrefix(input).donationLimitYen,ceiling);
+ const splitZero={...input,otherDeductions:{...integratedOther,smallEnterpriseContributions:0}};
+ assert.equal(familyTax.calculate(splitZero).donationLimitYen,result.donationLimitYen);
+ assert.deepEqual(familyTax.filingTrial(splitZero,60000),familyTax.filingTrial(input,60000));
+ integratedOtherCases++;
+}
+// Zero-other parity on the earlier insurance cases, including both methods.
+for(const year of [2025,2026])for(const municipality of ["standard","designated"]){
+ const baseline={...insuranceTaxInput,year,municipality};
+ const {socialInsurance,...rest}=baseline;
+ const extended={...rest,socialAndContributions:socialInsurance,
+  conditions:"salary-basic-social-family-insurance-other-only-reviewed",
+  otherDeductions:{disability:{self:"none",spouse:"none",relatives:["none"]},
+   maritalRelief:"none",childIndex:null,workingStudent:false,smallEnterpriseContributions:0}};
+ const a=familyTax.calculate(baseline),b=familyTax.calculate(extended);
+ assert.equal(a.status,"ESTIMATE");assert.equal(b.status,a.status);
+ const {other:unusedOther,socialInsuranceOnlyYen:unusedSocial,socialAndContributionsYen:unusedTotal,...same}=b.calculation;
+ assert.deepEqual(same,a.calculation);
+ assert.deepEqual(familyTax.filingTrial(extended,60000),familyTax.filingTrial(baseline,60000));
+ assert.deepEqual(familyTax.filingPrefix(extended),familyTax.filingPrefix(baseline));
+ integratedOtherCases++;
+}
+for(const change of [
+ {socialInsurance:800000},
+ {socialAndContributions:119999},
+ {otherDeductions:undefined},
+ {otherDeductions:{...integratedOther,smallEnterpriseContributions:-1}},
+ {otherDeductions:{...integratedOther,smallEnterpriseContributions:800001}},
+ {otherDeductions:{...integratedOther,conditions:"unreviewed"}},
+ {otherDeductions:{...integratedOther,disability:{...integratedOther.disability,self:"cohabitingSpecial"}}},
+ {otherDeductions:{...integratedOther,workingStudent:true}},
+ {salaryIncome:5000001},
+ {salaryIncome:1350000}
+]){
+ const input={...integratedOtherInput,...change};
+ for(const result of [familyTax.calculate(input),familyTax.filingTrial(input,3000),familyTax.filingPrefix(input)]){
+  assert.equal(result.status,"HOLD");assert.equal(result.donationLimitYen,null);
+ }
+}
+console.log(JSON.stringify({schema:"web-other-tax-integration/v1",integratedOtherCases,integratedOtherTrials,holdCases:10,release:"HOLD"}));
