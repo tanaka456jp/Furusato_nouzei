@@ -1030,3 +1030,90 @@ for(const change of [
 }
 console.log(JSON.stringify({schema:"web-medical-deductions/v1",medicalCases,medicalHoldCases,
  independentLiteralCases:true,uiIntegrated:false,donationIntegrated:false,release:"HOLD"}));
+
+// Medical filing integration: two deduction routes, both tax years,
+// both municipalities, independent BigInt oracle with fixed tax bases.
+const medicalFilingInput={...integratedOtherInput,
+ conditions:"salary-basic-social-family-insurance-other-medical-filing-reviewed",
+ medicalDeductions:{method:"ordinary",groups:[medicalGroup(100000,1000000),medicalGroup(300000)],
+  conditions:medicalBase.conditions}};
+let medicalIntegratedCases=0,medicalIntegratedTrials=0,medicalFilingHoldCases=0;
+for(const year of [2025,2026])for(const municipality of ["standard","designated"])
+ for(const method of ["ordinary","selfMedication"]){
+ const medicalDeductions=method==="ordinary"?medicalFilingInput.medicalDeductions:
+  {method,groups:[medicalGroup(150000)],conditions:medicalBase.conditions,healthMeasureReviewed:true};
+ const input={...medicalFilingInput,year,municipality,medicalDeductions};
+ const deduction=method==="ordinary"?200000:88000;
+ const nTax=(year===2025?1410000:1030000)-deduction;
+ const localTax=1857000-deduction;
+ const specialBase=(year===2025?1487000:1127000)-deduction;
+ const shares=municipality==="standard"?[3n,2n]:[4n,1n];
+ const raw=method==="ordinary"?
+  (municipality==="standard"?[9432000,6288000]:[12576000,3144000]):
+  (municipality==="standard"?[10104000,6736000]:[13472000,3368000]);
+ const assessed=raw.map(x=>Math.floor(x/10000)*100);
+ function oracle(d){
+  const base=BigInt(d)-2000n,n=BigInt(nTax);
+  const after=n>base?(n-base)/1000n*1000n:0n;
+  const tax=x=>x/20n+(x/20n)*21n/1000n;
+  const ns=tax(n)-tax(after);
+  const local=shares.map((share,i)=>{
+   const a=base*84895n*share,cap=BigInt(raw[i])*1000n;
+   const credit=(base*share*10000n+(a<cap?a:cap)+499999n)/500000n;
+   const remaining=BigInt(raw[i])-credit*100n;
+   return BigInt(assessed[i])-(remaining>0n?remaining/10000n*100n:0n);
+  });
+  return [ns,...local,BigInt(d)-ns-local[0]-local[1]].map(Number);
+ }
+ const blocked=familyTax.calculate(input);assert.equal(blocked.status,"HOLD");assert.equal(blocked.donationLimitYen,null);
+ for(const d of [2000,2001,2999,3000,30000,40000,50000,60000,120000,1200000]){
+  const out=familyTax.filingTrial(input,d);assert.equal(out.status,"ESTIMATE",out.reason);const c=out.calculation;
+  assert.deepEqual([c.nationalBefore.taxable,c.residentTaxableYen,c.nationalDeductionsYen,c.residentDeductionsYen,
+   c.personalDifferenceYen,c.adjustmentYen,c.residentSpecialBaseYen,c.specialRatePercent,c.medical.nationalDeductionYen,
+   c.medical.residentDeductionYen,c.filingOnly,c.oneStopAllowed],
+   [nTax,localTax,4000000-nTax,4000000-localTax,170000,8500,specialBase,5,deduction,deduction,true,false]);
+  assert.deepEqual([c.city.beforeYen,c.prefecture.beforeYen],assessed);
+  assert.deepEqual([c.nationalSavingYen,c.city.savingYen,c.prefecture.savingYen,c.selfPayYen],oracle(d));
+  medicalIntegratedTrials++;
+ }
+ let ceiling=2000,firstFailure=null;
+ for(let d=3000;d<=1200000;d+=1000){if(oracle(d)[3]>2000){firstFailure=d;break;}ceiling=d;}
+ const prefix=familyTax.filingPrefix(input);assert.equal(prefix.status,"ESTIMATE");
+ assert.equal(prefix.donationLimitYen,ceiling);
+ assert.deepEqual([prefix.calculation.firstFailureYen,prefix.calculation.filingOnly,prefix.calculation.oneStopAllowed],
+  [firstFailure,true,false]);
+ medicalIntegratedCases++;
+}
+// Zero deduction is still filing-only but all monetary calculations match.
+const zeroMedical={...medicalFilingInput,medicalDeductions:{...medicalFilingInput.medicalDeductions,groups:[]}};
+const normalTrial=familyTax.filingTrial(integratedOtherInput,40000);
+const zeroTrial=familyTax.filingTrial(zeroMedical,40000);
+assert.equal(zeroTrial.status,"ESTIMATE");assert.equal(zeroTrial.calculation.medical.nationalDeductionYen,0);
+for(const k of ["nationalBefore","nationalAfter","city","prefecture","nationalSavingYen","residentSavingYen","selfPayYen"])
+ assert.deepEqual(zeroTrial.calculation[k],normalTrial.calculation[k]);
+assert.equal(familyTax.filingPrefix(zeroMedical).donationLimitYen,familyTax.filingPrefix(integratedOtherInput).donationLimitYen);
+assert.equal(familyTax.calculate(zeroMedical).status,"HOLD");
+for(const change of [
+ {conditions:"salary-basic-social-family-insurance-other-only-reviewed"},
+ {medicalDeductions:null},{medicalDeductions:undefined},
+ {medicalDeductions:{...medicalFilingInput.medicalDeductions,method:"both"}},
+ {medicalDeductions:{...medicalFilingInput.medicalDeductions,method:"selfMedication"}},
+ {medicalDeductions:{...medicalFilingInput.medicalDeductions,year:2026}},
+ {medicalDeductions:{...medicalFilingInput.medicalDeductions,salaryIncome:4000000}},
+ {medicalDeductions:{...medicalFilingInput.medicalDeductions,groups:[medicalGroup(-1)]}},
+ {medicalDeductions:{...medicalFilingInput.medicalDeductions,conditions:"unreviewed"}},
+ {medicalDeductions:{...medicalFilingInput.medicalDeductions,groups:[medicalGroup(3000000)]}},
+ {otherDeductions:{...integratedOther,smallEnterpriseContributions:800001}},
+ {salaryIncome:1999999},{hasMortgage:true}
+]){
+ const input={...medicalFilingInput,...change};
+ for(const result of [familyTax.calculate(input),familyTax.filingTrial(input,3000),familyTax.filingPrefix(input)]){
+  assert.equal(result.status,"HOLD");assert.equal(result.donationLimitYen,null);assert.equal(result.calculation,null);
+ }
+ medicalFilingHoldCases++;
+}
+for(const d of [1999,1200001,3000.5,"3000"]){
+ const result=familyTax.filingTrial(medicalFilingInput,d);assert.equal(result.status,"HOLD");assert.equal(result.calculation,null);
+}
+console.log(JSON.stringify({schema:"web-medical-tax-integration/v1",medicalIntegratedCases,medicalIntegratedTrials,
+ medicalFilingHoldCases,zeroMedicalParity:true,oneStopBlocked:true,uiIntegrated:false,actualExcelCOM:false,release:"HOLD"}));
