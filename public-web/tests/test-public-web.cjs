@@ -65,6 +65,7 @@ const dom=new JSDOM(html,{url:"https://review.invalid/",runScripts:"outside-only
 const {document,Event}=dom.window;
 dom.window.fetch=()=>{throw Error("no network allowed");};
 dom.window.eval(engine);
+dom.window.eval(fs.readFileSync(path.join(out,"resident-levy.js"),"utf8"));
 dom.window.eval(app);
 const form=document.querySelector("#calculator"),view=document.querySelector("#result");
 function field(name){return form.elements.namedItem(name);}
@@ -76,6 +77,14 @@ submit();
 assert.equal(view.hidden,false);
 assert.equal(view.className,"result");
 assert.match(view.textContent,/109,000円/);
+const localComparison=view.querySelector(".municipal-comparison");
+assert.ok(localComparison);
+assert.match(localComparison.textContent,/標準市町村：所得割 374,500円/);
+assert.match(localComparison.textContent,/政令指定都市：所得割 374,500円/);
+assert.match(localComparison.textContent,/市町村 224,700円・道府県 149,800円/);
+assert.match(localComparison.textContent,/市町村 299,600円・道府県 74,900円/);
+assert.equal((localComparison.textContent.match(/寄附参考額 109,000円/g)||[]).length,2);
+
 assert.match(view.textContent,/寄附上限額の概算/);
 // Even if a future tax engine misreports success, mismatched output year,
 // resident year, or internal yen-cap arithmetic must never reach the UI.
