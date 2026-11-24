@@ -223,7 +223,7 @@
     var factor=Math.min(1,2600/Math.max(width,height));
     var w=Math.max(1,Math.floor(width*factor));
     var h=Math.max(1,Math.floor(height*factor));
-    if(w<750||h<400||w*h>10000000)throw Error("解像度が不適切です。より鮮明な画像で再試行してください。");
+    if(w<750||h<400||w*h>10000000)throw Error("IMAGE_RESOLUTION_UNSUPPORTED");
     var canvas=document.createElement("canvas");
     canvas.width=w;canvas.height=h;
     try{
@@ -796,8 +796,11 @@
       reviewManualRevision=requestedManualRevision;
       displayReview(result);
     }catch(error){
-      if(!isStale())
-        blocked("OCRを完了できませんでした（処理区分："+stage+"）。入力原票は送信されません。画質・ページ構成を確認し、必要なら撮影し直すか手入力してください。");
+      if(!isStale()){
+        if(error?.message==="IMAGE_RESOLUTION_UNSUPPORTED")
+          blocked("OCRを完了できませんでした。画像の解像度が不足しています。画像処理後の横幅750・高さ400ピクセル以上が必要です。拡大コピーではなく鮮明な原本を再撮影するか、電子PDF・手入力をご利用ください。入力原票は送信されません。");
+        else blocked("OCRを完了できませんでした（処理区分："+stage+"）。入力原票は送信されません。画質・ページ構成を確認し、必要なら撮影し直すか手入力してください。");
+      }
     }finally{
       // Keep the scan button unavailable until ALL cleanup completes.
       // Re-enabling before PDF.js worker termination permits overlapping

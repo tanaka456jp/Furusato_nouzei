@@ -861,6 +861,33 @@ async function main(){
   assert.equal(await page.evaluate(()=>window.__syntheticPdfOcrCalls),callsBeforeHighRes);
   assert.equal(await page.locator("#slipTransfer").isEnabled(),false);
   assert.equal(await page.locator("#slipConfirm").isEnabled(),false);
+  // Static synthetic WebP rectangles, generated losslessly from solid
+  // RGB pixels. No withholding slip or personal information is embedded.
+  // Browser decoding is real; recognized text below is mocked and
+  // cannot establish any OCR accuracy.
+  const smallWebp=Buffer.from("UklGRkwAAABXRUJQVlA4TD8AAAAvMcLHAA8w//M///MfeFDTRpJzAcDzZ/PMvg/tyRH9n4DzyeY//uO/IWrFhZv/+I//+I//+A/GHuU//uO/aQcA","base64");
+  const normalWebp=Buffer.from("UklGRkQAAABXRUJQVlA4TDgAAAAvH8OVAA8w//M///MfeDDTtk35g94A7J3qiP5PwPI///N/ZZ2Dw3/8x3/8x3/8x39/Fv/zP/+3ww==","base64");
+  await page.evaluate(ocrText=>{
+    window.__webpSyntheticCalls=0;
+    Tesseract.createWorker=async()=>({
+      recognize:async()=>{window.__webpSyntheticCalls++;return {data:{text:ocrText,confidence:97}};},
+      terminate:async()=>{}
+    });
+  },fixture);
+  await page.locator("#slipFile").setInputFiles({name:"synthetic-small.webp",mimeType:"image/webp",buffer:smallWebp});
+  await page.locator("#slipScan").click();
+  await page.waitForFunction(()=>!document.getElementById("slipScan").disabled &&
+    document.getElementById("slipReview").textContent.includes("横幅750"),null,{timeout:30000});
+  assert.equal(await page.evaluate(()=>window.__webpSyntheticCalls),0);
+  assert.equal(await page.locator("#slipTransfer").isEnabled(),false);
+  assert.equal(await page.locator("#slipConfirm").isEnabled(),false);
+  await page.locator("#slipFile").setInputFiles({name:"synthetic-normal.webp",mimeType:"image/webp",buffer:normalWebp});
+  await page.locator("#slipScan").click();
+  await page.waitForFunction(()=>!document.getElementById("slipScan").disabled &&
+    document.getElementById("slipReview").textContent.includes("候補"),null,{timeout:30000});
+  assert.equal(await page.evaluate(()=>window.__webpSyntheticCalls),2);
+  assert.equal(await page.locator('[name="salaryGross"]').inputValue(),"");
+  assert.equal(await page.locator("#slipConfirm").isChecked(),false);
   assert.deepEqual(external,[],"External network request attempted");
   assert.ok(requestCount>=8,"OCR assets not fetched");
   console.log((process.env.FURUSATO_BROWSER_CHANNEL==="msedge"?
