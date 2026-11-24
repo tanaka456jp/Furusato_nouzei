@@ -139,4 +139,27 @@ assert.equal(g.verifiedOptional(spouseReview,spouseReview).sourceSpouseIncome,72
 assert.equal(g.review([...parts,...spouseSlots.filter(x=>x.str!=="G44")]).optionalCandidates.sourceSpouseIncome,undefined);
 assert.equal(g.review([...parts,...spouseSlots,{...spouseSlots[3],str:"800000"}]).optionalCandidates.sourceSpouseIncome,undefined);
 assert.equal(g.verifiedOptional({...spouseReview,year:2026},{...spouseReview,year:2026}).sourceSpouseIncome,undefined);
+// Synthetic amounts at representative R7 compact-span coordinates.
+const groupedFields=[
+ ["L01",77,786,"7",141,784,6],
+ ["G04",104.31,619.41,"6,123,000",178,617.5,55],
+ ["G05",231.16,627.56,"4,456,000",288.6,626,55],
+ ["G06",341.35,627.56,"1,234,000",397.65,626,55],
+ ["G26",137.61,529.05,"876,000",223.6,529.25,36]
+].flatMap(([code,x,y,value,vx,vy,w])=>[{str:code,transform:[1,0,0,1,x,y],width:12},{str:value,transform:[1,0,0,1,vx,vy],width:w}]);
+const groupedResult=g.review(groupedFields);
+assert.equal(groupedResult.eligibleForManualTransfer,true);
+assert.deepEqual(groupedResult.candidates,{salaryGross:6123000,salaryIncomeReference:4456000,deductionsReference:1234000,socialInsurance:876000});
+assert.equal(groupedResult.autoApproved,false);
+const noSocial=g.review(groupedFields.slice(0,-1));
+assert.equal(noSocial.eligibleForManualTransfer,false);assert.equal(noSocial.candidates.socialInsurance,undefined);
+assert.equal(noSocial.candidates.salaryGross,6123000);
+for(const extra of [{...groupedFields[3],str:"999,000"},{...groupedFields[3],str:"9",transform:[1,0,0,1,180,617.5],width:6}]){
+ const conflict=g.review([...groupedFields,extra]);
+ assert.equal(conflict.eligibleForManualTransfer,false);assert.equal(conflict.candidates.salaryGross,undefined);
+}
+const explicitZero=g.review([...groupedFields.slice(0,-1),{...groupedFields[9],str:"0"}]);
+assert.equal(explicitZero.eligibleForManualTransfer,true);assert.equal(explicitZero.candidates.socialInsurance,0);
+const overlap=g.review([...groupedFields,{str:"G07",transform:[1,0,0,1,220,619.41],width:12}]);
+assert.equal(overlap.eligibleForManualTransfer,false);assert.equal(overlap.candidates.salaryGross,undefined);
 console.log("PUBLIC_PDF_GCODES_EVERY_DIGIT_POSITION_SYNTHETIC_PASS");
