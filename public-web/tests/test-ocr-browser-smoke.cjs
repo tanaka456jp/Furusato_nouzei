@@ -314,12 +314,14 @@ async function main(){
   await page.locator("#batchCalculate").click();
   assert.equal(await page.locator("#batchRows .batch-result").first().textContent(),"—",
    "bulk estimate must not calculate without manual source verification");
+  await page.locator('#batchRows select[data-field="municipality"]').first().selectOption("standard");
   await page.locator('#batchRows input[data-field="confirmed"]').first().check();
   await page.locator('#batchRows input[data-field="noExclusions"]').first().check();
   await page.locator("#batchCalculate").click();
   const results=await page.locator("#batchRows .batch-result").allTextContents();
   assert.deepEqual(results,["109,000円","—"],
    "unverified second taxpayer must stay HOLD, never inherit first consent");
+  await page.locator('#batchRows select[data-field="municipality"]').nth(1).selectOption("designated");
   await page.locator('#batchRows input[data-field="confirmed"]').nth(1).check();
   await page.locator('#batchRows input[data-field="noExclusions"]').nth(1).check();
   await page.locator("#batchCalculate").click();
