@@ -750,3 +750,30 @@ for(const invalid of [
 }
 console.log(JSON.stringify({schema:"web-insurance-tax-integration/v1",insuranceTaxCases,insuranceTaxTrials,
  insuranceZeroParity,independentTrialOracle:true,actualExcelInsuranceCOM:false,uiIntegrated:false,release:"HOLD"}));
+
+
+// Original-year insurance review must use original-year U23 eligibility,
+// independently of the forecast, and preserve positive OCR indicators.
+const insuredSource={...source2025,deductions:3120000,
+ indicators:{hasDependents:true,hasLifeInsurance:true,hasEarthquakeInsurance:true},
+ premiums:{...premiumsZero,generalNew:120000,earthquake:50000},insuranceReviewed:true};
+assert.deepEqual(sourceFamily.reconcile(insuredSource,engine).calculation,
+ {year:2025,salaryIncomeYen:4760000,basicYen:680000,familyYen:1010000,deductionsYen:3120000,
+  lifeYen:40000,earthquakeYen:50000,insuranceYen:90000,enhancedGeneral:false});
+assert.deepEqual(sourceFamily.reconcile({...insuredSource,year:2026,deductions:3500000},engine).calculation,
+ {year:2026,salaryIncomeYen:4760000,basicYen:1040000,familyYen:1010000,deductionsYen:3500000,
+  lifeYen:60000,earthquakeYen:50000,insuranceYen:110000,enhancedGeneral:true});
+for(const patch of [
+ {insuranceReviewed:false},{insuranceReviewed:undefined},{deductions:3140000},
+ {year:2026,deductions:3480000},{premiums:{...premiumsZero}},
+ {premiums:{...premiumsZero,earthquake:50000},deductions:3080000},
+ {premiums:{...premiumsZero,generalNew:120000},deductions:3070000},
+ {indicators:{hasMortgage:true}},{indicators:{hasLifeInsurance:false}},
+ {premiums:{...insuredSource.premiums,generalNew:"120000"}}
+]){
+ assert.equal(sourceFamily.reconcile({...insuredSource,...patch},engine).status,"HOLD");
+}
+const {premiums:unusedPremiums,insuranceReviewed:unusedReview,...missingInsurance}=insuredSource;
+assert.equal(sourceFamily.reconcile(missingInsurance,engine).status,"HOLD");
+console.log(JSON.stringify({schema:"web-insurance-source-reconciliation/v1",normalCases:2,holdCases:11,
+ sourceYearIndependent:true,release:"HOLD"}));
