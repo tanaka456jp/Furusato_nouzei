@@ -422,7 +422,7 @@ assert.equal(med.comparison.oneStop,null);
 assert.equal(med.donationLimitYen,med.comparison.filing);
 assert.equal(med.comparison.trial.donation,med.comparison.filing);
 assert.equal(batch.canOutputEstimate(med),true);
-assert.deepEqual(columns(med).slice(39),["200000","300000","100000"]);
+assert.deepEqual(columns(med).slice(39,42),["200000","300000","100000"]);
 assert.equal(columns(med)[17],"");
 const simple=medicalFixture("188000",false);runFamily(simple);
 assert.equal(simple.status,"概算",simple.reason);
@@ -438,7 +438,7 @@ for(const change of [
 ]){
  const r=medicalFixture();runFamily(r);assert.equal(batch.canOutputEstimate(r),true);
  change(r);assert.equal(batch.canOutputEstimate(r),false);
- assert.deepEqual(columns(r).slice(39),["","",""]);
+ assert.deepEqual(columns(r).slice(39,42),["","",""]);
  runFamily(r);assert.equal(r.status,"HOLD",r.reason);assert.equal(r.donationLimitYen,null);
 }
 batch.edit(med,"medicalNetPaidYen","400000");assert.equal(batch.canOutputEstimate(med),false);
@@ -459,5 +459,31 @@ assert.equal(low.medicalSummary.nationalDeductionYen,300000-Math.floor(lowIncome
 assert.equal(low.appliedDeductionsYen,1040000+low.medicalSummary.nationalDeductionYen);
 const zero=medicalFixture("50000",false);runFamily(zero);assert.equal(zero.status,"概算",zero.reason);assert.equal(zero.medicalSummary.nationalDeductionYen,0);
 const cap=medicalFixture("2500000",false);runFamily(cap);assert.equal(cap.status,"概算",cap.reason);assert.equal(cap.medicalSummary.nationalDeductionYen,2000000);
+// High salary: G46/G47 mandatory only for the original high salary slip.
+function highFixture(gross=9000000,eligible=false){
+ const adj=eligible?Math.ceil((Math.min(gross,10000000)-8500000)/10):0;
+ const r=fixture(1,{year:2025,eligibleForManualTransfer:true,sourceIndicators:eligible?{hasIncomeAdjustment:true}:{},
+  candidates:{salaryGross:gross,salaryIncomeReference:gross-1950000-adj,socialInsurance:1000000,deductionsReference:1580000}},2026);
+ batch.edit(r,"sourceBasicYen","580000");batch.edit(r,"sourceAdjustmentYen",String(adj));
+ if(eligible){batch.edit(r,"sourceAdjustmentExtras","10,0,0");batch.edit(r,"targetAdjustmentExtras","11,0,0");}
+ r.confirmed=true;r.noExclusions=true;r.forecastReviewed=true;r.highReviewed=true;return r;
+}
+for(const [gross,eligible,adj] of [[9000000,false,0],[9000000,true,50000],[20000000,true,150000]]){
+ const r=highFixture(gross,eligible);runFamily(r);assert.equal(r.status,"前年参考概算",r.reason);
+ assert.equal(batch.canOutputEstimate(r),true);assert.equal(r.highSummary.targetAdjustmentYen,adj);
+ assert.equal(r.highSummary.targetSalaryIncomeYen,gross-1950000-adj);
+ assert.equal(r.highSummary.targetBasicYen,620000);assert.equal(r.familyReviewed,false);
+ assert.deepEqual(columns(r).slice(42),["580000",String(adj),"620000",String(adj),String(gross-1950000-adj)]);
+}
+for(const mutate of [r=>{r.highReviewed=false;},r=>{r.sourceBasicYen="";},r=>{r.sourceBasicYen="620000";},
+ r=>{r.sourceAdjustmentYen="0";},r=>{r.targetAdjustmentExtras="";},r=>{r.sourceIndicators.hasMortgage=true;}]){
+ const r=highFixture(9000000,true);runFamily(r);assert.equal(batch.canOutputEstimate(r),true);mutate(r);
+ assert.equal(batch.canOutputEstimate(r),false);assert.deepEqual(columns(r).slice(42),Array(5).fill(""));
+ runFamily(r);assert.equal(r.status,"HOLD",r.reason);
+}
+const highMed=highFixture(20000000,true);batch.edit(highMed,"medicalNetPaidYen","300000");highMed.filing="return";
+ highMed.confirmed=true;highMed.noExclusions=true;highMed.forecastReviewed=true;highMed.highReviewed=true;runFamily(highMed);
+ assert.equal(highMed.status,"前年参考概算",highMed.reason);assert.equal(highMed.medicalSummary.nationalDeductionYen,200000);
+ assert.equal(highMed.comparison.oneStop,null);
 dom.window.close();
 console.log("PUBLIC_BATCH_PER_PAGE_LOCAL_SAFETY_SYNTHETIC_PASS; no private slips; no deploy");

@@ -52,6 +52,7 @@
   const openFamilyRows=new Set([...body.children].map((tr,i)=>tr.querySelector(".batch-family-editor:not(.batch-insurance-editor):not(.batch-other-editor) details")?.open?i:-1));
   const openInsuranceRows=new Set([...body.children].map((tr,i)=>tr.querySelector(".batch-insurance-editor details")?.open?i:-1));
   const openOtherRows=new Set([...body.children].map((tr,i)=>tr.querySelector(".batch-other-editor details")?.open?i:-1));
+  const openHighRows=new Set([...body.children].map((tr,i)=>tr.querySelector(".batch-high-editor details")?.open?i:-1));
   body.replaceChildren();
   table.hidden=rows.length===0;
   rows.forEach((r,i)=>{
@@ -213,6 +214,18 @@
    const amount=formControl("input",{type:"text",inputmode:"numeric",maxlength:"12",autocomplete:"off","data-row":String(i),"data-field":"medicalNetPaidYen","aria-label":"対象者 "+r.page+" 補填後の対象医療費支払額（任意）",placeholder:"空欄＝なし",title:"補填対象ごとの差引残額の合計。補填金の余りは他の医療費から差し引かない。通常の医療費控除を自動計算"});
    amount.value=r.medicalNetPaidYen;medicalCell.appendChild(amount);
    for(const key of core.MEDICAL_SUMMARY_KEYS)cell(tr,isEstimate?yen(r.medicalSummary?.[key]):"—","batch-medical-result");
+   const highCell=cell(tr,"","batch-high-editor");
+   const highDetails=formControl("details");highDetails.hidden=!core.highActive(r);highDetails.open=openHighRows.has(i);
+   highDetails.appendChild(formControl("summary",{text:"高額給与の確認（850万円超）"}));
+   highDetails.appendChild(formControl("p",{text:"該当する家族・保険料・その他控除を入力し、原票年のG46・G47を確認。該当しない控除は空欄で可。"}));
+   for(const [key,title] of [["sourceBasicYen","原票の基礎控除（G46）"],["sourceAdjustmentYen","原票の所得金額調整控除（G47・該当なしは0）"],["sourceAdjustmentExtras","原票年：他方が扶養控除を適用する該当親族"],["targetAdjustmentExtras","試算年：他方が扶養控除を適用する該当親族"]]){
+    const label=formControl("label",{text:title});
+    const extras=key.endsWith("Extras"),field=formControl(extras?"textarea":"input",{"data-row":String(i),"data-field":key,"aria-label":"対象者 "+r.page+" "+title,autocomplete:"off",maxlength:extras?"3000":"8",...(extras?{rows:"2",placeholder:"年齢,合計所得,特別障害者(0/1)"}:{type:"text",inputmode:"numeric"})});
+    field.value=r[key];label.appendChild(field);highDetails.appendChild(label);
+   }
+   const highReview=formControl("label",{text:" 原票・試算年の所得金額調整控除条件（該当なし含む）・他の控除の有無を確認済み"});
+   highReview.prepend(formControl("input",{type:"checkbox","data-row":String(i),"data-field":"highReviewed",checked:r.highReviewed}));highDetails.appendChild(highReview);highCell.appendChild(highDetails);
+   for(const key of core.HIGH_SUMMARY_KEYS)cell(tr,isEstimate?yen(r.highSummary?.[key]):"—","batch-high-result");
    for(const select of tr.querySelectorAll("select")){
     const span=document.createElement("span");span.className="batch-print-value";
     span.textContent=select.selectedOptions[0]?.textContent??"未確認";select.parentNode.appendChild(span);
@@ -312,7 +325,8 @@
   // and screenshots cannot retain an estimate for an edited recipient.
   const index=rows.indexOf(row),tr=body.children[index];
   if(tr){
-   const amounts=tr.querySelectorAll(".batch-result,.batch-deduction-applied,.batch-resident-levy,.batch-comparison,.batch-family-result,.batch-insurance-result,.batch-other-result,.batch-medical-result");
+   const amounts=tr.querySelectorAll(".batch-result,.batch-deduction-applied,.batch-resident-levy,.batch-comparison,.batch-family-result,.batch-insurance-result,.batch-other-result,.batch-medical-result,.batch-high-result");
+   const highDetails=tr.querySelector(".batch-high-editor details");if(highDetails)highDetails.hidden=!core.highActive(row);
    const reason=tr.querySelector(".batch-reason");
    amounts.forEach(el=>{el.textContent="—";});
    if(reason)reason.textContent="HOLD："+row.reason;
@@ -326,7 +340,7 @@
   const idx=Number(ev.target?.dataset?.row);
   const key=ev.target?.dataset?.field;
   if(!Number.isSafeInteger(idx)||!rows[idx])return;
-  if(key==="label"||key==="trialInput"||key==="familySourceText"||key==="familyTargetText"||(core.PREMIUM_FIELDS.includes(key)||core.OTHER_FIELDS.includes(key)||core.MEDICAL_FIELDS.includes(key))||monetary.includes(key)){
+  if(key==="label"||key==="trialInput"||key==="familySourceText"||key==="familyTargetText"||(core.PREMIUM_FIELDS.includes(key)||core.OTHER_FIELDS.includes(key)||core.MEDICAL_FIELDS.includes(key)||core.HIGH_FIELDS.includes(key))||monetary.includes(key)){
    core.edit(rows[idx],key,ev.target.value);
    if(key==="medicalNetPaidYen"&&/^[1-9][0-9]{0,11}$/.test(ev.target.value)&&Number(ev.target.value)<=100000000000){
     rows[idx].filing="return";body.children[idx].querySelector('[data-field="filing"]').value="return";
@@ -339,7 +353,7 @@
   const key=ev.target?.dataset?.field;
   if(!Number.isSafeInteger(idx)||!rows[idx])return;
   const row=rows[idx];
-  if(key==="familySourceText"||key==="familyTargetText"||(core.PREMIUM_FIELDS.includes(key)||core.OTHER_FIELDS.includes(key)||core.MEDICAL_FIELDS.includes(key))){
+  if(key==="familySourceText"||key==="familyTargetText"||(core.PREMIUM_FIELDS.includes(key)||core.OTHER_FIELDS.includes(key)||core.MEDICAL_FIELDS.includes(key)||core.HIGH_FIELDS.includes(key))){
    // The input listener already records typing; avoid replacing the editor
    // on blur, which could swallow a click on the confirmation checkbox.
    if(row[key]!==ev.target.value){core.edit(row,key,ev.target.value);
@@ -349,14 +363,14 @@
     invalidateEditedRow(row);}
    return;
   }
-  if(key==="label"||key==="trialInput"||(core.PREMIUM_FIELDS.includes(key)||core.OTHER_FIELDS.includes(key)||core.MEDICAL_FIELDS.includes(key))||monetary.includes(key)){
+  if(key==="label"||key==="trialInput"||(core.PREMIUM_FIELDS.includes(key)||core.OTHER_FIELDS.includes(key)||core.MEDICAL_FIELDS.includes(key)||core.HIGH_FIELDS.includes(key))||monetary.includes(key)){
    core.edit(row,key,ev.target.value);
   }else if(key==="sourceYear"||key==="year"||key==="municipality"){
    core.edit(row,key,ev.target.value);
   }else if(key==="filing"&&["one-stop","return"].includes(ev.target.value)){
    row.filing=ev.target.value;
-   row.confirmed=false;row.noExclusions=false;row.forecastReviewed=false;row.familyReviewed=false;row.insuranceReviewed=false;row.otherReviewed=false;
-  }else if(["confirmed","noExclusions","forecastReviewed","familyReviewed","insuranceReviewed","otherReviewed"].includes(key)){
+   row.confirmed=false;row.noExclusions=false;row.forecastReviewed=false;row.familyReviewed=false;row.insuranceReviewed=false;row.otherReviewed=false;row.highReviewed=false;
+  }else if(["confirmed","noExclusions","forecastReviewed","familyReviewed","insuranceReviewed","otherReviewed","highReviewed"].includes(key)){
    row[key]=ev.target.checked===true;
   }else return;
   invalidateEditedRow(row);
@@ -391,7 +405,7 @@
    if(key==="year"&&row.year===null&&actual==="2026")continue;
    if(actual!==expected){
     if(element.type==="checkbox")row[key]=false;
-    else if(key==="filing"){row.filing=actual;row.confirmed=false;row.noExclusions=false;row.forecastReviewed=false;row.familyReviewed=false;row.insuranceReviewed=false;row.otherReviewed=false;}
+    else if(key==="filing"){row.filing=actual;row.confirmed=false;row.noExclusions=false;row.forecastReviewed=false;row.familyReviewed=false;row.insuranceReviewed=false;row.otherReviewed=false;row.highReviewed=false;}
     else core.edit(row,key,actual);
     invalidateEditedRow(row);changed=true;
    }

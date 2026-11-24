@@ -204,6 +204,21 @@ function type(idx,key,value){
  choose(1,"medicalNetPaidYen").value="100000";win.dispatchEvent(new win.Event("beforeprint"));
  assert.ok([...current().querySelectorAll(".batch-medical-result")].every(x=>x.textContent==="—"));
  assert.equal(current().querySelector(".batch-result").textContent,"—");
+ // High-salary source: G46/G47, independently claimed eligible child, no blank detail review.
+ reviews[0]={year:2025,eligibleForManualTransfer:true,sourceIndicators:{hasIncomeAdjustment:true},candidates:{salaryGross:9000000,salaryIncomeReference:7000000,socialInsurance:1000000,deductionsReference:1580000}};
+ d.getElementById("batchScan").click();
+ for(let n=0;n<12&&d.querySelectorAll("#batchRows tr").length<2;n++)await new Promise(resolve=>setImmediate(resolve));
+ change(0,"municipality","standard");change(0,"sourceBasicYen","580000");change(0,"sourceAdjustmentYen","50000");
+ change(0,"sourceAdjustmentExtras","10,0,0");change(0,"targetAdjustmentExtras","11,0,0");
+ for(const key of ["confirmed","noExclusions","forecastReviewed","highReviewed"])change(0,key,true);
+ d.getElementById("batchCalculate").click();
+ const highFirst=d.querySelector("#batchRows tr");
+ assert.notEqual(highFirst.querySelector(".batch-result").textContent,"—");
+ assert.deepEqual([...highFirst.querySelectorAll(".batch-high-result")].map(x=>x.textContent),["580,000円","50,000円","620,000円","50,000円","7,000,000円"]);
+ assert.equal(highFirst.children.length,d.querySelectorAll("#batchTable th").length);
+ choose(0,"sourceAdjustmentYen").value="0";win.dispatchEvent(new win.Event("beforeprint"));
+ assert.equal(d.querySelector("#batchRows tr .batch-result").textContent,"—");
+ assert.ok([...d.querySelectorAll("#batchRows tr:first-child .batch-high-result")].every(x=>x.textContent==="—"));
  win.close();
  console.log("PUBLIC_WEB_EDITABLE_BATCH_DOM_FICTIONAL_NAME_2026_PASS");
 })().catch(e=>{console.error(e);process.exitCode=1;win.close();});
