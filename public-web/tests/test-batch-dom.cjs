@@ -12,6 +12,7 @@ win.fetch=()=>{throw Error("NO_EXTERNAL_NETWORK_ALLOWED");};
 win.eval(script("engine.js"));
 win.eval(script("resident-levy.js"));
 win.eval(script("family-deductions.js"));
+win.eval(script("insurance-deductions.js"));
 win.eval(script("family-tax.js"));
 win.eval(script("family-source.js"));
 win.eval(script("app.js"));
@@ -145,6 +146,35 @@ function type(idx,key,value){
  win.dispatchEvent(new win.Event("beforeprint"));
  assert.equal(d.querySelector("#batchRows tr .batch-result").textContent,"—");
  assert.ok([...d.querySelectorAll("#batchRows tr:first-child .batch-family-result")].every(x=>x.textContent==="—"));
+ assert.equal(d.getElementById("batchDownload").disabled,true);
+ reviews[0]={year:2025,eligibleForManualTransfer:true,sourceIndicators:{hasDependents:true,hasLifeInsurance:true,hasEarthquakeInsurance:true},
+  candidates:{salaryGross:6500000,salaryIncomeReference:4760000,socialInsurance:1340000,deductionsReference:3120000}};
+ d.getElementById("batchScan").click();
+ for(let n=0;n<12&&d.querySelectorAll("#batchRows tr").length<2;n++)
+  await new Promise(resolve=>setImmediate(resolve));
+ change(0,"municipality","standard");
+ change(0,"familySourceText","S,40,600000\nR,20,600000,0");
+ change(0,"familyTargetText","S,41,600000\nR,21,600000,0");
+ for(const prefix of ["source","target"]){
+  change(0,prefix+"Insurance_generalNew","120000");change(0,prefix+"Insurance_earthquake","50000");
+ }
+ change(0,"confirmed",true);change(0,"noExclusions",true);change(0,"forecastReviewed",true);change(0,"familyReviewed",true);
+ d.getElementById("batchCalculate").click();
+ assert.equal(d.querySelector("#batchRows tr .batch-result").textContent,"—");
+ change(0,"insuranceReviewed",true);
+ change(1,"municipality","standard");change(1,"confirmed",true);change(1,"noExclusions",true);
+ d.getElementById("batchCalculate").click();
+ assert.equal(d.querySelector("#batchRows tr .batch-result").textContent,"51,000円");
+ assert.equal(current().querySelector(".batch-result").textContent,"109,000円");
+ assert.deepEqual([...d.querySelectorAll("#batchRows tr:first-child .batch-insurance-result")].map(x=>x.textContent),
+  ["90,000円","60,000円","28,000円","50,000円","25,000円","適用"]);
+ assert.equal(d.querySelector("#batchRows tr").children.length,d.querySelectorAll("#batchTable th").length);
+ choose(0,"sourceInsurance_generalNew").value="0";
+ win.dispatchEvent(new win.Event("beforeprint"));
+ assert.equal(d.querySelector("#batchRows tr .batch-result").textContent,"—");
+ assert.ok([...d.querySelectorAll("#batchRows tr:first-child .batch-insurance-result")].every(x=>x.textContent==="—"));
+ assert.equal(current().querySelector(".batch-result").textContent,"109,000円");
+ assert.equal(choose(0,"insuranceReviewed").checked,false);
  assert.equal(d.getElementById("batchDownload").disabled,true);
  win.close();
  console.log("PUBLIC_WEB_EDITABLE_BATCH_DOM_FICTIONAL_NAME_2026_PASS");
