@@ -81,6 +81,17 @@
   }
   return toYen(numericGroup(spans,anchor,low,bound));
  }
+ // A failed amount parse is not proof of an empty printed slot.
+ // Keep visible conflicting or malformed text out of the blank-only
+ // manual-zero route. Exclude neighbouring code glyphs just as the
+ // numeric reader does; a truncated/overlapping slot is not blank.
+ function hasUnresolvedSlotContent(spans,anchor,low=45,high=125){
+  const next=spans.filter(i=>/^G(?:[0-9]{2})?$/.test(i.s)&&Math.abs(i.y-anchor.y)<=3.5&&i.x>anchor.x+14).map(i=>i.x-anchor.x);
+  const bound=Math.min(high,...next.map(x=>x-1));
+  if(bound<low)return true;
+  return spans.some(i=>Math.abs(i.y-anchor.y)<=3.5&&i.x-anchor.x>=low&&i.x-anchor.x<=bound&&i.s.trim()!==""&&
+   !spans.some(g=>g.s==="G"&&g.y===i.y&&i.x>=g.x&&i.x<g.x+14));
+ }
  function toYen(value){
   if(typeof value!=="string"||
     !/^(?:0|[1-9][0-9]{0,11}|[1-9][0-9]{0,2}(?:,[0-9]{3}){1,3})$/.test(value))
@@ -165,7 +176,7 @@
     continue;
    }
    const yen=strictSlotAmount(spans,marks[0]);
-   if(yen===null)reasons.push("CODE_"+code+"_AMOUNT_UNVERIFIED");
+   if(yen===null)reasons.push("CODE_"+code+(code==="G26"&&hasUnresolvedSlotContent(spans,marks[0])?"_AMOUNT_CONFLICT":"_AMOUNT_UNVERIFIED"));
    else candidates[key]=yen;
   }
   function optionalAmount(anchor,high=125){
@@ -265,7 +276,7 @@
      Number.isSafeInteger(moveIn)&&moveIn>=2014&&moveIn<=2025)result.mortgageMoveInYear=moveIn;
   return result;
  }
- // A human, not the parser, may attest that an unreadable G26 is blank.
+ // A human, not the parser, may attest that an apparently empty G26 is blank.
  // Only the precise partial review with all other required fields present
  // is eligible. Missing/duplicate anchors or any other failure stay HOLD.
  function canConfirmSocialZero(r){
