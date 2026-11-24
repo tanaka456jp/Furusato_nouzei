@@ -49,4 +49,42 @@ assert.equal(h.verifyDecodedSize(null,1200,800).status,"HOLD");
 assert.equal(h.verifyDecodedSize(h.inspect(png(0,800),"image/png"),1200,800).status,"HOLD");
 assert.equal(h.verifyDecodedSize(h.inspect(png(5000,5000),"image/png"),5000,5000).status,"ACCEPT");
 assert.equal(h.verifyDecodedSize(h.inspect(png(4000,12000),"image/png"),4000,12000).status,"HOLD");
+// Synthetic headers only. A valid metadata preflight is not proof
+// that a compressed payload will decode or OCR correctly.
+function webp(tag,w,ht,payload=10){
+ const size=20+payload+payload%2;
+ const a=new Uint8Array(size);
+ const view=new DataView(a.buffer);
+ const put=(at,s)=>[...s].forEach((c,i)=>a[at+i]=c.charCodeAt(0));
+ put(0,"RIFF");view.setUint32(4,size-8,true);put(8,"WEBP");
+ put(12,tag);view.setUint32(16,payload,true);
+ if(tag==="VP8 "){a.set([0,0,0,157,1,42],20);view.setUint16(26,w,true);view.setUint16(28,ht,true);}
+ if(tag==="VP8L"){a[20]=47;view.setUint32(21,(w-1)|((ht-1)<<14),true);}
+ return a;
+}
+for(const [tag,w,ht] of [["VP8 ",1200,800],["VP8L",1200,800],["VP8L",5000,5000]]){
+ const b=webp(tag,w,ht);
+ const out=h.inspect(b,"image/webp",b.length);
+ assert.deepEqual(out,{status:"ACCEPT",width:w,height:ht,reasons:[]});
+ assert.equal(h.verifyDecodedSize(out,w,ht).status,"ACCEPT");
+ assert.equal(h.verifyDecodedSize(out,w,ht+1).status,"HOLD");
+}
+const big=webp("VP8 ",1200,800,h.MAX_HEADER_BYTES+50);
+assert.equal(h.inspect(big.slice(0,h.MAX_HEADER_BYTES),"image/webp",big.length).status,"ACCEPT");
+for(const b of [webp("VP8X",1200,800),webp("ANIM",1200,800),webp("VP8 ",0,800),webp("VP8L",6000,6000),webp("VP8 ",16383,1)]){
+ // VP8 16383 exceeds the global 16000 edge limit.
+ assert.equal(h.inspect(b,"image/webp",b.length).status,"HOLD");
+}
+const sample=webp("VP8 ",1200,800);
+for(const [index,value] of [[0,0],[8,0],[16,0],[20,1],[23,0]]){
+ const bad=sample.slice();bad[index]=value;
+ assert.equal(h.inspect(bad,"image/webp",bad.length).status,"HOLD");
+}
+const lossless=webp("VP8L",1200,800);lossless[24]|=32;
+assert.equal(h.inspect(lossless,"image/webp",lossless.length).status,"HOLD");
+assert.equal(h.inspect(sample,"image/webp",sample.length+2).status,"HOLD");
+assert.equal(h.inspect(sample.slice(0,25),"image/webp",sample.length).status,"HOLD");
+assert.equal(h.inspect(sample,"image/webp").status,"HOLD");
+assert.equal(h.inspect(sample,"image/png",sample.length).status,"HOLD");
+assert.equal(h.inspect(png(1200,800),"image/webp",24).status,"HOLD");
 console.log("PUBLIC_OCR_IMAGE_HEADER_PREFLIGHT_SYNTHETIC_PASS; no real source data");

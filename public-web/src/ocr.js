@@ -71,7 +71,7 @@
   // PDF.js 6.x defaults maxImageSize to -1 (unlimited). A small PDF can
   // contain an enormous compressed raster; never decode it without a cap.
   var MAX_PDF_IMAGE_PIXELS=16*1024*1024;
-  var ACCEPTED={"image/jpeg":true,"image/png":true,"application/pdf":true};
+  var ACCEPTED={"image/jpeg":true,"image/png":true,"image/webp":true,"application/pdf":true};
   function show(message){
     report.replaceChildren();
     var line=document.createElement("p");
@@ -267,7 +267,7 @@
     var headerBytes=await file.slice(0,
       window.FurusatoImageHeader.MAX_HEADER_BYTES).arrayBuffer();
     var imageInfo=window.FurusatoImageHeader.inspect(
-      new Uint8Array(headerBytes),file.type);
+      new Uint8Array(headerBytes),file.type,file.size);
     if(imageInfo.status!=="ACCEPT")throw Error("IMAGE_HEADER_PREFLIGHT_HOLD");
     var image;
     if(typeof createImageBitmap==="function"){
@@ -757,7 +757,7 @@
     blocked("読み取り中です。画像や金額はサーバーへ送信しません。");
     var file=fileInput.files&&fileInput.files.length===1?fileInput.files[0]:null;
     if(!file||!ACCEPTED[file.type]||file.size<=0||file.size>MAX_BYTES){
-      blocked("JPEG・PNG・1ページPDF（8MB以下）を1件だけ指定してください。HEICは未対応です。");
+      blocked("JPEG・PNG・単純な静止WebP・1ページPDF（8MB以下）を1件だけ指定してください。HEIC・拡張WebPは未対応です。");
       return;
     }
     busy=true;runButton.disabled=true;acceptButton.disabled=true;
