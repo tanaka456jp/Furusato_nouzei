@@ -266,6 +266,29 @@
  // https://www.city.yokohama.lg.jp/kurashi/koseki-zei-hoken/zeikin/y-shizei/kojin-shiminzei-kenminzei/kojin-shiminzei-shosai/zeigakukoujoR8.html
  // https://www.city.machida.tokyo.jp/kurashi/tax/shimin/keisan/shimin08.html
  // https://www.city.itoshima.lg.jp/s009/010/010/050/190/20261106.html
+ // Source-year tax credit reconciliation is deliberately independent of
+ // forecast tax credits. A blank possible amount means the applied amount
+ // is the entire credit ONLY after the operator reviews the original slip.
+ function reconcileMortgageSource(input){
+  const keys=["year","salaryIncome","deductions","moveInYear","capClass","appliedYen","possibleYen","reviewed"];
+  if(!input||typeof input!=="object"||Array.isArray(input)||Object.keys(input).length!==keys.length||
+     !keys.every(k=>Object.prototype.hasOwnProperty.call(input,k))||
+     ![2025,2026].includes(input.year)||!valid(input.salaryIncome,18050000)||
+     !valid(input.deductions,100000000)||!Number.isSafeInteger(input.moveInYear)||
+     input.moveInYear<2014||input.moveInYear>=input.year||input.year-input.moveInYear>=13||
+     !["standard5","transitional7"].includes(input.capClass)||
+     (input.capClass==="transitional7"&&input.moveInYear>2022)||
+     !valid(input.appliedYen,600000)||input.appliedYen===0||
+     (input.possibleYen!==null&&(!valid(input.possibleYen,600000)||input.possibleYen<=input.appliedYen))||
+     input.reviewed!==true)return hold("原票の住宅ローン控除額・可能額・入居年・適用区分を確認してください");
+  const possible=input.possibleYen===null?input.appliedYen:input.possibleYen;
+  const n=national(floor1000(input.salaryIncome-input.deductions));
+  if(n.incomeTax<=0||Math.min(n.incomeTax,possible)!==input.appliedYen)
+   return hold("原票の住宅ローン控除額が算出所得税額と一致しません");
+  return {status:"RECONCILED",release:"HOLD",calculation:{sourceYear:input.year,
+   possibleYen:possible,appliedYen:input.appliedYen,preCreditIncomeTaxYen:n.incomeTax,
+   moveInYear:input.moveInYear,capClass:input.capClass,possibleFromApplied:input.possibleYen===null}};
+ }
  function mortgageContext(request){
   const exact=(x,ks)=>x&&typeof x==="object"&&!Array.isArray(x)&&Object.keys(x).length===ks.length&&ks.every(k=>Object.prototype.hasOwnProperty.call(x,k));
   if(!exact(request,["tax","housing","filing"])||!exact(request.housing,["moveInYear","capClass","possibleYen","eligibilityReviewed"])||
@@ -344,5 +367,5 @@
   return {status:"COMPONENTS_ONLY",release:"HOLD",donationLimitYen:null,
    calculation:{conservativePrefixYen:last,firstFailureYen:firstFailure,stopOnFirstFailure:true,atPrefix:ctx.trial(last).calculation}};
  }
- return Object.freeze({calculate,medicalFilingCalculation,filingTrial,filingPrefix,highSalaryCalculate,highSalaryMedicalFilingCalculation,highSalaryFilingTrial,highSalaryFilingPrefix,mortgageTrial,mortgagePrefix});
+ return Object.freeze({calculate,medicalFilingCalculation,filingTrial,filingPrefix,highSalaryCalculate,highSalaryMedicalFilingCalculation,highSalaryFilingTrial,highSalaryFilingPrefix,mortgageTrial,mortgagePrefix,reconcileMortgageSource});
 }));

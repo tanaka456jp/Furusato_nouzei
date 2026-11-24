@@ -219,6 +219,21 @@ function type(idx,key,value){
  choose(0,"sourceAdjustmentYen").value="0";win.dispatchEvent(new win.Event("beforeprint"));
  assert.equal(d.querySelector("#batchRows tr .batch-result").textContent,"—");
  assert.ok([...d.querySelectorAll("#batchRows tr:first-child .batch-high-result")].every(x=>x.textContent==="—"));
+ // Housing credit source audit; a blank possible amount means full applied credit.
+ reviews[0]={year:2025,eligibleForManualTransfer:true,sourceIndicators:{hasMortgage:true},candidates:{salaryGross:7000000,salaryIncomeReference:5200000,socialInsurance:1000000,deductionsReference:1630000}};
+ d.getElementById("batchScan").click();
+ for(let n=0;n<12&&d.querySelectorAll("#batchRows tr").length<2;n++)await new Promise(resolve=>setImmediate(resolve));
+ change(0,"municipality","standard");change(0,"mortgageSourceApplied","286500");change(0,"mortgageSourcePossible","500000");
+ change(0,"mortgageMoveInYear","2021");change(0,"mortgageCapClass","standard5");
+ for(const key of ["confirmed","noExclusions","forecastReviewed","mortgageReviewed"])change(0,key,true);
+ d.getElementById("batchCalculate").click();
+ const mortgageFirst=d.querySelector("#batchRows tr");
+ assert.notEqual(mortgageFirst.querySelector(".batch-result").textContent,"—");
+ assert.deepEqual([...mortgageFirst.querySelectorAll(".batch-mortgage-result")].map(x=>x.textContent),["286,500円","500,000円","278,500円","97,500円"]);
+ assert.equal(mortgageFirst.children.length,d.querySelectorAll("#batchTable th").length);
+ choose(0,"mortgageSourceApplied").value="286499";win.dispatchEvent(new win.Event("beforeprint"));
+ assert.equal(d.querySelector("#batchRows tr .batch-result").textContent,"—");
+ assert.ok([...d.querySelectorAll("#batchRows tr:first-child .batch-mortgage-result")].every(x=>x.textContent==="—"));
  win.close();
  console.log("PUBLIC_WEB_EDITABLE_BATCH_DOM_FICTIONAL_NAME_2026_PASS");
 })().catch(e=>{console.error(e);process.exitCode=1;win.close();});

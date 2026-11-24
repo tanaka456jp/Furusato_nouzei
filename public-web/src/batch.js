@@ -53,6 +53,7 @@
   const openInsuranceRows=new Set([...body.children].map((tr,i)=>tr.querySelector(".batch-insurance-editor details")?.open?i:-1));
   const openOtherRows=new Set([...body.children].map((tr,i)=>tr.querySelector(".batch-other-editor details")?.open?i:-1));
   const openHighRows=new Set([...body.children].map((tr,i)=>tr.querySelector(".batch-high-editor details")?.open?i:-1));
+  const openMortgageRows=new Set([...body.children].map((tr,i)=>tr.querySelector(".batch-mortgage-editor details")?.open?i:-1));
   body.replaceChildren();
   table.hidden=rows.length===0;
   rows.forEach((r,i)=>{
@@ -226,7 +227,20 @@
    const highReview=formControl("label",{text:" 原票・試算年の所得金額調整控除条件（該当なし含む）・他の控除の有無を確認済み"});
    highReview.prepend(formControl("input",{type:"checkbox","data-row":String(i),"data-field":"highReviewed",checked:r.highReviewed}));highDetails.appendChild(highReview);highCell.appendChild(highDetails);
    for(const key of core.HIGH_SUMMARY_KEYS)cell(tr,isEstimate?yen(r.highSummary?.[key]):"—","batch-high-result");
-   for(const select of tr.querySelectorAll("select")){
+   const mortgageCell=cell(tr,"","batch-mortgage-editor");
+   const mortgageDetails=formControl("details");mortgageDetails.open=openMortgageRows.has(i);
+   mortgageDetails.appendChild(formControl("summary",{text:"住宅ローン控除（該当者のみ）"}));
+   mortgageDetails.appendChild(formControl("p",{text:"原票の控除可能額欄が空欄なら入力不要。入居年・適用区分と継続適用を確認。前年の控除可能額を使用し、ローン残高の変動は考慮しません。"}));
+   for(const [key,title] of [["mortgageSourceApplied","原票の住宅借入金等特別控除額（円）"],["mortgageSourcePossible","原票の住宅借入金等特別控除可能額（円・原票空欄なら空欄）"],["mortgageMoveInYear","入居年（西暦）"],["mortgageCapClass","住民税の控除限度額区分"]]){
+    const label=formControl("label",{text:title});
+    const field=formControl(key==="mortgageCapClass"?"select":"input",{"data-row":String(i),"data-field":key,"aria-label":"対象者 "+r.page+" "+title,autocomplete:"off",...(key==="mortgageCapClass"?{}:{type:"text",inputmode:"numeric",maxlength:key==="mortgageMoveInYear"?"4":"6"})});
+    if(key==="mortgageCapClass")for(const [value,text] of [["","選択"],["standard5","5％・97,500円"],["transitional7","7％・136,500円（経過措置）"]])field.appendChild(formControl("option",{value,text}));
+    field.value=r[key];label.appendChild(field);mortgageDetails.appendChild(label);
+   }
+   const mortgageReview=formControl("label",{text:" 原票記載・適用区分・控除期間内で継続適用・他の税額控除なしを確認済み"});
+   mortgageReview.prepend(formControl("input",{type:"checkbox","data-row":String(i),"data-field":"mortgageReviewed",checked:r.mortgageReviewed}));mortgageDetails.appendChild(mortgageReview);mortgageCell.appendChild(mortgageDetails);
+   for(const key of core.MORTGAGE_SUMMARY_KEYS)cell(tr,isEstimate?yen(r.mortgageSummary?.[key]):"—","batch-mortgage-result");
+   for(const select of tr.querySelectorAll("select:not([data-field=mortgageCapClass])")){
     const span=document.createElement("span");span.className="batch-print-value";
     span.textContent=select.selectedOptions[0]?.textContent??"未確認";select.parentNode.appendChild(span);
    }
@@ -325,7 +339,7 @@
   // and screenshots cannot retain an estimate for an edited recipient.
   const index=rows.indexOf(row),tr=body.children[index];
   if(tr){
-   const amounts=tr.querySelectorAll(".batch-result,.batch-deduction-applied,.batch-resident-levy,.batch-comparison,.batch-family-result,.batch-insurance-result,.batch-other-result,.batch-medical-result,.batch-high-result");
+   const amounts=tr.querySelectorAll(".batch-result,.batch-deduction-applied,.batch-resident-levy,.batch-comparison,.batch-family-result,.batch-insurance-result,.batch-other-result,.batch-medical-result,.batch-high-result,.batch-mortgage-result");
    const highDetails=tr.querySelector(".batch-high-editor details");if(highDetails)highDetails.hidden=!core.highActive(row);
    const reason=tr.querySelector(".batch-reason");
    amounts.forEach(el=>{el.textContent="—";});
@@ -340,7 +354,7 @@
   const idx=Number(ev.target?.dataset?.row);
   const key=ev.target?.dataset?.field;
   if(!Number.isSafeInteger(idx)||!rows[idx])return;
-  if(key==="label"||key==="trialInput"||key==="familySourceText"||key==="familyTargetText"||(core.PREMIUM_FIELDS.includes(key)||core.OTHER_FIELDS.includes(key)||core.MEDICAL_FIELDS.includes(key)||core.HIGH_FIELDS.includes(key))||monetary.includes(key)){
+  if(key==="label"||key==="trialInput"||key==="familySourceText"||key==="familyTargetText"||(core.PREMIUM_FIELDS.includes(key)||core.OTHER_FIELDS.includes(key)||core.MEDICAL_FIELDS.includes(key)||core.HIGH_FIELDS.includes(key)||core.MORTGAGE_FIELDS.includes(key))||monetary.includes(key)){
    core.edit(rows[idx],key,ev.target.value);
    if(key==="medicalNetPaidYen"&&/^[1-9][0-9]{0,11}$/.test(ev.target.value)&&Number(ev.target.value)<=100000000000){
     rows[idx].filing="return";body.children[idx].querySelector('[data-field="filing"]').value="return";
@@ -353,7 +367,7 @@
   const key=ev.target?.dataset?.field;
   if(!Number.isSafeInteger(idx)||!rows[idx])return;
   const row=rows[idx];
-  if(key==="familySourceText"||key==="familyTargetText"||(core.PREMIUM_FIELDS.includes(key)||core.OTHER_FIELDS.includes(key)||core.MEDICAL_FIELDS.includes(key)||core.HIGH_FIELDS.includes(key))){
+  if(key==="familySourceText"||key==="familyTargetText"||(core.PREMIUM_FIELDS.includes(key)||core.OTHER_FIELDS.includes(key)||core.MEDICAL_FIELDS.includes(key)||core.HIGH_FIELDS.includes(key)||core.MORTGAGE_FIELDS.includes(key))){
    // The input listener already records typing; avoid replacing the editor
    // on blur, which could swallow a click on the confirmation checkbox.
    if(row[key]!==ev.target.value){core.edit(row,key,ev.target.value);
@@ -363,14 +377,14 @@
     invalidateEditedRow(row);}
    return;
   }
-  if(key==="label"||key==="trialInput"||(core.PREMIUM_FIELDS.includes(key)||core.OTHER_FIELDS.includes(key)||core.MEDICAL_FIELDS.includes(key)||core.HIGH_FIELDS.includes(key))||monetary.includes(key)){
+  if(key==="label"||key==="trialInput"||(core.PREMIUM_FIELDS.includes(key)||core.OTHER_FIELDS.includes(key)||core.MEDICAL_FIELDS.includes(key)||core.HIGH_FIELDS.includes(key)||core.MORTGAGE_FIELDS.includes(key))||monetary.includes(key)){
    core.edit(row,key,ev.target.value);
   }else if(key==="sourceYear"||key==="year"||key==="municipality"){
    core.edit(row,key,ev.target.value);
   }else if(key==="filing"&&["one-stop","return"].includes(ev.target.value)){
    row.filing=ev.target.value;
-   row.confirmed=false;row.noExclusions=false;row.forecastReviewed=false;row.familyReviewed=false;row.insuranceReviewed=false;row.otherReviewed=false;row.highReviewed=false;
-  }else if(["confirmed","noExclusions","forecastReviewed","familyReviewed","insuranceReviewed","otherReviewed","highReviewed"].includes(key)){
+   row.confirmed=false;row.noExclusions=false;row.forecastReviewed=false;row.familyReviewed=false;row.insuranceReviewed=false;row.otherReviewed=false;row.highReviewed=false;row.mortgageReviewed=false;
+  }else if(["confirmed","noExclusions","forecastReviewed","familyReviewed","insuranceReviewed","otherReviewed","highReviewed","mortgageReviewed"].includes(key)){
    row[key]=ev.target.checked===true;
   }else return;
   invalidateEditedRow(row);
@@ -405,7 +419,7 @@
    if(key==="year"&&row.year===null&&actual==="2026")continue;
    if(actual!==expected){
     if(element.type==="checkbox")row[key]=false;
-    else if(key==="filing"){row.filing=actual;row.confirmed=false;row.noExclusions=false;row.forecastReviewed=false;row.familyReviewed=false;row.insuranceReviewed=false;row.otherReviewed=false;row.highReviewed=false;}
+    else if(key==="filing"){row.filing=actual;row.confirmed=false;row.noExclusions=false;row.forecastReviewed=false;row.familyReviewed=false;row.insuranceReviewed=false;row.otherReviewed=false;row.highReviewed=false;row.mortgageReviewed=false;}
     else core.edit(row,key,actual);
     invalidateEditedRow(row);changed=true;
    }

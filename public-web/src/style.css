@@ -112,8 +112,8 @@
 @media(max-width:700px){.family-relative{grid-template-columns:1fr}}
 @media print{.family-panel{display:none!important}}
 
-:is(.batch-family-editor,.batch-medical-editor,.batch-high-editor){min-width:270px!important;vertical-align:top!important}
-:is(.batch-family-editor,.batch-medical-editor,.batch-high-editor) label{display:block;margin:6px 0;font-size:12px}
-:is(.batch-family-editor,.batch-medical-editor,.batch-high-editor) textarea{display:block;width:100%;font:inherit;border:1px solid #9eaeb9;border-radius:6px;padding:6px;resize:vertical}
+:is(.batch-family-editor,.batch-medical-editor,.batch-high-editor,.batch-mortgage-editor){min-width:270px!important;vertical-align:top!important}
+:is(.batch-family-editor,.batch-medical-editor,.batch-high-editor,.batch-mortgage-editor) label{display:block;margin:6px 0;font-size:12px}
+:is(.batch-family-editor,.batch-medical-editor,.batch-high-editor,.batch-mortgage-editor) textarea{display:block;width:100%;font:inherit;border:1px solid #9eaeb9;border-radius:6px;padding:6px;resize:vertical}
 .batch-family-result{text-align:right;font-variant-numeric:tabular-nums}
-@media print{:is(.batch-family-editor,.batch-medical-editor,.batch-high-editor){display:none!important}}
+@media print{:is(.batch-family-editor,.batch-medical-editor,.batch-high-editor,.batch-mortgage-editor){display:none!important}}

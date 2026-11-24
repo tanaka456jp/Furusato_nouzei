@@ -473,12 +473,12 @@ for(const [gross,eligible,adj] of [[9000000,false,0],[9000000,true,50000],[20000
  assert.equal(batch.canOutputEstimate(r),true);assert.equal(r.highSummary.targetAdjustmentYen,adj);
  assert.equal(r.highSummary.targetSalaryIncomeYen,gross-1950000-adj);
  assert.equal(r.highSummary.targetBasicYen,620000);assert.equal(r.familyReviewed,false);
- assert.deepEqual(columns(r).slice(42),["580000",String(adj),"620000",String(adj),String(gross-1950000-adj)]);
+ assert.deepEqual(columns(r).slice(42,47),["580000",String(adj),"620000",String(adj),String(gross-1950000-adj)]);
 }
 for(const mutate of [r=>{r.highReviewed=false;},r=>{r.sourceBasicYen="";},r=>{r.sourceBasicYen="620000";},
  r=>{r.sourceAdjustmentYen="0";},r=>{r.targetAdjustmentExtras="";},r=>{r.sourceIndicators.hasMortgage=true;}]){
  const r=highFixture(9000000,true);runFamily(r);assert.equal(batch.canOutputEstimate(r),true);mutate(r);
- assert.equal(batch.canOutputEstimate(r),false);assert.deepEqual(columns(r).slice(42),Array(5).fill(""));
+ assert.equal(batch.canOutputEstimate(r),false);assert.deepEqual(columns(r).slice(42,47),Array(5).fill(""));
  runFamily(r);assert.equal(r.status,"HOLD",r.reason);
 }
 const highMed=highFixture(20000000,true);batch.edit(highMed,"medicalNetPaidYen","300000");highMed.filing="return";
@@ -512,5 +512,39 @@ for(const req of [housingRequest(500000,"one-stop",2026),housingRequest(500000,"
  {...housingRequest(500000),housing:{...housingRequest(500000).housing,eligibilityReviewed:false}},
  housingRequest(0),housingRequest(-1)])
  assert.equal(familyTax.mortgageTrial(req,100000).status,"HOLD");
+// Continuing housing: preserve source flag, separate original credit audit, no balance input.
+function mortgageFixture(possible="500000",applied="286500"){
+ const r=fixture(1,{year:2025,eligibleForManualTransfer:true,sourceIndicators:{hasMortgage:true},
+  candidates:{salaryGross:7000000,salaryIncomeReference:5200000,socialInsurance:1000000,deductionsReference:1630000}},2026);
+ batch.edit(r,"mortgageSourceApplied",applied);batch.edit(r,"mortgageSourcePossible",possible);
+ batch.edit(r,"mortgageMoveInYear","2021");batch.edit(r,"mortgageCapClass","standard5");
+ r.confirmed=true;r.noExclusions=true;r.forecastReviewed=true;r.mortgageReviewed=true;return r;
+}
+const mr=mortgageFixture();runFamily(mr);
+assert.equal(mr.status,"前年参考概算",mr.reason);assert.equal(batch.canOutputEstimate(mr),true);
+assert.equal(mr.sourceIndicators.hasMortgage,true);
+assert.equal(mr.familySummary.sourceTotal,1630000);
+assert.equal(mr.mortgageSummary.sourceAppliedYen,286500);
+assert.equal(mr.mortgageSummary.possibleYen,500000);
+assert.equal(mr.mortgageSummary.nationalHousingYen,278500);
+assert.equal(mr.mortgageSummary.residentHousingYen,97500);
+assert.equal(mr.familyReviewed,false);
+assert.match(mr.reason,/残高の変動は考慮していません/);
+assert.deepEqual(columns(mr).slice(47),["286500","500000","278500","97500"]);
+assert.equal(mr.donationLimitYen,mr.comparison.oneStop);
+assert.ok(mr.comparison.filing<mr.comparison.oneStop);
+const blank=mortgageFixture("","10000");runFamily(blank);assert.equal(blank.status,"前年参考概算",blank.reason);
+assert.equal(blank.mortgageSummary.possibleYen,10000);
+for(const mutate of [r=>{r.mortgageReviewed=false;},r=>{r.mortgageSourceApplied="286499";},
+ r=>{r.mortgageSourcePossible="286500";},r=>{r.mortgageSourcePossible="";r.mortgageSourceApplied="400000";},
+ r=>{r.mortgageMoveInYear="2025";},r=>{r.mortgageCapClass="";},r=>{r.sourceIndicators.hasOtherIncome=true;}]){
+ const r=mortgageFixture();runFamily(r);assert.equal(batch.canOutputEstimate(r),true);mutate(r);
+ assert.equal(batch.canOutputEstimate(r),false);assert.deepEqual(columns(r).slice(47),Array(4).fill(""));
+ runFamily(r);assert.equal(r.status,"HOLD",r.reason);assert.equal(r.donationLimitYen,null);
+}
+const mortgageMed=mortgageFixture();batch.edit(mortgageMed,"medicalNetPaidYen","300000");mortgageMed.filing="return";
+ mortgageMed.confirmed=true;mortgageMed.noExclusions=true;mortgageMed.forecastReviewed=true;mortgageMed.mortgageReviewed=true;
+ runFamily(mortgageMed);assert.equal(mortgageMed.status,"前年参考概算",mortgageMed.reason);
+ assert.equal(mortgageMed.comparison.oneStop,null);assert.equal(mortgageMed.medicalSummary.nationalDeductionYen,200000);
 dom.window.close();
 console.log("PUBLIC_BATCH_PER_PAGE_LOCAL_SAFETY_SYNTHETIC_PASS; no private slips; no deploy");
