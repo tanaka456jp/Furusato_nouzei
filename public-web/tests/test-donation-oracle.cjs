@@ -451,3 +451,104 @@ for(const invalid of [{year:2024},{year:"2026"},{conditions:""},{taxpayerIncome:
 }
 console.log(JSON.stringify({schema:"web-family-components/v1",familyCases,
  adjustmentDifferenceSeparated:true,actualExcelCOM:false,uiIntegrated:false,release:"HOLD"}));
+
+
+// Family-aware integration: preserve the established no-family results,
+// then compare family tax outcomes against independently supplied totals.
+const familyTax=require("../src/family-tax.js");
+const familyTaxInput={year:2026,salaryIncome:5200000,socialInsurance:1000000,
+ municipality:"standard",spouse:null,relatives:[],conditions:"salary-basic-social-family-only-reviewed"};
+let familyTaxParity=0;
+for(const [year,gross,social,income,pooled,assessed,legacyLimit] of excelObserved){
+ for(const municipality of ["standard","designated"]){
+  const input={...familyTaxInput,year,salaryIncome:income,socialInsurance:social,municipality};
+  const basicInput={...localArgs,year,salaryIncome:income,socialInsurance:social,municipality};
+  const actual=familyTax.calculate(input),expected=local.oneStopReference(basicInput);
+  assert.equal(actual.status,"ESTIMATE");
+  assert.equal(actual.donationLimitYen,expected.donationLimitYen);
+  assert.equal(actual.calculation.residentIncomeLevyYen,expected.calculation.residentIncomeLevyYen);
+  assert.equal(actual.calculation.nationalTaxableYen,expected.calculation.nationalTaxableYen);
+  for(const d of [2000,3000,legacyLimit,legacyLimit+1000]){
+   const a=familyTax.filingTrial(input,d).calculation,b=local.filingTrial(basicInput,d).calculation;
+   assert.deepEqual([a.nationalSavingYen,a.residentSavingYen,a.selfPayYen],
+    [b.nationalSavingYen,b.residentSavingYen,b.selfPayYen]);
+  }
+  assert.equal(familyTax.filingPrefix(input).donationLimitYen,local.filingPrefix(basicInput).donationLimitYen);
+  familyTaxParity++;
+ }
+}
+// Hard-coded independent arithmetic for identical family incomes of 600k.
+// 2025 special deductions have zero statutory difference; 2026 ordinary
+// deductions have 230k family difference. The special rate base must NOT
+// be forced equal to actual national taxable income.
+let familyIntegratedCases=0;
+for(const [year,municipality,nat,adj,base,rate,city,pref,limit] of [
+ [2025,"standard",1730000,2500,1960000,10,131100,87400,56000],
+ [2025,"designated",1730000,2500,1960000,10,174800,43700,56000],
+ [2026,"standard",1370000,3500,1370000,5,130500,87000,53000],
+ [2026,"designated",1370000,3500,1370000,5,174000,43500,53000]
+]){
+ const input={...familyTaxInput,year,municipality,salaryIncome:4760000,socialInsurance:1340000,
+  spouse:spouse(600000),relatives:[relative(20,600000)]};
+ const out=familyTax.calculate(input);assert.equal(out.status,"ESTIMATE");
+ const c=out.calculation;
+ assert.deepEqual([c.nationalTaxableYen,c.adjustmentYen,c.residentSpecialBaseYen,c.specialRatePercent,
+   c.city.assessedYen,c.prefecture.assessedYen,out.donationLimitYen],
+  [nat,adj,base,rate,city,pref,limit]);
+ assert.equal(c.residentTaxableYen,2210000);
+ // Independent BigInt fiscal model, using the already established
+ // expected tax bases and assessed levies, not production internals.
+ function expectedTrial(d){
+  const D=BigInt(d),B=D-2000n;
+  const n=BigInt(nat),after=n>B?(n-B)/1000n*1000n:0n;
+  const incomeTax=t=>t/20n; // all these national bases stay in 5% band
+  const total=t=>incomeTax(t)+incomeTax(t)*21n/1000n;
+  const ns=total(n)-total(after);
+  const ratio=rate===5?84895n:79790n;
+  const shares=municipality==="standard"?[3n,2n]:[4n,1n];
+  const savings=shares.map((s,i)=>{
+   const levy=BigInt(i?pref:city);
+   const special=B*ratio*s,cap=levy*100000n;
+   const credit=(B*s*10000n+(special<cap?special:cap)+499999n)/500000n;
+   const remainder=levy>credit?levy-credit:0n;
+   return levy-remainder/100n*100n;
+  });
+  return [ns,savings[0],savings[1],D-ns-savings[0]-savings[1]].map(Number);
+ }
+ for(const d of [2000,2001,3000,limit,limit+1000,120000]){
+  const t=familyTax.filingTrial(input,d).calculation;
+  assert.deepEqual([t.nationalSavingYen,t.city.savingYen,t.prefecture.savingYen,t.selfPayYen],expectedTrial(d));
+ }
+ let ceiling=2000;
+ for(let d=3000;d<=1428000;d+=1000){
+  if(expectedTrial(d)[3]>2000)break;
+  ceiling=d;
+ }
+ assert.equal(familyTax.filingPrefix(input).donationLimitYen,ceiling);
+ familyIntegratedCases++;
+}
+// Lower resident taxable base: adjustment uses min(personal difference,
+// taxable) at <=2m, with distinct age/household and exemption effects.
+const ordinaryFamily=familyTax.calculate({...familyTaxInput,salaryIncome:3560000,socialInsurance:750000,
+ spouse:spouse(0),relatives:[relative(16),relative(15)]});
+assert.equal(ordinaryFamily.status,"ESTIMATE");
+assert.equal(ordinaryFamily.calculation.residentTaxableYen,1720000);
+assert.equal(ordinaryFamily.calculation.personalDifferenceYen,150000);
+assert.equal(ordinaryFamily.calculation.adjustmentYen,7500);
+assert.equal(ordinaryFamily.calculation.residentIncomeLevyYen,164500);
+assert.equal(ordinaryFamily.calculation.family.familyCount,3);
+for(const invalid of [
+ {salaryIncome:6550001},{salaryIncome:1120000,relatives:[relative(15)]},
+ {salaryIncome:1200000,socialInsurance:500000},{municipality:"unknown"},
+ {conditions:""},{spouse:{...spouse(0),eligibilityReviewed:false}},
+ {hasMortgage:true},{socialInsurance:1000000.5}
+]){
+ const out=familyTax.calculate({...familyTaxInput,...invalid});
+ assert.equal(out.status,"HOLD");assert.equal(out.donationLimitYen,null);
+}
+for(const d of [1999,1560001,"3000",3000.5]){
+ assert.equal(familyTax.filingTrial(familyTaxInput,d).status,"HOLD");
+}
+console.log(JSON.stringify({schema:"web-family-tax-integration/v1",familyTaxParity,
+ familyIntegratedCases,independentTrialOracle:true,actualExcelFamilyCOM:false,
+ uiIntegrated:false,release:"HOLD"}));
