@@ -754,5 +754,38 @@ extra.querySelector('[data-adjustment="age"]').dispatchEvent(new Event("input",{
 assert.equal(field("adjustmentReviewed").checked,false);assert.equal(view.hidden,true);
 form.reset();assert.equal(document.getElementById("adjustmentRelatives").children.length,0);
 assert.equal(field("adjustmentReviewed").checked,false);
+// High-salary source-year review uses independent G46/G47 and retains
+// positive OCR evidence, even if the current-year claim no longer applies.
+field("year").value="2026";field("municipality").value="standard";
+field("salaryGross").value="9000000";field("socialInsurance").value="1000000";
+form.dataset.ocrYear="2025";form.dataset.ocrOriginalGross="9000000";
+form.dataset.ocrOriginalIncome="7000000";form.dataset.ocrOriginalSocial="1000000";
+form.dataset.ocrOriginalDeductions="1580000";form.dataset.ocrSourceIndicators="hasIncomeAdjustment";
+field("deductionsReference").value="1580000";
+document.getElementById("sourceAdjustmentAdd").click();
+const sourceExtra=document.querySelector("#sourceAdjustmentRelatives .adjustment-relative");
+sourceExtra.querySelector('[data-adjustment="age"]').value="10";
+sourceExtra.querySelector('[data-adjustment="income"]').value="0";
+function attestHighSource(){attestHigh();for(const name of ["sourceFamilyReviewed","sourceInsuranceReviewed","sourceOtherReviewed","sourceAdjustmentReviewed","forecastReviewed"])field(name).checked=true;}
+attestHighSource();rawSubmit();assert.equal(view.className,"result hold");
+field("sourceAdjustment_basic").value="580000";field("sourceAdjustment_amount").value="50000";
+attestHighSource();rawSubmit();assert.equal(view.className,"result",view.textContent);
+assert.equal(highValues()["原票年の給与所得（照合済）"],"7,000,000円");
+assert.equal(highValues()["原票年の基礎控除額（G46・照合済）"],"580,000円");
+assert.equal(highValues()["原票年の所得金額調整控除額（G47・照合済）"],"50,000円");
+assert.equal(highValues()["所得金額調整控除"],"0円");
+assert.equal(highValues()["所得控除合計（自動算定）"],"1,620,000円");
+field("sourceAdjustment_amount").value="0";rawSubmit();assert.equal(view.className,"result hold");
+field("sourceAdjustment_amount").value="50000";field("sourceAdjustment_basic").value="620000";rawSubmit();assert.equal(view.className,"result hold");
+field("sourceAdjustment_basic").value="580000";rawSubmit();assert.equal(view.className,"result");
+form.dataset.ocrSourceIndicators="hasIncomeAdjustment,hasMortgage";rawSubmit();assert.equal(view.className,"result hold");
+form.dataset.ocrSourceIndicators="hasIncomeAdjustment";rawSubmit();assert.equal(view.className,"result");
+field("sourceAdjustment_amount").value="50001";dom.window.dispatchEvent(new Event("beforeprint"));assert.equal(view.className,"result hold");
+field("sourceAdjustment_amount").dispatchEvent(new Event("input",{bubbles:true}));
+assert.equal(field("sourceAdjustmentReviewed").checked,false);assert.equal(view.hidden,true);
+form.dispatchEvent(new Event("family-source-reset"));
+assert.equal(field("sourceAdjustment_basic").value,"");assert.equal(field("sourceAdjustment_amount").value,"");
+assert.equal(document.getElementById("sourceAdjustmentRelatives").children.length,0);
+form.reset();
 dom.window.close();
 console.log("PUBLIC_WEB_STATIC_AND_BROWSER_SYNTHETIC_PASS; no network; ads off; deploy off");
