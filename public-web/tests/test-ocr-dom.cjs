@@ -151,6 +151,7 @@ async function main(){
  assert.equal(field("salaryIncomeReference").value,"5200000");
  assert.equal(field("deductionsReference").value,"1670000");
  assert.equal(form.dataset.ocrYear,"2026");
+ assert.equal(form.dataset.ocrOriginalIncome,"5200000");
  assert.equal(form.dataset.ocrReviewPending,"false");
  assert.equal(check.checked,false);
  assert.equal(check.disabled,true);
