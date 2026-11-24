@@ -1117,3 +1117,74 @@ for(const d of [1999,1200001,3000.5,"3000"]){
 }
 console.log(JSON.stringify({schema:"web-medical-tax-integration/v1",medicalIntegratedCases,medicalIntegratedTrials,
  medicalFilingHoldCases,zeroMedicalParity:true,oneStopBlocked:true,uiIntegrated:false,actualExcelCOM:false,release:"HOLD"}));
+
+// High salary adjustment: independent annual facts, not a family deduction claim.
+const salaryAdjustment=require("../dist/salary-adjustment.js");
+assert.equal(fs.readFileSync(path.resolve(__dirname,"../dist/salary-adjustment.js"),"utf8"),
+ fs.readFileSync(path.resolve(__dirname,"../src/salary-adjustment.js"),"utf8"));
+const adjMember=(age,income,specialDisability=false)=>({age,income,specialDisability,relationshipReviewed:true});
+const adjSpouse=(income,specialDisability)=>({income,specialDisability,relationshipReviewed:true});
+const adjBase={year:2025,grossSalary:9000000,selfSpecialDisability:false,spouse:null,relatives:[],
+ conditions:"annual-resident-salary-only-adjustment-facts-reviewed"};
+let salaryAdjustmentCases=0,salaryAdjustmentHoldCases=0;
+for(const year of [2025,2026]){
+ const threshold=year===2025?580000:620000;
+ const base={...adjBase,year};
+ for(const [gross,before,adj] of [
+  [8500000,6550000,0],[8500001,6550001,1],[8500010,6550010,1],
+  [8500011,6550011,2],[9000000,7050000,50000],
+  [9999999,8049999,150000],[10000000,8050000,150000],
+  [10000001,8050001,150000],[20000000,18050000,150000]
+ ]){
+  for(const qualify of [false,true]){
+   const result=salaryAdjustment.calculate({...base,grossSalary:gross,selfSpecialDisability:qualify});
+   assert.equal(result.status,"COMPONENTS_ONLY",result.reason);const c=result.calculation;
+   assert.deepEqual([c.salaryDeductionYen,c.salaryIncomeBeforeAdjustmentYen,c.salaryAdjustmentYen,
+    c.salaryIncomeAfterAdjustmentYen,c.eligible,result.donationLimitYen],
+    [1950000,before,qualify?adj:0,before-(qualify?adj:0),qualify&&gross>8500000,null]);
+   salaryAdjustmentCases++;
+  }
+ }
+ for(const [change,expected] of [
+  [{relatives:[adjMember(0,0)]},true],
+  [{relatives:[adjMember(22,threshold)]},true],
+  [{relatives:[adjMember(22,threshold+1)]},false],
+  [{relatives:[adjMember(23,threshold)]},false],
+  [{relatives:[adjMember(23,threshold,true)]},true],
+  [{relatives:[adjMember(80,threshold+1,true)]},false],
+  [{relatives:[adjMember(80,threshold,true)]},true],
+  [{spouse:adjSpouse(threshold,true)},true],
+  [{spouse:adjSpouse(threshold+1,true)},false],
+  [{spouse:adjSpouse(threshold,false)},false],
+  [{selfSpecialDisability:true,spouse:adjSpouse(0,true),relatives:[adjMember(22,0,true)]},true]
+ ]){
+  const result=salaryAdjustment.calculate({...base,...change});assert.equal(result.status,"COMPONENTS_ONLY");
+  assert.equal(result.calculation.eligible,expected);
+  assert.equal(result.calculation.salaryAdjustmentYen,expected?50000:0);
+  assert.equal(result.calculation.salaryIncomeAfterAdjustmentYen,expected?7000000:7050000);
+  salaryAdjustmentCases++;
+ }
+}
+for(const change of [
+ {year:2024},{year:2027},{grossSalary:8499999},{grossSalary:20000001},{grossSalary:9000000.5},
+ {grossSalary:"9000000"},{selfSpecialDisability:1},{spouse:{...adjSpouse(0,true),relationshipReviewed:false}},
+ {spouse:adjSpouse(-1,true)},{spouse:undefined},{relatives:null},
+ {relatives:[adjMember(-1,0)]},{relatives:[adjMember(131,0)]},
+ {relatives:[{...adjMember(20,0),relationshipReviewed:false}]},
+ {relatives:[{...adjMember(20,0),name:"fictional"}]},
+ {conditions:"unreviewed"},{pensionIncome:100000},{adjustmentYen:100000}
+]){
+ const result=salaryAdjustment.calculate({...adjBase,...change});
+ assert.equal(result.status,"HOLD");assert.equal(result.calculation,null);assert.equal(result.donationLimitYen,null);
+ salaryAdjustmentHoldCases++;
+}
+// Under the 2026 threshold the same anonymous family facts may newly qualify.
+const thresholdCase={...adjBase,relatives:[adjMember(22,600000)]};
+assert.equal(salaryAdjustment.calculate(thresholdCase).calculation.salaryAdjustmentYen,0);
+assert.equal(salaryAdjustment.calculate({...thresholdCase,year:2026}).calculation.salaryAdjustmentYen,50000);
+// Current low-income and high-income unsupported paths cannot acquire an
+// estimate by injecting the component into the old public calculation.
+assert.equal(familyTax.calculate({...familyTaxInput,salaryIncome:7000000}).status,"HOLD");
+assert.equal(familyTax.calculate({...familyTaxInput,salaryAdjustmentYen:50000}).status,"HOLD");
+console.log(JSON.stringify({schema:"web-salary-adjustment/v1",salaryAdjustmentCases,salaryAdjustmentHoldCases,
+ independentLiteralCases:true,donationIntegrated:false,uiIntegrated:false,release:"HOLD"}));
