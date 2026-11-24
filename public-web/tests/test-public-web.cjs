@@ -383,5 +383,28 @@ assert.equal(view.textContent,"");
 assert.equal(document.querySelectorAll("script[src^='http']").length,0);
 assert.equal(document.querySelectorAll("iframe").length,0);
 assert.equal(document.getElementById("slipTransfer").disabled,true);
+// A case where municipality selection changes the PRIMARY amount by ¥1,000.
+field("year").value="2026";
+field("filing").value="one-stop";
+field("salaryGross").value="7000000";
+field("socialInsurance").value="601000";
+field("municipality").value="standard";
+field("acknowledgedExclusions").checked=true;
+rawSubmit();
+assert.equal(view.className,"result");
+assert.equal(view.querySelector(".amount").textContent,"121,000円");
+field("municipality").value="designated";
+field("municipality").dispatchEvent(new Event("change",{bubbles:true}));
+assert.equal(view.hidden,true);
+field("acknowledgedExclusions").checked=true;
+rawSubmit();
+assert.equal(view.className,"result");
+assert.equal(view.querySelector(".amount").textContent,"120,000円");
+// A silent select mutation must not print the previous jurisdiction.
+field("municipality").value="standard";
+dom.window.dispatchEvent(new Event("beforeprint"));
+assert.equal(view.className,"result hold");
+assert.equal(view.querySelector(".amount"),null);
+form.reset();
 dom.window.close();
 console.log("PUBLIC_WEB_STATIC_AND_BROWSER_SYNTHETIC_PASS; no network; ads off; deploy off");
