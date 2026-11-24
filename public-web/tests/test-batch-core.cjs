@@ -393,18 +393,54 @@ function otherFixture(){
 const otherRow=otherFixture();otherRow.otherReviewed=false;runFamily(otherRow);assert.equal(otherRow.status,"HOLD");
 otherRow.otherReviewed=true;runFamily(otherRow);assert.equal(otherRow.status,"前年参考概算",otherRow.reason);
 assert.equal(otherRow.appliedDeductionsYen,1940000);
-assert.deepEqual(columns(otherRow).slice(33),["390000","120000","390000","380000","120000","880000"]);
+assert.deepEqual(columns(otherRow).slice(33,39),["390000","120000","390000","380000","120000","880000"]);
 assert.equal(batch.canOutputEstimate(otherRow),true);
 for(const mutate of [
  r=>{r.otherReviewed=false;},r=>{r.otherSourceText="なし";},r=>{r.otherTargetText="なし";},r=>{r.sourceIndicators.hasMortgage=true;}
 ]){
  const r=otherFixture();runFamily(r);assert.equal(batch.canOutputEstimate(r),true);
  mutate(r);assert.equal(batch.canOutputEstimate(r),false);
- assert.deepEqual(columns(r).slice(33),["","","","","",""]);
+ assert.deepEqual(columns(r).slice(33,39),["","","","","",""]);
 }
 for(const bad of ["ordinary,none,none,0,0,1000001","ordinary,none,none,0,0,-1","ordinary,none,none,0,0,120000,special","ordinary,none,none,1,0,120000"]){
  const r=otherFixture();batch.edit(r,"otherTargetText",bad);attest(r);r.insuranceReviewed=true;r.otherReviewed=true;
  runFamily(r);assert.equal(r.status,"HOLD");assert.equal(r.donationLimitYen,null);
 }
+// Medical expenses are target-year only, and never permit one-stop.
+function medicalFixture(method="ordinary"){
+ const r=otherFixture();r.filing="return";
+ batch.edit(r,"medicalMethod",method);
+ batch.edit(r,"medicalGroupsText","100000,150000\n300000,0");
+ attest(r);r.insuranceReviewed=true;r.otherReviewed=true;
+ r.medicalHealthReviewed=method==="selfMedication";r.medicalReviewed=true;return r;
+}
+const med=medicalFixture();runFamily(med);
+assert.equal(med.status,"前年参考概算",med.reason);
+assert.equal(med.appliedDeductionsYen,2140000);
+assert.equal(med.familySummary.sourceTotal,1900000);
+assert.equal(med.comparison.oneStop,null);
+assert.equal(med.donationLimitYen,med.comparison.filing);
+assert.equal(med.comparison.trial.donation,med.comparison.filing);
+assert.equal(batch.canOutputEstimate(med),true);
+assert.deepEqual(columns(med).slice(39),["通常の医療費控除","400000","150000","100000","50000","100000","200000"]);
+assert.equal(columns(med)[17],"");
+const self=medicalFixture("selfMedication");runFamily(self);
+assert.equal(self.status,"前年参考概算",self.reason);
+assert.equal(self.medicalSummary.nationalDeductionYen,88000);
+assert.equal(self.comparison.oneStop,null);
+for(const change of [
+ r=>{r.filing="one-stop";},r=>{r.medicalReviewed=false;},
+ r=>{r.medicalGroupsText="bad";},r=>{r.medicalGroupsText="100,-1";},
+ r=>{r.medicalHealthReviewed=false;r.medicalMethod="selfMedication";},
+ r=>{r.sourceIndicators.hasMedical=true;},
+ r=>{r.originalCandidates={...r.originalCandidates,deductionsReference:2100000};}
+]){
+ const r=medicalFixture();runFamily(r);assert.equal(batch.canOutputEstimate(r),true);
+ change(r);assert.equal(batch.canOutputEstimate(r),false);
+ assert.deepEqual(columns(r).slice(39),Array(7).fill(""));
+ runFamily(r);assert.equal(r.status,"HOLD",r.reason);assert.equal(r.donationLimitYen,null);
+}
+batch.edit(med,"medicalGroupsText","300000,0");assert.equal(med.medicalReviewed,false);
+assert.equal(batch.canOutputEstimate(med),false);
 dom.window.close();
 console.log("PUBLIC_BATCH_PER_PAGE_LOCAL_SAFETY_SYNTHETIC_PASS; no private slips; no deploy");

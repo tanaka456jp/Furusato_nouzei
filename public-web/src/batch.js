@@ -52,6 +52,7 @@
   const openFamilyRows=new Set([...body.children].map((tr,i)=>tr.querySelector(".batch-family-editor:not(.batch-insurance-editor):not(.batch-other-editor) details")?.open?i:-1));
   const openInsuranceRows=new Set([...body.children].map((tr,i)=>tr.querySelector(".batch-insurance-editor details")?.open?i:-1));
   const openOtherRows=new Set([...body.children].map((tr,i)=>tr.querySelector(".batch-other-editor details")?.open?i:-1));
+  const openMedicalRows=new Set([...body.children].map((tr,i)=>tr.querySelector(".batch-medical-editor details")?.open?i:-1));
   body.replaceChildren();
   table.hidden=rows.length===0;
   rows.forEach((r,i)=>{
@@ -209,7 +210,25 @@
    otherDetails.appendChild(otherReview);otherCell.appendChild(otherDetails);
    for(const k of ["sourceTotal","sourceContribution","national","resident","contribution","socialOnly"])
     cell(tr,isEstimate?yen(r.otherSummary?.[k]):"—","batch-other-result");
-   for(const select of tr.querySelectorAll("select")){
+   const medicalCell=cell(tr,"","batch-medical-editor");
+   const medicalDetails=formControl("details");medicalDetails.open=openMedicalRows.has(i);
+   medicalDetails.appendChild(formControl("summary",{text:"試算年の医療費控除"}));
+   medicalDetails.appendChild(formControl("p",{text:"確定申告を選択し、家族・保険料・その他所得控除も確認してください。原票年の所得控除合計には医療費控除を含めません。"}));
+   const method=formControl("select",{"data-row":String(i),"data-field":"medicalMethod","aria-label":"対象者 "+r.page+" 医療費控除方式"});
+   for(const [value,text] of [["","申告なし"],["ordinary","通常の医療費控除"],["selfMedication","セルフメディケーション税制"]])method.appendChild(formControl("option",{value,text}));
+   method.value=r.medicalMethod;medicalDetails.appendChild(method);
+   const groupsLabel=formControl("label",{text:"補填対象ごとに1行：支払額,補填金（円）"});
+   const groups=formControl("textarea",{"data-row":String(i),"data-field":"medicalGroupsText",rows:"4",maxlength:"3000",autocomplete:"off","aria-label":"対象者 "+r.page+" 医療費・補填金明細",placeholder:"100000,0"});
+   groups.value=r.medicalGroupsText;groupsLabel.appendChild(groups);medicalDetails.appendChild(groupsLabel);
+   for(const [key,title] of [["medicalHealthReviewed","健康保持増進等の取組要件を確認（セルフメディケーションのみ）"],["medicalReviewed","対象年・費用・補填対象の対応・重複なし・適用条件を確認し、全寄附を確定申告する"]]){
+    const label=formControl("label",{text:" "+title});
+    label.prepend(formControl("input",{type:"checkbox","data-row":String(i),"data-field":key,checked:r[key],"aria-label":"対象者 "+r.page+" "+title}));
+    medicalDetails.appendChild(label);
+   }
+   medicalCell.appendChild(medicalDetails);
+   for(const k of core.MEDICAL_SUMMARY_KEYS)
+    cell(tr,isEstimate&&r.medicalSummary?(k==="method"?(r.medicalSummary.method==="ordinary"?"通常":"セルフメディケーション"):yen(r.medicalSummary[k])):"—","batch-medical-result");
+   for(const select of tr.querySelectorAll("select:not([data-field=medicalMethod])")){
     const span=document.createElement("span");span.className="batch-print-value";
     span.textContent=select.selectedOptions[0]?.textContent??"未確認";select.parentNode.appendChild(span);
    }
@@ -308,7 +327,7 @@
   // and screenshots cannot retain an estimate for an edited recipient.
   const index=rows.indexOf(row),tr=body.children[index];
   if(tr){
-   const amounts=tr.querySelectorAll(".batch-result,.batch-deduction-applied,.batch-resident-levy,.batch-comparison,.batch-family-result,.batch-insurance-result,.batch-other-result");
+   const amounts=tr.querySelectorAll(".batch-result,.batch-deduction-applied,.batch-resident-levy,.batch-comparison,.batch-family-result,.batch-insurance-result,.batch-other-result,.batch-medical-result");
    const reason=tr.querySelector(".batch-reason");
    amounts.forEach(el=>{el.textContent="—";});
    if(reason)reason.textContent="HOLD："+row.reason;
@@ -322,7 +341,7 @@
   const idx=Number(ev.target?.dataset?.row);
   const key=ev.target?.dataset?.field;
   if(!Number.isSafeInteger(idx)||!rows[idx])return;
-  if(key==="label"||key==="trialInput"||key==="familySourceText"||key==="familyTargetText"||(core.PREMIUM_FIELDS.includes(key)||core.OTHER_FIELDS.includes(key))||monetary.includes(key)){
+  if(key==="label"||key==="trialInput"||key==="familySourceText"||key==="familyTargetText"||(core.PREMIUM_FIELDS.includes(key)||core.OTHER_FIELDS.includes(key)||core.MEDICAL_FIELDS.includes(key))||monetary.includes(key)){
    core.edit(rows[idx],key,ev.target.value);
    invalidateEditedRow(rows[idx]);
   }
@@ -332,21 +351,22 @@
   const key=ev.target?.dataset?.field;
   if(!Number.isSafeInteger(idx)||!rows[idx])return;
   const row=rows[idx];
-  if(key==="familySourceText"||key==="familyTargetText"||(core.PREMIUM_FIELDS.includes(key)||core.OTHER_FIELDS.includes(key))){
+  if(key==="familySourceText"||key==="familyTargetText"||(core.PREMIUM_FIELDS.includes(key)||core.OTHER_FIELDS.includes(key)||core.MEDICAL_FIELDS.includes(key))){
    // The input listener already records typing; avoid replacing the editor
    // on blur, which could swallow a click on the confirmation checkbox.
    if(row[key]!==ev.target.value){core.edit(row,key,ev.target.value);invalidateEditedRow(row);}
    return;
   }
-  if(key==="label"||key==="trialInput"||(core.PREMIUM_FIELDS.includes(key)||core.OTHER_FIELDS.includes(key))||monetary.includes(key)){
+  if(key==="label"||key==="trialInput"||(core.PREMIUM_FIELDS.includes(key)||core.OTHER_FIELDS.includes(key)||core.MEDICAL_FIELDS.includes(key))||monetary.includes(key)){
    core.edit(row,key,ev.target.value);
   }else if(key==="sourceYear"||key==="year"||key==="municipality"){
    core.edit(row,key,ev.target.value);
   }else if(key==="filing"&&["one-stop","return"].includes(ev.target.value)){
    row.filing=ev.target.value;
-   row.confirmed=false;row.noExclusions=false;row.forecastReviewed=false;row.familyReviewed=false;row.insuranceReviewed=false;row.otherReviewed=false;
-  }else if(["confirmed","noExclusions","forecastReviewed","familyReviewed","insuranceReviewed","otherReviewed"].includes(key)){
+   row.confirmed=false;row.noExclusions=false;row.forecastReviewed=false;row.familyReviewed=false;row.insuranceReviewed=false;row.otherReviewed=false;row.medicalReviewed=false;
+  }else if(["confirmed","noExclusions","forecastReviewed","familyReviewed","insuranceReviewed","otherReviewed","medicalReviewed","medicalHealthReviewed"].includes(key)){
    row[key]=ev.target.checked===true;
+   if(key==="medicalHealthReviewed")row.medicalReviewed=false;
   }else return;
   invalidateEditedRow(row);
   render();
@@ -380,7 +400,7 @@
    if(key==="year"&&row.year===null&&actual==="2026")continue;
    if(actual!==expected){
     if(element.type==="checkbox")row[key]=false;
-    else if(key==="filing"){row.filing=actual;row.confirmed=false;row.noExclusions=false;row.forecastReviewed=false;row.familyReviewed=false;row.insuranceReviewed=false;row.otherReviewed=false;}
+    else if(key==="filing"){row.filing=actual;row.confirmed=false;row.noExclusions=false;row.forecastReviewed=false;row.familyReviewed=false;row.insuranceReviewed=false;row.otherReviewed=false;row.medicalReviewed=false;}
     else core.edit(row,key,actual);
     invalidateEditedRow(row);changed=true;
    }
