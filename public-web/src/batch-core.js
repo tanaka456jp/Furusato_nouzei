@@ -24,7 +24,7 @@
  function holdRow(page,reason){
   return {page,label:"",year:null,sourceYear:null,candidates:null,originalCandidates:null,sourceIndicators:{},deductionsOverrideActive:false,appliedDeductionsYen:null,sourceValid:false,
    confirmed:false,noExclusions:false,forecastReviewed:false,filing:"one-stop",municipality:"",calculatedMunicipality:null,calculatedFiling:null,residentLevyYen:null,calculationBasis:null,
-   trialInput:"",comparison:null,calculatedSnapshot:null,status:"HOLD",donationLimitYen:null,reason:reason||"読取・確認待ち"};
+   trialInput:"",familySourceText:"",familyTargetText:"",familyReviewed:false,originalYear:null,familySummary:null,comparison:null,calculatedSnapshot:null,status:"HOLD",donationLimitYen:null,reason:reason||"読取・確認待ち"};
  }
  function fromPage(page,review,targetYear){
   const row=holdRow(page,"原票の確認待ち");
@@ -41,6 +41,7 @@
     return row;
   }
   row.sourceYear=review.year;
+  row.originalYear=review.year;
   row.year=targetYear===undefined?review.year:targetYear;
   // Never let a checkbox or an amount edit override positive source facts.
   if(review.sourceIndicators&&typeof review.sourceIndicators==="object"&&
@@ -78,17 +79,20 @@
  function snapshot(row){
   return JSON.stringify([row.page,row.label,row.year,row.sourceYear,row.candidates,
     row.originalCandidates,row.sourceIndicators,row.sourceValid,row.deductionsOverrideActive,
-    row.confirmed,row.noExclusions,row.forecastReviewed,row.municipality,row.filing,row.trialInput]);
+    row.confirmed,row.noExclusions,row.forecastReviewed,row.municipality,row.filing,row.trialInput,
+    row.originalYear,row.familySourceText,row.familyTargetText,row.familyReviewed]);
  }
  function invalidate(row){
   row.status="HOLD";row.donationLimitYen=null;row.appliedDeductionsYen=null;
   row.calculatedMunicipality=null;row.calculatedFiling=null;row.residentLevyYen=null;row.calculationBasis=null;
-  row.comparison=null;row.calculatedSnapshot=null;
+  row.comparison=null;row.familySummary=null;row.calculatedSnapshot=null;
  }
  function edit(row,key,value){
   if(!row||typeof row!=="object")throw Error("BATCH_ROW_INVALID");
   if(key==="label"){
     row.label=String(value??"").slice(0,40);
+  }else if(key==="familySourceText"||key==="familyTargetText"){
+    row[key]=String(value??"").slice(0,3000);
   }else if(key==="trialInput"){
     row.trialInput=String(value??"").slice(0,12);
     invalidate(row);row.reason="試算寄附額を変更しました。再試算してください";return row;
@@ -109,12 +113,97 @@
     [2025,2026].includes(row.sourceYear)&&
     [2025,2026].includes(row.year)&&
     FIELDS.every(k=>safeAmount(row.candidates[k]));
-  row.confirmed=false;row.noExclusions=false;row.forecastReviewed=false;
+  row.confirmed=false;row.noExclusions=false;row.forecastReviewed=false;row.familyReviewed=false;
   invalidate(row);
   row.reason="手入力を変更しました。原票と試算対象年の見込額・控除条件を再確認してください";
   return row;
  }
- function calculate(row,engine,displayGuard,selectedReference,localEngine){
+ // A compact, local multiline editor: one family member per line.
+ // S,age,income = spouse; R,age,income,0/1 = relative, cohabiting
+ // direct ascendant. Explicit "なし" is required for an empty household.
+ function parseFamily(raw){
+  if(typeof raw!=="string"||raw.length>3000)return null;
+  if(raw.trim()==="なし")return {spouse:null,relatives:[]};
+  let spouse=null,relatives=[];
+  const number=x=>/^(0|[1-9][0-9]{0,8})$/.test(x)?Number(x):null;
+  const lines=raw.trim().split(/\r?\n/);
+  if(lines.length>31)return null;
+  for(const line of lines){
+   const p=line.split(",").map(x=>x.trim()),age=number(p[1]||""),income=number(p[2]||"");
+   if(age===null||income===null||age>130||income>100000000)return null;
+   if(p[0]==="S"&&p.length===3&&!spouse)
+    spouse={age,income,eligibilityReviewed:true};
+   else if(p[0]==="R"&&p.length===4&&["0","1"].includes(p[3])&&relatives.length<30)
+    relatives.push({age,income,cohabitingDirectAscendant:p[3]==="1",eligibilityReviewed:true});
+   else return null;
+  }
+  return {spouse,relatives};
+ }
+ function familyActive(row){
+  return row.familySourceText!==""||row.familyTargetText!==""||row.familyReviewed===true;
+ }
+ function calculateFamily(row,engine,familyEngine,sourceEngine){
+  try{
+   if(row.familyReviewed!==true||row.originalYear!==row.sourceYear||
+      !row.originalCandidates||!FIELDS.every(k=>safeAmount(row.originalCandidates[k]))||
+      !familyEngine||!sourceEngine){row.reason="原票年と試算年の家族明細・原票4金額を確認してください";return row;}
+   const source=parseFamily(row.familySourceText),target=parseFamily(row.familyTargetText);
+   if(!source||!target){row.reason="家族明細の形式または人数を確認してください";return row;}
+   if(row.sourceYear===row.year&&JSON.stringify(source)!==JSON.stringify(target)){
+    row.reason="同一年分の家族明細が一致しません";return row;
+   }
+   const o=row.originalCandidates,v=row.candidates;
+   const original=sourceEngine.reconcile({year:row.sourceYear,gross:o.salaryGross,
+    salaryIncome:o.salaryIncomeReference,social:o.socialInsurance,deductions:o.deductionsReference,
+    indicators:row.sourceIndicators,...source,reviewed:true},engine);
+   if(original.status!=="RECONCILED"){row.reason=original.reason;return row;}
+   const income=engine.salaryIncome(v.salaryGross,row.year);
+   if(!safeAmount(income)||income!==v.salaryIncomeReference||v.salaryGross>8500000||v.socialInsurance>v.salaryGross){
+    row.reason="試算対象年の給与所得等が一致しません";return row;
+   }
+   const args={year:row.year,salaryIncome:income,socialInsurance:v.socialInsurance,
+    municipality:row.municipality,...target,conditions:"salary-basic-social-family-only-reviewed"};
+   const one=familyEngine.calculate(args);
+   if(one.status!=="ESTIMATE"){row.reason=one.reason;return row;}
+   const c=one.calculation;
+   if(!c||c.year!==row.year||c.municipality!==row.municipality||
+      c.nationalDeductionsYen!==c.nationalBasicYen+v.socialInsurance+c.family.nationalFamilyDeductionYen||
+      c.residentIncomeLevyYen!==c.city.assessedYen+c.prefecture.assessedYen||
+      !safeAmount(one.donationLimitYen)||one.donationLimitYen<2000||
+      one.donationLimitYen!==Math.floor(c.exactReferenceYen/1000)*1000||
+      (row.deductionsOverrideActive&&v.deductionsReference!==c.nationalDeductionsYen)){
+    row.reason="家族控除・所得控除合計の整合性不一致";return row;
+   }
+   const prefix=familyEngine.filingPrefix(args);
+   if(prefix.status!=="ESTIMATE"||!safeAmount(prefix.donationLimitYen)||prefix.donationLimitYen<2000){
+    row.reason="確定申告参考上限を確認できません";return row;
+   }
+   const donation=row.trialInput===""?one.donationLimitYen:
+    /^(0|[1-9][0-9]{0,11})$/.test(row.trialInput)?Number(row.trialInput):null;
+   const trial=familyEngine.filingTrial(args,donation),t=trial.calculation;
+   const comparison={oneStop:one.donationLimitYen,filing:prefix.donationLimitYen,trial:null,trialStatus:"HOLD"};
+   if(trial.status==="ESTIMATE"&&t&&t.donationYen===donation&&
+      safeAmount(t.donationYen)&&Number.isSafeInteger(t.selfPayYen)&&safeAmount(t.excessOver2000Yen)&&
+      safeAmount(t.nationalSavingYen)&&safeAmount(t.residentSavingYen)&&
+      t.selfPayYen===donation-t.nationalSavingYen-t.residentSavingYen&&
+      t.excessOver2000Yen===Math.max(0,t.selfPayYen-2000)){
+    comparison.trial={donation:t.donationYen,selfPay:t.selfPayYen,excess:t.excessOver2000Yen};
+    comparison.trialStatus="確定申告参考";
+   }
+   row.familySummary={sourceTotal:original.calculation.deductionsYen,
+    national:c.family.nationalFamilyDeductionYen,resident:c.family.residentFamilyDeductionYen};
+   row.comparison=comparison;row.appliedDeductionsYen=c.nationalDeductionsYen;
+   row.donationLimitYen=row.filing==="return"?prefix.donationLimitYen:one.donationLimitYen;
+   row.residentLevyYen=c.residentIncomeLevyYen;
+   row.calculatedMunicipality=row.municipality;row.calculatedFiling=row.filing;
+   row.calculationBasis="家族控除・原票照合済／"+(row.filing==="return"?"確定申告参考":"ワンストップ参考");
+   row.calculatedSnapshot=snapshot(row);
+   row.status=row.sourceYear<row.year?"前年参考概算":"概算";
+   row.reason="家族控除の原票照合済・試算対象年の参考値（確定額ではありません）";
+   return row;
+  }catch(_){invalidate(row);row.reason="家族税額の計算異常";return row;}
+ }
+ function calculate(row,engine,displayGuard,selectedReference,localEngine,familyEngine,sourceEngine){
   invalidate(row);
   // Bad page/year/amount or a changed choice must never publish an amount.
   if(!canEstimate(row)){
@@ -126,7 +215,8 @@
     return row;
   }
   if(row.confirmed!==true){row.reason="原票と4金額・年分の目視照合待ち";return row;}
-  if(Object.keys(row.sourceIndicators||{}).length>0){
+  if(Object.keys(row.sourceIndicators||{}).some(k=>!["hasSpouse","hasDependents"].includes(k))||
+     (Object.keys(row.sourceIndicators||{}).length>0&&!familyActive(row))){
     row.reason="原票で検出した追加控除・扶養等は簡易試算の対象外です。原票の控除明細を確認してください";
     return row;
   }
@@ -146,6 +236,7 @@
     row.reason="税額計算の検証機能を利用できません";
     return row;
   }
+  if(familyActive(row))return calculateFamily(row,engine,familyEngine,sourceEngine);
   const input={
    year:String(row.year),sourceYear:String(row.sourceYear),
    forecastReviewed:row.forecastReviewed===true,
@@ -254,7 +345,9 @@
  // A single fail-closed output predicate for the derived amounts and status.
  function canOutputEstimate(row){
   return canEstimate(row)&&row.confirmed===true&&row.noExclusions===true&&
-   Object.keys(row.sourceIndicators||{}).length===0&&
+   (familyActive(row)?row.familyReviewed===true&&row.familySummary!==null&&row.originalYear===row.sourceYear&&
+     Object.entries(row.sourceIndicators||{}).every(([k,v])=>["hasSpouse","hasDependents"].includes(k)&&v===true):
+     Object.keys(row.sourceIndicators||{}).length===0)&&
    (row.sourceYear===row.year||row.forecastReviewed===true)&&
    ["one-stop","return"].includes(row.filing)&&row.calculatedFiling===row.filing&&
    ["standard","designated"].includes(row.municipality)&&row.calculatedMunicipality===row.municipality&&
@@ -271,7 +364,7 @@
    throw Error("BATCH_CSV_ROWS_INVALID");
   const header=["PDFページ","氏名","参照源泉票年分","試算対象年","給与支払金額",
    "給与所得控除後の金額","所得控除合計の入力値","所得控除合計の計算使用額","所得控除合計の入力区分","社会保険料等","手続き",
-   "寄附上限額の概算","状態","確認状況","課税自治体区分","住民税所得割（選択自治体）","寄附参考額の計算方式","ワンストップ参考上限","確定申告参考上限（千円刻み）","試算寄附額（入力・空欄は自動）","確定申告試算寄附額","確定申告自己負担見込額","2,000円超過額","任意寄附額試算状態"];
+   "寄附上限額の概算","状態","確認状況","課税自治体区分","住民税所得割（選択自治体）","寄附参考額の計算方式","ワンストップ参考上限","確定申告参考上限（千円刻み）","試算寄附額（入力・空欄は自動）","確定申告試算寄附額","確定申告自己負担見込額","2,000円超過額","任意寄附額試算状態","原票所得控除合計（家族照合済）","所得税家族控除","住民税家族控除"];
   const lines=[header.map(csvValue).join(",")];
   for(const r of rows){
    const v=r.sourceValid?r.candidates:null;
@@ -289,7 +382,8 @@
       ?"確認状態が変わりました。再試算してください":r.reason,
     r.municipality==="standard"?"標準市町村":r.municipality==="designated"?"政令指定都市":"未確認",
     accepted?r.residentLevyYen:"",accepted?r.calculationBasis:"",comparison?.oneStop??"",comparison?.filing??"",
-    r.trialInput,comparison?.trial?.donation??"",comparison?.trial?.selfPay??"",comparison?.trial?.excess??"",comparison?.trialStatus??"HOLD"].map(csvValue).join(","));
+    r.trialInput,comparison?.trial?.donation??"",comparison?.trial?.selfPay??"",comparison?.trial?.excess??"",comparison?.trialStatus??"HOLD",accepted?r.familySummary?.sourceTotal??"":"",
+    accepted?r.familySummary?.national??"":"",accepted?r.familySummary?.resident??"":""].map(csvValue).join(","));
   }
   // UTF-8 BOM is an intentional local Excel compatibility aid.
   return "\ufeff"+lines.join("\r\n")+"\r\n";
