@@ -106,7 +106,7 @@
           <p id="deductionsOverrideStatus" class="deductions-override-status" role="status" aria-live="polite" hidden>⚠ 所得控除合計額を手入力上書き中。社会保険料・扶養・本人所得の変更に自動追随しません。空欄にすると通常計算に戻ります。未検証の控除額はHOLDします。</p>
           <fieldset class="conditions">
             <legend>追加の控除・所得がある場合</legend>
-            <p>次の項目に該当する場合はチェックしてください。未対応条件では目安額を表示せず、安全のため停止します。</p>
+            <p>該当する項目だけチェックしてください。関連する入力欄が開きます。その他所得控除は下の詳細欄から入力できます。未対応条件では目安額を表示せず停止します。</p>
             <div class="checkgrid">
               <label><input type="checkbox" name="hasSpouse"> 配偶者控除・配偶者特別控除</label>
               <label><input type="checkbox" name="hasDependents"> 扶養親族・特定親族</label>
@@ -130,6 +130,8 @@
             </div>
             <label class="confirm"><input type="checkbox" name="mortgageReviewed"> 原票記載・適用区分・控除期間内での継続適用・他の税額控除なしを確認しました。</label>
           </details>
+          <details class="conditions optional-panel" id="familyPanelFold">
+            <summary>配偶者・扶養親族（必要な場合）</summary>
           <fieldset class="conditions family-panel" id="familyPanel">
             <legend>配偶者・扶養親族の明細（手入力・検証版）</legend>
             <p>該当する上のチェックを付け、対象年の12月31日時点の年齢と年間合計所得金額（給与収入ではありません）を入力してください。16歳未満も含めます。OCR取込の場合は原票年分の家族明細も別途確認してください。非居住親族・その他控除は未対応です。</p>
@@ -141,6 +143,9 @@
             <button type="button" class="secondary" id="familyAdd">扶養親族・特定親族を追加</button>
             <label class="confirm"><input type="checkbox" name="familyReviewed"> 年齢・合計所得・生計同一・居住者・重複控除がないこと等の適用条件、同居老親等の要件、配偶者及び全親族の当年の明細を確認しました。</label>
           </fieldset>
+          </details>
+          <details class="conditions optional-panel" id="sourceFamilyPanelFold">
+            <summary>原票年の家族明細（必要な場合）</summary>
           <fieldset class="conditions family-panel" id="sourceFamilyPanel">
             <legend>原票年分の家族明細（OCR取込時のみ）</legend>
             <p>原票に記載された年分の年齢・合計所得・家族構成を確認してください。試算対象年の明細とは別です。原票の家族控除以外の未対応控除がないことも確認してください。</p>
@@ -152,6 +157,9 @@
             <button type="button" class="secondary" id="sourceFamilyAdd">原票年の親族を追加</button>
             <label class="confirm"><input type="checkbox" name="sourceFamilyReviewed"> 原票年の家族全員の明細、年齢・合計所得・適用条件、その他未対応控除がないことを原票等で確認しました。</label>
           </fieldset>
+          </details>
+          <details class="conditions optional-panel" id="targetInsurancePanelFold">
+            <summary>試算年の保険料（必要な場合）</summary>
           <fieldset class="conditions family-panel" id="targetInsurancePanel">
             <legend>試算対象年の保険料明細（生命保険・地震保険）</legend>
             <p>控除証明書等の年間支払保険料（剰余金・割戻金控除後、円単位）を区分別に入力。空欄は0円。地震保険・旧長期損害保険の両方に該当する同一契約は、所得税・住民税で共通の適用区分を確認できる場合のみ片方へ入力してください。</p>
@@ -168,6 +176,9 @@
             <p id="premiumCopyStatus" role="status" aria-live="polite"></p>
             <label class="confirm"><input type="checkbox" name="insuranceReviewed"> 年間支払額・新旧契約・控除対象・重複なし・家族条件を確認しました（該当なしの確認も含む）。</label>
           </fieldset>
+          </details>
+          <details class="conditions optional-panel" id="targetOtherPanelFold">
+            <summary>その他所得控除（必要な場合）</summary>
           <fieldset class="conditions family-panel" id="targetOtherPanel">
             <legend>試算対象年のその他所得控除（手入力・検証版）</legend>
             <p>給与収入2,000万円以下の手入力・確認済みOCR原票の試算に対応。社会保険料等の入力額にはiDeCo・小規模企業共済等掛金を含め、その内書き額を下に入力してください（二重控除しません）。親族ごとの障害区分は上の家族明細で指定します。</p>
@@ -181,6 +192,9 @@
             </div>
             <label class="confirm"><input type="checkbox" name="otherReviewed"> その他所得控除の全適用要件、親族の障害区分・同居、婚姻・生計同一の子、学校・所得条件及び掛金の内書きを確認しました（該当なしを含む）。</label>
           </fieldset>
+          </details>
+          <details class="conditions optional-panel" id="salaryAdjustmentPanelFold">
+            <summary>高額給与の所得金額調整控除（必要な場合）</summary>
           <fieldset class="conditions family-panel" id="salaryAdjustmentPanel">
             <legend>給与収入850万円超の所得金額調整控除（手入力・検証版）</legend>
             <p>給与収入850万円超2,000万円以下の手入力試算に対応。本人・配偶者・扶養親族の障害区分は上の明細から判定します。所得金額調整控除の要件に該当する場合は上のチェックを付けてください。家族控除を他の納税者が適用する親族は、重複なく下の明細に追加してください。高額給与のOCR原票は、下の原票年分明細を別途確認してください。</p>
@@ -188,6 +202,9 @@
             <button type="button" id="adjustmentAdd" class="secondary">家族控除を他の納税者が適用する親族を追加</button>
             <label class="confirm"><input type="checkbox" name="adjustmentReviewed"> 給与収入・所得金額調整控除の全適用要件、本人・配偶者・親族の所得と年齢・障害区分、重複のない明細、他の所得がないことを確認しました（該当なしも含む）。</label>
           </fieldset>
+          </details>
+          <details class="conditions optional-panel" id="sourceAdjustmentPanelFold">
+            <summary>原票年の所得金額調整控除（必要な場合）</summary>
           <fieldset class="conditions family-panel" id="sourceAdjustmentPanel">
             <legend>原票年分の所得金額調整控除（給与収入850万円超・OCR取込時のみ）</legend>
             <p>原票の基礎控除額・所得金額調整控除額を原票から独立して確認入力してください。空欄は未確認、該当なしは0円。給与所得控除後の金額は原票の調整控除後金額と照合します。原票年の本人・配偶者・扶養親族の障害区分は原票年分の明細で入力します。</p>
@@ -199,6 +216,9 @@
             <button type="button" id="sourceAdjustmentAdd" class="secondary">原票年に他の納税者が家族控除を適用した親族を追加</button>
             <label class="confirm"><input type="checkbox" name="sourceAdjustmentReviewed"> 原票年分のG46・G47、給与・所得金額調整控除の全要件、親族の年齢・所得・障害区分、重複のない明細を原票等で確認しました（該当なしも含む）。</label>
           </fieldset>
+          </details>
+          <details class="conditions optional-panel" id="sourceOtherPanelFold">
+            <summary>原票年のその他所得控除（必要な場合）</summary>
           <fieldset class="conditions family-panel" id="sourceOtherPanel">
             <legend>原票年分のその他所得控除（OCR取込時のみ）</legend>
             <p>原票年分の所得控除を別途確認してください。原票の社会保険料等に含まれる小規模企業共済等掛金の内書き（G25）を入力してください。原票年の親族ごとの障害区分は原票年の家族明細で指定します。</p>
@@ -212,6 +232,9 @@
             </div>
             <label class="confirm"><input type="checkbox" name="sourceOtherReviewed"> その他所得控除の全適用要件、親族の障害区分・同居、婚姻・生計同一の子、学校・所得条件及び掛金の内書きを確認しました（該当なしを含む）。</label>
           </fieldset>
+          </details>
+          <details class="conditions optional-panel" id="sourceInsurancePanelFold">
+            <summary>原票年の保険料（必要な場合）</summary>
           <fieldset class="conditions family-panel" id="sourceInsurancePanel">
             <legend>原票年分の保険料明細（OCR取込時のみ）</legend>
             <p>控除証明書等の年間支払保険料（剰余金・割戻金控除後、円単位）を区分別に入力。空欄は0円。地震保険・旧長期損害保険の両方に該当する同一契約は、所得税・住民税で共通の適用区分を確認できる場合のみ片方へ入力してください。</p>
@@ -226,6 +249,7 @@
             </div>
             <label class="confirm"><input type="checkbox" name="sourceInsuranceReviewed"> 年間支払額・新旧契約・控除対象・重複なし・家族条件を確認しました（該当なしの確認も含む）。</label>
           </fieldset>
+          </details>
           <label class="confirm"><input type="checkbox" name="correctedSourceReviewed"> OCRで取り込んだ金額を手修正した場合、原票・見込額の根拠を再照合しました（変更前のOCR判定は無効）</label>
           <label class="confirm"><input type="checkbox" name="forecastReviewed"> 前年の源泉徴収票を使う場合、給与・社会保険料・給与所得額・所得控除額を試算対象年の見込額に補正し、扶養等の条件を改めて確認しました（前年資料を使わない場合は不要）</label>
           <label class="confirm"><input type="checkbox" name="acknowledgedExclusions" required> 上記の該当有無を確認しました（チェックがない場合は計算を停止します）</label>
@@ -243,7 +267,7 @@
         <section class="aside-card">
           <p class="eyebrow">適用範囲</p>
           <h2>対応しない場合はHOLD</h2>
-          <p>給与2,000万円超、未確認の高額給与原票・家族・保険料控除、住宅ローン控除、その他所得、自治体差等は実務確認が必要です。家族・保険料控除・その他所得控除は手入力の限定検証です。その他所得控除の原票明細も別途確認してください。未解決のOCR検出条件はHOLDします。一括計算も確認済み保険料・その他所得控除明細に対応します（給与850万円以下、医療費控除・住宅ローン控除は未対応）。入力を変更して停止理由を消すのではなく、税額を個別に確認してください。</p>
+          <p>給与収入2,000万円以下の給与所得のみを対象とした限定検証版です。単独・一括計算は確認済みの家族・保険料・その他所得控除、通常の医療費控除、原票照合済みの継続住宅ローン控除に対応します。未解決のOCR検出条件、その他所得、複数給与、住宅ローン控除初年度などはHOLDです。入力を変更して停止理由を消すのではなく、税額を個別に確認してください。</p>
         </section>
         <section class="aside-card">
           <p class="eyebrow">税制根拠</p>

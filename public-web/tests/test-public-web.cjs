@@ -815,5 +815,27 @@ assert.equal(field("mortgageReviewed").checked,false);assert.equal(view.hidden,t
 form.dispatchEvent(new Event("family-source-reset"));
 assert.equal(field("mortgageSourceApplied").value,"");assert.equal(field("mortgageSourcePossible").value,"");
 form.reset();
+// Native disclosure is presentation only: required source/target inputs remain auditable.
+const foldIds=["familyPanelFold","sourceFamilyPanelFold","targetInsurancePanelFold","targetOtherPanelFold","salaryAdjustmentPanelFold","sourceAdjustmentPanelFold","sourceOtherPanelFold","sourceInsurancePanelFold","mortgagePanel"];
+for(const id of foldIds)assert.equal(document.getElementById(id).open,false,id);
+field("hasLifeInsurance").checked=true;field("hasLifeInsurance").dispatchEvent(new Event("change",{bubbles:true}));
+assert.equal(document.getElementById("targetInsurancePanelFold").open,true);
+assert.equal(document.getElementById("sourceInsurancePanelFold").open,false);
+field("year").value="2026";field("municipality").value="standard";
+field("salaryGross").value="7000000";field("socialInsurance").value="1000000";
+field("targetInsurance_generalNew").value="120000";
+field("familyReviewed").checked=true;field("insuranceReviewed").checked=true;field("acknowledgedExclusions").checked=true;
+rawSubmit();assert.equal(view.className,"result",view.textContent);
+const visibleAmount=view.querySelector(".amount").textContent;
+document.getElementById("targetInsurancePanelFold").open=false;
+rawSubmit();assert.equal(view.className,"result");assert.equal(view.querySelector(".amount").textContent,visibleAmount);
+field("targetInsurance_generalNew").value="bad";rawSubmit();assert.equal(view.className,"result hold");
+form.reset();
+form.dataset.ocrYear="2025";form.dataset.ocrOriginalGross="9000000";form.dataset.ocrSourceIndicators="hasMortgage,hasLifeInsurance,hasDependents";
+form.dispatchEvent(new Event("ocr-source-transferred"));
+for(const id of ["mortgagePanel","familyPanelFold","sourceFamilyPanelFold","targetInsurancePanelFold","sourceInsurancePanelFold","sourceAdjustmentPanelFold","sourceOtherPanelFold"])assert.equal(document.getElementById(id).open,true,id);
+assert.equal(field("mortgageReviewed").checked,false);assert.equal(field("sourceInsuranceReviewed").checked,false);
+form.reset();
+for(const id of foldIds)assert.equal(document.getElementById(id).open,false,id);
 dom.window.close();
 console.log("PUBLIC_WEB_STATIC_AND_BROWSER_SYNTHETIC_PASS; no network; ads off; deploy off");

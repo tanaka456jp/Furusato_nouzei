@@ -858,6 +858,7 @@
       Object.keys(review.sourceIndicators||{}).join(",");
     form.dataset.ocrReviewPending="false";
     delete form.dataset.ocrManualReviewRequired;
+    form.dispatchEvent(new Event("ocr-source-transferred"));
     var manualCheck=form.elements.namedItem("correctedSourceReviewed");
     if(manualCheck)manualCheck.checked=false;
     review=null;acceptCheck.checked=false;acceptCheck.disabled=true;

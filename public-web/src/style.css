@@ -117,3 +117,9 @@
 :is(.batch-family-editor,.batch-medical-editor,.batch-high-editor,.batch-mortgage-editor) textarea{display:block;width:100%;font:inherit;border:1px solid #9eaeb9;border-radius:6px;padding:6px;resize:vertical}
 .batch-family-result{text-align:right;font-variant-numeric:tabular-nums}
 @media print{:is(.batch-family-editor,.batch-medical-editor,.batch-high-editor,.batch-mortgage-editor){display:none!important}}
+
+/* Compact native disclosure panels: content remains in the form and in the tax audit. */
+.optional-panel{border:1px solid #dbe4e9;border-radius:10px;padding:10px 12px;margin:8px 0;min-width:0}
+.optional-panel>summary,#mortgagePanel>summary{cursor:pointer;font-weight:600;padding:5px 0;overflow-wrap:anywhere}
+.optional-panel>.family-panel{margin:8px 0 0;border:0;padding:4px 0}
+@media print{.optional-panel{display:none!important}}

@@ -909,9 +909,34 @@
     premiumKeys.forEach(function(k,i){form.elements.namedItem("targetInsurance_"+k).value=values[i];});
     form.elements.namedItem("hasLifeInsurance").checked=values.slice(0,5).some(v=>Number(v)>0);
     form.elements.namedItem("hasEarthquakeInsurance").checked=values.slice(5).some(v=>Number(v)>0);
-    revokeFamily();note.textContent="原票年の年間保険料を試算年へコピーしました。変更があれば訂正し、再確認してください。";
+    revokeFamily();revealRelevantPanels();note.textContent="原票年の年間保険料を試算年へコピーしました。変更があれば訂正し、再確認してください。";
   });
-  form.elements.namedItem("hasMortgage").addEventListener("change",function(){if(this.checked)document.getElementById("mortgagePanel").open=true;});
+  // Presentation only: collapsing a panel never disables or clears its inputs.
+  var optionalPanelIds=["familyPanelFold","sourceFamilyPanelFold","targetInsurancePanelFold","targetOtherPanelFold","salaryAdjustmentPanelFold","sourceAdjustmentPanelFold","sourceOtherPanelFold","sourceInsurancePanelFold","mortgagePanel"];
+  function openOptional(id){document.getElementById(id).open=true;}
+  function revealRelevantPanels(){
+    var get=function(k){return form.elements.namedItem(k);};
+    var flags=(form.dataset.ocrSourceIndicators||"").split(",");
+    var imported=!!form.dataset.ocrYear;
+    var sourceHigh=Number(form.dataset.ocrOriginalGross)>8500000,targetHigh=strictYen(get("salaryGross").value.trim())>8500000;
+    var family=get("hasSpouse").checked||get("hasDependents").checked||flags.includes("hasDependents");
+    var insurance=get("hasLifeInsurance").checked||get("hasEarthquakeInsurance").checked||
+      flags.includes("hasLifeInsurance")||flags.includes("hasEarthquakeInsurance");
+    if(family||targetHigh||sourceHigh)openOptional("familyPanelFold");
+    if(insurance||targetHigh||sourceHigh)openOptional("targetInsurancePanelFold");
+    if(targetHigh||sourceHigh){openOptional("targetOtherPanelFold");}
+    if(targetHigh||get("hasIncomeAdjustment").checked)openOptional("salaryAdjustmentPanelFold");
+    if(imported&&(family||insurance||sourceHigh||targetHigh))openOptional("sourceFamilyPanelFold");
+    if(imported&&(insurance||sourceHigh||targetHigh))openOptional("sourceInsurancePanelFold");
+    if(imported&&(sourceHigh||targetHigh))openOptional("sourceOtherPanelFold");
+    if(imported&&sourceHigh)openOptional("sourceAdjustmentPanelFold");
+    if(get("hasMortgage").checked||flags.includes("hasMortgage"))openOptional("mortgagePanel");
+  }
+  form.addEventListener("change",function(event){
+    if(["hasSpouse","hasDependents","hasLifeInsurance","hasEarthquakeInsurance","hasMortgage","hasIncomeAdjustment","salaryGross"].includes(event.target.name))revealRelevantPanels();
+  });
+  form.addEventListener("ocr-source-transferred",revealRelevantPanels);
+  form.elements.namedItem("salaryGross").addEventListener("input",function(){if(strictYen(this.value.trim())>8500000)revealRelevantPanels();});
   form.elements.namedItem("medicalNetPaidYen").addEventListener("input",function(){
     var n=strictYen(this.value.trim());
     if(n!==null&&n>0&&n<=100000000000)form.elements.namedItem("filing").value="return";
@@ -945,6 +970,8 @@
   });
   form.addEventListener("reset", function () {
     printableInputSnapshot=null;printableResult=null;
+    optionalPanelIds.forEach(function(id){document.getElementById(id).open=false;});
+    document.getElementById("premiumCopyStatus").textContent="";
     familyRows.replaceChildren();sourceFamilyRows.replaceChildren();adjustmentRows.replaceChildren();sourceAdjustmentRows.replaceChildren();
     form.classList.remove("deduction-override-active");
     if(overrideNotice)overrideNotice.hidden=true;
