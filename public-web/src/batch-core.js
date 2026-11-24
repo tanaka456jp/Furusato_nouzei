@@ -197,6 +197,15 @@
    value="'"+value;
   return '"'+value.replace(/"/g,'""')+'"';
  }
+ // A single fail-closed output predicate for the derived amounts and status.
+ function canOutputEstimate(row){
+  return canEstimate(row)&&row.confirmed===true&&row.noExclusions===true&&
+   Object.keys(row.sourceIndicators||{}).length===0&&
+   (row.sourceYear===row.year||row.forecastReviewed===true)&&
+   ["one-stop","return"].includes(row.filing)&&
+   row.status===(row.sourceYear<row.year?"前年参考概算":"概算")&&
+   safeAmount(row.appliedDeductionsYen)&&safeAmount(row.donationLimitYen);
+ }
  function csv(rows){
   if(!Array.isArray(rows)||rows.length>MAX_ROWS)
    throw Error("BATCH_CSV_ROWS_INVALID");
@@ -206,22 +215,20 @@
   const lines=[header.map(csvValue).join(",")];
   for(const r of rows){
    const v=r.sourceValid?r.candidates:null;
+   const accepted=canOutputEstimate(r);
    lines.push([r.page,labelFor(r),r.sourceYear??"",r.year??"",
     v?.salaryGross??"",v?.salaryIncomeReference??"",
     v?.deductionsReference??"",
-    ((r.status==="概算"||r.status==="前年参考概算")&&
-      r.confirmed===true&&r.noExclusions===true&&
-      (r.sourceYear===r.year||r.forecastReviewed===true)&&
-      safeAmount(r.appliedDeductionsYen))?r.appliedDeductionsYen:"",
+    accepted?r.appliedDeductionsYen:"",
     r.deductionsOverrideActive?"手入力上書き・自動追随なし":"自動算定（原票照合）",v?.socialInsurance??"",
     r.filing==="return"?"確定申告":"ワンストップ",
-    (r.status==="概算"||r.status==="前年参考概算")&&
-      Number.isSafeInteger(r.donationLimitYen)
-      ?r.donationLimitYen:"",
-    r.status,r.reason].map(csvValue).join(","));
+    accepted?r.donationLimitYen:"",
+    accepted?r.status:"HOLD",
+    !accepted&&(r.status==="概算"||r.status==="前年参考概算")
+      ?"確認状態が変わりました。再試算してください":r.reason].map(csvValue).join(","));
   }
   // UTF-8 BOM is an intentional local Excel compatibility aid.
   return "\ufeff"+lines.join("\r\n")+"\r\n";
  }
- return Object.freeze({FIELDS,MAX_ROWS,fromPage,holdRow,edit,canEstimate,calculate,labelFor,csv});
+ return Object.freeze({FIELDS,MAX_ROWS,fromPage,holdRow,edit,canEstimate,canOutputEstimate,calculate,labelFor,csv});
 }));

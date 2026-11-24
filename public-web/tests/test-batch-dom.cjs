@@ -77,6 +77,11 @@ function type(idx,key,value){
  change(1,"noExclusions",true);
  d.getElementById("batchCalculate").click();
  assert.match(d.querySelector("#batchRows tr:nth-child(2)").textContent,/109,000円/);
+ const second=d.querySelector("#batchRows tr:nth-child(2)");
+ assert.equal(second.children[7].className,"batch-deduction-applied");
+ assert.equal(second.children[7].textContent,"1,670,000円");
+ assert.equal(second.children[8].querySelector("input").dataset.field,"socialInsurance");
+ assert.equal(second.children[8].querySelector("input").value,"1000000");
  type(0,"label","架空改姓");
  assert.doesNotMatch(d.querySelector("#batchRows tr:nth-child(1)").textContent,/57,000円/,
   "A name edit must erase stale amount without losing keyboard focus");

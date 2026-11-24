@@ -100,9 +100,11 @@
       td.appendChild(warn);
      }
    }
+   const isEstimate=core.canOutputEstimate(r);
    const applied=cell(tr,"","batch-deduction-applied");
-   applied.textContent=Number.isSafeInteger(r.appliedDeductionsYen)?
-     yen(r.appliedDeductionsYen):"—";
+   // Keep the physical cell order identical to the column headings.
+   tr.insertBefore(applied,tr.children[7]);
+   applied.textContent=isEstimate?yen(r.appliedDeductionsYen):"—";
    const filing=cell(tr,"");
    const select=formControl("select",{
     "aria-label":"対象者 "+r.page+" の手続き",
@@ -128,9 +130,9 @@
     });
     td.appendChild(checkbox);
    }
-   const isEstimate=r.status==="概算"||r.status==="前年参考概算";
    cell(tr,isEstimate?yen(r.donationLimitYen):"—","batch-result");
-   cell(tr,isEstimate?r.status:("HOLD："+r.reason),"batch-reason");
+   cell(tr,isEstimate?r.status:("HOLD："+((r.status==="概算"||r.status==="前年参考概算")?
+     "確認状態が変わりました。再試算してください":r.reason)),"batch-reason");
    body.appendChild(tr);
   });
   updateButtons();
@@ -271,7 +273,7 @@
   const guard=window.FurusatoEstimateGuard?.canDisplayEstimate;
   rows.forEach(row=>core.calculate(row,engine,guard));
   computed=true;render();
-  const allowed=rows.filter(row=>row.status==="概算"||row.status==="前年参考概算").length;
+  const allowed=rows.filter(core.canOutputEstimate).length;
   say("対象 "+rows.length+"件：概算 "+allowed+"件、HOLD "+(rows.length-allowed)+
     "件。前年資料は見込額としての確認が必要です。HOLDの金額は空欄です。");
  });

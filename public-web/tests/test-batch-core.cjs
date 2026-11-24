@@ -214,9 +214,42 @@ stale.confirmed=true;stale.noExclusions=true;
 batch.calculate(stale,win.FurusatoEngine,guard);
 assert.equal(stale.status,"概算");
 assert.equal(stale.appliedDeductionsYen,1670000);
+// Source input and computed total can be equal. Verify the actual columns,
+ // not absence of a string anywhere in the CSV. Both computed outputs and
+ // their status must be masked when ANY required confirmation is revoked.
+const columns=row=>batch.csv([row]).split("\r\n")[1].split(",").map(x=>x.slice(1,-1));
+assert.equal(columns(stale)[6],"1670000");
+assert.equal(columns(stale)[7],"1670000");
+assert.equal(columns(stale)[11],"109000");
+for(const revoke of [
+ row=>{row.confirmed=false;},
+ row=>{row.noExclusions=false;},
+ row=>{row.sourceIndicators.hasMortgage=true;},
+ row=>{row.sourceValid=false;},
+ row=>{row.filing="invalid";},
+ row=>{row.appliedDeductionsYen=null;}
+]){
+ const candidate=batch.fromPage(20,basic2026);
+ candidate.confirmed=true;candidate.noExclusions=true;
+ batch.calculate(candidate,win.FurusatoEngine,guard);
+ assert.equal(batch.canOutputEstimate(candidate),true);
+ revoke(candidate);
+ const values=columns(candidate);
+ assert.equal(batch.canOutputEstimate(candidate),false);
+ assert.equal(values[7],"","unconfirmed calculation details must not export");
+ assert.equal(values[11],"","unconfirmed ceiling must not export");
+ assert.equal(values[12],"HOLD");
+}
 stale.confirmed=false;
-const staleColumns=batch.csv([stale]).split("\r\n")[1];
-assert.ok(!staleColumns.includes('"1670000"'),"unconfirmed calculation details must not export");
+assert.equal(columns(stale)[6],"1670000","original input remains visible for review");
+const staleForecast=batch.fromPage(20,basic2025,2026);
+staleForecast.confirmed=true;staleForecast.noExclusions=true;staleForecast.forecastReviewed=true;
+batch.calculate(staleForecast,win.FurusatoEngine,guard);
+assert.equal(batch.canOutputEstimate(staleForecast),true);
+staleForecast.forecastReviewed=false;
+assert.equal(columns(staleForecast)[7],"");
+assert.equal(columns(staleForecast)[11],"");
+assert.equal(columns(staleForecast)[12],"HOLD");
 
 dom.window.close();
 console.log("PUBLIC_BATCH_PER_PAGE_LOCAL_SAFETY_SYNTHETIC_PASS; no private slips; no deploy");
