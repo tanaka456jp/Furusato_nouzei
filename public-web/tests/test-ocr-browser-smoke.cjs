@@ -407,7 +407,7 @@ async function main(){
     ["109,000円","109,000円","3,000円","1,896円","0円"]);
   // Explicit family review of a synthetic no-family slip, then reject a
   // contradictory target-year family and leave the other taxpayer intact.
-  await firstRow.locator(".batch-family-editor:not(.batch-insurance-editor) summary").click();
+  await firstRow.locator(".batch-family-editor:not(.batch-insurance-editor):not(.batch-other-editor) summary").click();
   await firstRow.locator('[data-field="familySourceText"]').fill("なし");
   await firstRow.locator('[data-field="familyTargetText"]').fill("なし");
   await firstRow.locator('[data-field="confirmed"]').check();
