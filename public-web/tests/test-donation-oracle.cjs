@@ -553,3 +553,23 @@ for(const d of [1999,1560001,"3000",3000.5]){
 console.log(JSON.stringify({schema:"web-family-tax-integration/v1",familyTaxParity,
  familyIntegratedCases,independentTrialOracle:true,actualExcelFamilyCOM:false,
  uiIntegrated:false,release:"HOLD"}));
+
+// Original-year family reconciliation is independent of the target-year tax calculation.
+const sourceFamily=require("../dist/family-source.js");
+const source2025={year:2025,gross:6500000,salaryIncome:4760000,social:1340000,deductions:3030000,
+ indicators:{hasDependents:true},spouse:spouse(600000),relatives:[relative(20,600000)],reviewed:true};
+assert.deepEqual(sourceFamily.reconcile(source2025,engine).calculation,
+ {year:2025,salaryIncomeYen:4760000,basicYen:680000,familyYen:1010000,deductionsYen:3030000});
+assert.equal(sourceFamily.reconcile({...source2025,year:2026,deductions:3390000},engine).status,"RECONCILED");
+assert.equal(sourceFamily.reconcile({...source2025,year:2026},engine).status,"HOLD");
+for(const invalid of [{salaryIncome:4759999},{deductions:3030001},{reviewed:false},{year:2024},
+ {indicators:{hasMortgage:true}},{indicators:{hasLifeInsurance:true}},{indicators:{hasNonstandardConditions:true}},
+ {indicators:{hasDependents:false}},{relatives:[]},{spouse:null},{social:1340001},{gross:8500001},
+ {spouse:{...spouse(600000),eligibilityReviewed:false}},{unknown:true}]){
+ const held=sourceFamily.reconcile({...source2025,...invalid},engine);
+ assert.equal(held.status,"HOLD",JSON.stringify(invalid));assert.equal(held.calculation,null);
+}
+// Even a plausible zero-deduction amount must not override a positive source flag.
+assert.equal(sourceFamily.reconcile({...source2025,spouse:null,relatives:[],deductions:2020000},engine).status,"HOLD");
+console.log(JSON.stringify({schema:"web-family-source-reconciliation/v1",normalCases:2,holdCases:16,
+ originalYearIndependent:true,release:"HOLD"}));
