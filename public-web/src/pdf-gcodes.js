@@ -24,6 +24,8 @@
   G29:"hasMortgage",G47:"hasIncomeAdjustment",G74:"hasDependents"
  });
  const REVIEW_AMOUNTS=Object.freeze({G29:["mortgageSourceApplied",600000],G46:["sourceBasicYen",1040000],G47:["sourceAdjustmentYen",150000]});
+ // R7 code-layer layout checked locally. No original amounts retained.
+ const R7_AMOUNTS=Object.freeze({"G30":["sourceInsurance_generalNew",100000000,"hasLifeInsurance"],"G31":["sourceInsurance_generalOld",100000000,"hasLifeInsurance"],"G32":["sourceInsurance_medicalNew",100000000,"hasLifeInsurance"],"G33":["sourceInsurance_pensionNew",100000000,"hasLifeInsurance"],"G34":["sourceInsurance_pensionOld",100000000,"hasLifeInsurance"],"G45":["sourceInsurance_longTermOld",100000000,"hasEarthquakeInsurance"],"G36":["mortgageSourcePossible",600000,"hasMortgage"]});
  const CODES=Object.freeze(["L01",...Object.keys(FIELDS)]);
  const token=/^[0-9,]$/;
  function spansOf(items){
@@ -89,8 +91,8 @@
    if(yen===null)reasons.push("CODE_"+code+"_AMOUNT_UNVERIFIED");
    else candidates[key]=yen;
   }
-  function optionalAmount(anchor){
-   const split=toYen(numericGroup(spans,anchor,45,125));
+  function optionalAmount(anchor,high=125){
+   const split=toYen(numericGroup(spans,anchor,45,high));
    if(split!==null)return split;
    // Some PDF.js text layers keep the entire amount in one text item.
    // Unlike the required four fields, optional evidence may be read from
@@ -98,7 +100,7 @@
    const compact=spans.filter(i=>i.s.length>1&&
      /^[0-9][0-9,]*$/.test(i.s)&&
      Math.abs(i.y-anchor.y)<=3.5&&
-     i.x-anchor.x>=45&&i.x-anchor.x<=125);
+     i.x-anchor.x>=45&&i.x-anchor.x<=high);
    return compact.length===1?toYen(compact[0].s):null;
   }
   const sourceIndicators={};
@@ -116,16 +118,18 @@
   // Unlike a positive warning flag, a prefilled amount must have an
   // unambiguous numeric representation. Reject overlapping representations,
   // duplicate compact tokens and conflicting nearby digit sequences.
-  for(const [code,[key,max]] of Object.entries(REVIEW_AMOUNTS)){
+  for(const [code,[key,max,flag]] of Object.entries({...REVIEW_AMOUNTS,...(year===2025?R7_AMOUNTS:{})})){
    const marks=anchors(spans,code);
    if(marks.length!==1)continue;
    const anchor=marks[0];
-   const nearby=spans.filter(i=>Math.abs(i.y-anchor.y)<=3.5&&i.x-anchor.x>=45&&i.x-anchor.x<=125&&/^[0-9,]+$/.test(i.s));
+   const next=spans.filter(i=>/^G(?:[0-9]{2})?$/.test(i.s)&&Math.abs(i.y-anchor.y)<=3.5&&i.x>anchor.x+14).map(i=>i.x-anchor.x);
+   const high=Math.min(125,...next.map(x=>x-1));
+   const nearby=spans.filter(i=>Math.abs(i.y-anchor.y)<=3.5&&i.x-anchor.x>=45&&i.x-anchor.x<=high&&/^[0-9,]+$/.test(i.s));
    const compact=nearby.filter(i=>i.s.length>1);
    const digits=nearby.filter(i=>i.s.length===1);
    if(compact.length>1||(compact.length&&digits.length))continue;
-   const amount=optionalAmount(anchor);
-   if(amount!==null&&amount<=max)optionalCandidates[key]=amount;
+   const amount=optionalAmount(anchor,high);
+   if(amount!==null&&amount<=max&&(!flag||amount>0)){optionalCandidates[key]=amount;if(flag)sourceIndicators[flag]=true;}
   }
   return {
    schema:"furusato-positioned-gcodes/v1",
@@ -144,9 +148,9 @@
      Object.values(FIELDS).some(k=>!Number.isSafeInteger(coded.candidates?.[k])||coded.candidates[k]!==selected.candidates?.[k]))
    return {};
   const result={};
-  for(const [key,max] of Object.values(REVIEW_AMOUNTS)){
+  for(const [key,max,flag] of Object.values({...REVIEW_AMOUNTS,...(coded.year===2025?R7_AMOUNTS:{})})){
    const n=coded.optionalCandidates?.[key];
-   if(Number.isSafeInteger(n)&&n>=0&&n<=max)result[key]=n;
+   if(Number.isSafeInteger(n)&&n>=0&&n<=max&&(!flag||(n>0&&coded.sourceIndicators?.[flag]===true)))result[key]=n;
   }
   return result;
  }

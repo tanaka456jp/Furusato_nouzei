@@ -588,5 +588,14 @@ batch.edit(priorGrouped,"socialInsurance","1100000");assert.equal(priorGrouped.c
 const badGrouped=fixture(1,basic2026);badGrouped.sourceIndicators.hasOtherIncome=true;
 assert.equal(batch.confirmBasic(badGrouped),false);assert.equal(badGrouped.confirmed,false);
 const unselected=fixture(1,basic2026);unselected.municipality="";assert.equal(batch.confirmBasic(unselected),false);
+// R7 prefill is source-year only and never approves a result.
+const premiumPrefill=fixture(1,{year:2025,eligibleForManualTransfer:true,sourceIndicators:{hasLifeInsurance:true,hasEarthquakeInsurance:true,hasMortgage:true},candidates:{salaryGross:7000000,salaryIncomeReference:5200000,socialInsurance:1000000,deductionsReference:1630000},optionalCandidates:{sourceInsurance_generalNew:123456,sourceInsurance_longTermOld:12345,mortgageSourcePossible:345678}},2026);
+assert.equal(premiumPrefill.sourceInsurance_generalNew,"123456");
+assert.equal(premiumPrefill.sourceInsurance_longTermOld,"12345");
+assert.equal(premiumPrefill.mortgageSourcePossible,"345678");
+assert.equal(premiumPrefill.targetInsurance_generalNew,"");
+assert.equal(premiumPrefill.sourceInsurance_earthquake,"");
+assert.equal(premiumPrefill.insuranceReviewed,false);assert.equal(premiumPrefill.mortgageReviewed,false);
+runFamily(premiumPrefill);assert.equal(premiumPrefill.status,"HOLD");assert.equal(premiumPrefill.donationLimitYen,null);
 dom.window.close();
 console.log("PUBLIC_BATCH_PER_PAGE_LOCAL_SAFETY_SYNTHETIC_PASS; no private slips; no deploy");

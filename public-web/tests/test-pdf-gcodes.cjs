@@ -78,4 +78,20 @@ assert.equal(zero.sourceIndicators.hasIncomeAdjustment,undefined);
 const conflict=g.review([...parts,...extra,{str:"700,000",transform:[1,0,0,1,700,400],width:40}]);
 assert.equal(conflict.optionalCandidates.mortgageSourceApplied,undefined);
 assert.deepEqual(g.verifiedOptional({...opt,optionalCandidates:{mortgageSourceApplied:600001,sourceBasicYen:"580000",sourceAdjustmentYen:-1}},opt),{});
+// Synthetic R7 adjacent slots, never real source amounts.
+const r7Slots=[];
+for(const [code,x,y,value] of [["G30",77,350,"123456"],["G31",176,350,"23456"],["G32",275,350,"34567"],["G33",374,350,"45678"],["G34",474,350,"56789"],["G36",132,310,"345678"],["G45",474,260,"12345"]]){
+ r7Slots.push({str:code,transform:[1,0,0,1,x,y],width:15},{str:value,transform:[1,0,0,1,x+48,y],width:35});
+}
+const r7=g.review([...parts,...r7Slots]);
+const wanted={sourceInsurance_generalNew:123456,sourceInsurance_generalOld:23456,sourceInsurance_medicalNew:34567,sourceInsurance_pensionNew:45678,sourceInsurance_pensionOld:56789,mortgageSourcePossible:345678,sourceInsurance_longTermOld:12345};
+assert.deepEqual(r7.optionalCandidates,wanted);
+assert.deepEqual(g.verifiedOptional(r7,r7),wanted);
+for(const flag of ["hasLifeInsurance","hasMortgage","hasEarthquakeInsurance"])assert.equal(r7.sourceIndicators[flag],true);
+assert.equal(r7.optionalCandidates.sourceInsurance_earthquake,undefined);
+const newer=g.review([...parts.map(p=>p.str==="7"&&p.transform[4]===141?{...p,str:"8"}:p),...r7Slots]);
+assert.equal(newer.year,2026);assert.deepEqual(newer.optionalCandidates,{});
+assert.deepEqual(g.verifiedOptional({...r7,year:2026},{...r7,year:2026}),{});
+const duplicateR7=g.review([...parts,...r7Slots,{str:"G30",transform:[1,0,0,1,77,350],width:15}]);
+assert.equal(duplicateR7.optionalCandidates.sourceInsurance_generalNew,undefined);
 console.log("PUBLIC_PDF_GCODES_EVERY_DIGIT_POSITION_SYNTHETIC_PASS");
