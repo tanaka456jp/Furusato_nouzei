@@ -485,5 +485,32 @@ const highMed=highFixture(20000000,true);batch.edit(highMed,"medicalNetPaidYen",
  highMed.confirmed=true;highMed.noExclusions=true;highMed.forecastReviewed=true;highMed.highReviewed=true;runFamily(highMed);
  assert.equal(highMed.status,"前年参考概算",highMed.reason);assert.equal(highMed.medicalSummary.nationalDeductionYen,200000);
  assert.equal(highMed.comparison.oneStop,null);
+// Housing interaction components only; never publish a mortgage estimate.
+const housingTax={year:2026,salaryIncome:5200000,socialInsurance:1000000,municipality:"standard",
+ spouse:null,relatives:[],conditions:"salary-basic-social-family-only-reviewed"};
+const housingRequest=(possibleYen,filing="return",moveInYear=2025,capClass="standard5")=>({tax:housingTax,housing:{possibleYen,moveInYear,capClass,eligibilityReviewed:true},filing});
+const noOffset=familyTax.mortgageTrial(housingRequest(10000),100000);
+assert.equal(noOffset.status,"COMPONENTS_ONLY");assert.equal(noOffset.donationLimitYen,null);
+assert.equal(noOffset.calculation.before.nationalHousingYen,10000);
+assert.equal(noOffset.calculation.before.residentHousingYen,0);
+const overlap=familyTax.mortgageTrial(housingRequest(500000),100000);
+assert.equal(overlap.status,"COMPONENTS_ONLY");
+assert.equal(overlap.calculation.before.nationalTaxYen,0);
+assert.equal(overlap.calculation.before.residentHousingYen,97500);
+assert.equal(overlap.calculation.nationalSavingYen,0);
+assert.ok(overlap.calculation.selfPayYen>2000);
+const os=familyTax.mortgageTrial(housingRequest(500000,"one-stop"),100000);
+assert.equal(os.status,"COMPONENTS_ONLY");assert.equal(os.calculation.nationalSavingYen,0);
+assert.deepEqual(os.calculation.before,os.calculation.after);
+assert.ok(os.calculation.selfPayYen<overlap.calculation.selfPayYen);
+const pfx=familyTax.mortgagePrefix(housingRequest(500000));
+assert.equal(pfx.status,"COMPONENTS_ONLY");assert.equal(pfx.donationLimitYen,null);
+assert.ok(pfx.calculation.atPrefix.within2000);
+const transitional=familyTax.mortgageTrial(housingRequest(500000,"return",2020,"transitional7"),2000);
+assert.equal(transitional.calculation.before.localCapYen,136500);
+for(const req of [housingRequest(500000,"one-stop",2026),housingRequest(500000,"return",2026,"transitional7"),
+ {...housingRequest(500000),housing:{...housingRequest(500000).housing,eligibilityReviewed:false}},
+ housingRequest(0),housingRequest(-1)])
+ assert.equal(familyTax.mortgageTrial(req,100000).status,"HOLD");
 dom.window.close();
 console.log("PUBLIC_BATCH_PER_PAGE_LOCAL_SAFETY_SYNTHETIC_PASS; no private slips; no deploy");

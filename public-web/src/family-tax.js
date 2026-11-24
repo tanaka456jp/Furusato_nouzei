@@ -260,5 +260,89 @@
   return {status:"ESTIMATE",donationLimitYen:ceiling,release:"HOLD",calculation:{
    ...medicalFilingMetadata(c),salaryAdjustment:c.salaryAdjustment,firstFailureYen:firstFailure,stopOnFirstFailure:true}};
  }
- return Object.freeze({calculate,medicalFilingCalculation,filingTrial,filingPrefix,highSalaryCalculate,highSalaryMedicalFilingCalculation,highSalaryFilingTrial,highSalaryFilingPrefix});
+ // Reviewed mortgage interaction engine. No OCR inference or UI approval.
+ // The amount is the legally applicable full annual credit, not the
+ // income-tax amount actually deducted on the slip. Forecasts hold that amount fixed.
+ // https://www.city.yokohama.lg.jp/kurashi/koseki-zei-hoken/zeikin/y-shizei/kojin-shiminzei-kenminzei/kojin-shiminzei-shosai/zeigakukoujoR8.html
+ // https://www.city.machida.tokyo.jp/kurashi/tax/shimin/keisan/shimin08.html
+ // https://www.city.itoshima.lg.jp/s009/010/010/050/190/20261106.html
+ function mortgageContext(request){
+  const exact=(x,ks)=>x&&typeof x==="object"&&!Array.isArray(x)&&Object.keys(x).length===ks.length&&ks.every(k=>Object.prototype.hasOwnProperty.call(x,k));
+  if(!exact(request,["tax","housing","filing"])||!exact(request.housing,["moveInYear","capClass","possibleYen","eligibilityReviewed"])||
+     !["one-stop","return"].includes(request.filing))return hold("住宅ローン控除の条件を確認してください");
+  const h=request.housing,high=!!request.tax&&Object.prototype.hasOwnProperty.call(request.tax,"adjustment");
+  const ref=high?highCore(request.tax,true):calculateCore(request.tax,true);
+  if(ref.status!=="ESTIMATE")return ref;
+  const c=ref.calculation,year=c.year,income=high?c.salaryAdjustment.salaryIncomeAfterAdjustmentYen:request.tax.salaryIncome;
+  if(!Number.isSafeInteger(h.moveInYear)||h.moveInYear<2009||h.moveInYear>year||
+     !["standard5","transitional7"].includes(h.capClass)||
+     (h.capClass==="transitional7"&&(h.moveInYear<2014||h.moveInYear>2022))||
+     !valid(h.possibleYen,100000000)||h.possibleYen===0||h.eligibilityReviewed!==true||
+     (request.filing==="one-stop"&&(h.moveInYear===year||c.medical)))
+   return hold("住宅ローン控除の適用年・控除可能額・住民税区分・申告方法を確認してください");
+  const rate=h.capClass==="transitional7"?7:5,cap=rate===7?136500:97500;
+  function nationalHousing(taxable){
+   const n=national(taxable);
+   // Zero pre-credit national tax is outside the audited interaction scope.
+   // Do not assume the local credit is available merely because unused remains.
+   if(n.incomeTax===0)return null;
+   const used=Math.min(n.incomeTax,h.possibleYen),after=n.incomeTax-used;
+   const basis=taxable+(h.moveInYear<=2025?Math.max(0,c.nationalBasicYen-480000):0);
+   const localCap=Math.min(cap,Math.floor(basis*rate/100));
+   return {taxableYen:taxable,preCreditIncomeTaxYen:n.incomeTax,
+    nationalHousingYen:used,unusedYen:h.possibleYen-used,localCapYen:localCap,
+    residentHousingYen:Math.min(h.possibleYen-used,localCap),
+    nationalTaxYen:after+Math.floor(after*21/1000)};
+  }
+  function localTax(p,n,base,oneStop){
+   // Housing and donation credits consume the same remaining municipal levy.
+   // The special donation cap itself uses the pre-housing adjusted levy.
+   const special=Math.min(p.beforeRounding100*1000,base*c.specialDenominator*p.share);
+   const regular=base*p.share*10000;
+   const extra=oneStop?Math.floor(special*(90000-c.specialDenominator)/c.specialDenominator):0;
+   const donationCredit=Math.floor((regular+special+extra+499999)/500000);
+   const housing100=n.residentHousingYen*p.share*20;
+   const assessed=Math.max(0,Math.floor((p.beforeRounding100-housing100-donationCredit*100)/10000))*100;
+   return {assessedYen:assessed,donationCreditYen:donationCredit};
+  }
+  const before=nationalHousing(c.nationalTaxableYen);
+  if(!before)return hold("住宅ローン控除前の所得税額が0円の条件は個別確認が必要です");
+  const parts=[c.city,c.prefecture],localBefore=parts.map(p=>localTax(p,before,0,false).assessedYen);
+  function trial(donation){
+   if(!valid(donation,c.incomeCapYen)||donation<2000)return hold("試算寄附額が範囲外です");
+   const base=donation-2000,oneStop=request.filing==="one-stop";
+   const after=oneStop?before:nationalHousing(floor1000(income-c.nationalDeductionsYen-base));
+   if(!after)return hold("寄附後の住宅ローン控除前所得税額が0円の条件は個別確認が必要です");
+   const localAfter=parts.map(p=>localTax(p,after,base,oneStop));
+   const nationalSaving=before.nationalTaxYen-after.nationalTaxYen;
+   const residentSaving=localBefore.reduce((sum,v,i)=>sum+v-localAfter[i].assessedYen,0);
+   const selfPay=donation-nationalSaving-residentSaving;
+   return {status:"COMPONENTS_ONLY",release:"HOLD",donationLimitYen:null,calculation:{
+    year,residentYear:year+1,filing:request.filing,donationYen:donation,
+    housingPossibleYen:h.possibleYen,before,after,localBefore,localAfter,
+    nationalSavingYen:nationalSaving,residentSavingYen:residentSaving,selfPayYen:selfPay,
+    within2000:selfPay<=2000,excessOver2000Yen:Math.max(0,selfPay-2000),
+    forecastNote:"前年の住宅ローン控除可能額を使用する場合、住宅ローン残高の変動は考慮していません。"}};
+  }
+  return {status:"COMPONENTS_ONLY",trial,max:Math.min(c.incomeCapYen,ref.donationLimitYen)};
+ }
+ function mortgageTrial(request,donation){
+  const ctx=mortgageContext(request);
+  return ctx.status==="COMPONENTS_ONLY"?ctx.trial(donation):ctx;
+ }
+ function mortgagePrefix(request){
+  const ctx=mortgageContext(request);
+  if(ctx.status!=="COMPONENTS_ONLY")return ctx;
+  let last=2000,firstFailure=null;
+  for(let d=3000;d<=ctx.max;d+=1000){
+   const t=ctx.trial(d);
+   if(t.status!=="COMPONENTS_ONLY")return t;
+   if(!t.calculation.within2000){firstFailure=d;break;}
+   last=d;
+  }
+  // Deliberately not an ESTIMATE: no UI/source reconciliation until audited.
+  return {status:"COMPONENTS_ONLY",release:"HOLD",donationLimitYen:null,
+   calculation:{conservativePrefixYen:last,firstFailureYen:firstFailure,stopOnFirstFailure:true,atPrefix:ctx.trial(last).calculation}};
+ }
+ return Object.freeze({calculate,medicalFilingCalculation,filingTrial,filingPrefix,highSalaryCalculate,highSalaryMedicalFilingCalculation,highSalaryFilingTrial,highSalaryFilingPrefix,mortgageTrial,mortgagePrefix});
 }));
