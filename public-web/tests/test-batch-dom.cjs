@@ -192,22 +192,18 @@ function type(idx,key,value){
  choose(0,"otherSourceText").value="なし";win.dispatchEvent(new win.Event("beforeprint"));
  assert.ok([...d.querySelectorAll("#batchRows tr:first-child .batch-other-result")].every(x=>x.textContent==="—"));
  assert.equal(choose(0,"otherReviewed").checked,false);
- // Re-establish the other deduction source; medical claims force filing only.
- change(0,"otherSourceText","ordinary,none,none,0,0,120000");
- change(0,"filing","return");
- change(0,"medicalMethod","ordinary");
- change(0,"medicalGroupsText","100000,150000\n300000,0");
- for(const key of ["confirmed","noExclusions","forecastReviewed","familyReviewed","insuranceReviewed","otherReviewed","medicalReviewed"])change(0,key,true);
+ // Direct amount on a basic second row: no additional family confirmations.
+ change(1,"medicalDeductionYen","200000");
+ assert.equal(choose(1,"filing").value,"return");
+ change(1,"municipality","standard");change(1,"confirmed",true);change(1,"noExclusions",true);
  d.getElementById("batchCalculate").click();
- assert.notEqual(d.querySelector("#batchRows tr .batch-result").textContent,"—");
- assert.equal(d.querySelector("#batchRows tr .batch-comparison").textContent,"—");
- assert.deepEqual([...d.querySelectorAll("#batchRows tr .batch-medical-result")].map(x=>x.textContent),
-  ["通常","400,000円","150,000円","100,000円","50,000円","100,000円","200,000円"]);
+ assert.notEqual(current().querySelector(".batch-result").textContent,"—");
+ assert.equal(current().querySelector(".batch-comparison").textContent,"—");
+ assert.deepEqual([...current().querySelectorAll(".batch-medical-result")].map(x=>x.textContent),["200,000円"]);
  assert.equal(d.querySelector("#batchRows tr").children.length,d.querySelectorAll("#batchTable th").length);
- choose(0,"medicalGroupsText").value="0,0";win.dispatchEvent(new win.Event("beforeprint"));
- assert.ok([...d.querySelectorAll("#batchRows tr .batch-medical-result")].every(x=>x.textContent==="—"));
- assert.equal(choose(0,"medicalReviewed").checked,false);
- assert.equal(d.querySelector("#batchRows tr .batch-result").textContent,"—");
+ choose(1,"medicalDeductionYen").value="100000";win.dispatchEvent(new win.Event("beforeprint"));
+ assert.ok([...current().querySelectorAll(".batch-medical-result")].every(x=>x.textContent==="—"));
+ assert.equal(current().querySelector(".batch-result").textContent,"—");
  win.close();
  console.log("PUBLIC_WEB_EDITABLE_BATCH_DOM_FICTIONAL_NAME_2026_PASS");
 })().catch(e=>{console.error(e);process.exitCode=1;win.close();});

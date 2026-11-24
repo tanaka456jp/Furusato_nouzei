@@ -86,6 +86,9 @@
             <label>社会保険料等の金額
               <input type="text" inputmode="numeric" autocomplete="off" spellcheck="false" name="socialInsurance" placeholder="例：1000000" maxlength="12" required>
             </label>
+            <label>医療費控除額（任意・円）<small>支払医療費ではなく、計算済みの控除額。該当なしは空欄。セルフメディケーション税制も可。入力すると確定申告方式になります。</small>
+              <input type="text" inputmode="numeric" autocomplete="off" name="medicalDeductionYen" maxlength="7" placeholder="例：100000">
+            </label>
             <label>給与所得控除後の金額 <small>試算対象年の見込額を入力（前年原票の金額は参考値、手入力可）</small>
               <input type="text" inputmode="numeric" autocomplete="off" spellcheck="false" name="salaryIncomeReference" placeholder="任意：源泉徴収票の記載額" maxlength="12">
             </label>
@@ -111,7 +114,6 @@
               <label><input type="checkbox" name="hasEarthquakeInsurance"> 地震保険料控除</label>
               <label><input type="checkbox" name="hasMortgage"> 住宅ローン控除</label>
               <label><input type="checkbox" name="hasOtherIncome"> 給与以外の所得・複数給与</label>
-              <label><input type="checkbox" name="hasMedical"> 医療費控除・セルフメディケーション税制を申告する</label>
               <label><input type="checkbox" name="hasSplitIncome"> 分離課税所得</label>
               <label><input type="checkbox" name="hasIncomeAdjustment"> 所得金額調整控除対象</label>
               <label><input type="checkbox" name="hasNonstandardConditions"> 標準条件外・不明な控除</label>
@@ -183,17 +185,6 @@
             <div id="sourceAdjustmentRelatives"></div>
             <button type="button" id="sourceAdjustmentAdd" class="secondary">原票年に他の納税者が家族控除を適用した親族を追加</button>
             <label class="confirm"><input type="checkbox" name="sourceAdjustmentReviewed"> 原票年分のG46・G47、給与・所得金額調整控除の全要件、親族の年齢・所得・障害区分、重複のない明細を原票等で確認しました（該当なしも含む）。</label>
-          </fieldset>
-          <fieldset class="conditions family-panel" id="medicalPanel">
-            <legend>試算対象年の医療費控除（確定申告専用・検証版）</legend>
-            <p>医療費控除のチェックを付け、確定申告を選択してください。通常の医療費控除とセルフメディケーション税制のいずれか一方のみ。給付金等の補填対象ごとに重複なく集計し、補填金の余りは別の対象費用から引かないでください。氏名・病名・医療機関名は入力不要です。原票年分の所得控除合計には加算しません。</p>
-            <div class="fields">
-              <label>控除方式<select name="medicalMethod"><option value="">選択してください</option><option value="ordinary">通常の医療費控除</option><option value="selfMedication">セルフメディケーション税制</option></select></label>
-              <label class="confirm"><input type="checkbox" name="medicalHealthReviewed"> セルフメディケーション税制の健康保持増進等の取組要件を確認しました（同税制のみ）</label>
-            </div>
-            <div id="medicalGroups"></div>
-            <button type="button" id="medicalAdd" class="secondary">補填対象ごとの費用明細を追加</button>
-            <label class="confirm"><input type="checkbox" name="medicalReviewed"> 対象年に支払った控除対象費用、補填金との対応、重複なし及び申告方式を確認しました。確定申告には全てのふるさと納税を含めます。</label>
           </fieldset>
           <fieldset class="conditions family-panel" id="sourceOtherPanel">
             <legend>原票年分のその他所得控除（OCR取込時のみ）</legend>
@@ -279,7 +270,7 @@
             <th scope="col">対象年見込額を確認</th>
             <th scope="col">追加控除等の未対応条件なし</th>
             <th scope="col">前年参考額を当年見込額へ補正済み</th>
-            <th scope="col">寄附上限額の概算</th><th scope="col">状態</th><th scope="col">課税自治体区分</th><th scope="col">住民税所得割（選択自治体）</th><th scope="col">ワンストップ参考上限</th><th scope="col">確定申告参考上限（千円刻み）</th><th scope="col" class="batch-trial-input">試算寄附額入力（空欄は自動）</th><th scope="col">確定申告試算寄附額</th><th scope="col">確定申告自己負担見込額</th><th scope="col">2,000円超過額</th><th scope="col">任意寄附額試算状態</th><th scope="col" class="batch-family-editor">家族明細（原票年・試算年）</th><th scope="col">原票所得控除合計（家族照合済）</th><th scope="col">所得税家族控除</th><th scope="col">住民税家族控除</th><th scope="col" class="batch-family-editor batch-insurance-editor">保険料明細（原票年・試算年）</th><th scope="col">原票保険料控除合計（照合済）</th><th scope="col">所得税生命保険料控除</th><th scope="col">住民税生命保険料控除</th><th scope="col">所得税地震保険料控除</th><th scope="col">住民税地震保険料控除</th><th scope="col">23歳未満扶養親族の生命保険料特例</th><th scope="col" class="batch-family-editor batch-other-editor">その他所得控除明細（原票年・試算年）</th><th scope="col">原票その他所得控除（掛金含む）</th><th scope="col">原票内書き掛金</th><th scope="col">所得税その他所得控除（掛金含む）</th><th scope="col">住民税その他所得控除（掛金含む）</th><th scope="col">試算内書き掛金</th><th scope="col">試算社会保険料（掛金除く）</th><th scope="col" class="batch-medical-editor">試算年医療費控除明細</th><th scope="col">医療費控除方式</th><th scope="col">医療費支払額</th><th scope="col">補填金受取額</th><th scope="col">補填金控除額</th><th scope="col">他の費用に充当しない補填超過額</th><th scope="col">医療費控除足切額</th><th scope="col">医療費控除額（所得税・住民税）</th>
+            <th scope="col">寄附上限額の概算</th><th scope="col">状態</th><th scope="col">課税自治体区分</th><th scope="col">住民税所得割（選択自治体）</th><th scope="col">ワンストップ参考上限</th><th scope="col">確定申告参考上限（千円刻み）</th><th scope="col" class="batch-trial-input">試算寄附額入力（空欄は自動）</th><th scope="col">確定申告試算寄附額</th><th scope="col">確定申告自己負担見込額</th><th scope="col">2,000円超過額</th><th scope="col">任意寄附額試算状態</th><th scope="col" class="batch-family-editor">家族明細（原票年・試算年）</th><th scope="col">原票所得控除合計（家族照合済）</th><th scope="col">所得税家族控除</th><th scope="col">住民税家族控除</th><th scope="col" class="batch-family-editor batch-insurance-editor">保険料明細（原票年・試算年）</th><th scope="col">原票保険料控除合計（照合済）</th><th scope="col">所得税生命保険料控除</th><th scope="col">住民税生命保険料控除</th><th scope="col">所得税地震保険料控除</th><th scope="col">住民税地震保険料控除</th><th scope="col">23歳未満扶養親族の生命保険料特例</th><th scope="col" class="batch-family-editor batch-other-editor">その他所得控除明細（原票年・試算年）</th><th scope="col">原票その他所得控除（掛金含む）</th><th scope="col">原票内書き掛金</th><th scope="col">所得税その他所得控除（掛金含む）</th><th scope="col">住民税その他所得控除（掛金含む）</th><th scope="col">試算内書き掛金</th><th scope="col">試算社会保険料（掛金除く）</th><th scope="col" class="batch-medical-editor">医療費控除額入力（任意）</th><th scope="col">医療費控除額（所得税・住民税）</th>
           </tr></thead>
           <tbody id="batchRows"></tbody>
         </table>
