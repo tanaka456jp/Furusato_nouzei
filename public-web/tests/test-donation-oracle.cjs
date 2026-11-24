@@ -455,7 +455,8 @@ console.log(JSON.stringify({schema:"web-family-components/v1",familyCases,
 
 // Family-aware integration: preserve the established no-family results,
 // then compare family tax outcomes against independently supplied totals.
-const familyTax=require("../src/family-tax.js");
+const familyTax=require("../dist/family-tax.js");
+assert.equal(require("node:fs").readFileSync(require("node:path").resolve(__dirname,"../dist/family-tax.js"),"utf8"),require("node:fs").readFileSync(require("node:path").resolve(__dirname,"../src/family-tax.js"),"utf8"));
 const familyTaxInput={year:2026,salaryIncome:5200000,socialInsurance:1000000,
  municipality:"standard",spouse:null,relatives:[],conditions:"salary-basic-social-family-only-reviewed"};
 let familyTaxParity=0;
