@@ -123,6 +123,12 @@
     if(activeOther(sourceOther))input.sourceOtherDetails=sourceOther;
     var med=get("medicalNetPaidYen").value.trim();
     if(med!==""&&med!=="0"){input.hasMedical=true;input.medicalDetails={amount:med};}
+    var mortgage={applied:get("mortgageSourceApplied").value.trim(),possible:get("mortgageSourcePossible").value.trim(),
+      moveInYear:get("mortgageMoveInYear").value.trim(),capClass:get("mortgageCapClass").value,reviewed:get("mortgageReviewed").checked===true};
+    if(input.hasMortgage||input.sourceIndicators?.hasMortgage||mortgage.applied!==""||mortgage.possible!==""||
+       mortgage.moveInYear!==""||mortgage.capClass!==""||mortgage.reviewed){
+      input.hasMortgage=true;input.mortgageDetails=mortgage;
+    }
     function readAdjustment(reviewName,container){
       return {reviewed:get(reviewName).checked===true,
         extras:Array.from(document.querySelectorAll(container+" .adjustment-relative")).map(function(row){
@@ -136,8 +142,8 @@
     if(strictYen(input.sourceOriginalGross)>8500000||sourceAdjustment.reviewed||sourceAdjustment.extras.length||
        sourceAdjustment.basic!==""||sourceAdjustment.amount!=="")input.sourceAdjustmentDetails=sourceAdjustment;
     if(strictYen(input.salaryGross)>8500000||adjustment.reviewed||adjustment.extras.length)input.adjustmentDetails=adjustment;
-    if(input.otherDetails||input.sourceOtherDetails||input.medicalDetails||input.adjustmentDetails||input.sourceAdjustmentDetails){
-      if(!input.familyDetails)input.familyDetails={spouseAge:spouseAge,spouseIncome:spouseIncome,relatives:relatives,reviewed:!!input.medicalDetails&&!input.otherDetails&&!input.sourceOtherDetails&&!input.adjustmentDetails&&!input.sourceAdjustmentDetails};
+    if(input.otherDetails||input.sourceOtherDetails||input.medicalDetails||input.mortgageDetails||input.adjustmentDetails||input.sourceAdjustmentDetails){
+      if(!input.familyDetails)input.familyDetails={spouseAge:spouseAge,spouseIncome:spouseIncome,relatives:relatives,reviewed:!!(input.medicalDetails||input.mortgageDetails)&&!input.otherDetails&&!input.sourceOtherDetails&&!input.adjustmentDetails&&!input.sourceAdjustmentDetails};
     }
     return input;
   }
@@ -347,7 +353,9 @@
     var imported=input.sourceYear!==undefined||input.sourceIndicators!==undefined||
        input.sourceOriginalGross!==undefined||input.sourceOriginalSocial!==undefined||
        input.sourceOriginalDeductions!==undefined;
-    var original=null,ip=input.insuranceDetails,si=input.sourceInsurance,od=input.otherDetails,so=input.sourceOtherDetails,md=input.medicalDetails;
+    var original=null,ip=input.insuranceDetails,si=input.sourceInsurance,od=input.otherDetails,so=input.sourceOtherDetails,md=input.medicalDetails,hd=input.mortgageDetails;
+    var housing=null,housingSource=null;
+    if(hd&&(!imported||hd.reviewed!==true))return fail("住宅ローン控除は原票を取り込み、控除額・入居年・継続適用を確認してください。");
     var ad=input.adjustmentDetails,high=gross!==null&&gross>8500000;
     if((ad&&!high)||(high&&(!ad||!ad.reviewed||!od||!od.reviewed||!ip||!ip.reviewed)))
       return fail("高額給与の所得金額調整控除・その他所得控除・保険料を確認してください。");
@@ -400,7 +408,7 @@
     if(od&&!targetOther)return fail("その他所得控除の子の番号・掛金・親族明細を確認してください。");
     if(imported){
       var sourceYear=Number(input.sourceYear),sf=input.sourceFamily;
-      if(!sf&&md&&!si&&!so&&!sourceHigh&&Object.keys(input.sourceIndicators||{}).length===0)
+      if(!sf&&(md||hd)&&!si&&!so&&!sourceHigh&&Object.keys(input.sourceIndicators||{}).every(k=>k==="hasMortgage"&&!!hd))
         sf={spouseAge:"",spouseIncome:"",relatives:[],reviewed:true,originalIncome:form.dataset.ocrOriginalIncome};
       if(!sf||sf.reviewed!==true||![2025,2026].includes(sourceYear)||
          (sourceYear!==year&&sourceYear!==year-1)||(sourceYear!==year&&input.forecastReviewed!==true)||
@@ -410,6 +418,7 @@
       if(so&&!sourceOther)return fail("原票年分のその他所得控除の明細を確認してください。");
       var sourceSpouse=parseSpouse(sf.spouseAge,sf.spouseIncome),sourceRelatives=parseRelatives(sf.relatives);
       var indicators=Object.assign({},input.sourceIndicators||{}),sourceFacts=null;
+      if(hd)delete indicators.hasMortgage; // credit reconciliation is required below
       if(sourceHigh){
         sourceFacts=buildAdjustment(sourceYear,sourceGross,sa,sourceOther,sourceSpouse,sourceRelatives,sourcePremiums);
         if(!sourceFacts||strictYen(sa.basic)===null||strictYen(sa.amount)===null)
@@ -430,6 +439,17 @@
         ...(so?{otherDeductions:sourceOther,otherReviewed:true,sourceContributionYen:sourceOther.smallEnterpriseContributions}:{}),
         ...(sourceHigh?{adjustmentFacts:sourceFacts,sourceBasicYen:strictYen(sa.basic),sourceAdjustmentYen:strictYen(sa.amount),adjustmentReviewed:true}:{})},FurusatoEngine);
       if(original.status!=="RECONCILED")return fail(original.reason);
+      if(hd){
+        var applied=strictYen(hd.applied),possible=hd.possible===""?null:strictYen(hd.possible),moveInYear=strictYen(hd.moveInYear);
+        if(applied===null||(hd.possible!==""&&possible===null)||moveInYear===null||year-moveInYear>=13||
+           !window.FurusatoFamilyTax||typeof window.FurusatoFamilyTax.reconcileMortgageSource!=="function")
+          return fail("住宅ローン控除の原票記載額・入居年・適用継続を確認してください。");
+        var hr=window.FurusatoFamilyTax.reconcileMortgageSource({year:sourceYear,salaryIncome:original.calculation.salaryIncomeYen,
+          deductions:original.calculation.deductionsYen,moveInYear:moveInYear,capClass:hd.capClass,appliedYen:applied,possibleYen:possible,reviewed:true});
+        if(hr.status!=="RECONCILED")return fail(hr.reason);
+        housingSource=hr.calculation;
+        housing={moveInYear:moveInYear,capClass:hd.capClass,possibleYen:housingSource.possibleYen,eligibilityReviewed:true};
+      }
       if(sourceYear===year&&(
         JSON.stringify(parseSpouse(sf.spouseAge,sf.spouseIncome))!==JSON.stringify(parseSpouse(f.spouseAge,f.spouseIncome))||
         JSON.stringify(parseRelatives(sf.relatives))!==JSON.stringify(parseRelatives(f.relatives))))
@@ -439,7 +459,7 @@
       if(sourceYear===year&&(ip||si)&&premiumKeys.some(function(k){return (sourcePremiums?sourcePremiums[k]:0)!==(targetPremiums?targetPremiums[k]:0);}))
         return fail("同一年分の原票保険料明細と試算明細が一致しません。");
     }else if(input.sourceFamily)return fail("原票が取り込まれていません。原票年分の入力をクリアしてください。");
-    if(flags.some(function(k){return !["hasSpouse","hasDependents","hasLifeInsurance","hasEarthquakeInsurance"].includes(k)&&!(k==="hasMedical"&&md)&&!(k==="hasIncomeAdjustment"&&high)&&input[k]!==false;})||
+    if(flags.some(function(k){return !["hasSpouse","hasDependents","hasLifeInsurance","hasEarthquakeInsurance"].includes(k)&&!(k==="hasMedical"&&md)&&!(k==="hasMortgage"&&hd&&housing)&&!(k==="hasIncomeAdjustment"&&high)&&input[k]!==false;})||
        ![2025,2026].includes(year)||!["one-stop","return"].includes(input.filing)||
        !["standard","designated"].includes(input.municipality)||gross===null||gross<=0||gross>20000000||
        social===null||social>gross||typeof FurusatoEngine.salaryIncome!=="function")
@@ -508,6 +528,24 @@
       return fail("確定申告参考上限を確認できません。");
     var trialAmount=input.donationTrial===""?(md?prefix.donationLimitYen:result.donationLimitYen):strictYen(input.donationTrial);
     var trial=high?engine.highSalaryFilingTrial(request,trialAmount):engine.filingTrial(args,trialAmount);
+    if(hd){
+      var requestFor=function(filing){return {tax:high?request:args,housing:housing,filing:filing};};
+      var hp=engine.mortgagePrefix(requestFor("return")),op=md?null:engine.mortgagePrefix(requestFor("one-stop"));
+      var validPrefix=function(p){return p?.status==="COMPONENTS_ONLY"&&p.donationLimitYen===null&&
+        Number.isSafeInteger(p.calculation?.conservativePrefixYen)&&p.calculation.conservativePrefixYen>=2000&&
+        p.calculation.conservativePrefixYen%1000===0&&p.calculation.atPrefix?.within2000===true&&
+        p.calculation.atPrefix.donationYen===p.calculation.conservativePrefixYen&&p.calculation.atPrefix.housingPossibleYen===housing.possibleYen;};
+      if(!validPrefix(hp)||(!md&&!validPrefix(op)))return fail("住宅ローン控除と寄附控除の併用計算を確認できません。");
+      var oneLimit=op?.calculation.conservativePrefixYen??null,filingLimit=hp.calculation.conservativePrefixYen;
+      var limit=input.filing==="return"?filingLimit:oneLimit,baseline=hp.calculation.atPrefix.before;
+      if(!Number.isSafeInteger(baseline?.nationalHousingYen)||baseline.nationalHousingYen<0||
+         !Number.isSafeInteger(baseline?.residentHousingYen)||baseline.residentHousingYen<0||
+         baseline.nationalHousingYen+baseline.residentHousingYen>housing.possibleYen)return fail("住宅ローン控除額の整合性不一致");
+      var ht=engine.mortgageTrial(requestFor("return"),input.donationTrial===""?limit:strictYen(input.donationTrial));
+      return {status:"ESTIMATE",familyMode:true,calculation:c,oneStop:oneLimit,filing:filingLimit,amount:limit,
+        trial:ht,income:income,social:social,sourceReconciliation:original.calculation,
+        housing:{source:housingSource,baseline:baseline,forecast:original.calculation.year!==year}};
+    }
     return {status:"ESTIMATE",familyMode:true,calculation:c,oneStop:result.donationLimitYen,
       filing:prefix.donationLimitYen,amount:input.filing==="return"?prefix.donationLimitYen:result.donationLimitYen,
       trial:trial,income:income,social:social,sourceReconciliation:original?original.calculation:null};
@@ -539,6 +577,11 @@
       add("p",details,"通常の医療費控除：補填後の対象医療費と対象年の合計所得金額から自動計算。","muted");
       pairs.push(["補填後の医療費支払額",c.medical.netEligibleYen],["医療費控除の足切額",c.medical.thresholdYen],["医療費控除額（所得税・住民税）",c.medical.nationalDeductionYen]);
     }
+    if(result.housing){
+      var hs=result.housing;
+      pairs.push(["原票住宅ローン控除額（照合済）",hs.source.appliedYen],["試算住宅ローン控除可能額",hs.source.possibleYen],["寄附前所得税住宅ローン控除",hs.baseline.nationalHousingYen],["寄附前住民税住宅ローン控除",hs.baseline.residentHousingYen]);
+      if(hs.forecast)add("p",details,"住宅ローン残高の変動は考慮していません。","muted");
+    }
     if(c.salaryAdjustment){
       pairs.push(["給与収入",c.salaryAdjustment.grossSalaryYen],["給与所得控除",c.salaryAdjustment.salaryDeductionYen],
         ["所得金額調整控除前の給与所得",c.salaryAdjustment.salaryIncomeBeforeAdjustmentYen],["所得金額調整控除",c.salaryAdjustment.salaryAdjustmentYen],
@@ -562,7 +605,13 @@
     }
     pairs.forEach(function(p){add("dt",dl,p[0]);add("dd",dl,yen(p[1]));});
     var trial=add("section",details,undefined,"filing-trial");add("h4",trial,"確定申告した場合の寄附額・自己負担比較");
-    if(result.trial.status==="ESTIMATE"){
+    if(result.housing&&result.trial.status==="COMPONENTS_ONLY"){
+      var mt=result.trial.calculation,mdl=add("dl",trial);
+      [["試算寄附額",mt.donationYen],["所得税・復興特別所得税（寄附前）",mt.before.nationalTaxYen],["所得税・復興特別所得税（寄附後）",mt.after.nationalTaxYen],
+       ["住民税所得割（寄附前）",mt.localBefore.reduce((x,y)=>x+y,0)],["住民税所得割（寄附後）",mt.localAfter.reduce((x,y)=>x+y.assessedYen,0)],
+       ["所得税住宅ローン控除（寄附後）",mt.after.nationalHousingYen],["住民税住宅ローン控除（寄附後）",mt.after.residentHousingYen],
+       ["実質自己負担見込額",mt.selfPayYen],["2,000円超過額",mt.excessOver2000Yen]].forEach(function(p){add("dt",mdl,p[0]);add("dd",mdl,yen(p[1]));});
+    }else if(result.trial.status==="ESTIMATE"){
       var t=result.trial.calculation,tdl=add("dl",trial);
       [["試算寄附額",t.donationYen],["所得税（寄附前）",t.nationalBefore.incomeTax],
        ["所得税（寄附後）",t.nationalAfter.incomeTax],["復興特別所得税（寄附前）",t.nationalBefore.reconstruction],
@@ -745,10 +794,10 @@
     if(!target||target===conditionsConfirmation)return;
     var name=target.name;
     var familyChanged=target.hasAttribute("data-family")||["familySpouseAge","familySpouseIncome","sourceSpouseAge","sourceSpouseIncome"].includes(name);
-    if(["familyReviewed","sourceFamilyReviewed","forecastReviewed","insuranceReviewed","sourceInsuranceReviewed","otherReviewed","sourceOtherReviewed","adjustmentReviewed","sourceAdjustmentReviewed"].includes(name)){
+    if(["familyReviewed","sourceFamilyReviewed","forecastReviewed","insuranceReviewed","sourceInsuranceReviewed","otherReviewed","sourceOtherReviewed","adjustmentReviewed","sourceAdjustmentReviewed","mortgageReviewed"].includes(name)){
       conditionsConfirmation.checked=false;return;
     }
-    if(familyChanged||/^sourceAdjustment_/.test(name)||target.hasAttribute("data-adjustment")||target.hasAttribute("data-medical")||/^medical/.test(name)||target.hasAttribute("data-other-disability")||/^(target|source)Other_/.test(name)||/^(target|source)Insurance_/.test(name)||name==="familyReviewed"||name==="year"||name==="filing"||name==="municipality"||
+    if(familyChanged||/^sourceAdjustment_/.test(name)||target.hasAttribute("data-adjustment")||target.hasAttribute("data-medical")||/^medical/.test(name)||/^mortgage/.test(name)||target.hasAttribute("data-other-disability")||/^(target|source)Other_/.test(name)||/^(target|source)Insurance_/.test(name)||name==="familyReviewed"||name==="year"||name==="filing"||name==="municipality"||
        name==="salaryGross"||name==="socialInsurance"||
        name==="salaryIncomeReference"||name==="deductionsReference"||
        name==="deductionsOverride"||
@@ -762,6 +811,7 @@
       form.elements.namedItem("sourceOtherReviewed").checked=false;
       form.elements.namedItem("adjustmentReviewed").checked=false;
       form.elements.namedItem("sourceAdjustmentReviewed").checked=false;
+      form.elements.namedItem("mortgageReviewed").checked=false;
       // A prior-year forecast must be re-confirmed after any change to its
       // year, amounts or tax conditions. Never clear on its own click.
       if(name!=="forecastReviewed"){
@@ -787,11 +837,12 @@
   var familyRows=document.getElementById("familyRelatives");
   var sourceFamilyRows=document.getElementById("sourceFamilyRelatives");
   function revokeFamily(){
-    ["familyReviewed","sourceFamilyReviewed","forecastReviewed","insuranceReviewed","sourceInsuranceReviewed","otherReviewed","sourceOtherReviewed","adjustmentReviewed","sourceAdjustmentReviewed"].forEach(function(name){form.elements.namedItem(name).checked=false;});
+    ["familyReviewed","sourceFamilyReviewed","forecastReviewed","insuranceReviewed","sourceInsuranceReviewed","otherReviewed","sourceOtherReviewed","adjustmentReviewed","sourceAdjustmentReviewed","mortgageReviewed"].forEach(function(name){form.elements.namedItem(name).checked=false;});
     conditionsConfirmation.checked=false;invalidateEstimate();
   }
   function resetSourceFamily(){
     form.elements.namedItem("medicalNetPaidYen").value="";
+    ["mortgageSourceApplied","mortgageSourcePossible","mortgageMoveInYear","mortgageCapClass"].forEach(function(name){form.elements.namedItem(name).value="";});
     sourceFamilyRows.replaceChildren();sourceAdjustmentRows.replaceChildren();
     ["sourceAdjustment_basic","sourceAdjustment_amount"].forEach(function(name){form.elements.namedItem(name).value="";});
     ["sourceSpouseAge","sourceSpouseIncome"].forEach(function(name){form.elements.namedItem(name).value="";});
@@ -845,6 +896,7 @@
   }
   document.getElementById("adjustmentAdd").addEventListener("click",function(){addAdjustmentRow(adjustmentRows);});
   document.getElementById("sourceAdjustmentAdd").addEventListener("click",function(){addAdjustmentRow(sourceAdjustmentRows);});
+  form.elements.namedItem("hasMortgage").addEventListener("change",function(){if(this.checked)document.getElementById("mortgagePanel").open=true;});
   form.elements.namedItem("medicalNetPaidYen").addEventListener("input",function(){
     var n=strictYen(this.value.trim());
     if(n!==null&&n>0&&n<=100000000000)form.elements.namedItem("filing").value="return";
