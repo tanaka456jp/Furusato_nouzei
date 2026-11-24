@@ -61,5 +61,39 @@
     referenceSpecialCapYen:city.referenceSpecialCapYen+prefecture.referenceSpecialCapYen},
     donationLimitYen:null,release:"HOLD"};
  }
- return Object.freeze({calculate});
+ // Conservative reference ceiling for one-stop only, using each local
+ // special-credit cap separately. No filing or housing-credit estimate.
+ // Municipal sources: https://www.city.chiba.jp/zaiseikyoku/zeimu/kazeikanri/kojinshotokuwarisanshutu.html
+ // https://www.city.yokohama.lg.jp/kurashi/koseki-zei-hoken/zeikin/y-shizei/kojin-shiminzei-kenminzei/kihukin.html
+ // The assessed, rounded levy is used conservatively as the cap base.
+ function oneStopReference(input){
+  const out=calculate(input);
+  if(out.status!=="ESTIMATE")return out;
+  const c=out.calculation;
+  const income=input.salaryIncome;
+  const basic=input.year===2025?
+   (income<=1320000?950000:income<=3360000?880000:income<=4890000?680000:630000):
+   (income<=4890000?1040000:670000);
+  const nationalTaxable=Math.floor(Math.max(0,income-basic-input.socialInsurance)/1000)*1000;
+  const specialBase=c.residentTaxableYen-50000-Math.max(0,basic-480000);
+  if(nationalTaxable<=0||specialBase!==nationalTaxable)
+   return hold("所得税・住民税の特例控除税率を確認してください");
+  const ratePercent=specialBase<=1950000?5:specialBase<=3300000?10:20;
+  // Denominator in units of 1/100000, exact integer arithmetic.
+  const denominator=90000-ratePercent*1021;
+  const cityShare=input.municipality==="standard"?3:4;
+  const prefShare=5-cityShare;
+  const cityLimit=2000+Math.floor(c.city.referenceSpecialCapYen*500000/(denominator*cityShare));
+  const prefLimit=2000+Math.floor(c.prefecture.referenceSpecialCapYen*500000/(denominator*prefShare));
+  const incomeCap=Math.floor(income*3/10);
+  const exactReference=Math.min(cityLimit,prefLimit,incomeCap);
+  if(exactReference<2000)return hold("寄附金控除の適用条件を確認してください");
+  const rounded=Math.floor(exactReference/1000)*1000;
+  return {status:"ESTIMATE",calculation:{...c,nationalTaxableYen:nationalTaxable,
+    specialRatePercent:ratePercent,specialDenominator:denominator,
+    citySpecialReferenceLimitYen:cityLimit,prefectureSpecialReferenceLimitYen:prefLimit,
+    incomeCapYen:incomeCap,exactReferenceYen:exactReference,roundedReferenceYen:rounded},
+    donationLimitYen:rounded,release:"HOLD"};
+ }
+ return Object.freeze({calculate,oneStopReference});
 }));
