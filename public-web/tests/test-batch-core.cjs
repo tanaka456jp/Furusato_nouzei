@@ -685,5 +685,18 @@ const conflictingBlank=fixture(1,{...optionalBlank,reasons:["CODE_G26_AMOUNT_CON
 assert.equal(conflictingBlank.sourceInsurance_generalNew,"");
 assert.equal(conflictingBlank.spouseIncomeHint,undefined);
 assert.equal(batch.confirmSocialZero(conflictingBlank),false);
+// R8 fields are review hints only and require verified layout provenance.
+const r8Fixture={...basic2026,r8VerifiedLayout:true,sourceIndicators:{hasLifeInsurance:true,hasMortgage:true,hasDependents:true},optionalCandidates:{sourceInsurance_generalNew:12345,sourceInsurance_pensionNew:56789,mortgageSourcePossible:234567,mortgageMoveInYear:2023,familySpecialRelativeCount:2,familyOtherCount:1}};
+const r8Row=fixture(1,r8Fixture,2026);
+assert.equal(r8Row.sourceInsurance_generalNew,"12345");
+assert.equal(r8Row.sourceInsurance_pensionNew,"");
+assert.equal(r8Row.mortgageSourcePossible,"234567");
+assert.equal(r8Row.mortgageMoveInYear,"2023");
+assert.deepEqual(r8Row.familyCountHints,{familySpecialRelativeCount:2});
+assert.equal(batch.canOutputEstimate(r8Row),false);
+const unverifiedR8=fixture(1,{...r8Fixture,r8VerifiedLayout:false},2026);
+assert.equal(unverifiedR8.sourceInsurance_generalNew,"");
+assert.equal(unverifiedR8.mortgageSourcePossible,"");
+assert.equal(batch.canOutputEstimate(unverifiedR8),false);
 dom.window.close();
 console.log("PUBLIC_BATCH_PER_PAGE_LOCAL_SAFETY_SYNTHETIC_PASS; no private slips; no deploy");
