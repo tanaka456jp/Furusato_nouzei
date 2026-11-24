@@ -328,6 +328,24 @@ async function main(){
   assert.deepEqual(await page.locator("#batchRows .batch-result").allTextContents(),
     ["109,000円","109,000円"],
     "each independently confirmed taxpayer must get a separate result");
+  const firstRow=page.locator("#batchRows tr").first();
+  const secondRow=page.locator("#batchRows tr").nth(1);
+  await firstRow.locator('[data-field="trialInput"]').fill("120000");
+  assert.equal(await firstRow.locator(".batch-result").textContent(),"—");
+  assert.equal(await firstRow.locator('[data-field="confirmed"]').isChecked(),true);
+  assert.equal(await secondRow.locator(".batch-result").textContent(),"109,000円");
+  assert.equal(await page.locator("#batchDownload").isDisabled(),true);
+  await page.locator("#batchCalculate").click();
+  assert.deepEqual(await firstRow.locator(".batch-comparison").allTextContents(),
+    ["109,000円","109,000円","120,000円","9,104円","7,104円"]);
+  assert.equal(await firstRow.locator(".batch-trial-status").textContent(),"確定申告参考");
+  await firstRow.locator('[data-field="trialInput"]').evaluate(el=>{el.value="3000";});
+  await page.evaluate(()=>window.dispatchEvent(new Event("beforeprint")));
+  assert.equal(await firstRow.locator(".batch-trial-status").textContent(),"HOLD");
+  assert.equal(await page.locator("#batchDownload").isDisabled(),true);
+  await page.locator("#batchCalculate").click();
+  assert.deepEqual(await firstRow.locator(".batch-comparison").allTextContents(),
+    ["109,000円","109,000円","3,000円","1,896円","0円"]);
   assert.equal(await page.locator("#batchDownload").isEnabled(),true);
   await page.locator("#batchClear").click();
   assert.equal(await page.locator("#batchRows tr").count(),0);
