@@ -26,6 +26,16 @@
  const REVIEW_AMOUNTS=Object.freeze({G29:["mortgageSourceApplied",600000],G46:["sourceBasicYen",1040000],G47:["sourceAdjustmentYen",150000]});
  // R7 code-layer layout checked locally. No original amounts retained.
  const R7_AMOUNTS=Object.freeze({"G30":["sourceInsurance_generalNew",100000000,"hasLifeInsurance"],"G31":["sourceInsurance_generalOld",100000000,"hasLifeInsurance"],"G32":["sourceInsurance_medicalNew",100000000,"hasLifeInsurance"],"G33":["sourceInsurance_pensionNew",100000000,"hasLifeInsurance"],"G34":["sourceInsurance_pensionOld",100000000,"hasLifeInsurance"],"G45":["sourceInsurance_longTermOld",100000000,"hasEarthquakeInsurance"],"G36":["mortgageSourcePossible",600000,"hasMortgage"]});
+ // R8: independently checked printed anchors and headings on the supplied
+ // code-layer layout. Only positive-field mappings actually verified for
+ // R8 are enabled. No source amounts, identifiers or source files retained.
+ const R8_AMOUNTS=Object.freeze(Object.fromEntries(["G30","G31","G32","G36"].map(k=>[k,R7_AMOUNTS[k]])));
+ function r8Layout(spans,year){
+  if(year!==2026)return false;
+  const near=(list,x,y)=>list.length===1&&Math.abs(list[0].x-x)<=1.5&&Math.abs(list[0].y-y)<=1.5;
+  return [["G30",76.67,450.39],["G31",175.88,450.39],["G32",275.09,450.39],["G33",374.31,450.39],["G34",473.52,450.39],["G36",131.94,408.93],["G72",379.98,571.57]].every(([k,x,y])=>near(anchors(spans,k),x,y))&&
+   [["新生命保険料の金額",99.99,463.5],["旧生命保険料の金額",199.2,463.5],["介護医療保険料の金額",295.65,463.5],["住宅借入金等特別控除可能額",141.41,433.74],["居住開始年月日",265.69,437.99]].every(([k,x,y])=>near(spans.filter(s=>s.s===k),x,y));
+ }
  const CODES=Object.freeze(["L01",...Object.keys(FIELDS)]);
  const token=/^[0-9,]$/;
  function spansOf(items){
@@ -102,8 +112,8 @@
  // R7 form: exact heading and three printed column markers establish
  // the first date row. Dates are never inferred from arbitrary page numbers.
  // Only the Gregorian YEAR is returned; a second acquisition is unsupported.
- function housingDate(spans,year){
-  if(year!==2025)return {};
+ function housingDate(spans,year,r8){
+  if(year!==2025&&!r8)return {};
   const heading=spans.filter(s=>s.s==="居住開始年月日");
   if(heading.length!==1)return {};
   const a=heading[0];
@@ -133,8 +143,8 @@
  // R7 count slots use their own narrow window; the monetary 45-125pt
  // window would include several neighbouring people-count columns.
  const R7_COUNTS=Object.freeze({"G13":["familySpecificCount",187.22],"G16":["familyElderlyCount",269.78],"G18":["familyOtherCount",324.7],"G72":["familySpecialRelativeCount",379.98],"G20":["familyUnder16Count",435.25]});
- function familyCounts(spans,year){
-  if(year!==2025)return {values:{},flags:{}};
+ function familyCounts(spans,year,r8){
+  if(year!==2025&&!r8)return {values:{},flags:{}};
   const values={},flags={};
   const layout=Object.entries(R7_COUNTS).map(([code,[key,x]])=>({key,x,marks:anchors(spans,code)}));
   // Require the complete known column geometry, not an isolated G-code.
@@ -149,7 +159,7 @@
   }
   for(const v of layout){
    const n=count(v.marks[0]);
-   if(n!==null&&n>0){values[v.key]=n;flags.hasDependents=true;}
+   if(n!==null&&n>0){if(year===2025||v.key==="familySpecialRelativeCount")values[v.key]=n;flags.hasDependents=true;}
   }
   // Positive count of non-resident relatives or secondary salary claims
   // is outside the supported ordinary household route. No inferred zero.
@@ -202,11 +212,11 @@
    const amount=optionalAmount(marks[0]);
    if(amount!==null&&amount>0)sourceIndicators[flag]=true;
   }
-  const optionalCandidates={};
+  const optionalCandidates={},r8=r8Layout(spans,year);
   // Unlike a positive warning flag, a prefilled amount must have an
   // unambiguous numeric representation. Reject overlapping representations,
   // duplicate compact tokens and conflicting nearby digit sequences.
-  for(const [code,[key,max,flag]] of Object.entries({...REVIEW_AMOUNTS,...(year===2025?R7_AMOUNTS:{})})){
+  for(const [code,[key,max,flag]] of Object.entries({...REVIEW_AMOUNTS,...(year===2025?R7_AMOUNTS:r8?R8_AMOUNTS:{})})){
    const marks=anchors(spans,code);
    if(marks.length!==1)continue;
    const anchor=marks[0];
@@ -239,9 +249,9 @@
     }
    }
   }
-  const counts=familyCounts(spans,year);
+  const counts=familyCounts(spans,year,r8);
   Object.assign(sourceIndicators,counts.flags);Object.assign(optionalCandidates,counts.values);
-  const date=housingDate(spans,year);
+  const date=housingDate(spans,year,r8);
   if(date.detected)sourceIndicators.hasMortgage=true;
   if(date.multiple)sourceIndicators.hasNonstandardConditions=true;
   if(date.moveInYear!==undefined)optionalCandidates.mortgageMoveInYear=date.moveInYear;
@@ -250,6 +260,7 @@
    status:"REQUIRES_SOURCE_REVIEW",year,
    candidates, // Each numeric field independently validated; missing fields stay blank.
    sourceIndicators, // Only categorical flags; no raw OCR or identifying fields.
+   r8VerifiedLayout:r8,
    optionalCandidates, // Review-only, never evidence of an absent deduction.
    reasons,
    eligibleForManualTransfer:reasons.length===0,
@@ -265,19 +276,20 @@
      ![2025,2026].includes(coded.year)||coded.year!==selected.year||
      Object.values(FIELDS).some(k=>partial&&k==="socialInsurance"?false:!Number.isSafeInteger(coded.candidates?.[k])||coded.candidates[k]!==selected.candidates?.[k]))
    return {};
-  const result={};
-  for(const [key,max,flag] of Object.values({...REVIEW_AMOUNTS,...(coded.year===2025?R7_AMOUNTS:{})})){
+  const result={},r8=coded.year===2026&&coded.r8VerifiedLayout===true;
+  for(const [key,max,flag] of Object.values({...REVIEW_AMOUNTS,...(coded.year===2025?R7_AMOUNTS:r8?R8_AMOUNTS:{})})){
    const n=coded.optionalCandidates?.[key];
    if(Number.isSafeInteger(n)&&n>=0&&n<=max&&(!flag||(n>0&&coded.sourceIndicators?.[flag]===true)))result[key]=n;
   }
-  if(coded.year===2025&&coded.sourceIndicators?.hasDependents===true)for(const [key] of Object.values(R7_COUNTS)){
+  if((coded.year===2025||r8)&&coded.sourceIndicators?.hasDependents===true)for(const [key] of Object.values(R7_COUNTS)){
+   if(r8&&key!=="familySpecialRelativeCount")continue;
    const n=coded.optionalCandidates?.[key];if(Number.isSafeInteger(n)&&n>0&&n<=30)result[key]=n;
   }
   const spouse=coded.optionalCandidates?.sourceSpouseIncome;
   if(coded.year===2025&&coded.sourceIndicators?.hasSpouse===true&&Number.isSafeInteger(spouse)&&spouse>0&&spouse<=1330000)result.sourceSpouseIncome=spouse;
   const moveIn=coded.optionalCandidates?.mortgageMoveInYear;
-  if(coded.year===2025&&coded.sourceIndicators?.hasMortgage===true&&!coded.sourceIndicators?.hasNonstandardConditions&&
-     Number.isSafeInteger(moveIn)&&moveIn>=2014&&moveIn<=2025)result.mortgageMoveInYear=moveIn;
+  if((coded.year===2025||r8)&&coded.sourceIndicators?.hasMortgage===true&&!coded.sourceIndicators?.hasNonstandardConditions&&
+     Number.isSafeInteger(moveIn)&&moveIn>=2014&&moveIn<=coded.year)result.mortgageMoveInYear=moveIn;
   return result;
  }
  // A human, not the parser, may attest that an apparently empty G26 is blank.
