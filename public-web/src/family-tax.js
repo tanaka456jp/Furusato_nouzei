@@ -2,16 +2,17 @@
 /**
  * Salary-only + explicitly reviewed resident family, WEB review only.
  * Income tax taxable and local special credit base must remain distinct.
- * No UI approval, source inference, insurance/mortgage or other credits.
+ * Optional explicitly reviewed insurance premiums; no UI approval,
+ * source inference, mortgage or other credits.
  * https://www.city.sapporo.jp/s024/4654.html
  * https://www.city.chofu.lg.jp/030010/p014041.html
  * https://www.city.chofu.lg.jp/030010/p014042.html
  * https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1155.htm
  */
 (function(root,factory){
- if(typeof module==="object"&&module.exports)module.exports=factory(require("./family-deductions.js"));
- else root.FurusatoFamilyTax=factory(root.FurusatoFamilyDeductions);
-}(typeof window!=="undefined"?window:this,function(family){
+ if(typeof module==="object"&&module.exports)module.exports=factory(require("./family-deductions.js"),require("./insurance-deductions.js"));
+ else root.FurusatoFamilyTax=factory(root.FurusatoFamilyDeductions,root.FurusatoInsuranceDeductions);
+}(typeof window!=="undefined"?window:this,function(family,insurance){
  const valid=(n,max)=>Number.isSafeInteger(n)&&n>=0&&n<=max;
  const hold=reason=>({status:"HOLD",reason,calculation:null,donationLimitYen:null,release:"HOLD"});
  const floor1000=n=>Math.floor(Math.max(0,n)/1000)*1000;
@@ -26,25 +27,38 @@
  }
  function calculate(input){
   const keys=["year","salaryIncome","socialInsurance","municipality","spouse","relatives","conditions"];
+  const withInsurance=input?.conditions==="salary-basic-social-family-insurance-only-reviewed";
+  if(withInsurance)keys.push("premiums");
   if(!input||typeof input!=="object"||Array.isArray(input)||
     Object.keys(input).length!==keys.length||!keys.every(k=>Object.prototype.hasOwnProperty.call(input,k))||
     ![2025,2026].includes(input.year)||!valid(input.salaryIncome,6550000)||
     !valid(input.socialInsurance,8500000)||!["standard","designated"].includes(input.municipality)||
-    input.conditions!=="salary-basic-social-family-only-reviewed"||!family||
+    (!withInsurance&&input.conditions!=="salary-basic-social-family-only-reviewed")||!family||
     typeof family.calculate!=="function")
     return hold("給与所得・家族・自治体・追加控除等の適用条件を確認してください");
-  const f=family.calculate({year:input.year,taxpayerIncome:input.salaryIncome,
-    spouse:input.spouse,relatives:input.relatives,conditions:"annual-resident-family-reviewed"});
+  const household={year:input.year,taxpayerIncome:input.salaryIncome,
+    spouse:input.spouse,relatives:input.relatives,conditions:"annual-resident-family-reviewed"};
+  const f=family.calculate(household);
   if(f.status!=="COMPONENTS_ONLY")return hold(f.reason||"家族控除が未確認です");
   const c=f.calculation;
   if(c.ordinaryResidentIncomeLevyExempt)return hold("住民税所得割非課税のため寄附上限試算対象外です");
   const income=input.salaryIncome;
   const nationalBasic=basic(input.year,income);
-  const nationalDeductions=nationalBasic+input.socialInsurance+c.nationalFamilyDeductionYen;
-  const residentDeductions=430000+input.socialInsurance+c.residentFamilyDeductionYen;
+  let insuranceDetails=null;
+  if(withInsurance){
+   if(!insurance||typeof insurance.calculate!=="function")return hold("保険料控除の計算機能を利用できません");
+   const result=insurance.calculate({year:input.year,family:household,premiums:input.premiums,
+     conditions:"eligible-net-premiums-and-contract-selection-reviewed"});
+   if(result.status!=="COMPONENTS_ONLY")return hold(result.reason||"保険料控除を確認できません");
+   insuranceDetails=result.calculation;
+  }
+  const nationalDeductions=nationalBasic+input.socialInsurance+c.nationalFamilyDeductionYen+(insuranceDetails?.national.totalYen??0);
+  const residentDeductions=430000+input.socialInsurance+c.residentFamilyDeductionYen+(insuranceDetails?.resident.totalYen??0);
   const nationalTaxable=floor1000(income-nationalDeductions);
   const localTaxable=floor1000(income-residentDeductions);
   if(nationalTaxable===0||localTaxable===0)return hold("所得税または住民税の課税所得がないケースは個別確認してください");
+  // Insurance deduction differences are not personal deduction differences.
+  // Keep the statutory municipal special-rate base separate from actual national taxable.
   const difference=50000+c.familyAdjustmentDifferenceYen;
   const adjustmentBasis=localTaxable<=2000000?Math.min(localTaxable,difference):
    Math.max(50000,difference-(localTaxable-2000000));
@@ -72,7 +86,7 @@
   if(rounded<2000)return hold("寄附控除の参考上限を確認できません");
   return {status:"ESTIMATE",donationLimitYen:rounded,release:"HOLD",calculation:{
    year:input.year,residentYear:input.year+1,municipality:input.municipality,
-   family:c,nationalBasicYen:nationalBasic,nationalDeductionsYen:nationalDeductions,
+   family:c,...(withInsurance?{insurance:insuranceDetails}:{}),nationalBasicYen:nationalBasic,nationalDeductionsYen:nationalDeductions,
    residentDeductionsYen:residentDeductions,nationalTaxableYen:nationalTaxable,
    residentTaxableYen:localTaxable,nationalBefore:national(nationalTaxable),
    personalDifferenceYen:difference,adjustmentBasisYen:adjustmentBasis,
