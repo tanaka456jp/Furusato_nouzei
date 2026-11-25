@@ -109,4 +109,49 @@ for(const bad of [amounts.slice(1),amounts.map((x,i)=>i?x:{...x,text:"7,100,000å
  assert.equal(result.status,"HOLD");assert.deepEqual(result.candidates,{});
  assert.equal(result.autoApproved,false);
 }
+
+// Rule-only synthetic grid. No source pixels, private amounts or text.
+// The geometry alone must not produce any candidate or approve transfer.
+function gridFixture(scale=1,left=55,top=350,broken=false,twice=false){
+ const w=Math.round(1190*scale),h=Math.round(1684*scale);
+ const W=Math.round(1080*scale),data=new Uint8ClampedArray(w*h*4);
+ data.fill(255);
+ const dark=(x,y)=>{if(x>=0&&x<w&&y>=0&&y<h){const i=(y*w+x)*4;data[i]=data[i+1]=data[i+2]=0;}};
+ function draw(y0){
+  const Y=v=>y0+Math.round(v*scale),X=v=>left+Math.round(v*scale);
+  for(const v of [0,32,96,192,212,276])
+   for(let x=left;x<=left+W;x++)dark(x,Y(v));
+  for(const [x,a,b] of [
+   ...[0,144,397,618,838,1080].map(x=>[x,0,96]),
+   ...[0,210,452,662,872,1080].map(x=>[x,192,276]),
+   ...[166,420,639].map(x=>[x,32,96]),[232,212,276]
+  ]){
+   if(broken&&x===397)continue;
+   for(let y=Y(a);y<=Y(b);y++)dark(X(x),y);
+  }
+ }
+ draw(top);
+ if(twice)draw(top+Math.round(600*scale));
+ return {w,h,data};
+}
+const gp=f=>region.planGridPixels(f.data,f.w,f.h);
+for(const [scale,left,top] of [[1,55,350],[.8,35,270],[1.25,80,470],[1,75,490]]){
+ const f=gridFixture(scale,left,top),out=gp(f);
+ assert.equal(out.status,"LAYOUT_ONLY");assert.equal(out.layoutLocated,true);
+ assert.deepEqual(out.rectangles.map(x=>x.key),labels.map(x=>x[0]));
+ assert.equal(out.eligibleForManualTransfer,false);assert.equal(out.autoApproved,false);
+ assert.equal(out.candidates,undefined);assert.equal(out.year,undefined);
+ for(const box of out.rectangles)assert.ok(box.left>=0&&box.top>=0&&box.left+box.width<=f.w&&box.top+box.height<=f.h);
+}
+for(const f of [gridFixture(1,55,350,true),gridFixture(1,55,350,false,true)]){
+ const out=gp(f);assert.equal(out.status,"HOLD");assert.deepEqual(out.rectangles,[]);
+ assert.equal(out.eligibleForManualTransfer,false);
+}
+const blank=gridFixture();blank.data.fill(255);
+assert.equal(gp(blank).status,"HOLD");
+assert.equal(region.planGridPixels(null,1000,1000).status,"HOLD");
+assert.equal(region.planGridPixels(new Uint8Array(10),1000,1000).status,"HOLD");
+assert.equal(region.planGridPixels(new Uint8Array(10),1000000,1000000).status,"HOLD");
+assert.equal(region.planGridCanvas(null).status,"HOLD");
+
 console.log("PUBLIC_OCR_BOUNDED_REGION_RECHECK_SYNTHETIC_PASS; no source accuracy claim");

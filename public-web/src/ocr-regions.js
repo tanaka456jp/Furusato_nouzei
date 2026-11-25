@@ -211,5 +211,92 @@
    eligibleForManualTransfer:true,autoApproved:false,originalCompared:false,
    qualityScope:"INCOME_YEAR_AND_FOUR_AMOUNTS_ONLY"};
  }
- return {plan,assessRechecks,planSeparate,agreeSeparate,assessSeparate};
+
+ // A narrowly scoped geometry probe of the code-layer form's two amount
+ // bands. Coordinates are dimensionless printed-rule ratios, NOT a year
+ // identifier or a verified document type. A similar grid may be unrelated.
+ // This diagnostic can NEVER enable transfer, infer zero, or emit money.
+ const gridHold=()=>({status:"HOLD",rectangles:[],layoutLocated:false,autoApproved:false,eligibleForManualTransfer:false});
+ function planGridPixels(data,width,height){
+  if(!Number.isSafeInteger(width)||!Number.isSafeInteger(height)||
+     width<750||height<400||width*height>10000000||
+     !ArrayBuffer.isView(data)||data.BYTES_PER_ELEMENT!==1||data.length!==width*height*4)
+   return gridHold();
+  const dark=(x,y)=>{
+   const i=(y*width+x)*4;
+   return data[i+3]===255&&data[i]<150&&data[i+1]<150&&data[i+2]<150;
+  };
+  const rows=[];
+  for(let y=0;y<height;y++){
+   let start=-1,bestL=0,bestR=-1;
+   for(let x=0;x<=width;x++){
+    if(x<width&&dark(x,y)){if(start<0)start=x;}
+    else if(start>=0){
+     if(x-1-start>bestR-bestL){bestL=start;bestR=x-1;}
+     start=-1;
+    }
+   }
+   if(bestR-bestL+1<width*.75)continue;
+   const last=rows[rows.length-1];
+   if(last&&y===last.bottom+1&&Math.abs(bestL-last.left)<=3&&Math.abs(bestR-last.right)<=3)last.bottom=y;
+   else rows.push({left:bestL,right:bestR,top:y,bottom:y});
+   if(rows.length>256)return gridHold();
+  }
+  const center=v=>(v.top+v.bottom)/2;
+  const matches=[];
+  for(const start of rows){
+   const l=start.left,w=start.right-l,t=center(start),tol=Math.max(3,w*.004),thick=Math.max(3,w*.007);
+   if(start.bottom-start.top>thick)continue;
+   const hits=[];
+   for(const off of [0,32,96,192,212,276]){
+    const a=rows.filter(v=>Math.abs(v.left-l)<=tol&&Math.abs(v.right-start.right)<=tol&&
+      Math.abs(center(v)-(t+off*w/1080))<=tol&&v.bottom-v.top<=thick);
+    if(a.length!==1)break;
+    hits.push(a[0]);
+   }
+   if(hits.length!==6||new Set(hits).size!==6)continue;
+   const ys=hits.map(v=>Math.round(center(v)));
+   function vertical(frac,top,bottom){
+    const x=Math.round(l+w*frac/1080),rad=Math.max(2,Math.round(w*.003));
+    let n=0,seen=0;
+    for(let y=top+3;y<bottom-3;y++){
+     n++;
+     for(let a=Math.max(0,x-rad);a<=Math.min(width-1,x+rad);a++)
+      if(dark(a,y)){seen++;break;}
+    }
+    return n>0&&seen/n>=.9;
+   }
+   if(![0,144,397,618,838,1080].every(v=>vertical(v,ys[0],ys[2]))||
+      ![0,210,452,662,872,1080].every(v=>vertical(v,ys[3],ys[5]))||
+      ![166,420,639].every(v=>vertical(v,ys[1],ys[2]))||
+      !vertical(232,ys[4],ys[5]))continue;
+   const inset=Math.max(4,Math.ceil(w*.006));
+   const specs=[
+    ["salaryGross",166,397,1,2],
+    ["salaryIncomeReference",420,618,1,2],
+    ["deductionsReference",639,838,1,2],
+    ["socialInsurance",232,452,4,5]
+   ];
+   const rectangles=specs.map(([key,x1,x2,y1,y2])=>{
+    const left=Math.ceil(l+w*x1/1080)+inset,top=ys[y1]+inset;
+    return {key,left,top,width:Math.floor(l+w*x2/1080)-inset-left,height:ys[y2]-inset-top};
+   });
+   if(rectangles.some(v=>v.width<20||v.height<12||v.width*v.height>100000||
+      v.left<0||v.top<0||v.left+v.width>width||v.top+v.height>height))continue;
+   matches.push(rectangles);
+   if(matches.length>1)return gridHold();
+  }
+  return matches.length===1?{status:"LAYOUT_ONLY",layoutLocated:true,rectangles:matches[0],
+    autoApproved:false,eligibleForManualTransfer:false}:gridHold();
+ }
+ function planGridCanvas(canvas){
+  if(!canvas||!Number.isSafeInteger(canvas.width)||!Number.isSafeInteger(canvas.height)||
+     canvas.width<750||canvas.height<400||canvas.width*canvas.height>10000000)return gridHold();
+  try{
+   const ctx=canvas.getContext("2d",{willReadFrequently:true});
+   if(!ctx)return gridHold();
+   return planGridPixels(ctx.getImageData(0,0,canvas.width,canvas.height).data,canvas.width,canvas.height);
+  }catch(_){return gridHold();}
+ }
+ return {plan,assessRechecks,planSeparate,agreeSeparate,assessSeparate,planGridPixels,planGridCanvas};
 }));

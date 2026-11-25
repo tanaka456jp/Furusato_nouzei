@@ -541,6 +541,12 @@
           };
         }
       }
+      // Geometry is only diagnostic: never promote a HOLD based on rules,
+      // crop coordinates or a guessed year. Do not retain pixel data/boxes.
+      if(!compared.eligibleForManualTransfer&&regions?.planGridCanvas){
+        const grid=regions.planGridCanvas(original);
+        if(grid.layoutLocated===true)compared.gridLayoutLocated=true;
+      }
       return compared;
     }finally{
       // Termination can itself reject, e.g. a worker process crash. Never
@@ -727,6 +733,11 @@
       var errors=document.createElement("p");
       errors.textContent="停止理由："+(r.reasons||[]).join(" / ");
       report.appendChild(errors);
+      if(r.gridLayoutLocated===true){
+        const note=document.createElement("p");
+        note.textContent="一部の罫線配置は一致しましたが、年分・項目名・金額の確認ができないため転記しません。原票を見て手入力するか、電子PDFを指定してください。";
+        report.appendChild(note);
+      }
       if(window.FurusatoPdfGCodes?.canConfirmSocialZero(r)&&isAllowedReferenceYear(r.year)){
         const note=document.createElement("p");note.textContent="社会保険料等の欄のみ未取得です。原票を見て本当に空欄（控除対象額なし）であることを確認した場合だけ、次のボタンを押してください。金額が記載されている場合は使用しないでください。";report.appendChild(note);
         const button=document.createElement("button");button.type="button";button.className="secondary";button.id="slipConfirmSocialZero";button.textContent="原票が空欄であることを確認し、0円を設定";
