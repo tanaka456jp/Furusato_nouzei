@@ -228,6 +228,24 @@ assert.equal(positive.eligibleForManualTransfer,true);assert.equal(positive.year
 assert.equal(positive.autoApproved,false);assert.equal(positive.originalCompared,false);
 assert.deepEqual(positive.candidates,Object.fromEntries(labels.map(([k,,n])=>[k,n])));
 assert.equal(positive.optionalCandidates,undefined);assert.equal(positive.sourceIndicators,undefined);
+const partial=recover(undefined,undefined,lr,blankSocial,blankSocial);
+assert.equal(partial.eligibleForManualTransfer,false);
+assert.equal(partial.year,2025);
+assert.equal(partial.autoApproved,false);
+assert.deepEqual(partial.reasons,["GRID_SOCIAL_AMOUNT_UNVERIFIED"]);
+assert.deepEqual(partial.candidates,Object.fromEntries(labels.filter(([k])=>k!=="socialInsurance").map(([k,,n])=>[k,n])));
+const codes=require("../src/pdf-gcodes.js");
+assert.equal(codes.canConfirmSocialZero(partial),true);
+const confirmedBlank=codes.confirmSocialZero(partial);
+assert.equal(confirmedBlank.candidates.socialInsurance,0);
+assert.equal(confirmedBlank.originalCompared,false);
+assert.equal(confirmedBlank.autoApproved,false);
+assert.equal(partial.candidates.socialInsurance,undefined);
+assert.equal(codes.canConfirmSocialZero({...partial,reasons:[...partial.reasons,"GRID_FULL_PAGE_CONFLICT"]}),false);
+const explicitZero=recover(undefined,undefined,lr,falseSocial,falseSocial);
+assert.equal(explicitZero.eligibleForManualTransfer,true);
+assert.equal(explicitZero.candidates.socialInsurance,0);
+assert.equal(codes.canConfirmSocialZero(explicitZero),false);
 const fullNeg=[sr.reviewText("支払金額 123",true),missingReview[1]];
 assert.equal(fullNeg[0].candidates.salaryGross,undefined);
 assert.equal(fullNeg[0].observedCandidates.salaryGross,123);
@@ -239,7 +257,11 @@ const negatives=[
  recover(undefined,undefined,lr.map((x,i)=>i===0?{...x,text:"源泉徴収税額"}:x)),
  recover(undefined,undefined,lr.slice(0,3)),
  recover(undefined,undefined,lr.map((x,i)=>i===3?{...x,text:"社会保険料等の金客"}:x)),
- recover(undefined,undefined,lr,blankSocial,blankSocial),
+ recover(undefined,undefined,lr,blankSocial,falseSocial),
+ recover(undefined,undefined,lr,falseSocial,blankSocial),
+ recover(undefined,undefined,lr,blankSocial,blankSocial,[sr.reviewText("社会保険料等の金額 123",true),missingReview[1]]),
+ recover(undefined,undefined,lr,blankSocial.map(v=>v.key==="socialInsurance"?{...v,text:"?"}:v),blankSocial),
+ recover(undefined,undefined,lr,blankSocial.slice(0,3),blankSocial),
  recover(undefined,undefined,lr,digitReads,mismatch),
  recover(undefined,undefined,lr,digitReads,digitReads,fullNeg),
  recover(undefined,undefined,lr,digitReads,digitReads,[sr.reviewText("令和8年分",true),missingReview[1]]),

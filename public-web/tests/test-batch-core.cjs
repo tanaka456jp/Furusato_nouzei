@@ -667,6 +667,18 @@ assert.equal(zeroRow.sourceValid,true);assert.equal(zeroRow.donationLimitYen,nul
 assert.equal(batch.confirmSocialZero(zeroRow),false);
 const altered=fixture(1,zeroReview,2026);batch.edit(altered,"salaryGross","7000001");assert.equal(batch.confirmSocialZero(altered),false);
 const ambiguous=fixture(1,{...zeroReview,reasons:["CODE_G26_AMBIGUOUS"]},2026);assert.equal(batch.confirmSocialZero(ambiguous),false);
+const gridBlank={...zeroReview,schema:"furusato-slip-grid-review/v1",reasons:["GRID_SOCIAL_AMOUNT_UNVERIFIED"]};
+const gridRow=fixture(1,gridBlank,2026);
+assert.equal(batch.canEstimate(gridRow),false);
+assert.equal(batch.canOutputEstimate(gridRow),false);
+assert.equal(batch.confirmSocialZero(gridRow),true);
+assert.equal(gridRow.originalCandidates.socialInsurance,0);
+assert.equal(gridRow.confirmed,false);
+assert.equal(gridRow.donationLimitYen,null);
+assert.equal(batch.canOutputEstimate(gridRow),false);
+for(const review of [{...gridBlank,reasons:["GRID_AMOUNT_DISAGREEMENT"]},{...gridBlank,reasons:[...gridBlank.reasons,"GRID_FULL_PAGE_CONFLICT"]},{...gridBlank,candidates:{...gridBlank.candidates,socialInsurance:123}}]){
+ assert.equal(batch.confirmSocialZero(fixture(1,review,2026)),false);
+}
 const actual=fixture(1,basic2026);assert.equal(batch.confirmSocialZero(actual),false);
 const optionalBlank={...zeroReview,sourceIndicators:{hasLifeInsurance:true,hasSpouse:true,hasDependents:true},optionalCandidates:{sourceInsurance_generalNew:123456,sourceSpouseIncome:654321,familyUnder16Count:2}};
 const optionalBlankRow=fixture(1,optionalBlank,2026);

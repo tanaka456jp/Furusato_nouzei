@@ -438,8 +438,13 @@
    if(a.length!==1||typeof a[0].text!=="string"||a[0].text.length>120||
       !expected[key].test(compact(a[0].text)))return reject("GRID_LABEL_UNVERIFIED_"+key);
   }
-  if(assessGridDigits(left,right).matchedFields!==4)return reject("GRID_AMOUNT_DISAGREEMENT");
-  const candidates=Object.fromEntries(LABELS.map(({key})=>[key,gridDigit(left.find(v=>v.key===key).text)]));
+  const digitCheck=assessGridDigits(left,right);
+  // Two empty OCR strings are missing evidence, NOT proof of a blank.
+  // A malformed token, one-sided read or missing read object is ineligible.
+  const socialMissing=digitCheck.status==="DIAGNOSTIC_ONLY"&&digitCheck.matchedFields===3&&
+    [left,right].every(pass=>{const raw=pass.find(v=>v.key==="socialInsurance").text;return typeof raw==="string"&&raw.trim()==="";});
+  if(digitCheck.status!=="DIAGNOSTIC_ONLY"||(digitCheck.matchedFields!==4&&!socialMissing))return reject("GRID_AMOUNT_DISAGREEMENT");
+  const candidates=Object.fromEntries(LABELS.filter(({key})=>!socialMissing||key!=="socialInsurance").map(({key})=>[key,gridDigit(left.find(v=>v.key===key).text)]));
   // Explicit full-page contradictions veto recovery, even if the title
   // was unreadable in that full-page pass. Only missing evidence is
   // recoverable. Do not select a crop value over a conflicting text value.
@@ -452,10 +457,10 @@
   }
   if(candidates.salaryGross<=0||candidates.salaryGross>20000000||
      candidates.salaryIncomeReference>candidates.salaryGross||
-     candidates.socialInsurance>candidates.deductionsReference)
+     (!socialMissing&&candidates.socialInsurance>candidates.deductionsReference))
    return reject("GRID_AMOUNT_RELATION");
   return {schema:"furusato-slip-grid-review/v1",status:"REQUIRES_SOURCE_REVIEW",
-   year:header.year,candidates,reasons:[],eligibleForManualTransfer:true,autoApproved:false,originalCompared:false,
+   year:header.year,candidates,reasons:socialMissing?["GRID_SOCIAL_AMOUNT_UNVERIFIED"]:[],eligibleForManualTransfer:!socialMissing,autoApproved:false,originalCompared:false,
    qualityScope:"INCOME_YEAR_AND_FOUR_AMOUNTS_ONLY"};
  }
  return {plan,assessRechecks,planSeparate,agreeSeparate,assessSeparate,planGridPixels,planGridCanvas,assessGridDigits,gridReadVariant,gridCropSize,assessGridHeader,assessGridRecovery};

@@ -24,7 +24,7 @@ function syntheticRasterFile(name,type="image/png",size=1024){
 const doc=new JSDOM(html,{url:"https://local-review.invalid/",runScripts:"outside-only"});
 const win=doc.window,dom=win.document;
 function evaluate(name){win.eval(fs.readFileSync(path.join(dir,name),"utf8"));}
-let external=0,calls=0,closed=0,recheckWrong=false,roiCalls=0,separateMode=false,separateConflict=false,gridMode=false,gridNumericMode=false,gridReadIndex=0,gridParameters=0,gridHeaderMode=false,gridHeaderConflict=false,gridLabelMode=false,gridLabelConflict=false;
+let external=0,calls=0,closed=0,recheckWrong=false,roiCalls=0,separateMode=false,separateConflict=false,gridMode=false,gridNumericMode=false,gridReadIndex=0,gridParameters=0,gridHeaderMode=false,gridHeaderConflict=false,gridLabelMode=false,gridLabelConflict=false,gridSocialBlank=false;
 win.fetch=()=>{external++;throw Error("REMOTE_REQUEST_FORBIDDEN");};
 win.createImageBitmap=async()=>({width:1200,height:800,close(){}});
 const gridDraws=[];
@@ -89,7 +89,7 @@ win.Tesseract={OEM:{LSTM_ONLY:1},createWorker:async()=>{
    }
    if(gridNumericMode&&gridReadIndex++>=2){
     const idx=(gridReadIndex-3)%4;
-    return {data:{text:lines[idx][2].replace("円",""),confidence:95}};
+    return {data:{text:gridSocialBlank&&idx===3?"":lines[idx][2].replace("円",""),confidence:95}};
    }
    return {data:{text:"令和8年分 給与所得の源泉徴収票",confidence:90}};
   }
@@ -261,6 +261,25 @@ async function main(){
    assert.equal(dom.getElementById("result").hidden,true);
   }
  }
+ // Two absent social reads preserve the other amounts but require TWO actions.
+ gridSocialBlank=true;gridLabelConflict=false;gridReadIndex=0;gridParameters=1;
+ file("grid-social-blank.png");await run();
+ assert.equal(transfer.disabled,true);
+ assert.equal(dom.getElementById("slipConfirm").disabled,true);
+ assert.match(dom.getElementById("slipReview").textContent,/未取得（0円未確定）/);
+ assert.match(dom.getElementById("slipReview").textContent,/7,000,000/);
+ const blankButton=dom.getElementById("slipConfirmSocialZero");assert.ok(blankButton);
+ blankButton.click();
+ assert.equal(dom.getElementById("slipConfirm").checked,false);
+ assert.equal(transfer.disabled,false);
+ transfer.click();
+ assert.equal(form.dataset.ocrReviewPending,"true");
+ dom.getElementById("slipConfirm").checked=true;
+ dom.getElementById("slipConfirm").dispatchEvent(new win.Event("change",{bubbles:true}));
+ transfer.click();
+ assert.equal(form.elements.namedItem("socialInsurance").value,"0");
+ assert.equal(form.elements.namedItem("acknowledgedExclusions").checked,false);
+ assert.equal(dom.getElementById("result").hidden,true);
  win.FurusatoOcrRegions.planGridCanvas=originalPlan;
  assert.equal(external,0);
  doc.window.close();

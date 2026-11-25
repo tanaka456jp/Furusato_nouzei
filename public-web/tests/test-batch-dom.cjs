@@ -259,8 +259,9 @@ function type(idx,key,value){
  choose(0,"mortgageSourceApplied").value="286499";win.dispatchEvent(new win.Event("beforeprint"));
  assert.equal(d.querySelector("#batchRows tr .batch-result").textContent,"—");
  assert.ok([...d.querySelectorAll("#batchRows tr:first-child .batch-mortgage-result")].every(x=>x.textContent==="—"));
- // Partial original G26: explicit action, no effect on other recipients.
- reviews[0]={schema:"furusato-positioned-gcodes/v1",year:2025,eligibleForManualTransfer:false,reasons:["CODE_G26_AMOUNT_UNVERIFIED"],candidates:{salaryGross:7000000,salaryIncomeReference:5200000,deductionsReference:630000}};
+ // Partial original G26 and image grid: explicit action, no effect on other recipients.
+ for(const [schema,reason] of [["furusato-positioned-gcodes/v1","CODE_G26_AMOUNT_UNVERIFIED"],["furusato-slip-grid-review/v1","GRID_SOCIAL_AMOUNT_UNVERIFIED"]]){
+ reviews[0]={schema,year:2025,eligibleForManualTransfer:false,reasons:[reason],candidates:{salaryGross:7000000,salaryIncomeReference:5200000,deductionsReference:630000}};
  d.getElementById("batchScan").click();
  for(let n=0;n<12&&d.querySelectorAll("#batchRows tr").length<2;n++)await new Promise(resolve=>setImmediate(resolve));
  assert.equal(choose(0,"socialInsurance").value,"");
@@ -270,6 +271,7 @@ function type(idx,key,value){
  assert.equal(choose(1,"socialInsurance").value,"1000000");
  assert.equal(d.querySelector("#batchRows tr .batch-result").textContent,"—");
  assert.equal(d.querySelector('[data-confirm-social-zero="0"]'),null);
+ }
  win.close();
  console.log("PUBLIC_WEB_EDITABLE_BATCH_DOM_FICTIONAL_NAME_2026_PASS");
 })().catch(e=>{console.error(e);process.exitCode=1;win.close();});

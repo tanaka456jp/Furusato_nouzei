@@ -296,9 +296,10 @@
  // Only the precise partial review with all other required fields present
  // is eligible. Missing/duplicate anchors or any other failure stay HOLD.
  function canConfirmSocialZero(r){
-  return r?.schema==="furusato-positioned-gcodes/v1"&&r.eligibleForManualTransfer===false&&
+  const reason=r?.schema==="furusato-positioned-gcodes/v1"?"CODE_G26_AMOUNT_UNVERIFIED":r?.schema==="furusato-slip-grid-review/v1"?"GRID_SOCIAL_AMOUNT_UNVERIFIED":null;
+  return reason!==null&&r.eligibleForManualTransfer===false&&
    [2025,2026].includes(r.year)&&Array.isArray(r.reasons)&&r.reasons.length===1&&
-   r.reasons[0]==="CODE_G26_AMOUNT_UNVERIFIED"&&r.candidates&&
+   r.reasons[0]===reason&&r.candidates&&
    r.candidates.socialInsurance===undefined&&Object.values(FIELDS).filter(k=>k!=="socialInsurance").every(k=>Number.isSafeInteger(r.candidates[k])&&r.candidates[k]>=0&&r.candidates[k]<=1000000000000);
  }
  function confirmSocialZero(r){

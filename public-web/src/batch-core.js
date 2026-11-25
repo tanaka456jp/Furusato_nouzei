@@ -112,7 +112,8 @@
     safeAmount(review.candidates[k])).map(k=>[k,review.candidates[k]]));
   // Frozen source-year snapshot, separate from editable forecast amounts.
   row.originalCandidates=Object.freeze({...row.candidates});
-  row.socialZeroEligible=review.schema==="furusato-positioned-gcodes/v1"&&review.eligibleForManualTransfer===false&&Array.isArray(review.reasons)&&review.reasons.length===1&&review.reasons[0]==="CODE_G26_AMOUNT_UNVERIFIED"&&review.candidates.socialInsurance===undefined&&FIELDS.filter(k=>k!=="socialInsurance").every(k=>safeAmount(row.originalCandidates[k]));
+  const blankReason=review.schema==="furusato-positioned-gcodes/v1"?"CODE_G26_AMOUNT_UNVERIFIED":review.schema==="furusato-slip-grid-review/v1"?"GRID_SOCIAL_AMOUNT_UNVERIFIED":null;
+  row.socialZeroEligible=blankReason!==null&&review.eligibleForManualTransfer===false&&Array.isArray(review.reasons)&&review.reasons.length===1&&review.reasons[0]===blankReason&&review.candidates.socialInsurance===undefined&&FIELDS.filter(k=>k!=="socialInsurance").every(k=>safeAmount(row.originalCandidates[k]));
   // Partial blank-social rows may retain review-only candidates, but
   // sourceValid, consent and estimate eligibility remain unchanged.
   const optionalReview=review.eligibleForManualTransfer===true||row.socialZeroEligible;

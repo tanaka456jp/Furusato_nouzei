@@ -612,7 +612,7 @@
                   window.FurusatoSlipReview.reviewText(b?.data?.text,true)];
                 const header=regions.assessGridHeader(reads,fullPageReviews);
                 compared.gridHeaderStatus=header.status;
-                if(allowGridRecovery&&header.status==="MATCH"&&compared.gridDigitsMatched===4&&
+                if(allowGridRecovery&&header.status==="MATCH"&&[3,4].includes(compared.gridDigitsMatched)&&
                    grid.labelRectangles?.length===4&&regions.assessGridRecovery){
                   const labels=[];
                   for(const region of grid.labelRectangles){
@@ -633,7 +633,7 @@
                     }finally{crop.width=0;crop.height=0;}
                   }
                   const recovery=regions.assessGridRecovery(grid,reads,labels,digitReads[0],digitReads[1],fullPageReviews);
-                  if(recovery.eligibleForManualTransfer===true)return recovery;
+                  if(recovery.eligibleForManualTransfer===true||window.FurusatoPdfGCodes?.canConfirmSocialZero(recovery))return recovery;
                   compared.reasons=[...(compared.reasons||[]),...recovery.reasons];
                 }
               }catch(_){ensureCurrent();/* diagnostic only */}
@@ -847,6 +847,14 @@
         }
       }
       if(window.FurusatoPdfGCodes?.canConfirmSocialZero(r)&&isAllowedReferenceYear(r.year)){
+        const partial=document.createElement("ul");
+        for(const field of window.FurusatoSlipReview.FIELDS){
+          const li=document.createElement("li");
+          li.textContent=field.label+"："+(field.key==="socialInsurance"?"未取得（0円未確定）":r.candidates[field.key].toLocaleString("ja-JP")+"円");
+          partial.appendChild(li);
+        }
+        report.appendChild(partial);
+        const year=document.createElement("p");year.textContent="所得年："+r.year+"年（原票照合前）";report.appendChild(year);
         const note=document.createElement("p");note.textContent="社会保険料等の欄のみ未取得です。原票を見て本当に空欄（控除対象額なし）であることを確認した場合だけ、次のボタンを押してください。金額が記載されている場合は使用しないでください。";report.appendChild(note);
         const button=document.createElement("button");button.type="button";button.className="secondary";button.id="slipConfirmSocialZero";button.textContent="原票が空欄であることを確認し、0円を設定";
         button.addEventListener("click",function(){
