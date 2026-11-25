@@ -189,4 +189,29 @@ for(const [a,b] of [[blankSocial,falseSocial],[falseSocial,blankSocial],[blankSo
  assert.equal(out.autoApproved,false);
  assert.equal(out.candidates,undefined);
 }
+
+for(const f of [gridFixture(),gridFixture(.8,35,270),gridFixture(1.25,80,470)]){
+ const out=gp(f);assert.equal(out.headerRectangles.length,2);
+ assert.deepEqual(out.headerRectangles.map(v=>[v.key,v.scale]),[["heading",3],["year",5]]);
+ for(const v of out.headerRectangles)assert.ok(v.left>=0&&v.top>=0&&v.left+v.width<=f.w&&v.top+v.height<=f.h);
+}
+const clipped=gp(gridFixture(1,55,80));
+assert.equal(clipped.status,"LAYOUT_ONLY");assert.deepEqual(clipped.headerRectangles,[]);
+const title="給与所得の源泉徴収票";
+const headers=(a,b)=>[{key:"heading",text:a},{key:"year",text:b}];
+const full=[sr.reviewText(""),sr.reviewText("")];
+for(const n of [7,8]){
+ const result=region.assessGridHeader(headers("|令和 |"+n+"| 年分 "+title,"令和｜"+n+"｜年分"),full);
+ assert.deepEqual(result,{status:"MATCH",eligibleForManualTransfer:false,autoApproved:false});
+ assert.equal(result.year,undefined);assert.equal(result.candidates,undefined);
+}
+for(const [a,b] of [["令和6年分"+title,"令和6年分"],["令和9年分"+title,"令和9年分"],["令和10年分"+title,"令和10年分"],["令和7年分"+title,"令和8年分"]])
+ assert.equal(region.assessGridHeader(headers(a,b),full).status,"CONFLICT");
+for(const [a,b] of [["令和7年分退職所得の源泉徴収票","令和7年分"],["令和7年分給与所得の源景徴収票","令和7年分"],["令和7年分"+title+"令和8年分","令和7年分"],["令和7年分"+title,"信和7年分"],["令和7年分"+title,"令和||7年分"],["令和7年分"+title,""]])
+ assert.equal(region.assessGridHeader(headers(a,b),full).status,"UNVERIFIED");
+const matchingHeaders=headers("令和7年分"+title,"令和7年分");
+for(const raw of ["令和6年分 "+title,"令和8年分 "+title,"令和7年分 令和8年分 "+title])
+ assert.equal(region.assessGridHeader(matchingHeaders,[sr.reviewText(raw),full[1]]).status,"CONFLICT");
+assert.equal(region.assessGridHeader(matchingHeaders,[]).status,"UNVERIFIED");
+assert.equal(region.assessGridHeader([matchingHeaders[0],matchingHeaders[0]],full).status,"UNVERIFIED");
 console.log("PUBLIC_OCR_BOUNDED_REGION_RECHECK_SYNTHETIC_PASS; no source accuracy claim");

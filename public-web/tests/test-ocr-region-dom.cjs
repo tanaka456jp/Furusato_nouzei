@@ -24,7 +24,7 @@ function syntheticRasterFile(name,type="image/png",size=1024){
 const doc=new JSDOM(html,{url:"https://local-review.invalid/",runScripts:"outside-only"});
 const win=doc.window,dom=win.document;
 function evaluate(name){win.eval(fs.readFileSync(path.join(dir,name),"utf8"));}
-let external=0,calls=0,closed=0,recheckWrong=false,roiCalls=0,separateMode=false,separateConflict=false,gridMode=false,gridNumericMode=false,gridReadIndex=0,gridParameters=0;
+let external=0,calls=0,closed=0,recheckWrong=false,roiCalls=0,separateMode=false,separateConflict=false,gridMode=false,gridNumericMode=false,gridReadIndex=0,gridParameters=0,gridHeaderMode=false,gridHeaderConflict=false;
 win.fetch=()=>{external++;throw Error("REMOTE_REQUEST_FORBIDDEN");};
 win.createImageBitmap=async()=>({width:1200,height:800,close(){}});
 const gridDraws=[];
@@ -73,11 +73,15 @@ win.Tesseract={OEM:{LSTM_ONLY:1},createWorker:async()=>{
  roiCalls=0;
  return {setParameters:async params=>{
   assert.equal(params.tessedit_pageseg_mode,"7");
-  assert.equal(params.tessedit_char_whitelist,"0123456789,");
+  assert.equal(params.tessedit_char_whitelist,gridHeaderMode&&gridParameters===2?"":"0123456789,");
   gridParameters++;
  },recognize:async(_image,options,output)=>{
   calls++;
   if(gridMode){
+   if(gridHeaderMode&&gridReadIndex>=10){
+    const idx=gridReadIndex++;
+    return {data:{text:idx===10?"|令和|8|年分給与所得の源泉徴収票":gridHeaderConflict?"令和|7|年分":"令和|8|年分",confidence:95}};
+   }
    if(gridNumericMode&&gridReadIndex++>=2){
     const idx=(gridReadIndex-3)%4;
     return {data:{text:lines[idx][2].replace("円",""),confidence:95}};
@@ -207,6 +211,25 @@ async function main(){
  assert.match(dom.getElementById("slipReview").textContent,/4欄中4欄で2回の認識結果が一致/);
  assert.equal(dom.getElementById("slipReview").textContent.includes("7,000,000"),false);
  assert.equal(dom.getElementById("result").hidden,true);
+ gridHeaderMode=true;
+ const numericPlan=win.FurusatoOcrRegions.planGridCanvas;
+ win.FurusatoOcrRegions.planGridCanvas=()=>({...numericPlan(),headerRectangles:[
+  {key:"heading",left:80,top:30,width:200,height:30,scale:3},
+  {key:"year",left:80,top:30,width:90,height:30,scale:5}
+ ]});
+ for(const conflict of [false,true]){
+  gridHeaderConflict=conflict;gridReadIndex=0;gridParameters=1;
+  file("grid-header-"+conflict+".png");
+  const before=calls;
+  await run();
+  assert.equal(calls-before,12);
+  assert.equal(gridParameters,3);
+  assert.equal(transfer.disabled,true);
+  assert.equal(dom.getElementById("slipConfirm").disabled,true);
+  assert.equal(form.elements.namedItem("salaryGross").value,"");
+  assert.equal(dom.getElementById("result").hidden,true);
+  assert.match(dom.getElementById("slipReview").textContent,conflict?/年分の不一致/:/表題・所得年の部分読取：一致/);
+ }
  win.FurusatoOcrRegions.planGridCanvas=originalPlan;
  assert.equal(external,0);
  doc.window.close();

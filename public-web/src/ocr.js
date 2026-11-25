@@ -579,6 +579,33 @@
               const check=regions.assessGridDigits(reads[0],reads[1]);
               if(check.status==="DIAGNOSTIC_ONLY")compared.gridDigitsMatched=check.matchedFields;
             }catch(_){ensureCurrent();/* preserve HOLD even on diagnostic failure */}
+            if(grid.headerRectangles?.length===2&&regions.assessGridHeader){
+              try{
+                ensureCurrent();
+                await worker.setParameters({tessedit_pageseg_mode:"7",tessedit_char_whitelist:""});
+                const reads=[];
+                for(const region of grid.headerRectangles){
+                  ensureCurrent();
+                  const crop=document.createElement("canvas");
+                  try{
+                    const border=20,scale=region.scale;
+                    crop.width=region.width*scale+border*2;crop.height=region.height*scale+border*2;
+                    if(crop.width*crop.height>2000000)throw Error("HEADER_REGION_TOO_LARGE");
+                    const ctx=crop.getContext("2d");
+                    if(!ctx)throw Error("HEADER_REGION_CANVAS_UNAVAILABLE");
+                    ctx.fillStyle="#fff";ctx.fillRect(0,0,crop.width,crop.height);
+                    ctx.drawImage(original,region.left,region.top,region.width,region.height,border,border,region.width*scale,region.height*scale);
+                    const rec=await worker.recognize(crop);
+                    ensureCurrent();
+                    reads.push({key:region.key,text:rec?.data?.text});
+                  }finally{crop.width=0;crop.height=0;}
+                }
+                const header=regions.assessGridHeader(reads,[
+                  window.FurusatoSlipReview.reviewText(a?.data?.text),
+                  window.FurusatoSlipReview.reviewText(b?.data?.text)]);
+                compared.gridHeaderStatus=header.status;
+              }catch(_){ensureCurrent();/* diagnostic only */}
+            }
           }
         }
       }
@@ -776,6 +803,14 @@
           const count=document.createElement("p");
           count.textContent="金額欄の数字再読取：4欄中"+r.gridDigitsMatched+"欄で2回の認識結果が一致（原票との一致や精度は未確認・転記不可）。";
           report.appendChild(count);
+        }
+        if(["MATCH","CONFLICT","UNVERIFIED"].includes(r.gridHeaderStatus)){
+          const heading=document.createElement("p");
+          heading.textContent=r.gridHeaderStatus==="MATCH"?
+            "表題・所得年の部分読取：一致（原票照合前・転記不可）。":
+            r.gridHeaderStatus==="CONFLICT"?"表題・所得年の部分読取：年分の不一致または対応外年分（転記不可）。":
+            "表題・所得年の部分読取：確認できませんでした（転記不可）。";
+          report.appendChild(heading);
         }
       }
       if(window.FurusatoPdfGCodes?.canConfirmSocialZero(r)&&isAllowedReferenceYear(r.year)){

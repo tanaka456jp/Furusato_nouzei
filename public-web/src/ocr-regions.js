@@ -301,10 +301,17 @@
    });
    if(rectangles.some(v=>v.width<20||v.height<12||v.width*v.height>100000||
       v.left<0||v.top<0||v.left+v.width>width||v.top+v.height>height))continue;
-   matches.push(rectangles);
+   // Printed heading geometry is only a diagnostic, not proof of form type.
+   const headerRectangles=[["heading",104,672,-279,-227,3],["year",114,334,-277,-231,5]].map(([key,x1,x2,y1,y2,scale])=>{
+    const left=Math.round(l+w*x1/1080),top=Math.round(t+w*y1/1080);
+    return {key,left,top,width:Math.round(w*(x2-x1)/1080),height:Math.round(w*(y2-y1)/1080),scale};
+   });
+   const safe=headerRectangles.every(v=>v.left>=0&&v.top>=0&&v.width>=40&&v.height>=12&&
+    v.left+v.width<=width&&v.top+v.height<=height&&(v.width*v.scale+40)*(v.height*v.scale+40)<=2000000);
+   matches.push({rectangles,headerRectangles:safe?headerRectangles:[]});
    if(matches.length>1)return gridHold();
   }
-  return matches.length===1?{status:"LAYOUT_ONLY",layoutLocated:true,rectangles:matches[0],
+  return matches.length===1?{status:"LAYOUT_ONLY",layoutLocated:true,...matches[0],
     autoApproved:false,eligibleForManualTransfer:false}:gridHold();
  }
  function planGridCanvas(canvas){
@@ -344,5 +351,27 @@
   }
   return {status:"DIAGNOSTIC_ONLY",matchedFields,eligibleForManualTransfer:false,autoApproved:false};
  }
- return {plan,assessRechecks,planSeparate,agreeSeparate,assessSeparate,planGridPixels,planGridCanvas,assessGridDigits,gridReadVariant};
+ // Exact grammar with at most one vertical rule at each printed boundary.
+ // Never correct a misrecognized character, infer a year or emit candidates.
+ function assessGridHeader(reads,fullPageReviews){
+  const result=status=>({status,eligibleForManualTransfer:false,autoApproved:false});
+  if(!Array.isArray(reads)||reads.length!==2||!Array.isArray(fullPageReviews)||
+     fullPageReviews.length!==2||fullPageReviews.some(v=>!v||typeof v!=="object"))
+   return result("UNVERIFIED");
+  if(fullPageReviews.some(v=>v.yearConflict===true||v.yearUnsupported===true))return result("CONFLICT");
+  const parse=(key,pattern)=>{
+   const a=reads.filter(v=>v?.key===key);
+   if(a.length!==1||typeof a[0].text!=="string"||a[0].text.length>120)return null;
+   const m=pattern.exec(a[0].text.normalize("NFKC").replace(/\s+/g,""));
+   return m?2018+Number(m[1]):null;
+  };
+  const heading=parse("heading",/^\|?令和\|?([1-9][0-9]?)\|?年分\|?給与所得の源泉徴収票\|?$/);
+  const year=parse("year",/^\|?令和\|?([1-9][0-9]?)\|?年分\|?$/);
+  if([heading,year].some(v=>v!==null&&![2025,2026].includes(v))||
+    (heading!==null&&year!==null&&heading!==year))return result("CONFLICT");
+  if(heading===null||year===null)return result("UNVERIFIED");
+  if(fullPageReviews.some(v=>v.year!=null&&v.year!==year))return result("CONFLICT");
+  return result("MATCH");
+ }
+ return {plan,assessRechecks,planSeparate,agreeSeparate,assessSeparate,planGridPixels,planGridCanvas,assessGridDigits,gridReadVariant,assessGridHeader};
 }));
