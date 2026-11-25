@@ -18,7 +18,7 @@
   {key:"socialInsurance",pattern:/^社会保険料等の金額\s*[:：]?\s*(.+)$/}
  ]);
  const AMOUNT=/^(?:0|[1-9][0-9]{0,11}|[1-9][0-9]{0,2}(?:,[0-9]{3}){1,3})\s*(?:円)?$/;
- function clean(v){return String(v??"").normalize("NFKC").replace(/[\t ]+/g," ").trim();}
+ function clean(v){return String(v??"").normalize("NFKC").replace(/[\t ]+/g," ").replace(/([\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]) +(?=[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}])/gu,"$1").trim();}
  function yen(raw){
   const str=clean(raw);
   if(!AMOUNT.test(str))return null;
@@ -95,7 +95,7 @@
     reasons.push("FIELD_RECHECK_MISSING_"+f.key);continue;
    }
    // Never accept additional numbers or words on a cropped line.
-   const text=clean(matches[0].text).replace(/\s+/g,"");
+   const text=clean(matches[0].text);
    const match=f.pattern.exec(text);
    if(!match||yen(match[1])!==expected[f.key]||
       !Number.isFinite(matches[0].confidence)||matches[0].confidence<75)
@@ -163,7 +163,7 @@
    const inCell=lines.filter(l=>l.bbox.y0>=top-1&&l.bbox.y0<bottom&&
       l.bbox.x1>left+2&&l.bbox.x0<right-2);
    if(inCell.length!==1)return fail("REGION_SEPARATE_AMOUNT_NOT_UNIQUE_"+key);
-   const hit=inCell[0],b=hit.bbox,n=yen(compact(hit.str));
+   const hit=inCell[0],b=hit.bbox,n=yen(hit.str);
    if(!valid(b)||b.x0<left||b.x1>right||b.y0<top||b.y1>bottom||
       n===null||used.has(hit)||b.x1-b.x0<8||b.y1-b.y0<6||
       n>(key==="salaryGross"?20000000:100000000))
@@ -202,7 +202,7 @@
   for(const {key} of LABELS){
    const hits=results.filter(r=>r?.key===key);
    if(hits.length!==1||typeof hits[0].text!=="string"||
-      yen(compact(hits[0].text))!==planned.candidates[key]||
+      yen(hits[0].text)!==planned.candidates[key]||
       !Number.isFinite(hits[0].confidence)||hits[0].confidence<75)
     return fail("REGION_SEPARATE_RECHECK_"+key);
   }

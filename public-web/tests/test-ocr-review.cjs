@@ -142,3 +142,18 @@ for(const raw of ["退職所得の源泉徴収票","公的年金等の源泉徴�
  assert.equal(review.compareAttempts(sample+"\n"+raw,sample+"\n"+raw).eligibleForManualTransfer,false);
 }
 console.log("PUBLIC_OCR_SLIP_CONSENSUS_SYNTHETIC_PASS; no real recognition proof; HOLD");
+
+const spaced=["令 和 8 年 分","給与 所 得 の 源泉 徴収 票","支払 金額 7000000","給与 所 得 控除 後 の 金額 5200000","所 得 控除 の 額 の 合計 額 1670000","社会 保険 料 等 の 金額 1000000"].join("\n");
+const matched=review.compareAttempts(spaced,spaced);
+assert.equal(matched.eligibleForManualTransfer,true);
+assert.deepEqual(matched.candidates,a.candidates);
+assert.equal(matched.year,2026);assert.equal(matched.autoApproved,false);
+for(const mutated of [
+ spaced.replace("7000000","7.000.000"),spaced.replace("7000000","7 000000"),
+ spaced.replace("7000000","7,000 000"),spaced.replace("7000000","7,0O0,000"),
+ spaced.replace("支払 金額","支 払 金 頻"),spaced.replace("令 和 8 年 分","令 和 8 0 年 分"),
+ spaced+"\n令 和 7 年 分",spaced+"\n支 払 金 額 7000000",spaced+"\n退 職 所 得 の 源 泉 徴 収 票"
+]){
+ const out=review.compareAttempts(mutated,mutated);
+ assert.equal(out.eligibleForManualTransfer,false);assert.deepEqual(out.candidates,{});
+}

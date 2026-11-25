@@ -350,3 +350,13 @@ assert.ok(trimmedLabel.width<=Math.ceil(gridForRecovery.gridSpan*187/1080));
 assert.equal(region.assessGridRecovery(gridForRecovery,matchingHeaders,lr.map(v=>v.key==="salaryIncomeReference"?{...v,text:v.text+"余分"}:v),digitReads,digitReads,missingReview).eligibleForManualTransfer,false);
 assert.equal(region.assessGridRecovery(gridForRecovery,matchingHeaders,lr.map(v=>v.key==="deductionsReference"?{...v,text:"所得控除の額の合計客"}:v),digitReads,digitReads,missingReview).eligibleForManualTransfer,false);
 console.log("PUBLIC_OCR_BOUNDED_REGION_RECHECK_SYNTHETIC_PASS; no source accuracy claim");
+
+const spacedOutputs=outputs.map(o=>({...o,text:o.text.replace(/([\u4e00-\u9fff])(?=[\u4e00-\u9fff])/g,"$1 ")}));
+assert.equal(region.assessRechecks(spacedOutputs,expected).status,"CORROBORATED");
+assert.equal(region.plan(blocks(l=>({...l,text:l.text.replace(/([\u4e00-\u9fff])(?=[\u4e00-\u9fff])/g,"$1 ")})),1000,1100,expected).status,"READY");
+for(const raw of ["7 000000","7.000.000","7,000 000","7,000\n000"]){
+ hold(region.assessRechecks(outputs.map((o,i)=>i===0?{...o,text:"支 払 金 額 "+raw}:o),expected));
+}
+const spacedAmount=tableBlocks();spacedAmount[0].paragraphs[0].lines[4].text="7 000000";
+assert.equal(region.planSeparate(spacedAmount,1100,1000,read).status,"HOLD");
+assert.equal(region.assessSeparate(amounts.map((v,i)=>i?v:{...v,text:"7 000000"}),plan).status,"HOLD");

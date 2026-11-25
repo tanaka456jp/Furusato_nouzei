@@ -39,7 +39,7 @@ def main():
     args = cli.parse_args()
     dest = Path(__file__).resolve().parent.parent / "qa-fixtures"
     dest.mkdir(exist_ok=True)
-    names = ["06-positive-electronic.pdf", "07-positive-mixed-batch.pdf", "08-positive-image.png"]
+    names = ["06-positive-electronic.pdf", "07-positive-mixed-batch.pdf", "08-positive-image.png", "09-positive-lines.png"]
     if any((dest / n).exists() for n in names):
         raise ValueError("Refuse to overwrite existing QA files")
     with tempfile.TemporaryDirectory() as tmp:
@@ -61,9 +61,20 @@ def main():
                 doc.save(dest/name, garbage=4, deflate=True)
         with fitz.open(dest/names[0]) as doc:
             doc[0].get_pixmap(matrix=fitz.Matrix(2,2)).save(dest/names[2])
+        # A separate, clearly marked same-line positive fixture.
+        with fitz.open() as doc:
+            p = doc.new_page(width=595, height=600)
+            p.insert_font(fontname="jpn", fontfile=str(font))
+            lines = [(40,40,MARK,14), (40,90,YEAR,20), (40,130,TITLE,22)]
+            lines += [(40,210+i*70,label+" "+amount.replace(",",""),20)
+                      for i,(label,amount) in enumerate(zip(LABELS,AMOUNTS))]
+            lines += [(40,560,"SYNTHETIC QA ONLY",14)]
+            for x,y,text,size in lines:
+                p.insert_text((x,y),text,fontname="jpn",fontsize=size)
+            p.get_pixmap(matrix=fitz.Matrix(2,2)).save(dest/names[3])
     for name in names:
         assert 100 < (dest/name).stat().st_size < 8*1024*1024
-    print("MOBILE_POSITIVE_FIXTURES_3_CREATED; fictional only")
+    print("MOBILE_POSITIVE_FIXTURES_4_CREATED; fictional only")
 
 if __name__ == "__main__":
     main()

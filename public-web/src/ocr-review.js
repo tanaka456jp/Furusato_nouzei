@@ -26,7 +26,9 @@
     return String(input == null ? "" : input)
       .normalize("NFKC").replace(/\r\n?/g,"\n")
       .replace(/[\u200b-\u200d\ufeff]/g,"")
-      .replace(/[ \t]+/g," ").trim();
+      .replace(/[ \t]+/g," ")
+      // Join only Japanese-to-Japanese OCR spacing; never digits or punctuation.
+      .replace(/([\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]) +(?=[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}])/gu,"$1").trim();
   }
   function parseYen(text) {
     if (!AMOUNT.test(text)) return null;
