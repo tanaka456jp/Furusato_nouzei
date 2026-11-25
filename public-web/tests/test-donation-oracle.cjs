@@ -1861,3 +1861,47 @@ console.log(JSON.stringify({schema:"web-high-salary-tax-integration/v1",highCase
  assert.deepEqual([scenarios,filingTrials,mortgageTrials,prefixes,holdCases],[48,192,576,192,192]);
  console.log(JSON.stringify({schema:"web-combined-high-salary-tax-boundary-audit/v1",scenarios,filingTrials,mortgageTrials,prefixes,holdCases,excelCOM:false,release:"HOLD"}));
 }
+
+// Independently tabulated adjustment-credit edges: Chofu city (R8 onward)
+// https://www.city.chofu.lg.jp/030010/p014042.html
+// Special-rate table: Ichikawa city (2026-07-29)
+// https://www.city.ichikawa.lg.jp/page/3898.html
+// One ordinary qualifying 20-year-old dependent (national 630k/local 450k)
+// plus 120k new general life premiums (national 40k/60k, local 28k).
+// Personal difference 50k + 180k; life insurance is NOT a personal deduction.
+{
+ const rows=[
+  [1999000,230000,11500],[2000000,230000,11500],
+  [2001000,229000,11450],[2179000,51000,2550],
+  [2180000,50000,2500],[2181000,50000,2500]
+ ];
+ let cases=0;
+ for(const year of [2025,2026])for(const municipality of ["standard","designated"]){
+  const basic=year===2025?630000:670000;
+  const life=year===2025?40000:60000;
+  const shift=year===2025?380000:420000; // 230k + basic excess over 480k
+  const edgeRows=[...rows,[1950000+shift-1000,50000,2500],[1950000+shift,50000,2500],[1950000+shift+1000,50000,2500],
+   [3300000+shift-1000,50000,2500],[3300000+shift,50000,2500],[3300000+shift+1000,50000,2500]];
+  for(const [taxable,basis,credit] of edgeRows){
+   const income=5200000,social=income-908000-taxable;
+   const args={year,salaryIncome:income,socialInsurance:social,municipality,spouse:null,
+    relatives:[{age:20,income:0,eligibilityReviewed:true,cohabitingDirectAscendant:false}],
+    conditions:"salary-basic-social-family-insurance-only-reviewed",
+    premiums:{generalNew:120000,generalOld:0,medicalNew:0,pensionNew:0,pensionOld:0,earthquake:0,longTermOld:0}};
+   const result=familyTax.calculate(args),c=result.calculation;
+   assert.equal(result.status,"ESTIMATE",result.reason);
+   const rateBase=taxable-shift;
+   // Published municipal percentages, with inclusive upper boundaries.
+   const [rate,ratio]=rateBase<=1950000?[5,84895]:rateBase<=3300000?[10,79790]:[20,69580];
+   const shares=municipality==="standard"?[3,2]:[4,1];
+   const bills=shares.map(q=>Number((BigInt(taxable)*BigInt(q)*2n-BigInt(basis)*BigInt(q))/10000n*100n));
+   const limits=bills.map((bill,j)=>2000n+BigInt(bill)*100000n/(BigInt(ratio)*BigInt(shares[j])));
+   const exact=limits.reduce((x,y)=>x<y?x:y,1560000n);
+   assert.deepEqual([c.residentTaxableYen,c.nationalTaxableYen,c.personalDifferenceYen,c.adjustmentBasisYen,c.adjustmentYen,c.residentSpecialBaseYen,c.specialRatePercent,c.specialDenominator,c.city.assessedYen,c.prefecture.assessedYen,c.exactReferenceYen,result.donationLimitYen],
+    [taxable,income-social-basic-630000-life,230000,basis,credit,rateBase,rate,ratio,...bills,Number(exact),Number(exact/1000n*1000n)]);
+   cases++;
+  }
+ }
+ assert.equal(cases,48);
+ console.log("PUBLIC_FAMILY_ADJUSTMENT_CREDIT_AND_SPECIAL_RATE_EDGES_48_PASS; synthetic independent arithmetic; release HOLD");
+}
