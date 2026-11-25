@@ -1905,3 +1905,63 @@ console.log(JSON.stringify({schema:"web-high-salary-tax-integration/v1",highCase
  assert.equal(cases,48);
  console.log("PUBLIC_FAMILY_ADJUSTMENT_CREDIT_AND_SPECIAL_RATE_EDGES_48_PASS; synthetic independent arithmetic; release HOLD");
 }
+
+// Independent rational arithmetic for dense one-yen boundaries, including
+// non-monotone self-pay from tax-base and final levy rounding.
+// NTA No.2260, No.1000; Oamishirasato city combined local-credit rounding.
+// Annual liability difference before withholding/prepayments, NOT cash refund.
+{
+ const cases=[
+  [2025,5200000,1000000,630000],[2026,5200000,1000000,670000],
+  [2025,3560000,750000,680000],[2026,3560000,750000,1040000],
+  [2025,4760000,1340000,680000],[2026,4760000,1340000,1040000]
+ ];
+ const min=(a,b)=>a<b?a:b,max=(a,b)=>a>b?a:b;
+ const floor1000=n=>max(0n,n)/1000n*1000n;
+ const national=n=>{
+  const tax=(min(n,1950000n)*5n+max(0n,min(n,3300000n)-1950000n)*10n+max(0n,n-3300000n)*20n)/100n;
+  return tax+tax*21n/1000n;
+ };
+ function oracle(income,social,basic,municipality,donation){
+  const I=BigInt(income),S=BigInt(social),B=BigInt(basic),D=BigInt(donation),v=D-2000n;
+  const local=floor1000(I-S-430000n),base=local-50000n-(B-480000n),rate=base<=1950000n?5n:base<=3300000n?10n:20n;
+  const ratio=90000n-rate*1021n,adj=min(local,50000n);
+  const parts=(municipality==="standard"?[3n,2n]:[4n,1n]).map(q=>{
+   // 5,000,000 units/yen. Apply the cap to UNROUNDED assessed levy.
+   const raw=(2n*local-adj)*q*50000n;
+   const credit=(v*q*100000n+min(v*q*ratio*10n,raw/5n)+4999999n)/5000000n;
+   const before=raw/500000000n*100n,after=max(0n,raw-credit*5000000n)/500000000n*100n;
+   return {credit:Number(credit),before:Number(before),after:Number(after),saving:Number(before-after)};
+  });
+  const ns=national(floor1000(I-S-B))-national(floor1000(I-S-B-v));
+  const self=Number(D-ns)-parts.reduce((a,b)=>a+b.saving,0);
+  return {parts,ns:Number(ns),self};
+ }
+ let trials=0,nonMonotone=0,thresholds=0;
+ for(const [year,income,social,basic] of cases)for(const municipality of ["standard","designated"]){
+  const input={year,salaryIncome:income,socialInsurance:social,municipality,conditions:"basic-only-reviewed"};
+  const familyInput={...input,conditions:"salary-basic-social-family-only-reviewed",spouse:null,relatives:[]};
+  const ref=local.oneStopReference(input);
+  assert.equal(ref.status,"ESTIMATE");
+  const cap=ref.calculation.exactReferenceYen;
+  const sample=new Set();
+  for(const center of [2000,3000,4000,cap,Math.floor(cap/1000)*1000,Math.floor(cap/1000)*1000+1000])
+   for(let d=Math.max(2000,center-15);d<=center+15;d++)sample.add(d);
+  let previous=null;
+  for(const d of [...sample].sort((a,b)=>a-b)){
+   const expected=oracle(income,social,basic,municipality,d);
+   for(const result of [local.filingTrial(input,d),familyTax.filingTrial(familyInput,d)]){
+    assert.equal(result.status,"ESTIMATE",result.reason);
+    const c=result.calculation;
+    assert.deepEqual([c.nationalSavingYen,c.city.creditYen,c.prefecture.creditYen,c.city.afterYen,c.prefecture.afterYen,c.selfPayYen,c.within2000,c.excessOver2000Yen],
+     [expected.ns,...expected.parts.map(p=>p.credit),...expected.parts.map(p=>p.after),expected.self,expected.self<=2000,Math.max(0,expected.self-2000)]);
+   }
+   if(previous&&d===previous.d+1&&previous.self>2000&&expected.self<=2000)nonMonotone++;
+   if(expected.self===1999||expected.self===2000||expected.self===2001)thresholds++;
+   previous={d,self:expected.self};trials++;
+  }
+ }
+ assert.ok(nonMonotone>0,"rounding can restore the <=2000 condition");
+ assert.ok(thresholds>0);
+ console.log(JSON.stringify({schema:"web-filing-dense-yen-edges/v1",trials,nonMonotone,thresholds,actualCashRefundCertified:false,release:"HOLD"}));
+}

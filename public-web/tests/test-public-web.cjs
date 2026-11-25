@@ -571,6 +571,7 @@ field("targetInsurance_otherClaimUnder23").checked=true;
 field("familyReviewed").checked=true;field("insuranceReviewed").checked=true;field("acknowledgedExclusions").checked=true;
 rawSubmit();assert.equal(view.className,"result",view.textContent);
 assert.match(view.textContent,/特例：適用/);
+assert.match(view.textContent,/実際の納付・還付額とは異なります/);
 const sharedChildValues=Object.fromEntries([...view.querySelectorAll("details dt")].map(dt=>[dt.textContent,dt.nextElementSibling.textContent]));
 assert.equal(sharedChildValues["生命保険料控除（所得税）"],"60,000円");
 assert.equal(sharedChildValues["生命保険料控除（住民税）"],"28,000円");

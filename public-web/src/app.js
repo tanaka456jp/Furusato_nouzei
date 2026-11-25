@@ -642,6 +642,7 @@
        ["実質自己負担見込額",t.selfPayYen],["2,000円超過額",t.excessOver2000Yen]]
        .forEach(function(p){add("dt",tdl,p[0]);add("dd",tdl,yen(p[1]));});
     }else add("p",trial,"任意寄附額の試算：HOLD");
+    add("p",trial,"確定申告の参考上限は千円刻みで最初に自己負担2,000円を超えた手前までの額です。端数処理により、その後の寄附額で2,000円以内に戻る場合があります。所得税等の比較は源泉徴収税額・予定納税額を差し引く前の年税額差であり、実際の納付・還付額とは異なります。","muted");
     var print=add("button",output,"この結果を印刷・PDF保存","secondary");print.type="button";
     print.addEventListener("click",function(){if(checkPrintableSnapshot())window.print();});
   }
@@ -770,7 +771,7 @@
            ["2,000円超過額",t.excessOver2000Yen]]
             .forEach(function(pair){add("dt",trialDl,pair[0]);add("dd",trialDl,yen(pair[1]));});
         }else add("p",filingSection,"任意寄附額の試算：HOLD（"+trial.reason+"）");
-        add("p",filingSection,"千円刻みで最初の超過まで確認した参考値です。住民税の端数等により自己負担が2,000円未満となる試算もあります。住宅ローン控除等は未対応です。確定額ではありません。","muted");
+        add("p",filingSection,"確定申告の参考上限は千円刻みで最初に自己負担2,000円を超えた手前までの額です。端数処理により、その後の寄附額で2,000円以内に戻る場合があります。所得税等の比較は源泉徴収税額・予定納税額を差し引く前の年税額差であり、実際の納付・還付額とは異なります。住宅ローン控除等は未対応です。確定額ではありません。","muted");
       }else add("p",filingSection,"確定申告比較：HOLD");
     }else add("p",filingSection,"確定申告比較：HOLD");
     add("p", details, "所得年 " + result.year +
