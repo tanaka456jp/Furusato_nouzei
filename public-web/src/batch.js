@@ -304,6 +304,14 @@
   render();
  }
  clear.addEventListener("click",reset);
+ // History restoration is a fresh session: discard rows and cancel
+ // pending reads. Generation checks also reject late OCR completions.
+ function clearHistorySession(){
+  document.body.classList.remove("batch-print");
+  reset();
+ }
+ window.addEventListener("pagehide",clearHistorySession);
+ window.addEventListener("pageshow",event=>{if(event.persisted===true)clearHistorySession();});
  input.addEventListener("change",()=>{
   generation++;
   if(running)reader.cancel();
@@ -503,12 +511,13 @@
   if(!validOutput())return;
   const blob=new Blob([core.csv(rows)],{type:"text/csv;charset=utf-8"});
   const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
   try{
-   const a=document.createElement("a");
    a.href=url;a.download="furusato_batch_review.csv";
-   a.style.display="none";document.body.appendChild(a);
-   a.click();a.remove();
+   a.hidden=true;document.body.appendChild(a);
+   a.click();
   }finally{
+   a.remove();
    setTimeout(()=>URL.revokeObjectURL(url),1000);
   }
  });

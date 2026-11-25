@@ -959,5 +959,25 @@ assert.equal(member("age").value,"16");assert.equal(originalMember("age").value,
 assert.equal(field("familyReviewed").checked,false);assert.equal(field("forecastReviewed").checked,false);
 originalMember("age").value="130";document.getElementById("copySourceFamily").click();assert.equal(member("age").value,"16");
 form.reset();
-dom.window.close();
+// Simulate page lifecycle without claiming physical browser BFCache evidence.
+function historyEvent(type,persisted){
+ const ev=new dom.window.Event(type);Object.defineProperty(ev,"persisted",{value:persisted});
+ dom.window.dispatchEvent(ev);
+}
+for(const type of ["pagehide","pageshow"]){
+ field("year").value="2026";field("municipality").value="standard";
+ field("salaryGross").value="7000000";field("socialInsurance").value="1000000";
+ field("acknowledgedExclusions").checked=true;rawSubmit();
+ assert.equal(view.className,"result");assert.equal(view.hidden,false);
+ form.dataset.ocrOriginalGross="7000000";
+ historyEvent(type,true);
+ assert.equal(field("salaryGross").value,"");
+ assert.equal(field("socialInsurance").value,"");
+ assert.equal(field("acknowledgedExclusions").checked,false);
+ assert.equal(form.dataset.ocrOriginalGross,undefined);
+ assert.equal(view.hidden,true);assert.equal(view.textContent,"");
+}
+field("salaryGross").value="7000000";historyEvent("pageshow",false);
+assert.equal(field("salaryGross").value,"7000000");
+form.reset();dom.window.close();
 console.log("PUBLIC_WEB_STATIC_AND_BROWSER_SYNTHETIC_PASS; no network; ads off; deploy off");

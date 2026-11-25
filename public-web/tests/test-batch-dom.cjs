@@ -289,6 +289,19 @@ function type(idx,key,value){
  assert.equal(d.querySelector("#batchRows tr .batch-result").textContent,"—");
  assert.equal(d.querySelector('[data-confirm-social-zero="0"]'),null);
  }
+ // History restoration must not re-expose rows, labels or derived values.
+ const historyEvent=(type,persisted)=>{const ev=new win.Event(type);Object.defineProperty(ev,"persisted",{value:persisted});win.dispatchEvent(ev);};
+ change(0,"label","SYNTHETIC_HISTORY_LABEL");
+ historyEvent("pageshow",false);
+ assert.equal(choose(0,"label").value,"SYNTHETIC_HISTORY_LABEL");
+ historyEvent("pagehide",true);
+ assert.equal(d.querySelectorAll("#batchRows tr[data-page]").length,0);
+ assert.equal(d.querySelector('#batchRows [data-field="label"]'),null);
+ assert.equal(d.getElementById("batchDownload").disabled,true);
+ assert.equal(d.getElementById("batchPrint").disabled,true);
+ assert.equal(d.getElementById("batchPdf").value,"");
+ historyEvent("pageshow",true);
+ assert.equal(d.querySelector('#batchRows [data-field="label"]'),null);
  win.close();
  console.log("PUBLIC_WEB_EDITABLE_BATCH_DOM_FICTIONAL_NAME_2026_PASS");
 })().catch(e=>{console.error(e);process.exitCode=1;win.close();});

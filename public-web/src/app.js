@@ -1099,4 +1099,17 @@
     output.hidden = true;
     output.className = "result";
   });
+  // Browser history may keep the entire live page in BFCache even though
+  // the application never writes taxpayer data to persistent storage.
+  // A restored page must start a new session, not resurrect old consent.
+  function clearHistorySession(){
+    printDetails=null;printDetailsWasOpen=false;
+    form.reset();
+    // Native reset also restores the file field, but explicit clearing
+    // avoids relying on browser-specific file restoration behaviour.
+    var file=document.getElementById("slipFile");if(file)file.value="";
+    invalidateEstimate();
+  }
+  window.addEventListener("pagehide",clearHistorySession);
+  window.addEventListener("pageshow",function(event){if(event.persisted===true)clearHistorySession();});
 }());
