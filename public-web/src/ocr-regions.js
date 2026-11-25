@@ -270,16 +270,34 @@
       ![0,210,452,662,872,1080].every(v=>vertical(v,ys[3],ys[5]))||
       ![166,420,639].every(v=>vertical(v,ys[1],ys[2]))||
       !vertical(232,ys[4],ys[5]))continue;
-   const inset=Math.max(4,Math.ceil(w*.006));
+   // Verify the inner-note/total dividers, not just the outer bands.
+   // The salary and social-insurance totals are BELOW their half rules.
+   function innerRule(x1,x2,y1,y2){
+    const lo=Math.ceil(l+w*x1/1080)+4,hi=Math.floor(l+w*x2/1080)-4;
+    const mid=(y1+y2)/2,found=[];
+    for(let y=Math.max(y1+2,Math.floor(mid-tol));y<=Math.min(y2-2,Math.ceil(mid+tol));y++){
+     let ink=0;
+     for(let x=lo;x<=hi;x++)if(dark(x,y))ink++;
+     if(hi>=lo&&ink/(hi-lo+1)>=.94)found.push(y);
+    }
+    if(!found.length||found[found.length-1]-found[0]+1!==found.length||found.length>thick+1)return null;
+    return found[found.length-1];
+   }
+   const grossDivider=innerRule(144,397,ys[1],ys[2]);
+   const socialDivider=innerRule(210,452,ys[4],ys[5]);
+   if(grossDivider===null||socialDivider===null)continue;
+   // Small right inset preserves right-aligned terminal digits. Wider
+   // left margin avoids the adjacent printed slot identifiers.
+   const leftInset=Math.max(3,Math.round(w*.004)),edge=Math.max(1,Math.round(w*.001));
    const specs=[
-    ["salaryGross",166,397,1,2],
-    ["salaryIncomeReference",420,618,1,2],
-    ["deductionsReference",639,838,1,2],
-    ["socialInsurance",232,452,4,5]
+    ["salaryGross",166,397,grossDivider,ys[2]],
+    ["salaryIncomeReference",420,618,ys[1],ys[2]],
+    ["deductionsReference",639,838,ys[1],ys[2]],
+    ["socialInsurance",232,452,socialDivider,ys[5]]
    ];
    const rectangles=specs.map(([key,x1,x2,y1,y2])=>{
-    const left=Math.ceil(l+w*x1/1080)+inset,top=ys[y1]+inset;
-    return {key,left,top,width:Math.floor(l+w*x2/1080)-inset-left,height:ys[y2]-inset-top};
+    const left=Math.ceil(l+w*x1/1080)+leftInset,top=y1+edge+1;
+    return {key,left,top,width:Math.floor(l+w*x2/1080)-edge-left,height:y2-edge-top};
    });
    if(rectangles.some(v=>v.width<20||v.height<12||v.width*v.height>100000||
       v.left<0||v.top<0||v.left+v.width>width||v.top+v.height>height))continue;
@@ -298,5 +316,25 @@
    return planGridPixels(ctx.getImageData(0,0,canvas.width,canvas.height).data,canvas.width,canvas.height);
   }catch(_){return gridHold();}
  }
- return {plan,assessRechecks,planSeparate,agreeSeparate,assessSeparate,planGridPixels,planGridCanvas};
+ // Diagnostic only. Never join separate digit strings or infer zero from
+ // a blank. Counts deliberately omit all recognized amounts and confidence.
+ function gridDigit(raw){
+  if(typeof raw!=="string"||raw.length>80)return null;
+  const s=raw.normalize("NFKC").trim().replace(/[ \t]*,[ \t]*/g,",");
+  if(!/^(?:0|[1-9][0-9]{0,8}|[1-9][0-9]{0,2}(?:,[0-9]{3}){1,2})$/.test(s))return null;
+  const n=Number(s.replace(/,/g,""));
+  return Number.isSafeInteger(n)&&n>=0&&n<=100000000? n:null;
+ }
+ function assessGridDigits(left,right){
+  if(!Array.isArray(left)||!Array.isArray(right)||left.length!==4||right.length!==4||
+     !LABELS.every(({key})=>left.filter(v=>v?.key===key).length===1&&right.filter(v=>v?.key===key).length===1))
+   return {status:"HOLD",matchedFields:0,eligibleForManualTransfer:false,autoApproved:false};
+  let matchedFields=0;
+  for(const {key} of LABELS){
+   const a=gridDigit(left.find(v=>v.key===key).text),b=gridDigit(right.find(v=>v.key===key).text);
+   if(a!==null&&a===b)matchedFields++;
+  }
+  return {status:"DIAGNOSTIC_ONLY",matchedFields,eligibleForManualTransfer:false,autoApproved:false};
+ }
+ return {plan,assessRechecks,planSeparate,agreeSeparate,assessSeparate,planGridPixels,planGridCanvas,assessGridDigits};
 }));

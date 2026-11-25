@@ -112,7 +112,7 @@ for(const bad of [amounts.slice(1),amounts.map((x,i)=>i?x:{...x,text:"7,100,000�
 
 // Rule-only synthetic grid. No source pixels, private amounts or text.
 // The geometry alone must not produce any candidate or approve transfer.
-function gridFixture(scale=1,left=55,top=350,broken=false,twice=false){
+function gridFixture(scale=1,left=55,top=350,broken=false,twice=false,missingInner=false){
  const w=Math.round(1190*scale),h=Math.round(1684*scale);
  const W=Math.round(1080*scale),data=new Uint8ClampedArray(w*h*4);
  data.fill(255);
@@ -121,6 +121,8 @@ function gridFixture(scale=1,left=55,top=350,broken=false,twice=false){
   const Y=v=>y0+Math.round(v*scale),X=v=>left+Math.round(v*scale);
   for(const v of [0,32,96,192,212,276])
    for(let x=left;x<=left+W;x++)dark(x,Y(v));
+  if(!missingInner)for(const [a,b,y] of [[144,397,64],[210,452,244]])
+   for(let x=X(a);x<=X(b);x++)dark(x,Y(y));
   for(const [x,a,b] of [
    ...[0,144,397,618,838,1080].map(x=>[x,0,96]),
    ...[0,210,452,662,872,1080].map(x=>[x,192,276]),
@@ -142,8 +144,11 @@ for(const [scale,left,top] of [[1,55,350],[.8,35,270],[1.25,80,470],[1,75,490]])
  assert.equal(out.eligibleForManualTransfer,false);assert.equal(out.autoApproved,false);
  assert.equal(out.candidates,undefined);assert.equal(out.year,undefined);
  for(const box of out.rectangles)assert.ok(box.left>=0&&box.top>=0&&box.left+box.width<=f.w&&box.top+box.height<=f.h);
+ assert.ok(out.rectangles[0].top>top+Math.round(64*scale));
+ assert.ok(out.rectangles[3].top>top+Math.round(244*scale));
+ assert.ok(out.rectangles[0].left+out.rectangles[0].width>=left+Math.round(397*scale)-2);
 }
-for(const f of [gridFixture(1,55,350,true),gridFixture(1,55,350,false,true)]){
+for(const f of [gridFixture(1,55,350,true),gridFixture(1,55,350,false,true),gridFixture(1,55,350,false,false,true)]){
  const out=gp(f);assert.equal(out.status,"HOLD");assert.deepEqual(out.rectangles,[]);
  assert.equal(out.eligibleForManualTransfer,false);
 }
@@ -154,4 +159,18 @@ assert.equal(region.planGridPixels(new Uint8Array(10),1000,1000).status,"HOLD");
 assert.equal(region.planGridPixels(new Uint8Array(10),1000000,1000000).status,"HOLD");
 assert.equal(region.planGridCanvas(null).status,"HOLD");
 
+
+const digitReads=labels.map(([key,,n])=>({key,text:String(n)}));
+const gd=region.assessGridDigits(digitReads,digitReads);
+assert.deepEqual(gd,{status:"DIAGNOSTIC_ONLY",matchedFields:4,eligibleForManualTransfer:false,autoApproved:false});
+for(const invalid of [""," ","1 234","1\n234","1,23","1,234円","-1","01","1e3","1,234 567","1,234,56","999999999"]){
+ const bad=digitReads.map((v,i)=>i===0?{...v,text:invalid}:v);
+ assert.equal(region.assessGridDigits(bad,bad).matchedFields,3);
+}
+const mismatch=digitReads.map((v,i)=>i===0?{...v,text:"123"}:v);
+assert.equal(region.assessGridDigits(digitReads,mismatch).matchedFields,3);
+assert.equal(region.assessGridDigits(digitReads.slice(1),digitReads).status,"HOLD");
+assert.equal(region.assessGridDigits([...digitReads.slice(1),digitReads[1]],digitReads).status,"HOLD");
+const spaced=digitReads.map((v,i)=>i===0?{...v,text:"７, ０００, ０００"}:v);
+assert.equal(region.assessGridDigits(digitReads,spaced).matchedFields,4);
 console.log("PUBLIC_OCR_BOUNDED_REGION_RECHECK_SYNTHETIC_PASS; no source accuracy claim");

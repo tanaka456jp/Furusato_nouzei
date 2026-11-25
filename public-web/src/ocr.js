@@ -545,7 +545,39 @@
       // crop coordinates or a guessed year. Do not retain pixel data/boxes.
       if(!compared.eligibleForManualTransfer&&regions?.planGridCanvas){
         const grid=regions.planGridCanvas(original);
-        if(grid.layoutLocated===true)compared.gridLayoutLocated=true;
+        if(grid.layoutLocated===true){
+          compared.gridLayoutLocated=true;
+          // Last, bounded diagnostic stage. The worker is terminated in
+          // finally; these parameters cannot affect later whole-page reads.
+          if(grid.rectangles?.length===4&&typeof worker.setParameters==="function"&&regions.assessGridDigits){
+            try{
+              ensureCurrent();
+              await worker.setParameters({tessedit_pageseg_mode:"7",tessedit_char_whitelist:"0123456789,"});
+              const reads=[];
+              for(const source of [original,enhanced]){
+                const values=[];
+                for(const region of grid.rectangles){
+                  ensureCurrent();
+                  const crop=document.createElement("canvas");
+                  try{
+                    const border=20,scale=3;
+                    crop.width=region.width*scale+border*2;crop.height=region.height*scale+border*2;
+                    const ctx=crop.getContext("2d");
+                    if(!ctx)throw Error("FIELD_REGION_CANVAS_UNAVAILABLE");
+                    ctx.fillStyle="#fff";ctx.fillRect(0,0,crop.width,crop.height);
+                    ctx.drawImage(source,region.left,region.top,region.width,region.height,border,border,region.width*scale,region.height*scale);
+                    const rec=await worker.recognize(crop);
+                    ensureCurrent();
+                    values.push({key:region.key,text:rec?.data?.text});
+                  }finally{crop.width=0;crop.height=0;}
+                }
+                reads.push(values);
+              }
+              const check=regions.assessGridDigits(reads[0],reads[1]);
+              if(check.status==="DIAGNOSTIC_ONLY")compared.gridDigitsMatched=check.matchedFields;
+            }catch(_){ensureCurrent();/* preserve HOLD even on diagnostic failure */}
+          }
+        }
       }
       return compared;
     }finally{
@@ -737,6 +769,11 @@
         const note=document.createElement("p");
         note.textContent="一部の罫線配置は一致しましたが、年分・項目名・金額の確認ができないため転記しません。原票を見て手入力するか、電子PDFを指定してください。";
         report.appendChild(note);
+        if(Number.isInteger(r.gridDigitsMatched)&&r.gridDigitsMatched>=0&&r.gridDigitsMatched<=4){
+          const count=document.createElement("p");
+          count.textContent="金額欄の数字再読取：4欄中"+r.gridDigitsMatched+"欄で2回の認識結果が一致（原票との一致や精度は未確認・転記不可）。";
+          report.appendChild(count);
+        }
       }
       if(window.FurusatoPdfGCodes?.canConfirmSocialZero(r)&&isAllowedReferenceYear(r.year)){
         const note=document.createElement("p");note.textContent="社会保険料等の欄のみ未取得です。原票を見て本当に空欄（控除対象額なし）であることを確認した場合だけ、次のボタンを押してください。金額が記載されている場合は使用しないでください。";report.appendChild(note);
