@@ -214,4 +214,35 @@ for(const raw of ["令和6年分 "+title,"令和8年分 "+title,"令和7年分 �
  assert.equal(region.assessGridHeader(matchingHeaders,[sr.reviewText(raw),full[1]]).status,"CONFLICT");
 assert.equal(region.assessGridHeader(matchingHeaders,[]).status,"UNVERIFIED");
 assert.equal(region.assessGridHeader([matchingHeaders[0],matchingHeaders[0]],full).status,"UNVERIFIED");
+
+const gridForRecovery=gp(gridFixture());
+assert.equal(gridForRecovery.labelRectangles.length,4);
+for(const box of gridForRecovery.labelRectangles)assert.ok(box.left>=0&&box.top>=0&&box.width>0&&box.height>0);
+const lr=[{key:"salaryGross",text:"支払金額"},{key:"salaryIncomeReference",text:"給与所得控除後の金額（調整控除後）"},{key:"deductionsReference",text:"所得控除の額の合計額"},{key:"socialInsurance",text:"社会保険料等の金額"}];
+const missingReview=[sr.reviewText("",true),sr.reviewText("",true)];
+const recover=(grid=gridForRecovery,h=matchingHeaders,l=lr,a=digitReads,b=digitReads,p=missingReview)=>region.assessGridRecovery(grid,h,l,a,b,p);
+const positive=recover();
+assert.equal(positive.eligibleForManualTransfer,true);assert.equal(positive.year,2025);
+assert.equal(positive.autoApproved,false);assert.equal(positive.originalCompared,false);
+assert.deepEqual(positive.candidates,Object.fromEntries(labels.map(([k,,n])=>[k,n])));
+assert.equal(positive.optionalCandidates,undefined);assert.equal(positive.sourceIndicators,undefined);
+const fullNeg=[sr.reviewText("支払金額 123",true),missingReview[1]];
+assert.equal(fullNeg[0].candidates.salaryGross,undefined);
+assert.equal(fullNeg[0].observedCandidates.salaryGross,123);
+const negatives=[
+ recover({...gridForRecovery,labelRectangles:[]}),
+ recover(undefined,headers("令和7年分"+title,"令和8年分")),
+ recover(undefined,undefined,lr.map((x,i)=>i===0?{...x,text:"源泉徴収税額"}:x)),
+ recover(undefined,undefined,lr.slice(0,3)),
+ recover(undefined,undefined,lr.map((x,i)=>i===3?{...x,text:"社会保険料等の金客"}:x)),
+ recover(undefined,undefined,lr,blankSocial,blankSocial),
+ recover(undefined,undefined,lr,digitReads,mismatch),
+ recover(undefined,undefined,lr,digitReads,digitReads,fullNeg),
+ recover(undefined,undefined,lr,digitReads,digitReads,[sr.reviewText("令和8年分",true),missingReview[1]]),
+ recover(undefined,undefined,lr,digitReads,digitReads,[sr.reviewText("退職所得の源泉徴収票",true),missingReview[1]]),
+ recover(undefined,undefined,lr,digitReads,digitReads,[sr.reviewText("支払金額 123\n支払金額 123",true),missingReview[1]]),
+ recover(undefined,undefined,lr,digitReads,digitReads,[sr.reviewText("支払金額 1O0",true),missingReview[1]]),
+ recover(undefined,undefined,lr,digitReads.map(x=>x.key==="salaryGross"?{...x,text:"20000001"}:x),digitReads.map(x=>x.key==="salaryGross"?{...x,text:"20000001"}:x))
+];
+for(const bad of negatives){assert.equal(bad.eligibleForManualTransfer,false);assert.equal(bad.autoApproved,false);assert.deepEqual(bad.candidates,{});assert.equal(bad.year,null);}
 console.log("PUBLIC_OCR_BOUNDED_REGION_RECHECK_SYNTHETIC_PASS; no source accuracy claim");

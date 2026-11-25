@@ -215,7 +215,7 @@
  // A narrowly scoped geometry probe of the code-layer form's two amount
  // bands. Coordinates are dimensionless printed-rule ratios, NOT a year
  // identifier or a verified document type. A similar grid may be unrelated.
- // This diagnostic can NEVER enable transfer, infer zero, or emit money.
+ // Geometry alone can NEVER enable transfer, infer zero, or emit money.
  const gridHold=()=>({status:"HOLD",rectangles:[],layoutLocated:false,autoApproved:false,eligibleForManualTransfer:false});
  function planGridPixels(data,width,height){
   if(!Number.isSafeInteger(width)||!Number.isSafeInteger(height)||
@@ -308,7 +308,20 @@
    });
    const safe=headerRectangles.every(v=>v.left>=0&&v.top>=0&&v.width>=40&&v.height>=12&&
     v.left+v.width<=width&&v.top+v.height<=height&&(v.width*v.scale+40)*(v.height*v.scale+40)<=2000000);
-   matches.push({rectangles,headerRectangles:safe?headerRectangles:[]});
+   // Printed label crops anchored to the same rule geometry. The exact
+   // words must be recognized; no approximate match or inferred label.
+   const labelRectangles=[
+    ["salaryGross",244,300,8,27,4],
+    ["salaryIncomeReference",409,608,8,27,4],
+    ["deductionsReference",665,793,7,27,2],
+    ["socialInsurance",273,391,193,211,2]
+   ].map(([key,x1,x2,y1,y2,scale])=>({
+    key,left:Math.round(l+w*x1/1080),top:Math.round(t+w*y1/1080),
+    width:Math.round(w*(x2-x1)/1080),height:Math.round(w*(y2-y1)/1080),scale
+   }));
+   const labelsSafe=labelRectangles.every(v=>v.left>=0&&v.top>=0&&v.width>=25&&v.height>=10&&
+    v.left+v.width<=width&&v.top+v.height<=height&&(v.width*v.scale+40)*(v.height*v.scale+40)<=1000000);
+   matches.push({rectangles,headerRectangles:safe?headerRectangles:[],labelRectangles:labelsSafe?labelRectangles:[]});
    if(matches.length>1)return gridHold();
   }
   return matches.length===1?{status:"LAYOUT_ONLY",layoutLocated:true,...matches[0],
@@ -353,7 +366,7 @@
  }
  // Exact grammar with at most one vertical rule at each printed boundary.
  // Never correct a misrecognized character, infer a year or emit candidates.
- function assessGridHeader(reads,fullPageReviews){
+ function gridHeaderEvidence(reads,fullPageReviews){
   const result=status=>({status,eligibleForManualTransfer:false,autoApproved:false});
   if(!Array.isArray(reads)||reads.length!==2||!Array.isArray(fullPageReviews)||
      fullPageReviews.length!==2||fullPageReviews.some(v=>!v||typeof v!=="object"))
@@ -370,8 +383,56 @@
   if([heading,year].some(v=>v!==null&&![2025,2026].includes(v))||
     (heading!==null&&year!==null&&heading!==year))return result("CONFLICT");
   if(heading===null||year===null)return result("UNVERIFIED");
-  if(fullPageReviews.some(v=>v.year!=null&&v.year!==year))return result("CONFLICT");
-  return result("MATCH");
+  if(fullPageReviews.some(v=>(v.observedYear!=null&&v.observedYear!==year)||(v.year!=null&&v.year!==year)||v.documentTypeConflict===true))return result("CONFLICT");
+  return {...result("MATCH"),year};
  }
- return {plan,assessRechecks,planSeparate,agreeSeparate,assessSeparate,planGridPixels,planGridCanvas,assessGridDigits,gridReadVariant,assessGridHeader};
+ function assessGridHeader(reads,fullPageReviews){
+  const {year,...diagnostic}=gridHeaderEvidence(reads,fullPageReviews);
+  return diagnostic;
+ }
+ // Complete candidate review, separate from diagnostic-only APIs.
+ // Correlated reads are NOT independent truth. Every candidate still
+ // requires original comparison and the existing tax/source review gates.
+ function assessGridRecovery(grid,headers,labels,left,right,fullPageReviews){
+  const reject=reason=>({schema:"furusato-slip-grid-review/v1",status:"REQUIRES_SOURCE_REVIEW",
+   year:null,candidates:{},reasons:[reason],eligibleForManualTransfer:false,autoApproved:false,originalCompared:false});
+  if(grid?.status!=="LAYOUT_ONLY"||grid.layoutLocated!==true||
+     grid.rectangles?.length!==4||grid.headerRectangles?.length!==2||grid.labelRectangles?.length!==4||
+     !LABELS.every(f=>grid.rectangles.filter(v=>v?.key===f.key).length===1&&grid.labelRectangles.filter(v=>v?.key===f.key).length===1))
+   return reject("GRID_LAYOUT_UNVERIFIED");
+  const header=gridHeaderEvidence(headers,fullPageReviews);
+  if(header.status!=="MATCH")return reject("GRID_HEADER_UNVERIFIED");
+  const expected={
+   salaryGross:/^支払金額$/,
+   salaryIncomeReference:/^給与所得控除後の金額(?:\(調整控除後\))?$/,
+   deductionsReference:/^所得控除の額の合計額$/,
+   socialInsurance:/^社会保険料等の金額$/
+  };
+  if(!Array.isArray(labels)||labels.length!==4)return reject("GRID_LABELS_UNVERIFIED");
+  for(const {key} of LABELS){
+   const a=labels.filter(v=>v?.key===key);
+   if(a.length!==1||typeof a[0].text!=="string"||a[0].text.length>120||
+      !expected[key].test(compact(a[0].text)))return reject("GRID_LABEL_UNVERIFIED_"+key);
+  }
+  if(assessGridDigits(left,right).matchedFields!==4)return reject("GRID_AMOUNT_DISAGREEMENT");
+  const candidates=Object.fromEntries(LABELS.map(({key})=>[key,gridDigit(left.find(v=>v.key===key).text)]));
+  // Explicit full-page contradictions veto recovery, even if the title
+  // was unreadable in that full-page pass. Only missing evidence is
+  // recoverable. Do not select a crop value over a conflicting text value.
+  for(const review of fullPageReviews){
+   if(!Array.isArray(review.reasons)||review.reasons.some(s=>!(/^(?:DOCUMENT_TITLE_UNVERIFIED|DOCUMENT_YEAR_UNVERIFIED|FIELD_MISSING_[A-Za-z]+)$/.test(s))))
+    return reject("GRID_FULL_PAGE_CONFLICT");
+   for(const [key,n] of Object.entries(review.observedCandidates||review.candidates||{})){
+    if(candidates[key]!==n)return reject("GRID_FULL_PAGE_AMOUNT_CONFLICT_"+key);
+   }
+  }
+  if(candidates.salaryGross<=0||candidates.salaryGross>20000000||
+     candidates.salaryIncomeReference>candidates.salaryGross||
+     candidates.socialInsurance>candidates.deductionsReference)
+   return reject("GRID_AMOUNT_RELATION");
+  return {schema:"furusato-slip-grid-review/v1",status:"REQUIRES_SOURCE_REVIEW",
+   year:header.year,candidates,reasons:[],eligibleForManualTransfer:true,autoApproved:false,originalCompared:false,
+   qualityScope:"INCOME_YEAR_AND_FOUR_AMOUNTS_ONLY"};
+ }
+ return {plan,assessRechecks,planSeparate,agreeSeparate,assessSeparate,planGridPixels,planGridCanvas,assessGridDigits,gridReadVariant,assessGridHeader,assessGridRecovery};
 }));

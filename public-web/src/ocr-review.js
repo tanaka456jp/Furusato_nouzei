@@ -33,7 +33,7 @@
     var n=Number(text.replace(/[,\s円]/g,""));
     return Number.isSafeInteger(n)&&n>=0&&n<=1000000000000?n:null;
   }
-  function reviewText(raw) {
+  function reviewText(raw,includeObserved=false) {
     var text=normalize(raw);
     var lines=text.split("\n").map(function(x){return x.trim();}).filter(Boolean);
     var yearCandidates=[];
@@ -73,8 +73,16 @@
     duplicates.forEach(function(key){
       delete candidates[key];reasons.push("FIELD_CONFLICT_"+key);
     });
+    // Transient negative evidence for grid recovery only. Never output
+    // these partial values as review candidates when title/year is absent.
+    const observed=includeObserved?{
+      observedYear:yearCandidates.length===1?yearCandidates[0]:null,
+      observedCandidates:{...candidates},
+      documentTypeConflict:/退職所得(?:の)?源泉徴収票|公的年金等(?:の)?源泉徴収票/.test(text.replace(/\s+/g,""))
+    }:{};
     if(!header||yearCandidates.length!==1||yearUnsupported)candidates={};
     return {
+      ...observed,
       schema:"furusato-slip-field-review/v1",
       status:"REQUIRES_SOURCE_REVIEW",
       year:header&&yearCandidates.length===1&&!yearUnsupported?yearCandidates[0]:null,

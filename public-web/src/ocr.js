@@ -416,7 +416,7 @@
       throw error;
     }
   }
-  async function twoPass(image,isStale){
+  async function twoPass(image,isStale,allowGridRecovery=false){
     function ensureCurrent(){
       // A stale OCR result is never used. Stop expensive follow-up passes
       // as soon as the current recognition returns control to JavaScript.
@@ -541,19 +541,19 @@
           };
         }
       }
-      // Geometry is only diagnostic: never promote a HOLD based on rules,
-      // crop coordinates or a guessed year. Do not retain pixel data/boxes.
+      // Geometry is diagnostic unless all exact heading/label/amount
+      // evidence agrees. No recovery over a partial digital text layer.
       if(!compared.eligibleForManualTransfer&&regions?.planGridCanvas){
         const grid=regions.planGridCanvas(original);
         if(grid.layoutLocated===true){
           compared.gridLayoutLocated=true;
-          // Last, bounded diagnostic stage. The worker is terminated in
+          // Last, bounded crop stage. The worker is terminated in
           // finally; these parameters cannot affect later whole-page reads.
           if(grid.rectangles?.length===4&&typeof worker.setParameters==="function"&&regions.assessGridDigits&&regions.gridReadVariant){
+            const digitReads=[];
             try{
               ensureCurrent();
               await worker.setParameters({tessedit_pageseg_mode:"7",tessedit_char_whitelist:"0123456789,"});
-              const reads=[];
               for(const pass of [0,1]){
                 const values=[];
                 for(const region of grid.rectangles){
@@ -574,9 +574,9 @@
                     values.push({key:region.key,text:rec?.data?.text});
                   }finally{crop.width=0;crop.height=0;}
                 }
-                reads.push(values);
+                digitReads.push(values);
               }
-              const check=regions.assessGridDigits(reads[0],reads[1]);
+              const check=regions.assessGridDigits(digitReads[0],digitReads[1]);
               if(check.status==="DIAGNOSTIC_ONLY")compared.gridDigitsMatched=check.matchedFields;
             }catch(_){ensureCurrent();/* preserve HOLD even on diagnostic failure */}
             if(grid.headerRectangles?.length===2&&regions.assessGridHeader){
@@ -600,10 +600,34 @@
                     reads.push({key:region.key,text:rec?.data?.text});
                   }finally{crop.width=0;crop.height=0;}
                 }
-                const header=regions.assessGridHeader(reads,[
-                  window.FurusatoSlipReview.reviewText(a?.data?.text),
-                  window.FurusatoSlipReview.reviewText(b?.data?.text)]);
+                const fullPageReviews=[
+                  window.FurusatoSlipReview.reviewText(a?.data?.text,true),
+                  window.FurusatoSlipReview.reviewText(b?.data?.text,true)];
+                const header=regions.assessGridHeader(reads,fullPageReviews);
                 compared.gridHeaderStatus=header.status;
+                if(allowGridRecovery&&header.status==="MATCH"&&compared.gridDigitsMatched===4&&
+                   grid.labelRectangles?.length===4&&regions.assessGridRecovery){
+                  const labels=[];
+                  for(const region of grid.labelRectangles){
+                    ensureCurrent();
+                    const crop=document.createElement("canvas");
+                    try{
+                      const border=20,scale=region.scale;
+                      crop.width=region.width*scale+border*2;crop.height=region.height*scale+border*2;
+                      if(crop.width*crop.height>1000000)throw Error("LABEL_REGION_TOO_LARGE");
+                      const ctx=crop.getContext("2d");
+                      if(!ctx)throw Error("LABEL_REGION_CANVAS_UNAVAILABLE");
+                      ctx.fillStyle="#fff";ctx.fillRect(0,0,crop.width,crop.height);
+                      ctx.drawImage(original,region.left,region.top,region.width,region.height,border,border,region.width*scale,region.height*scale);
+                      const rec=await worker.recognize(crop);
+                      ensureCurrent();
+                      labels.push({key:region.key,text:rec?.data?.text});
+                    }finally{crop.width=0;crop.height=0;}
+                  }
+                  const recovery=regions.assessGridRecovery(grid,reads,labels,digitReads[0],digitReads[1],fullPageReviews);
+                  if(recovery.eligibleForManualTransfer===true)return recovery;
+                  compared.reasons=[...(compared.reasons||[]),...recovery.reasons];
+                }
               }catch(_){ensureCurrent();/* diagnostic only */}
             }
           }
@@ -640,7 +664,7 @@
             // This is the only fallback for EMPTY, not for malformed layers.
             canvas=await rasterizePdf(page,pdfSession);
             ensureCurrent();
-            result=await twoPass(canvas,isStale);
+            result=await twoPass(canvas,isStale,true);
           }else{
           var digital=window.FurusatoSlipReview.reviewDigitalPdf(extracted.text);
           if(typeof window.FurusatoPdfLayout!=="object"||
@@ -824,6 +848,11 @@
       }
       return;
     }
+    if(r.schema==="furusato-slip-grid-review/v1"){
+      const note=document.createElement("p");
+      note.textContent="画像の部分読取による候補です。追加控除・扶養等は未読取です。原票の年分・4項目・その他の控除を必ず確認してください。";
+      report.appendChild(note);
+    }
     var ul=document.createElement("ul");
     r._acceptedCandidate=false;
     window.FurusatoSlipReview.FIELDS.forEach(function(field){
@@ -905,7 +934,7 @@
       }else{
         stage="IMAGE_DECODE";canvas=await imageToCanvas(file);
         ensureCurrent();
-        stage="IMAGE_OCR";result=await twoPass(canvas,isStale);
+        stage="IMAGE_OCR";result=await twoPass(canvas,isStale,true);
       }
       // A source swap, form reset or year change during async OCR invalidates
       // the old attempt, even if the two text recognitions both succeeded.

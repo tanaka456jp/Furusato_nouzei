@@ -24,7 +24,7 @@ function syntheticRasterFile(name,type="image/png",size=1024){
 const doc=new JSDOM(html,{url:"https://local-review.invalid/",runScripts:"outside-only"});
 const win=doc.window,dom=win.document;
 function evaluate(name){win.eval(fs.readFileSync(path.join(dir,name),"utf8"));}
-let external=0,calls=0,closed=0,recheckWrong=false,roiCalls=0,separateMode=false,separateConflict=false,gridMode=false,gridNumericMode=false,gridReadIndex=0,gridParameters=0,gridHeaderMode=false,gridHeaderConflict=false;
+let external=0,calls=0,closed=0,recheckWrong=false,roiCalls=0,separateMode=false,separateConflict=false,gridMode=false,gridNumericMode=false,gridReadIndex=0,gridParameters=0,gridHeaderMode=false,gridHeaderConflict=false,gridLabelMode=false,gridLabelConflict=false;
 win.fetch=()=>{external++;throw Error("REMOTE_REQUEST_FORBIDDEN");};
 win.createImageBitmap=async()=>({width:1200,height:800,close(){}});
 const gridDraws=[];
@@ -78,6 +78,11 @@ win.Tesseract={OEM:{LSTM_ONLY:1},createWorker:async()=>{
  },recognize:async(_image,options,output)=>{
   calls++;
   if(gridMode){
+   if(gridLabelMode&&gridReadIndex>=12){
+    const idx=gridReadIndex++-12;
+    const headings=["支払金額","給与所得控除後の金額(調整控除後)","所得控除の額の合計額","社会保険料等の金額"];
+    return {data:{text:gridLabelConflict&&idx===3?"社会保険料等の金客":headings[idx],confidence:95}};
+   }
    if(gridHeaderMode&&gridReadIndex>=10){
     const idx=gridReadIndex++;
     return {data:{text:idx===10?"|令和|8|年分給与所得の源泉徴収票":gridHeaderConflict?"令和|7|年分":"令和|8|年分",confidence:95}};
@@ -229,6 +234,31 @@ async function main(){
   assert.equal(form.elements.namedItem("salaryGross").value,"");
   assert.equal(dom.getElementById("result").hidden,true);
   assert.match(dom.getElementById("slipReview").textContent,conflict?/年分の不一致/:/表題・所得年の部分読取：一致/);
+ }
+ // Positive grid route requires ALL FOUR exact labels, even with
+ // matching header and digit crops. No transfer without the fresh checkbox.
+ gridLabelMode=true;gridHeaderConflict=false;
+ const headerPlan=win.FurusatoOcrRegions.planGridCanvas;
+ win.FurusatoOcrRegions.planGridCanvas=()=>({...headerPlan(),labelRectangles:lines.map(([key],i)=>({key,left:80+i*120,top:90,width:100,height:20,scale:2}))});
+ for(const conflict of [true,false]){
+  gridLabelConflict=conflict;gridReadIndex=0;gridParameters=1;
+  file("grid-label-"+conflict+".png");const before=calls;await run();
+  assert.equal(calls-before,16);
+  assert.equal(transfer.disabled,conflict);
+  assert.equal(form.elements.namedItem("salaryGross").value,"");
+  assert.equal(dom.getElementById("slipConfirm").checked,false);
+  assert.equal(dom.getElementById("result").hidden,true);
+  if(conflict){assert.equal(dom.getElementById("slipReview").textContent.includes("7,000,000"),false);}
+  else{
+   transfer.click();
+   assert.equal(form.elements.namedItem("salaryGross").value,"");
+   dom.getElementById("slipConfirm").checked=true;
+   dom.getElementById("slipConfirm").dispatchEvent(new win.Event("change",{bubbles:true}));
+   transfer.click();
+   assert.equal(form.elements.namedItem("salaryGross").value,"7000000");
+   assert.equal(form.elements.namedItem("acknowledgedExclusions").checked,false);
+   assert.equal(dom.getElementById("result").hidden,true);
+  }
  }
  win.FurusatoOcrRegions.planGridCanvas=originalPlan;
  assert.equal(external,0);
