@@ -24,7 +24,7 @@ function syntheticRasterFile(name,type="image/png",size=1024){
 const doc=new JSDOM(html,{url:"https://local-review.invalid/",runScripts:"outside-only"});
 const win=doc.window,dom=win.document;
 function evaluate(name){win.eval(fs.readFileSync(path.join(dir,name),"utf8"));}
-let external=0,calls=0,closed=0,recheckWrong=false,roiCalls=0,separateMode=false,separateConflict=false;
+let external=0,calls=0,closed=0,recheckWrong=false,roiCalls=0,separateMode=false,separateConflict=false,gridMode=false;
 win.fetch=()=>{external++;throw Error("REMOTE_REQUEST_FORBIDDEN");};
 win.createImageBitmap=async()=>({width:1200,height:800,close(){}});
 win.HTMLCanvasElement.prototype.getContext=function(){
@@ -69,6 +69,7 @@ win.Tesseract={OEM:{LSTM_ONLY:1},createWorker:async()=>{
  roiCalls=0;
  return {recognize:async(_image,options,output)=>{
   calls++;
+  if(gridMode)return {data:{text:"令和8年分 給与所得の源泉徴収票",confidence:90}};
   if(separateMode){
    if(output?.blocks){
     const geometry=tableBlocks();
@@ -151,6 +152,23 @@ async function main(){
  assert.equal(calls-cropBefore,6);
  assert.equal(transfer.disabled,true);
  assert.equal(dom.getElementById("slipReview").textContent.includes("1,970,000"),false);
+ // Mock only the positive geometry diagnosis. A matching ruled table
+ // without verified monetary values must never be promoted to transfer.
+ gridMode=true;separateMode=false;
+ let probes=0;
+ const originalPlan=win.FurusatoOcrRegions.planGridCanvas;
+ win.FurusatoOcrRegions.planGridCanvas=()=>{probes++;return {status:"LAYOUT_ONLY",layoutLocated:true,eligibleForManualTransfer:false,rectangles:[]};};
+ file("grid-only.png");
+ const gridBefore=calls;
+ await run();
+ assert.equal(calls-gridBefore,2);
+ assert.equal(probes,1);
+ assert.equal(transfer.disabled,true);
+ assert.equal(dom.getElementById("slipConfirm").disabled,true);
+ assert.equal(form.elements.namedItem("salaryGross").value,"");
+ assert.match(dom.getElementById("slipReview").textContent,/罫線配置は一致しましたが/);
+ assert.equal(dom.getElementById("result").hidden,true);
+ win.FurusatoOcrRegions.planGridCanvas=originalPlan;
  assert.equal(external,0);
  doc.window.close();
  console.log("PUBLIC_OCR_FIELD_REREAD_DOM_VETO_PASS; synthetic only; RELEASE_HOLD");
