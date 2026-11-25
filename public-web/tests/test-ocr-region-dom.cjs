@@ -68,15 +68,22 @@ function tableBlocks(){
  ]}]}];
 }
 win.FurusatoImageQuality={assessCanvas:()=>({status:"REVIEW"})};
-win.FurusatoPerspective={tryRectify:()=>({status:"UNVERIFIED",canvas:null})};
+evaluate("ocr-perspective.js");
+const deskewModel=win.FurusatoPerspective;
+let deskewMock=false,rawOverride=null,rawRead=false;
+win.FurusatoPerspective={tryRectify:()=>({status:"UNVERIFIED",canvas:null}),
+ deskewConsistent:deskewModel.deskewConsistent,
+ tryDeskew:()=>{if(!deskewMock)return {status:"UNVERIFIED",canvas:null};
+ const canvas=dom.createElement("canvas");canvas.width=1200;canvas.height=800;return {status:"APPLIED",canvas};}};
 win.Tesseract={OEM:{LSTM_ONLY:1},createWorker:async()=>{
- roiCalls=0;
+ roiCalls=0;rawRead=false;
  return {setParameters:async params=>{
   assert.equal(params.tessedit_pageseg_mode,gridHeaderMode&&gridParameters===2?"13":"7");
   assert.equal(params.tessedit_char_whitelist,gridHeaderMode&&gridParameters>=2?"":"0123456789,");
   gridParameters++;
  },recognize:async(_image,options,output)=>{
   calls++;
+  if(deskewMock&&!rawRead){rawRead=true;return {data:{text:rawOverride??full,confidence:95}};}
   if(gridMode){
    if(gridLabelMode&&gridReadIndex>=13){
     const idx=gridReadIndex++-13;
@@ -167,6 +174,17 @@ async function main(){
  assert.equal(transfer.disabled,true,"mismatched field reread must disable transfer");
  assert.match(dom.getElementById("slipReview").textContent,/HOLD|保留|停止/);
  assert.equal(dom.getElementById("slipReview").textContent.includes("1,970,000"),false);
+ // A deskew candidate must agree with observed untouched-source evidence.
+ recheckWrong=false;deskewMock=true;
+ for(const [raw,accepted] of [[full,true],[full.replace("7,000,000","7,100,000"),false],[full.replace("令和8年","令和7年"),false]]){
+  rawOverride=raw;file("deskew.png");const start=calls;await run();
+  assert.equal(calls-start,7);assert.equal(transfer.disabled,!accepted);
+  assert.equal(form.elements.namedItem("salaryGross").value,"");
+  assert.equal(dom.getElementById("slipConfirm").checked,false);
+  assert.equal(dom.getElementById("result").hidden,true);
+  if(!accepted)assert.equal(dom.getElementById("slipReview").textContent.includes("7,100,000"),false);
+ }
+ deskewMock=false;rawOverride=null;
  separateMode=true;recheckWrong=false;
  file("separate.png");
  const sepBefore=calls;

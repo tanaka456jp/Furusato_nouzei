@@ -231,6 +231,15 @@ async function main(){
     pctx.lineTo(1000,850);pctx.lineTo(220,800);
     pctx.closePath();
     pctx.fillStyle="#f7f7f7";pctx.fill();
+    // Real browser canvas rotation path (synthetic ruled page only).
+    const ruled=document.createElement("canvas");ruled.width=1200;ruled.height=840;
+    const rc=ruled.getContext("2d");rc.fillStyle="#fff";rc.fillRect(0,0,1200,840);
+    rc.translate(600,420);rc.rotate(3*Math.PI/180);rc.strokeStyle="#181818";rc.lineWidth=5;
+    for(const y of [-270,-150,-30,90,210]){rc.beginPath();rc.moveTo(-500,y);rc.lineTo(500,y);rc.stroke();}
+    const corrected=window.FurusatoPerspective.tryDeskew(ruled);
+    const deskew={status:corrected.status,degrees:corrected.degrees,width:corrected.canvas?.width||0,height:corrected.canvas?.height||0,autoApproved:corrected.autoApproved};
+    if(corrected.canvas){corrected.canvas.width=0;corrected.canvas.height=0;}
+    ruled.width=0;ruled.height=0;
     const rectified=window.FurusatoPerspective.tryRectify(photo);
     pctx.fillStyle="#181818";pctx.fillRect(0,0,1200,900);
     pctx.fillStyle="#f7f7f7";pctx.fillRect(65,80,545,740);pctx.fillRect(690,160,420,580);
@@ -244,13 +253,17 @@ async function main(){
       rectified.canvas.width=0;rectified.canvas.height=0;
     }
     return {textType:typeof outcome?.data?.text,
-      confidence:outcome?.data?.confidence,blocksReturned:Array.isArray(outcome?.data?.blocks),geometry,ambiguity};
+      confidence:outcome?.data?.confidence,blocksReturned:Array.isArray(outcome?.data?.blocks),geometry,ambiguity,deskew};
    }finally{await worker.terminate();}
   },{timeout:180000});
   assert.equal(status.textType,"string");
   assert.ok(Number.isFinite(status.confidence));
   assert.equal(status.blocksReturned,true,"OCR word position output is unavailable");
   assert.equal(status.geometry.status,"APPLIED");
+  assert.equal(status.deskew.status,"APPLIED");
+  assert.ok(Math.abs(status.deskew.degrees-3)<=.5);
+  assert.ok(status.deskew.width>=1200&&status.deskew.height>=840);
+  assert.equal(status.deskew.autoApproved,false);
   assert.deepEqual(status.ambiguity,{status:"AMBIGUOUS_PAGE",canvas:false,autoApproved:false});
   assert.ok(status.geometry.width>=750&&status.geometry.height>=400);
   assert.ok(status.geometry.width*status.geometry.height<=3200000);
