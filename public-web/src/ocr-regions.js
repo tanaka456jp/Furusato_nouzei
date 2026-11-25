@@ -293,7 +293,10 @@
     ["salaryGross",166,397,grossDivider,ys[2]],
     ["salaryIncomeReference",420,618,ys[1],ys[2]],
     ["deductionsReference",639,838,ys[1],ys[2]],
-    ["socialInsurance",232,452,socialDivider,ys[5]]
+    // Use the detected top edge of the lower rule, not its center.
+    // Thick printed rules can otherwise enter an empty G26 crop and be
+    // misrecognized as a digit. Never suppress a conflicting OCR value.
+    ["socialInsurance",232,452,socialDivider,hits[5].top]
    ];
    const rectangles=specs.map(([key,x1,x2,y1,y2])=>{
     const left=Math.ceil(l+w*x1/1080)+leftInset,top=y1+edge+1;

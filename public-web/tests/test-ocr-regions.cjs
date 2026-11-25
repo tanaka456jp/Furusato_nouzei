@@ -152,6 +152,18 @@ for(const f of [gridFixture(1,55,350,true),gridFixture(1,55,350,false,true),grid
  const out=gp(f);assert.equal(out.status,"HOLD");assert.deepEqual(out.rectangles,[]);
  assert.equal(out.eligibleForManualTransfer,false);
 }
+// A thick lower horizontal rule must not enter the social amount crop.
+const thickGrid=gridFixture();
+for(let y=624;y<=627;y++)for(let x=55;x<=1135;x++){
+ const i=(y*thickGrid.w+x)*4;thickGrid.data[i]=thickGrid.data[i+1]=thickGrid.data[i+2]=0;
+}
+const thickPlan=gp(thickGrid);
+assert.equal(thickPlan.status,"LAYOUT_ONLY");
+const socialRect=thickPlan.rectangles.find(v=>v.key==="socialInsurance");
+assert.ok(socialRect.top+socialRect.height<=624);
+for(let y=socialRect.top;y<socialRect.top+socialRect.height;y++)
+ for(let x=socialRect.left;x<socialRect.left+socialRect.width;x++)
+  assert.equal(thickGrid.data[(y*thickGrid.w+x)*4],255,"lower rule must not enter the empty amount crop");
 const blank=gridFixture();blank.data.fill(255);
 assert.equal(gp(blank).status,"HOLD");
 assert.equal(region.planGridPixels(null,1000,1000).status,"HOLD");
