@@ -195,7 +195,7 @@ async function main(){
  // underlying full-page read remains incomplete: NO positive transfer.
  gridNumericMode=true;gridReadIndex=0;
  win.FurusatoOcrRegions.planGridCanvas=()=>({status:"LAYOUT_ONLY",layoutLocated:true,
-  eligibleForManualTransfer:false,rectangles:lines.map(([key],i)=>({key,left:80+i*120,top:120,width:100,height:28}))});
+  eligibleForManualTransfer:false,gridSpan:1080,rectangles:lines.map(([key],i)=>({key,left:80+i*120,top:120,width:100,height:28}))});
  file("grid-digits-only.png");
  const numericBefore=calls;
  await run();

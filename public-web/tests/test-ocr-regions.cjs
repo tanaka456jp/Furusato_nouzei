@@ -252,4 +252,31 @@ for(const raw of ["令和|6|年分","令和｜８｜年分","公的年金等の�
  assert.equal(bad.year,null);
 }
 assert.equal(recover(undefined,undefined,lr,digitReads,digitReads,[sr.reviewText("令和|7|年分",true),missingReview[1]]).eligibleForManualTransfer,true);
+
+const baseCrop={width:200,height:40};
+for(const [kind,scale,expected] of [
+ ["digit",3,{width:600,height:120,border:20}],
+ ["digit",2,{width:400,height:80,border:20}],
+ ["header",5,{width:1000,height:200,border:20}],
+ ["label",4,{width:1200,height:240,border:20}],
+ ["label",2,{width:600,height:120,border:20}]
+]){
+ for(const factor of [.75,1,1.5,2]){
+  const r={width:baseCrop.width*factor,height:baseCrop.height*factor};
+  assert.deepEqual(region.gridCropSize(r,1080*factor,kind,scale),expected);
+ }
+}
+for(const [r,span,kind,scale] of [
+ [baseCrop,0,"digit",3],[baseCrop,NaN,"digit",3],[baseCrop,1080,"bad",3],
+ [baseCrop,1080,"digit",5],[baseCrop,1080,"label",3],
+ [{width:1080,height:1080},1080,"label",4],
+ [{width:200,height:2},1080,"header",5],[{width:200.5,height:40},1080,"digit",3],
+ [baseCrop,3000,"digit",3],[baseCrop,1080,"__proto__",3]
+])assert.equal(region.gridCropSize(r,span,kind,scale),null);
+for(const plan of [gp(gridFixture()),gp(gridFixture(1.25,80,470))]){
+ assert.ok(Number.isSafeInteger(plan.gridSpan));
+ for(const [kind,rectangles] of [["digit",plan.rectangles],["header",plan.headerRectangles],["label",plan.labelRectangles]]){
+  for(const crop of rectangles)assert.ok(region.gridCropSize(crop,plan.gridSpan,kind,kind==="digit"?3:crop.scale));
+ }
+}
 console.log("PUBLIC_OCR_BOUNDED_REGION_RECHECK_SYNTHETIC_PASS; no source accuracy claim");

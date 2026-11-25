@@ -549,7 +549,7 @@
           compared.gridLayoutLocated=true;
           // Last, bounded crop stage. The worker is terminated in
           // finally; these parameters cannot affect later whole-page reads.
-          if(grid.rectangles?.length===4&&typeof worker.setParameters==="function"&&regions.assessGridDigits&&regions.gridReadVariant){
+          if(grid.rectangles?.length===4&&typeof worker.setParameters==="function"&&regions.assessGridDigits&&regions.gridReadVariant&&regions.gridCropSize){
             const digitReads=[];
             try{
               ensureCurrent();
@@ -563,12 +563,14 @@
                   const source=variant.source==="original"?original:enhanced;
                   const crop=document.createElement("canvas");
                   try{
-                    const border=20,scale=variant.scale;
-                    crop.width=region.width*scale+border*2;crop.height=region.height*scale+border*2;
+                    const size=regions.gridCropSize(region,grid.gridSpan,"digit",variant.scale);
+                    if(!size)throw Error("GRID_CROP_SIZE_UNVERIFIED");
+                    const {border,width,height}=size;
+                    crop.width=width+border*2;crop.height=height+border*2;
                     const ctx=crop.getContext("2d");
                     if(!ctx)throw Error("FIELD_REGION_CANVAS_UNAVAILABLE");
                     ctx.fillStyle="#fff";ctx.fillRect(0,0,crop.width,crop.height);
-                    ctx.drawImage(source,region.left,region.top,region.width,region.height,border,border,region.width*scale,region.height*scale);
+                    ctx.drawImage(source,region.left,region.top,region.width,region.height,border,border,width,height);
                     const rec=await worker.recognize(crop);
                     ensureCurrent();
                     values.push({key:region.key,text:rec?.data?.text});
@@ -588,13 +590,14 @@
                   ensureCurrent();
                   const crop=document.createElement("canvas");
                   try{
-                    const border=20,scale=region.scale;
-                    crop.width=region.width*scale+border*2;crop.height=region.height*scale+border*2;
-                    if(crop.width*crop.height>2000000)throw Error("HEADER_REGION_TOO_LARGE");
+                    const size=regions.gridCropSize(region,grid.gridSpan,"header",region.scale);
+                    if(!size)throw Error("GRID_CROP_SIZE_UNVERIFIED");
+                    const {border,width,height}=size;
+                    crop.width=width+border*2;crop.height=height+border*2;
                     const ctx=crop.getContext("2d");
                     if(!ctx)throw Error("HEADER_REGION_CANVAS_UNAVAILABLE");
                     ctx.fillStyle="#fff";ctx.fillRect(0,0,crop.width,crop.height);
-                    ctx.drawImage(original,region.left,region.top,region.width,region.height,border,border,region.width*scale,region.height*scale);
+                    ctx.drawImage(original,region.left,region.top,region.width,region.height,border,border,width,height);
                     const rec=await worker.recognize(crop);
                     ensureCurrent();
                     reads.push({key:region.key,text:rec?.data?.text});
@@ -612,13 +615,14 @@
                     ensureCurrent();
                     const crop=document.createElement("canvas");
                     try{
-                      const border=20,scale=region.scale;
-                      crop.width=region.width*scale+border*2;crop.height=region.height*scale+border*2;
-                      if(crop.width*crop.height>1000000)throw Error("LABEL_REGION_TOO_LARGE");
+                      const size=regions.gridCropSize(region,grid.gridSpan,"label",region.scale);
+                      if(!size)throw Error("GRID_CROP_SIZE_UNVERIFIED");
+                      const {border,width,height}=size;
+                      crop.width=width+border*2;crop.height=height+border*2;
                       const ctx=crop.getContext("2d");
                       if(!ctx)throw Error("LABEL_REGION_CANVAS_UNAVAILABLE");
                       ctx.fillStyle="#fff";ctx.fillRect(0,0,crop.width,crop.height);
-                      ctx.drawImage(original,region.left,region.top,region.width,region.height,border,border,region.width*scale,region.height*scale);
+                      ctx.drawImage(original,region.left,region.top,region.width,region.height,border,border,width,height);
                       const rec=await worker.recognize(crop);
                       ensureCurrent();
                       labels.push({key:region.key,text:rec?.data?.text});

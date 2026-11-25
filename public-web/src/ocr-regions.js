@@ -302,12 +302,13 @@
    if(rectangles.some(v=>v.width<20||v.height<12||v.width*v.height>100000||
       v.left<0||v.top<0||v.left+v.width>width||v.top+v.height>height))continue;
    // Printed heading geometry is only a diagnostic, not proof of form type.
-   const headerRectangles=[["heading",104,672,-279,-227,3],["year",114,334,-277,-231,5]].map(([key,x1,x2,y1,y2,scale])=>{
+   // Exclude the small print above the date and the lower horizontal rule.
+   const headerRectangles=[["heading",118,672,-267,-236,3],["year",118,334,-265,-238,5]].map(([key,x1,x2,y1,y2,scale])=>{
     const left=Math.round(l+w*x1/1080),top=Math.round(t+w*y1/1080);
     return {key,left,top,width:Math.round(w*(x2-x1)/1080),height:Math.round(w*(y2-y1)/1080),scale};
    });
    const safe=headerRectangles.every(v=>v.left>=0&&v.top>=0&&v.width>=40&&v.height>=12&&
-    v.left+v.width<=width&&v.top+v.height<=height&&(v.width*v.scale+40)*(v.height*v.scale+40)<=2000000);
+    v.left+v.width<=width&&v.top+v.height<=height&&gridCropSize(v,w,"header",v.scale)!==null);
    // Printed label crops anchored to the same rule geometry. The exact
    // words must be recognized; no approximate match or inferred label.
    const labelRectangles=[
@@ -320,8 +321,8 @@
     width:Math.round(w*(x2-x1)/1080),height:Math.round(w*(y2-y1)/1080),scale
    }));
    const labelsSafe=labelRectangles.every(v=>v.left>=0&&v.top>=0&&v.width>=25&&v.height>=10&&
-    v.left+v.width<=width&&v.top+v.height<=height&&(v.width*v.scale+40)*(v.height*v.scale+40)<=1000000);
-   matches.push({rectangles,headerRectangles:safe?headerRectangles:[],labelRectangles:labelsSafe?labelRectangles:[]});
+    v.left+v.width<=width&&v.top+v.height<=height&&gridCropSize(v,w,"label",v.scale)!==null);
+   matches.push({gridSpan:w,rectangles,headerRectangles:safe?headerRectangles:[],labelRectangles:labelsSafe?labelRectangles:[]});
    if(matches.length>1)return gridHold();
   }
   return matches.length===1?{status:"LAYOUT_ONLY",layoutLocated:true,...matches[0],
@@ -348,6 +349,23 @@
  // Fixed per-field read variants. Keep thin/low-contrast social-insurance
  // digits on original pixels; use a different scale rather than clipping
  // them with the page contrast transform. No confidence-based cherry picking.
+ // Normalize sampling to a printed-rule span, not raw image pixels.
+ // Labels use a larger nominal span. No inference of missing evidence.
+ function gridCropSize(region,span,kind,scale){
+  const rules={digit:{nominal:1080,cap:1000000,scales:[2,3]},
+    header:{nominal:1080,cap:2000000,scales:[3,5]},
+    label:{nominal:1620,cap:1000000,scales:[2,4]}};
+  if(!Object.prototype.hasOwnProperty.call(rules,kind))return null;
+  const rule=rules[kind];
+  if(!rule.scales.includes(scale)||!Number.isSafeInteger(span)||span<560||span>2600||
+     !region||!Number.isSafeInteger(region.width)||!Number.isSafeInteger(region.height)||
+     region.width<8||region.height<6||region.width>span||region.height>span)return null;
+  const factor=rule.nominal*scale/span;
+  if(factor<.5||factor>9)return null;
+  const width=Math.round(region.width*factor),height=Math.round(region.height*factor),border=20;
+  if(width<8||height<6||(width+2*border)*(height+2*border)>rule.cap)return null;
+  return {width,height,border};
+ }
  function gridReadVariant(key,pass){
   if(!LABELS.some(f=>f.key===key)||![0,1].includes(pass))return null;
   return pass===0?{source:"original",scale:3}:
@@ -434,5 +452,5 @@
    year:header.year,candidates,reasons:[],eligibleForManualTransfer:true,autoApproved:false,originalCompared:false,
    qualityScope:"INCOME_YEAR_AND_FOUR_AMOUNTS_ONLY"};
  }
- return {plan,assessRechecks,planSeparate,agreeSeparate,assessSeparate,planGridPixels,planGridCanvas,assessGridDigits,gridReadVariant,assessGridHeader,assessGridRecovery};
+ return {plan,assessRechecks,planSeparate,agreeSeparate,assessSeparate,planGridPixels,planGridCanvas,assessGridDigits,gridReadVariant,gridCropSize,assessGridHeader,assessGridRecovery};
 }));
