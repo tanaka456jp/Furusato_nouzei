@@ -373,13 +373,18 @@
    }
    let request=null;
    if(targetHigh){delete args.year;delete args.salaryIncome;request={adjustment:targetFacts,tax:args};}
-   const one=targetHigh?(medical?familyEngine.highSalaryMedicalFilingCalculation(request):familyEngine.highSalaryCalculate(request)):
+   let one=targetHigh?(medical?familyEngine.highSalaryMedicalFilingCalculation(request):familyEngine.highSalaryCalculate(request)):
     (medical?familyEngine.medicalFilingCalculation(args):familyEngine.calculate(args));
    if(targetHigh&&one.status==="ESTIMATE"){
     income=one.calculation?.salaryAdjustment?.salaryIncomeAfterAdjustmentYen;
     if(!safeAmount(income)||income!==v.salaryIncomeReference){row.reason="試算年の所得金額調整控除後の給与所得が一致しません";return row;}
    }
-   if(one.status!=="ESTIMATE"){row.reason=one.reason;return row;}
+   if(one.status!=="ESTIMATE"&&!targetHigh&&!sourceHigh&&!medical&&!mortgage&&!other&&typeof familyEngine.calculateNoTax==="function"){
+    const classified=familyEngine.calculateNoTax(args);
+    if(classified.status==="NO_TAX")one=classified;
+   }
+   const noTax=one.status==="NO_TAX";
+   if(one.status!=="ESTIMATE"&&!noTax){row.reason=one.reason;return row;}
    const c=one.calculation;
    if(!c||c.year!==row.year||c.municipality!==row.municipality||!!c.salaryAdjustment!==targetHigh||
       c.nationalTaxableYen!==Math.floor(Math.max(0,income-c.nationalDeductionsYen)/1000)*1000||
@@ -388,16 +393,18 @@
       c.residentDeductionsYen!==430000+v.socialInsurance+c.family.residentFamilyDeductionYen+(c.insurance?.resident.totalYen??0)+(other?c.other.residentOtherDeductionYen-contribution:0)+(medical?c.medical?.residentDeductionYen:0)||
       (!!c.insurance!==insured)||(!!c.other!==other)||
       (other&&(c.socialAndContributionsYen!==v.socialInsurance||c.socialInsuranceOnlyYen!==v.socialInsurance-contribution||c.other.contributions.nationalYen!==contribution))||
-      c.residentIncomeLevyYen!==c.city.assessedYen+c.prefecture.assessedYen||
+      (noTax?(c.nationalTaxableYen!==0||c.residentTaxableYen!==0||one.donationLimitYen!==null||targetHigh||sourceHigh||medical||mortgage||other):
+       c.residentIncomeLevyYen!==c.city.assessedYen+c.prefecture.assessedYen)||
       (!!c.medical!==medical)||
-      (medical?(c.filingOnly!==true||c.oneStopAllowed!==false||one.donationLimitYen!==null||
+      (!noTax&&(medical?(c.filingOnly!==true||c.oneStopAllowed!==false||one.donationLimitYen!==null||
         !safeAmount(c.medical.nationalDeductionYen)||c.medical.nationalDeductionYen!==c.medical.residentDeductionYen||
         c.medical.method!=="ordinaryNet"||c.medical.netEligibleYen!==parseMedical(row)||c.medical.thresholdYen!==Math.min(100000,Math.floor(income/20))||c.medical.nationalDeductionYen!==Math.min(2000000,Math.max(0,parseMedical(row)-Math.min(100000,Math.floor(income/20))))):
         (!safeAmount(one.donationLimitYen)||one.donationLimitYen<2000||
-        one.donationLimitYen!==Math.floor(c.exactReferenceYen/1000)*1000))||
+        one.donationLimitYen!==Math.floor(c.exactReferenceYen/1000)*1000)))||
       (row.deductionsOverrideActive&&v.deductionsReference!==c.nationalDeductionsYen)){
     row.reason="家族控除・所得控除合計の整合性不一致";return row;
    }
+   if(noTax)return markNoTax(row);
    const prefix=targetHigh?familyEngine.highSalaryFilingPrefix(request):familyEngine.filingPrefix(args);
    if(prefix.status!=="ESTIMATE"||!safeAmount(prefix.donationLimitYen)||prefix.donationLimitYen<2000||(targetHigh&&JSON.stringify(prefix.calculation?.salaryAdjustment)!==JSON.stringify(c.salaryAdjustment))||
       (medical&&(prefix.calculation?.filingOnly!==true||prefix.calculation?.oneStopAllowed!==false||JSON.stringify(prefix.calculation?.medical)!==JSON.stringify(c.medical)))){
@@ -536,6 +543,7 @@
    const taxInput=row.sourceYear===row.year-1&&row.forecastReviewed===true
     ?Object.assign({},input,{sourceYear:String(row.year)}):input;
    const result=engine.calculate(taxInput);
+   if(familyEngine?.classifyBasicNoTax?.(result,input,engine)?.status==="NO_TAX")return markNoTax(row);
    if(!displayGuard(result,input)){
     row.reason="計算条件または税額整合性の不一致";
     return row;
@@ -629,6 +637,18 @@
    row.status===(row.sourceYear<row.year?"前年参考概算":"概算")&&
    safeAmount(row.appliedDeductionsYen)&&safeAmount(row.donationLimitYen);
  }
+ function markNoTax(row){
+  row.status="控除余地なし";
+  row.reason="確認した試算条件では所得税・住民税所得割の課税所得がともに0円です。寄附による税負担の軽減は見込まれません。";
+  row.calculatedSnapshot=snapshot(row);
+  return row;
+ }
+ function canOutputNoTax(row){
+  return canEstimate(row)&&row.confirmed===true&&row.noExclusions===true&&
+   (row.sourceYear===row.year||row.forecastReviewed===true)&&
+   ["standard","designated"].includes(row.municipality)&&["one-stop","return"].includes(row.filing)&&
+   row.status==="控除余地なし"&&row.donationLimitYen===null&&row.calculatedSnapshot===snapshot(row);
+ }
  function outputComparison(row){
   return canOutputEstimate(row)&&row.comparison?row.comparison:null;
  }
@@ -650,8 +670,8 @@
     r.deductionsOverrideActive?"手入力上書き・自動追随なし":"自動算定（原票照合）",v?.socialInsurance??"",
     r.filing==="return"?"確定申告":"ワンストップ",
     accepted?r.donationLimitYen:"",
-    accepted?r.status:"HOLD",
-    !accepted&&(r.status==="概算"||r.status==="前年参考概算")
+    accepted||canOutputNoTax(r)?r.status:"HOLD",
+    !accepted&&!canOutputNoTax(r)&&(r.status==="概算"||r.status==="前年参考概算"||r.status==="控除余地なし")
       ?"確認状態が変わりました。再試算してください":r.reason,
     r.municipality==="standard"?"標準市町村":r.municipality==="designated"?"政令指定都市":"未確認",
     accepted?r.residentLevyYen:"",accepted?r.calculationBasis:"",comparison?.oneStop??"",comparison?.filing??"",
@@ -664,5 +684,5 @@
   // UTF-8 BOM is an intentional local Excel compatibility aid.
   return "\ufeff"+lines.join("\r\n")+"\r\n";
  }
- return Object.freeze({FIELDS,MAX_ROWS,PREMIUM_FIELDS,PREMIUM_KEYS,OTHER_FIELDS,MEDICAL_FIELDS,MEDICAL_SUMMARY_KEYS,HIGH_FIELDS,HIGH_SUMMARY_KEYS,highActive,MORTGAGE_FIELDS,MORTGAGE_SUMMARY_KEYS,mortgageActive,copySourcePremiums,copySourceFamily,confirmBasic,canConfirmSocialZero,confirmSocialZero,fromPage,holdRow,edit,canEstimate,canOutputEstimate,outputComparison,invalidate,calculate,labelFor,csv});
+ return Object.freeze({FIELDS,MAX_ROWS,PREMIUM_FIELDS,PREMIUM_KEYS,OTHER_FIELDS,MEDICAL_FIELDS,MEDICAL_SUMMARY_KEYS,HIGH_FIELDS,HIGH_SUMMARY_KEYS,highActive,MORTGAGE_FIELDS,MORTGAGE_SUMMARY_KEYS,mortgageActive,copySourcePremiums,copySourceFamily,confirmBasic,canConfirmSocialZero,confirmSocialZero,fromPage,holdRow,edit,canEstimate,canOutputEstimate,canOutputNoTax,outputComparison,invalidate,calculate,labelFor,csv});
 }));

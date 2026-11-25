@@ -152,7 +152,7 @@
     }
    }
    cell(tr,isEstimate?yen(r.donationLimitYen):"—","batch-result");
-   cell(tr,isEstimate?r.status:("HOLD："+((r.status==="概算"||r.status==="前年参考概算")?
+   cell(tr,isEstimate?r.status:core.canOutputNoTax(r)?r.status+"："+r.reason:("HOLD："+((r.status==="概算"||r.status==="前年参考概算"||r.status==="控除余地なし")?
      "確認状態が変わりました。再試算してください":r.reason)),"batch-reason");
    const municipality=cell(tr,"");
    const municipalitySelect=formControl("select",{"aria-label":"対象者 "+r.page+" の課税自治体区分","data-row":String(i),"data-field":"municipality"});
@@ -464,8 +464,8 @@
   const selectedReference=window.FurusatoEstimateGuard?.selectedReference;
   rows.forEach(row=>core.calculate(row,engine,guard,selectedReference,window.FurusatoResidentLevy,window.FurusatoFamilyTax,window.FurusatoFamilySource));
   computed=true;render();
-  const allowed=rows.filter(core.canOutputEstimate).length;
-  say("対象 "+rows.length+"件：概算 "+allowed+"件、HOLD "+(rows.length-allowed)+
+  const allowed=rows.filter(core.canOutputEstimate).length,noTax=rows.filter(core.canOutputNoTax).length;
+  say("対象 "+rows.length+"件：概算 "+allowed+"件、控除余地なし "+noTax+"件、HOLD "+(rows.length-allowed-noTax)+
     "件。前年資料は見込額としての確認が必要です。HOLDの金額は空欄です。");
  });
  // Browser autofill or programmatic edits may bypass input/change events.

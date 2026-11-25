@@ -81,6 +81,17 @@ function submit(){
  if(field("municipality").value==="")field("municipality").value="standard";
  rawSubmit();
 }
+// Verified low-income manual case: no numeric ceiling, stale print blocked.
+field("year").value="2025";field("salaryGross").value="900000";
+field("socialInsurance").value="0";field("municipality").value="standard";
+field("acknowledgedExclusions").checked=true;rawSubmit();
+assert.match(view.textContent,/控除余地なし（課税所得ゼロ）/);
+assert.equal(view.querySelector(".amount"),null);
+field("salaryGross").value="900001";
+dom.window.dispatchEvent(new Event("beforeprint"));
+assert.match(view.textContent,/HOLD/);
+form.reset();
+field("year").value="2026";
 field("salaryGross").value="7000000";
 field("socialInsurance").value="1000000";
 field("acknowledgedExclusions").checked=true;

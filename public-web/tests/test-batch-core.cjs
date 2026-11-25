@@ -729,5 +729,28 @@ const unverifiedR8=fixture(1,{...r8Fixture,r8VerifiedLayout:false},2026);
 assert.equal(unverifiedR8.sourceInsurance_generalNew,"");
 assert.equal(unverifiedR8.mortgageSourcePossible,"");
 assert.equal(batch.canOutputEstimate(unverifiedR8),false);
+// Fictional low-income cases. No amount is published even after classification.
+for(const target of [2025,2026]){
+ const gross=900000, income=win.FurusatoEngine.salaryIncome(gross,target);
+ const review={year:2025,eligibleForManualTransfer:true,candidates:{salaryGross:gross,salaryIncomeReference:250000,deductionsReference:950000,socialInsurance:0}};
+ const row=fixture(1,review,target);
+ if(target===2026)batch.edit(row,"salaryIncomeReference",String(income));
+ runFamily(row);assert.equal(row.status,"HOLD");
+ assert.equal(batch.confirmBasic(row),true);
+ runFamily(row);assert.equal(row.status,"控除余地なし");
+ assert.equal(batch.canOutputNoTax(row),true);assert.equal(batch.canOutputEstimate(row),false);
+ assert.equal(columns(row)[11],"");assert.equal(columns(row)[12],"控除余地なし");
+ row.confirmed=false;assert.equal(batch.canOutputNoTax(row),false);assert.equal(columns(row)[12],"HOLD");
+ const insured=fixture(2,{...review,candidates:{...review.candidates,deductionsReference:972500},sourceIndicators:{hasLifeInsurance:true}},target);
+ if(target===2026)batch.edit(insured,"salaryIncomeReference",String(income));
+ batch.edit(insured,"familySourceText","なし");batch.edit(insured,"familyTargetText","なし");
+ batch.edit(insured,"sourceInsurance_generalNew","25000");batch.edit(insured,"targetInsurance_generalNew","25000");
+ Object.assign(insured,{confirmed:true,noExclusions:true,forecastReviewed:target===2026,familyReviewed:true,insuranceReviewed:true});
+ runFamily(insured);assert.equal(insured.status,"控除余地なし");
+ assert.equal(batch.canOutputNoTax(insured),true);assert.equal(columns(insured)[11],"");
+ batch.edit(insured,"sourceInsurance_generalNew","24000");
+ Object.assign(insured,{confirmed:true,noExclusions:true,forecastReviewed:target===2026,familyReviewed:true,insuranceReviewed:true});
+ runFamily(insured);assert.equal(insured.status,"HOLD");
+}
 dom.window.close();
 console.log("PUBLIC_BATCH_PER_PAGE_LOCAL_SAFETY_SYNTHETIC_PASS; no private slips; no deploy");

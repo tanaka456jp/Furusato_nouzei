@@ -508,7 +508,12 @@
       return fail("給与所得控除後の金額が一致しません。");
     var result=high?(md?engine.highSalaryMedicalFilingCalculation(request):engine.highSalaryCalculate(request)):
       (md?engine.medicalFilingCalculation(args):engine.calculate(args));
-    if(result.status!=="ESTIMATE")return fail(result.reason||"家族控除を確認できません。");
+    if(result.status!=="ESTIMATE"&&!high&&!md&&!hd&&!od&&typeof engine.calculateNoTax==="function"){
+      var classified=engine.calculateNoTax(args);
+      if(classified.status==="NO_TAX")result=classified;
+    }
+    var noTax=result.status==="NO_TAX";
+    if(result.status!=="ESTIMATE"&&!noTax)return fail(result.reason||"家族控除を確認できません。");
     var c=result.calculation;
     if(!c||c.year!==year||c.municipality!==input.municipality||
        (!!c.other!==!!od)||(!!c.medical!==!!md)||(!!c.salaryAdjustment!==high)||
@@ -520,8 +525,9 @@
        (!!c.insurance!==!!ip)||
        c.nationalTaxableYen!==Math.floor(Math.max(0,income-c.nationalDeductionsYen)/1000)*1000||
        c.residentTaxableYen!==Math.floor(Math.max(0,income-c.residentDeductionsYen)/1000)*1000||
-       c.residentIncomeLevyYen!==c.city.assessedYen+c.prefecture.assessedYen||
-       (!md&&(!Number.isSafeInteger(result.donationLimitYen)||result.donationLimitYen<2000||
+       (noTax?(c.nationalTaxableYen!==0||c.residentTaxableYen!==0||result.donationLimitYen!==null||high||md||hd||od):
+         c.residentIncomeLevyYen!==c.city.assessedYen+c.prefecture.assessedYen)||
+       (!noTax&&!md&&(!Number.isSafeInteger(result.donationLimitYen)||result.donationLimitYen<2000||
        result.donationLimitYen!==Math.floor(c.exactReferenceYen/1000)*1000)))
       return fail("家族税額の整合性を確認できません。");
     if((input.deductionsOverride!==""&&strictYen(input.deductionsOverride)!==c.nationalDeductionsYen)||
@@ -530,6 +536,7 @@
          (strictYen(input.sourceDeductionsReference)!==c.nationalDeductionsYen&&
           (!original||strictYen(input.sourceDeductionsReference)!==original.calculation.deductionsYen)))))
       return fail("所得控除合計と家族控除の自動計算が一致しません。");
+    if(noTax)return {status:"NO_TAX",familyMode:true,donationLimitYen:null};
     var prefix=high?engine.highSalaryFilingPrefix(request):engine.filingPrefix(args);
     if(prefix.status!=="ESTIMATE"||!Number.isSafeInteger(prefix.donationLimitYen)||prefix.donationLimitYen<2000)
       return fail("確定申告参考上限を確認できません。");
@@ -641,6 +648,20 @@
   function render(result,input) {
     output.replaceChildren();
     output.hidden = false;
+    var noTax=result?.status==="NO_TAX"&&result.donationLimitYen===null;
+    if(!noTax&&input&&!input.familyDetails&&window.FurusatoFamilyTax?.classifyBasicNoTax){
+      noTax=window.FurusatoFamilyTax.classifyBasicNoTax(result,input,FurusatoEngine).status==="NO_TAX";
+    }
+    if(noTax){
+      printableInputSnapshot=JSON.stringify(input);printableResult={noTax:true};
+      output.className="result";
+      add("h3",output,"控除余地なし（課税所得ゼロ）");
+      add("p",output,"確認した試算条件では所得税・住民税所得割の課税所得がともに0円です。寄附による税負担の軽減は見込まれません。");
+      add("p",output,"寄附自体は可能です。限度額の数値は表示しません。所得・控除条件が変わる場合は再試算してください。","muted");
+      var noTaxPrint=add("button",output,"この判定を印刷・PDF保存","secondary");
+      noTaxPrint.type="button";noTaxPrint.addEventListener("click",function(){if(checkPrintableSnapshot())window.print();});
+      return;
+    }
     var selected=selectedReference(result,input);
     var isEstimate=!!selected;
     printableInputSnapshot=isEstimate?JSON.stringify(input):null;
@@ -762,7 +783,7 @@
     var selected=document.getElementById("slipFile");
     if(JSON.stringify(current)!==printableInputSnapshot||
        (selected&&selected.files&&selected.files.length>0)||
-       !(printableResult.familyMode?JSON.stringify(familyEstimate(current))===JSON.stringify(printableResult):selectedReference(printableResult,current))){
+       !(printableResult.noTax===true||(printableResult.familyMode?JSON.stringify(familyEstimate(current))===JSON.stringify(printableResult):selectedReference(printableResult,current)))){
       render({status:"HOLD",reasons:[
         "印刷前に入力・原票の選択状態が変わりました。改めて試算してください。"
       ]},current);

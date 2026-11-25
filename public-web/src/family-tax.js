@@ -25,7 +25,7 @@
   const reconstruction=Math.floor(incomeTax*21/1000);
   return {taxable,incomeTax,reconstruction,total:incomeTax+reconstruction};
  }
- function calculateCore(input,filing,highDetails=null){
+ function calculateCore(input,filing,highDetails=null,classifyOnly=false){
   // The new path accepts the combined amount (G26), NEVER an ambiguous
   // socialInsurance amount. G25 is included in it, not an extra deduction.
   const groupedMedical=input?.conditions==="salary-basic-social-family-insurance-other-medical-filing-reviewed";
@@ -54,7 +54,7 @@
   const f=family.calculate(household);
   if(f.status!=="COMPONENTS_ONLY")return hold(f.reason||"家族控除が未確認です");
   const c=f.calculation;
-  if(c.ordinaryResidentIncomeLevyExempt)return hold("住民税所得割非課税のため寄附上限試算対象外です");
+  if(c.ordinaryResidentIncomeLevyExempt&&!classifyOnly)return hold("住民税所得割非課税のため寄附上限試算対象外です");
   const income=input.salaryIncome;
   const nationalBasic=basic(input.year,income);
   let insuranceDetails=null;
@@ -104,6 +104,16 @@
     (insuranceDetails?.resident.totalYen??0)+(otherDetails?.residentOtherDeductionYen??0)+(medicalDetails?.residentDeductionYen??0);
   const nationalTaxable=floor1000(income-nationalDeductions);
   const localTaxable=floor1000(income-residentDeductions);
+  // Classification only, never a numeric donation estimate. Require both
+  // taxable bases to be zero and every ordinary deduction to be validated.
+  if(classifyOnly){
+   if(withOther||withMedical||highDetails||nationalTaxable!==0||localTaxable!==0)
+    return hold("所得税・住民税の両方の課税所得ゼロを確認できません");
+   return {status:"NO_TAX",donationLimitYen:null,release:"HOLD",calculation:{
+    year:input.year,municipality:input.municipality,family:c,...(withInsurance?{insurance:insuranceDetails}:{}),
+    nationalBasicYen:nationalBasic,nationalDeductionsYen:nationalDeductions,residentDeductionsYen:residentDeductions,
+    nationalTaxableYen:0,residentTaxableYen:0}};
+  }
   if(nationalTaxable===0||localTaxable===0)return hold("所得税または住民税の課税所得がないケースは個別確認してください");
   // Insurance deduction differences are not personal deduction differences.
   // Keep the statutory municipal special-rate base separate from actual national taxable.
@@ -150,6 +160,36 @@
    exactReferenceYen:exactReference,roundedReferenceYen:rounded}};
  }
  function calculate(input){return calculateCore(input,false);}
+ function calculateNoTax(input){return calculateCore(input,false,null,true);}
+ // Require the exact shared-engine stop reason AND independently validate
+ // reviewed facts and the original-year deduction total. No GAS changes.
+ function classifyBasicNoTax(result,input,engine){
+  const reject=()=>hold("課税所得ゼロの適用条件を確認してください");
+  const yen=s=>typeof s==="string"&&/^(0|[1-9][0-9]{0,11})$/.test(s)?Number(s):null;
+  if(result?.status!=="HOLD"||result.reasons?.length!==1||result.reasons[0]!=="課税所得がゼロのため、初期版では寄附限度額を判定しません"||
+     !input||input.acknowledgedExclusions!==true||input.sourceReviewPending===true||input.incomeType!=="salary"||
+     !["one-stop","return"].includes(input.filing)||!["standard","designated"].includes(input.municipality)||
+     ["hasSpouse","hasDependents","hasLifeInsurance","hasEarthquakeInsurance","hasMortgage","hasOtherIncome","hasMedical","hasSplitIncome","hasIncomeAdjustment","hasNonstandardConditions"].some(k=>input[k]!==false)||
+     (input.sourceIndicators!==undefined&&(!input.sourceIndicators||typeof input.sourceIndicators!=="object"||Array.isArray(input.sourceIndicators)||Object.keys(input.sourceIndicators).length))||
+     !engine||typeof engine.salaryIncome!=="function"||typeof engine.statutoryRows!=="function")return reject();
+  const year=Number(input.year),sourceYear=Number(input.sourceYear??input.year),gross=yen(input.salaryGross),social=yen(input.socialInsurance);
+  if(![2025,2026].includes(year)||![2025,2026].includes(sourceYear)||![year,year-1].includes(sourceYear)||
+     (sourceYear!==year&&input.forecastReviewed!==true)||gross===null||gross<=0||gross>8500000||social===null||social>gross)return reject();
+  const income=engine.salaryIncome(gross,year);
+  if(!valid(income,6550000)||(input.salaryIncomeReference!==""&&yen(input.salaryIncomeReference)!==income))return reject();
+  const checked=calculateNoTax({year,salaryIncome:income,socialInsurance:social,municipality:input.municipality,spouse:null,relatives:[],conditions:"salary-basic-social-family-only-reviewed"});
+  if(checked.status!=="NO_TAX")return checked;
+  const total=checked.calculation.nationalDeductionsYen;
+  if((input.deductionsOverride!==""&&yen(input.deductionsOverride)!==total)||(input.deductionsReference!==""&&yen(input.deductionsReference)!==total))return reject();
+  const imported=input.sourceYear!==undefined||["sourceOriginalGross","sourceOriginalSocial","sourceOriginalDeductions"].some(k=>input[k]!==undefined);
+  if(imported){
+   const og=yen(input.sourceOriginalGross),os=yen(input.sourceOriginalSocial),ot=yen(input.sourceOriginalDeductions);
+   if(og===null||og<=0||og>8500000||os===null||os>og||ot===null)return reject();
+   const oi=engine.salaryIncome(og,sourceYear),rule=engine.statutoryRows().find(row=>row[0]===sourceYear&&oi<=row[1]);
+   if(!valid(oi,6550000)||!rule||rule[2]+os!==ot||yen(input.sourceDeductionsReference)!==ot)return reject();
+  }else if(input.sourceDeductionsReference!==""&&yen(input.sourceDeductionsReference)!==total)return reject();
+  return checked;
+ }
  // Filing-only display basis. Do not expose the one-stop reference ceiling
  // or the component reference ceilings for medical claims.
  function medicalFilingCalculation(input){
@@ -367,5 +407,5 @@
   return {status:"COMPONENTS_ONLY",release:"HOLD",donationLimitYen:null,
    calculation:{conservativePrefixYen:last,firstFailureYen:firstFailure,stopOnFirstFailure:true,atPrefix:ctx.trial(last).calculation}};
  }
- return Object.freeze({calculate,medicalFilingCalculation,filingTrial,filingPrefix,highSalaryCalculate,highSalaryMedicalFilingCalculation,highSalaryFilingTrial,highSalaryFilingPrefix,mortgageTrial,mortgagePrefix,reconcileMortgageSource});
+ return Object.freeze({calculate,calculateNoTax,classifyBasicNoTax,medicalFilingCalculation,filingTrial,filingPrefix,highSalaryCalculate,highSalaryMedicalFilingCalculation,highSalaryFilingTrial,highSalaryFilingPrefix,mortgageTrial,mortgagePrefix,reconcileMortgageSource});
 }));
