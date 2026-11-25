@@ -283,4 +283,19 @@ for(const plan of [gp(gridFixture()),gp(gridFixture(1.25,80,470))]){
   for(const crop of rectangles)assert.ok(region.gridCropSize(crop,plan.gridSpan,kind,kind==="digit"?3:crop.scale));
  }
 }
+// Long-label sampling is fixed by field, not selected from OCR results.
+for(const factor of [.75,1,1.5,2]){
+ for(const [key,scale,expectedWidth] of [
+  ["salaryGross",4,1200],["salaryIncomeReference",4,800],
+  ["deductionsReference",2,400],["socialInsurance",2,600]
+ ]){
+  const box={key,width:200*factor,height:40*factor};
+  assert.deepEqual(region.gridCropSize(box,1080*factor,"label",scale),
+   {width:expectedWidth,height:expectedWidth/5,border:20});
+ }
+}
+const trimmedLabel=gridForRecovery.labelRectangles.find(v=>v.key==="salaryIncomeReference");
+assert.ok(trimmedLabel.width<=Math.ceil(gridForRecovery.gridSpan*187/1080));
+assert.equal(region.assessGridRecovery(gridForRecovery,matchingHeaders,lr.map(v=>v.key==="salaryIncomeReference"?{...v,text:v.text+"余分"}:v),digitReads,digitReads,missingReview).eligibleForManualTransfer,false);
+assert.equal(region.assessGridRecovery(gridForRecovery,matchingHeaders,lr.map(v=>v.key==="deductionsReference"?{...v,text:"所得控除の額の合計客"}:v),digitReads,digitReads,missingReview).eligibleForManualTransfer,false);
 console.log("PUBLIC_OCR_BOUNDED_REGION_RECHECK_SYNTHETIC_PASS; no source accuracy claim");

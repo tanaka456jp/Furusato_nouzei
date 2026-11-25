@@ -313,7 +313,7 @@
    // words must be recognized; no approximate match or inferred label.
    const labelRectangles=[
     ["salaryGross",244,300,8,27,4],
-    ["salaryIncomeReference",409,608,8,27,4],
+    ["salaryIncomeReference",409,596,8,27,4],
     ["deductionsReference",665,793,7,27,2],
     ["socialInsurance",273,391,193,211,2]
    ].map(([key,x1,x2,y1,y2,scale])=>({
@@ -360,7 +360,10 @@
   if(!rule.scales.includes(scale)||!Number.isSafeInteger(span)||span<560||span>2600||
      !region||!Number.isSafeInteger(region.width)||!Number.isSafeInteger(region.height)||
      region.width<8||region.height<6||region.width>span||region.height>span)return null;
-  const factor=rule.nominal*scale/span;
+  // These two longer labels were validated with the amount-scale
+  // reference. Other labels retain the higher-resolution reference.
+  const nominal=kind==="label"&&["salaryIncomeReference","deductionsReference"].includes(region.key)?1080:rule.nominal;
+  const factor=nominal*scale/span;
   if(factor<.5||factor>9)return null;
   const width=Math.round(region.width*factor),height=Math.round(region.height*factor),border=20;
   if(width<8||height<6||(width+2*border)*(height+2*border)>rule.cap)return null;
