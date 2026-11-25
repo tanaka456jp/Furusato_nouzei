@@ -5,18 +5,10 @@
  * Success means the local WASM/jpn model starts, NOT OCR accuracy.
  */
 const assert=require("node:assert/strict");
-const fs=require("node:fs");
-const http=require("node:http");
 const path=require("node:path");
 const zlib=require("node:zlib");
 const {chromium,webkit}=require("../../gas/node_modules/playwright");
 const root=path.resolve(__dirname,"..","dist");
-const types={".js":"text/javascript; charset=utf-8",
- ".mjs":"text/javascript; charset=utf-8",
- ".html":"text/html; charset=utf-8",
- ".css":"text/css; charset=utf-8",
- ".wasm":"application/wasm",".gz":"application/gzip"};
-
 // A one-page PDF with ONLY an RGB image XObject, no BT/Tj/Text operators.
 // All pixels are synthetic. The PDF is assembled in memory and never
 // uploaded to GitHub, an artifact or any remote server.
@@ -89,35 +81,11 @@ function twoPageImagePdf(){
 }
 
 async function main(){
- const csp=fs.readFileSync(path.join(root,"_headers"),"utf8")
-   .split("\n").find(x=>x.trim().startsWith("Content-Security-Policy:"))
-   .replace(/^\s*Content-Security-Policy:\s*/,"").trim();
  let requestCount=0;
- const server=http.createServer(function(req,res){
-  try{
-   const url=new URL(req.url,"http://127.0.0.1");
-   if(req.method!=="GET"||url.pathname.includes("..")){
-    res.writeHead(400);res.end();return;
-   }
-   const requested=url.pathname==="/"?"/index.html":url.pathname;
-   const name=decodeURIComponent(requested).replace(/^\/+/,"");
-   const full=path.resolve(root,name);
-   if(!full.startsWith(root+path.sep)){
-    res.writeHead(403);res.end();return;
-   }
-   const stat=fs.statSync(full);
-   if(!stat.isFile())throw Error("missing asset");
-   requestCount++;
-   res.writeHead(200,{"Content-Type":types[path.extname(full)]||
-     "application/octet-stream",
-     "Content-Security-Policy":csp,
-     "Cache-Control":"no-store","X-Robots-Tag":"noindex"});
-   fs.createReadStream(full).pipe(res);
-  }catch(_){res.writeHead(404);res.end();}
- });
- await new Promise(function(resolve,reject){
-  server.once("error",reject);server.listen(0,"127.0.0.1",resolve);
- });
+ const review=require("../scripts/serve-review.cjs").createReviewServer({root,port:0});
+ const server=review.server;
+ server.on("request",(req,res)=>res.on("finish",()=>{if(res.statusCode===200)requestCount++;}));
+ await review.listen();
  let browser;
  try{
   // Edge on Windows, WebKit on Linux, Chromium on Linux: all browser
