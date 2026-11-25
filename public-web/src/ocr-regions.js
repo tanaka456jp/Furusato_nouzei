@@ -325,6 +325,14 @@
   const n=Number(s.replace(/,/g,""));
   return Number.isSafeInteger(n)&&n>=0&&n<=100000000? n:null;
  }
+ // Fixed per-field read variants. Keep thin/low-contrast social-insurance
+ // digits on original pixels; use a different scale rather than clipping
+ // them with the page contrast transform. No confidence-based cherry picking.
+ function gridReadVariant(key,pass){
+  if(!LABELS.some(f=>f.key===key)||![0,1].includes(pass))return null;
+  return pass===0?{source:"original",scale:3}:
+    key==="socialInsurance"?{source:"original",scale:2}:{source:"enhanced",scale:3};
+ }
  function assessGridDigits(left,right){
   if(!Array.isArray(left)||!Array.isArray(right)||left.length!==4||right.length!==4||
      !LABELS.every(({key})=>left.filter(v=>v?.key===key).length===1&&right.filter(v=>v?.key===key).length===1))
@@ -336,5 +344,5 @@
   }
   return {status:"DIAGNOSTIC_ONLY",matchedFields,eligibleForManualTransfer:false,autoApproved:false};
  }
- return {plan,assessRechecks,planSeparate,agreeSeparate,assessSeparate,planGridPixels,planGridCanvas,assessGridDigits};
+ return {plan,assessRechecks,planSeparate,agreeSeparate,assessSeparate,planGridPixels,planGridCanvas,assessGridDigits,gridReadVariant};
 }));

@@ -549,18 +549,21 @@
           compared.gridLayoutLocated=true;
           // Last, bounded diagnostic stage. The worker is terminated in
           // finally; these parameters cannot affect later whole-page reads.
-          if(grid.rectangles?.length===4&&typeof worker.setParameters==="function"&&regions.assessGridDigits){
+          if(grid.rectangles?.length===4&&typeof worker.setParameters==="function"&&regions.assessGridDigits&&regions.gridReadVariant){
             try{
               ensureCurrent();
               await worker.setParameters({tessedit_pageseg_mode:"7",tessedit_char_whitelist:"0123456789,"});
               const reads=[];
-              for(const source of [original,enhanced]){
+              for(const pass of [0,1]){
                 const values=[];
                 for(const region of grid.rectangles){
                   ensureCurrent();
+                  const variant=regions.gridReadVariant(region.key,pass);
+                  if(!variant)throw Error("FIELD_REGION_VARIANT_UNAVAILABLE");
+                  const source=variant.source==="original"?original:enhanced;
                   const crop=document.createElement("canvas");
                   try{
-                    const border=20,scale=3;
+                    const border=20,scale=variant.scale;
                     crop.width=region.width*scale+border*2;crop.height=region.height*scale+border*2;
                     const ctx=crop.getContext("2d");
                     if(!ctx)throw Error("FIELD_REGION_CANVAS_UNAVAILABLE");

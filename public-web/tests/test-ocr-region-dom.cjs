@@ -27,8 +27,12 @@ function evaluate(name){win.eval(fs.readFileSync(path.join(dir,name),"utf8"));}
 let external=0,calls=0,closed=0,recheckWrong=false,roiCalls=0,separateMode=false,separateConflict=false,gridMode=false,gridNumericMode=false,gridReadIndex=0,gridParameters=0;
 win.fetch=()=>{external++;throw Error("REMOTE_REQUEST_FORBIDDEN");};
 win.createImageBitmap=async()=>({width:1200,height:800,close(){}});
+const gridDraws=[];
 win.HTMLCanvasElement.prototype.getContext=function(){
- return {fillStyle:"white",fillRect(){},drawImage(){},
+ const canvas=this;
+ return {fillStyle:"white",fillRect(){},drawImage(...args){
+  if(gridNumericMode&&args.length===9)gridDraws.push({source:args[0],width:canvas.width,height:canvas.height});
+ },
   getImageData(x,y,w,h){
    return {data:new Uint8ClampedArray((w||this.canvas?.width||1200)*(h||this.canvas?.height||800)*4)};
   },putImageData(){}};
@@ -188,6 +192,15 @@ async function main(){
  await run();
  assert.equal(calls-numericBefore,10);
  assert.equal(gridParameters,1);
+ assert.equal(gridDraws.length,8);
+ for(let i=0;i<7;i++){
+  assert.equal(gridDraws[i].width,340);
+  assert.equal(gridDraws[i].height,124);
+ }
+ assert.equal(gridDraws[7].width,240);
+ assert.equal(gridDraws[7].height,96);
+ assert.equal(gridDraws[7].source,gridDraws[3].source);
+ assert.notEqual(gridDraws[4].source,gridDraws[0].source);
  assert.equal(transfer.disabled,true);
  assert.equal(dom.getElementById("slipConfirm").disabled,true);
  assert.equal(form.elements.namedItem("salaryGross").value,"");

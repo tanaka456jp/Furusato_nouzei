@@ -173,4 +173,20 @@ assert.equal(region.assessGridDigits(digitReads.slice(1),digitReads).status,"HOL
 assert.equal(region.assessGridDigits([...digitReads.slice(1),digitReads[1]],digitReads).status,"HOLD");
 const spaced=digitReads.map((v,i)=>i===0?{...v,text:"７, ０００, ０００"}:v);
 assert.equal(region.assessGridDigits(digitReads,spaced).matchedFields,4);
+
+for(const [key] of labels){
+ assert.deepEqual(region.gridReadVariant(key,0),{source:"original",scale:3});
+ assert.deepEqual(region.gridReadVariant(key,1),key==="socialInsurance"?{source:"original",scale:2}:{source:"enhanced",scale:3});
+}
+assert.equal(region.gridReadVariant("withholdingTax",1),null);
+assert.equal(region.gridReadVariant("socialInsurance",2),null);
+const blankSocial=digitReads.map(v=>v.key==="socialInsurance"?{...v,text:""}:v);
+const falseSocial=digitReads.map(v=>v.key==="socialInsurance"?{...v,text:"0"}:v);
+for(const [a,b] of [[blankSocial,falseSocial],[falseSocial,blankSocial],[blankSocial,blankSocial]]){
+ const out=region.assessGridDigits(a,b);
+ assert.equal(out.matchedFields,3);
+ assert.equal(out.eligibleForManualTransfer,false);
+ assert.equal(out.autoApproved,false);
+ assert.equal(out.candidates,undefined);
+}
 console.log("PUBLIC_OCR_BOUNDED_REGION_RECHECK_SYNTHETIC_PASS; no source accuracy claim");
