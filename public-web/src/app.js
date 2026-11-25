@@ -453,6 +453,7 @@
       if(original.status!=="RECONCILED")return fail(original.reason);
       if(hd){
         var applied=strictYen(hd.applied),possible=hd.possible===""?null:strictYen(hd.possible),moveInYear=strictYen(hd.moveInYear);
+        if(hd.applied==="")return fail("原票の住宅ローン控除額（G29）が未入力です。原票が空欄の場合も0円と推定せず、年末調整の適用状況を確認してください。");
         if(applied===null||(hd.possible!==""&&possible===null)||moveInYear===null||year-moveInYear>=13||
            !window.FurusatoFamilyTax||typeof window.FurusatoFamilyTax.reconcileMortgageSource!=="function")
           return fail("住宅ローン控除の原票記載額・入居年・適用継続を確認してください。");

@@ -255,7 +255,7 @@
    const mortgageCell=cell(tr,"","batch-mortgage-editor");
    const mortgageDetails=formControl("details");mortgageDetails.open=openMortgageRows.has(i);
    mortgageDetails.appendChild(formControl("summary",{text:"住宅ローン控除（該当者のみ）"}));
-   mortgageDetails.appendChild(formControl("p",{text:"原票の控除可能額欄が空欄なら入力不要。入居年・適用区分と継続適用を確認。前年の控除可能額を使用し、ローン残高の変動は考慮しません。"}));
+   mortgageDetails.appendChild(formControl("p",{text:"控除額（G29）と控除可能額（G36）は別項目です。G29が空欄なら0円と推定せず、年末調整の適用状況を確認してください。G29が正の金額でG36が原票上空欄の場合のみG36は入力不要です。G29が0円のケースは個別確認が必要です。前年の控除可能額を使用し、ローン残高の変動は考慮しません。"}));
    for(const [key,title] of [["mortgageSourceApplied","原票の住宅借入金等特別控除額（円）"],["mortgageSourcePossible","原票の住宅借入金等特別控除可能額（円・原票空欄なら空欄）"],["mortgageMoveInYear","入居年（西暦）"],["mortgageCapClass","住民税の控除限度額区分"]]){
     const label=formControl("label",{text:title});
     const field=formControl(key==="mortgageCapClass"?"select":"input",{"data-row":String(i),"data-field":key,"aria-label":"対象者 "+r.page+" "+title,autocomplete:"off",...(key==="mortgageCapClass"?{}:{type:"text",inputmode:"numeric",maxlength:key==="mortgageMoveInYear"?"4":"6"})});

@@ -349,6 +349,7 @@
     const applied=parseHighMoney(row.mortgageSourceApplied,600000);
     const possible=row.mortgageSourcePossible===""?null:parseHighMoney(row.mortgageSourcePossible,600000);
     const moveInYear=parseHighMoney(row.mortgageMoveInYear,2026);
+    if(row.mortgageSourceApplied===""){row.reason="原票の住宅ローン控除額（G29）が未入力です。原票が空欄の場合も0円と推定せず、年末調整の適用状況を確認してください。";return row;}
     if(applied===null||(row.mortgageSourcePossible!==""&&possible===null)||moveInYear===null||
        row.year-moveInYear>=13||typeof familyEngine.reconcileMortgageSource!=="function"){
      row.reason="住宅ローン控除の原票記載額・入居年・適用継続を確認してください";return row;}

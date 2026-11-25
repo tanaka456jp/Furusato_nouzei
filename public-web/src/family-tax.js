@@ -318,11 +318,18 @@
      input.moveInYear<2014||input.moveInYear>=input.year||input.year-input.moveInYear>=13||
      !["standard5","transitional7"].includes(input.capClass)||
      (input.capClass==="transitional7"&&input.moveInYear>2022)||
-     !valid(input.appliedYen,600000)||input.appliedYen===0||
+     !valid(input.appliedYen,600000)||
      (input.possibleYen!==null&&(!valid(input.possibleYen,600000)||input.possibleYen<=input.appliedYen))||
      input.reviewed!==true)return hold("原票の住宅ローン控除額・可能額・入居年・適用区分を確認してください");
   const possible=input.possibleYen===null?input.appliedYen:input.possibleYen;
   const n=national(floor1000(input.salaryIncome-input.deductions));
+  // Explicit zero is not equivalent to an empty G29. A zero pre-credit
+  // income tax with a housing credit is outside the audited interaction
+  // scope (see mortgageContext); never infer a local housing credit.
+  if(input.appliedYen===0){
+   if(n.incomeTax>0&&possible>0)return hold("原票の住宅ローン控除額0円が算出所得税額・控除可能額と一致しません。原票を確認してください");
+   return hold("原票の住宅ローン控除額が0円のケースは個別確認が必要です。自動試算の対象外です");
+  }
   if(n.incomeTax<=0||Math.min(n.incomeTax,possible)!==input.appliedYen)
    return hold("原票の住宅ローン控除額が算出所得税額と一致しません");
   return {status:"RECONCILED",release:"HOLD",calculation:{sourceYear:input.year,

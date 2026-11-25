@@ -543,6 +543,17 @@ assert.equal(mr.donationLimitYen,mr.comparison.oneStop);
 assert.ok(mr.comparison.filing<mr.comparison.oneStop);
 const blank=mortgageFixture("","10000");runFamily(blank);assert.equal(blank.status,"前年参考概算",blank.reason);
 assert.equal(blank.mortgageSummary.possibleYen,10000);
+// G29 blank is never substituted by a positive G36 or zero.
+for(const [applied,possible,reason] of [["","500000",/G29.*未入力/],["0","500000",/0円.*一致しません/],["0","",/0円.*個別確認/]]){
+ const row=mortgageFixture(possible,applied);runFamily(row);
+ assert.equal(row.status,"HOLD");assert.match(row.reason,reason);
+ assert.equal(row.donationLimitYen,null);assert.equal(batch.canOutputEstimate(row),false);
+ assert.equal(batch.canOutputNoTax(row),false);assert.equal(columns(row)[11],"");
+}
+const zeroSource={year:2025,salaryIncome:250000,deductions:950000,moveInYear:2021,capClass:"standard5",appliedYen:0,possibleYen:100000,reviewed:true};
+const zeroHousing=familyTax.reconcileMortgageSource(zeroSource);
+assert.equal(zeroHousing.status,"HOLD");assert.match(zeroHousing.reason,/0円.*個別確認/);
+assert.equal(zeroHousing.donationLimitYen,null);
 for(const mutate of [r=>{r.mortgageReviewed=false;},r=>{r.mortgageSourceApplied="286499";},
  r=>{r.mortgageSourcePossible="286500";},r=>{r.mortgageSourcePossible="";r.mortgageSourceApplied="400000";},
  r=>{r.mortgageMoveInYear="2025";},r=>{r.mortgageCapClass="";},r=>{r.sourceIndicators.hasOtherIncome=true;}]){

@@ -812,6 +812,11 @@ assert.equal(housingValues()["寄附前所得税住宅ローン控除"],"278,500
 assert.equal(housingValues()["寄附前住民税住宅ローン控除"],"97,500円");
 assert.match(view.textContent,/住宅ローン残高の変動は考慮していません/);
 assert.equal(field("familyReviewed").checked,false);
+for(const [applied,possible,reason] of [["","500000",/G29.*未入力/],["0","500000",/0円.*一致しません/],["0","",/0円.*個別確認/]]){
+ field("mortgageSourceApplied").value=applied;field("mortgageSourcePossible").value=possible;rawSubmit();
+ assert.equal(view.className,"result hold");assert.match(view.textContent,reason);assert.equal(view.querySelector(".amount"),null);
+}
+field("mortgageSourcePossible").value="500000";
 field("mortgageSourceApplied").value="286499";rawSubmit();assert.equal(view.className,"result hold");
 field("mortgageSourceApplied").value="10000";field("mortgageSourcePossible").value="";
 rawSubmit();assert.equal(view.className,"result",view.textContent);

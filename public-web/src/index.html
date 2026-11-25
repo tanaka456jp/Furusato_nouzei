@@ -121,7 +121,7 @@
           </fieldset>
           <details class="conditions family-panel" id="mortgagePanel">
             <summary>住宅ローン控除（該当者のみ）</summary>
-            <p>取り込んだ源泉徴収票の記載額で継続適用を試算します。控除可能額欄が空欄なら入力不要。前年原票を使う場合、住宅ローン残高の変動は考慮していません。</p>
+            <p>取り込んだ源泉徴収票の記載額で継続適用を試算します。控除額（G29）と控除可能額（G36）は別の項目です。G29が空欄の場合は0円と推定せず、年末調整の適用状況を確認してください。G36が原票上空欄で、G29が正の金額の場合のみG36は入力不要です。G29が0円のケースは個別確認が必要です。前年原票を使う場合、住宅ローン残高の変動は考慮していません。</p>
             <div class="fields">
               <label>原票の住宅借入金等特別控除額（円）<input name="mortgageSourceApplied" type="text" inputmode="numeric" autocomplete="off" maxlength="6"></label>
               <label>原票の住宅借入金等特別控除可能額（円・空欄可）<input name="mortgageSourcePossible" type="text" inputmode="numeric" autocomplete="off" maxlength="6"></label>
