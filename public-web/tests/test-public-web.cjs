@@ -563,6 +563,25 @@ field("hasLifeInsurance").checked=false;rawSubmit();assert.equal(view.className,
 field("hasLifeInsurance").checked=true;
 field("targetInsurance_generalNew").value="bad";rawSubmit();assert.equal(view.className,"result hold");
 form.reset();
+// Shared-child relief affects insurance only, never the family deduction.
+field("year").value="2026";field("municipality").value="standard";
+field("salaryGross").value="7000000";field("socialInsurance").value="1000000";
+field("hasLifeInsurance").checked=true;field("targetInsurance_generalNew").value="120000";
+field("targetInsurance_otherClaimUnder23").checked=true;
+field("familyReviewed").checked=true;field("insuranceReviewed").checked=true;field("acknowledgedExclusions").checked=true;
+rawSubmit();assert.equal(view.className,"result",view.textContent);
+assert.match(view.textContent,/特例：適用/);
+const sharedChildValues=Object.fromEntries([...view.querySelectorAll("details dt")].map(dt=>[dt.textContent,dt.nextElementSibling.textContent]));
+assert.equal(sharedChildValues["生命保険料控除（所得税）"],"60,000円");
+assert.equal(sharedChildValues["生命保険料控除（住民税）"],"28,000円");
+assert.equal(sharedChildValues["所得税家族控除"],"0円");
+assert.equal(sharedChildValues["住民税家族控除"],"0円");
+field("targetInsurance_otherClaimUnder23").checked=false;
+field("targetInsurance_otherClaimUnder23").dispatchEvent(new Event("change",{bubbles:true}));
+assert.equal(field("insuranceReviewed").checked,false);assert.equal(view.hidden,true);
+field("familyReviewed").checked=true;field("insuranceReviewed").checked=true;field("acknowledgedExclusions").checked=true;
+rawSubmit();assert.equal(view.className,"result");assert.match(view.textContent,/特例：対象外/);
+form.reset();
 // Synthetic prior-year source with both family and insurance deductions.
 field("year").value="2026";field("municipality").value="standard";
 field("salaryGross").value="6500000";field("socialInsurance").value="1340000";
