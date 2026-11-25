@@ -126,7 +126,13 @@ function type(idx,key,value){
  d.getElementById("batchCalculate").click();
  assert.equal(current().querySelector(".batch-trial-status").textContent,"確定申告参考");
  assert.match(current().textContent,/1,896円/);
- assert.equal(current().querySelectorAll(".batch-print-value").length,4);
+ // All select editors except the separately printed mortgage cap have
+ // a print-only mirror, including the two new insurance eligibility fields.
+ const printedSelects=[...current().querySelectorAll("select:not([data-field=mortgageCapClass])")];
+ assert.equal(printedSelects.length,6);
+ assert.equal(current().querySelectorAll(".batch-print-value").length,6);
+ for(const select of printedSelects)assert.equal(select.parentNode.querySelector(".batch-print-value").textContent,select.selectedOptions[0].textContent);
+ for(const prefix of ["source","target"])assert.equal(choose(1,prefix+"Insurance_otherClaimUnder23").value,"");
  type(0,"label","架空改姓");
  assert.doesNotMatch(d.querySelector("#batchRows tr:nth-child(1)").textContent,/57,000円/,
   "A name edit must erase stale amount without losing keyboard focus");
@@ -194,6 +200,17 @@ function type(idx,key,value){
  assert.deepEqual([...d.querySelectorAll("#batchRows tr:first-child .batch-insurance-result")].map(x=>x.textContent),
   ["90,000円","60,000円","28,000円","50,000円","25,000円","適用"]);
  assert.equal(d.querySelector("#batchRows tr").children.length,d.querySelectorAll("#batchTable th").length);
+ // New eligibility selector participates in stale-result/print protection,
+ // without invalidating the unrelated taxpayer.
+ change(0,"targetInsurance_otherClaimUnder23","yes");
+ assert.equal(choose(0,"insuranceReviewed").checked,false);
+ assert.equal(d.querySelector("#batchRows tr .batch-result").textContent,"—");
+ assert.equal(current().querySelector(".batch-result").textContent,"109,000円");
+ assert.equal(d.getElementById("batchDownload").disabled,true);
+ change(0,"targetInsurance_otherClaimUnder23","");
+ for(const key of ["confirmed","noExclusions","forecastReviewed","familyReviewed","insuranceReviewed"])change(0,key,true);
+ d.getElementById("batchCalculate").click();
+ assert.equal(d.querySelector("#batchRows tr .batch-result").textContent,"51,000円");
  choose(0,"sourceInsurance_generalNew").value="0";
  win.dispatchEvent(new win.Event("beforeprint"));
  assert.equal(d.querySelector("#batchRows tr .batch-result").textContent,"—");
