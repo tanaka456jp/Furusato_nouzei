@@ -323,6 +323,11 @@
     key,left:Math.round(l+w*x1/1080),top:Math.round(t+w*y1/1080),
     width:Math.round(w*(x2-x1)/1080),height:Math.round(w*(y2-y1)/1080),scale
    }));
+   // End above the detected bottom heading rule; avoid interpolation bleed.
+   const socialLabel=labelRectangles.find(v=>v.key==="socialInsurance");
+   const socialLabelBottom=Math.min(socialLabel.top+socialLabel.height,hits[4].top-Math.max(1,Math.ceil(w*.001)));
+   socialLabel.top=Math.max(socialLabel.top,hits[3].bottom+1);
+   socialLabel.height=socialLabelBottom-socialLabel.top;
    const labelsSafe=labelRectangles.every(v=>v.left>=0&&v.top>=0&&v.width>=25&&v.height>=10&&
     v.left+v.width<=width&&v.top+v.height<=height&&gridCropSize(v,w,"label",v.scale)!==null);
    matches.push({gridSpan:w,rectangles,headerRectangles:safe?headerRectangles:[],labelRectangles:labelsSafe?labelRectangles:[]});

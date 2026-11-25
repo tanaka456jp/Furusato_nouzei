@@ -164,6 +164,23 @@ assert.ok(socialRect.top+socialRect.height<=624);
 for(let y=socialRect.top;y<socialRect.top+socialRect.height;y++)
  for(let x=socialRect.left;x<socialRect.left+socialRect.width;x++)
   assert.equal(thickGrid.data[(y*thickGrid.w+x)*4],255,"lower rule must not enter the empty amount crop");
+// The heading's bottom rule is distinct from the lower amount rule.
+// Thickened/shifted printed rules must stay outside the label crop.
+for(const [scale,left,top] of [[1,55,350],[.8,35,270],[1.25,80,470]]){
+ const f=gridFixture(scale,left,top),y=top+Math.round(212*scale),thickness=Math.max(1,Math.round(2*scale)),end=left+Math.round(1080*scale);
+ for(let row=y-thickness;row<=y+thickness;row++)for(let x=left;x<=end;x++){
+  const i=(row*f.w+x)*4;f.data[i]=f.data[i+1]=f.data[i+2]=0;
+ }
+ const plan=gp(f);
+ assert.equal(plan.status,"LAYOUT_ONLY");
+ const box=plan.labelRectangles.find(v=>v.key==="socialInsurance");
+ assert.ok(box);
+ assert.ok(box.top>top+Math.round(192*scale));
+ assert.ok(box.top+box.height<=y-thickness-Math.max(1,Math.ceil(plan.gridSpan*.001)));
+ assert.ok(region.gridCropSize(box,plan.gridSpan,"label",box.scale));
+ for(let row=box.top;row<box.top+box.height;row++)for(let x=box.left;x<box.left+box.width;x++)
+  assert.equal(f.data[(row*f.w+x)*4],255,"heading rule must not enter label crop");
+}
 const blank=gridFixture();blank.data.fill(255);
 assert.equal(gp(blank).status,"HOLD");
 assert.equal(region.planGridPixels(null,1000,1000).status,"HOLD");
