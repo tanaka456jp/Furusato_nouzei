@@ -31,4 +31,27 @@ const clipped=pixels.slice();
 for(let i=0;i<clipped.length;i+=4)
  if(i/(w*4)<3)clipped[i]=clipped[i+1]=clipped[i+2]=255;
 assert.equal(model.findCorners(w,h,clipped).status,"UNVERIFIED");
+// Two sizeable disconnected bright regions on a dark background must
+// not be silently reduced to the largest rectangle.
+function regions(rects){
+ const a=new Uint8ClampedArray(w*h*4);
+ for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+  const i=(y*w+x)*4,v=rects.some(([l,t,r,b])=>x>=l&&x<=r&&y>=t&&y<=b)?246:22;
+  a[i]=a[i+1]=a[i+2]=v;a[i+3]=255;
+ }
+ return a;
+}
+const multiple=regions([[15,20,145,203],[165,40,265,188]]);
+const ambiguous=model.findCorners(w,h,multiple);
+assert.equal(ambiguous.status,"AMBIGUOUS_PAGE");
+assert.equal(ambiguous.corners,null);assert.equal(ambiguous.autoApproved,false);
+const incidental=regions([[15,20,145,203],[165,40,180,55]]);
+assert.equal(model.findCorners(w,h,incidental).status,"CORNERS_FOUND");
+const beforeDocument=global.document;
+global.document={createElement:()=>({width:0,height:0,getContext:()=>({drawImage(){},getImageData(){return {data:multiple};}})})};
+try{
+ const rectified=model.tryRectify({width:1152,height:896});
+ assert.equal(rectified.status,"AMBIGUOUS_PAGE");assert.equal(rectified.canvas,null);
+ assert.equal(rectified.autoApproved,false);
+}finally{if(beforeDocument===undefined)delete global.document;else global.document=beforeDocument;}
 console.log("PUBLIC_OCR_FOUR_CORNER_PERSPECTIVE_SYNTHETIC_PASS; no OCR accuracy claim");

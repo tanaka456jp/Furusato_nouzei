@@ -232,6 +232,11 @@ async function main(){
     pctx.closePath();
     pctx.fillStyle="#f7f7f7";pctx.fill();
     const rectified=window.FurusatoPerspective.tryRectify(photo);
+    pctx.fillStyle="#181818";pctx.fillRect(0,0,1200,900);
+    pctx.fillStyle="#f7f7f7";pctx.fillRect(65,80,545,740);pctx.fillRect(690,160,420,580);
+    const ambiguous=window.FurusatoPerspective.tryRectify(photo);
+    const ambiguity={status:ambiguous.status,canvas:!!ambiguous.canvas,autoApproved:ambiguous.autoApproved};
+    if(ambiguous.canvas){ambiguous.canvas.width=0;ambiguous.canvas.height=0;}
     photo.width=0;photo.height=0;
     const geometry={status:rectified.status,
       width:rectified.canvas?.width||0,height:rectified.canvas?.height||0};
@@ -239,13 +244,14 @@ async function main(){
       rectified.canvas.width=0;rectified.canvas.height=0;
     }
     return {textType:typeof outcome?.data?.text,
-      confidence:outcome?.data?.confidence,blocksReturned:Array.isArray(outcome?.data?.blocks),geometry};
+      confidence:outcome?.data?.confidence,blocksReturned:Array.isArray(outcome?.data?.blocks),geometry,ambiguity};
    }finally{await worker.terminate();}
   },{timeout:180000});
   assert.equal(status.textType,"string");
   assert.ok(Number.isFinite(status.confidence));
   assert.equal(status.blocksReturned,true,"OCR word position output is unavailable");
   assert.equal(status.geometry.status,"APPLIED");
+  assert.deepEqual(status.ambiguity,{status:"AMBIGUOUS_PAGE",canvas:false,autoApproved:false});
   assert.ok(status.geometry.width>=750&&status.geometry.height>=400);
   assert.ok(status.geometry.width*status.geometry.height<=3200000);
 

@@ -135,6 +135,22 @@ async function run(){
  assert.equal(scan.disabled,false);
 }
 async function main(){
+ // Image quality and ambiguous framing must veto even an OCR mock that
+ // would otherwise return a fully matching slip.
+ const assess=win.FurusatoImageQuality.assessCanvas,rectify=win.FurusatoPerspective.tryRectify;
+ for(const [reason,expected] of [["IMAGE_TOO_DARK",/暗すぎます/],["IMAGE_BLANK_OR_LOW_CONTRAST",/コントラスト不足/],["IMAGE_ALPHA_UNSUPPORTED",/透過部分/]]){
+  win.FurusatoImageQuality.assessCanvas=()=>({status:"HOLD",reasons:[reason]});
+  file("quality-block.png");await run();assert.equal(calls,0);assert.equal(transfer.disabled,true);
+  assert.match(dom.getElementById("slipReview").textContent,expected);
+  assert.equal(form.elements.namedItem("salaryGross").value,"");assert.equal(dom.getElementById("result").hidden,true);
+ }
+ win.FurusatoImageQuality.assessCanvas=assess;
+ win.FurusatoPerspective.tryRectify=()=>({status:"AMBIGUOUS_PAGE",canvas:null,autoApproved:false});
+ file("multiple-regions.png");await run();assert.equal(calls,0);
+ assert.equal(transfer.disabled,true);assert.equal(dom.getElementById("slipConfirm").disabled,true);
+ assert.match(dom.getElementById("slipReview").textContent,/複数の大きな明るい領域/);
+ assert.equal(dom.getElementById("result").hidden,true);
+ win.FurusatoPerspective.tryRectify=rectify;
  file("first.png");
  await run();
  assert.equal(calls,6,"two whole-page and four region rereads");

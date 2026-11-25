@@ -433,12 +433,17 @@
          typeof window.FurusatoImageQuality.assessCanvas!=="function")
         throw Error("IMAGE_QUALITY_MODULE_MISSING");
       var quality=window.FurusatoImageQuality.assessCanvas(original);
-      if(quality.status!=="REVIEW")throw Error("IMAGE_QUALITY_HOLD");
+      if(quality.status!=="REVIEW"){
+        const reasons=Array.isArray(quality.reasons)?quality.reasons:[];
+        const code=["IMAGE_ALPHA_UNSUPPORTED","IMAGE_TOO_DARK","IMAGE_BLANK_OR_LOW_CONTRAST","IMAGE_DIMENSIONS_UNVERIFIED"].find(k=>reasons.includes(k));
+        throw Error(code||"IMAGE_QUALITY_HOLD");
+      }
       // Only high-confidence page corners trigger perspective correction.
       // An unverified silhouette retains the existing source image.
       if(window.FurusatoPerspective&&
          typeof window.FurusatoPerspective.tryRectify==="function"){
         var correction=window.FurusatoPerspective.tryRectify(image);
+        if(correction.status==="AMBIGUOUS_PAGE")throw Error("IMAGE_PAGE_AMBIGUOUS");
         if(correction.status==="APPLIED"){
           rectified=correction.canvas;
           if(window.FurusatoImageQuality.assessCanvas(rectified).status!=="REVIEW")
@@ -964,7 +969,19 @@
       if(!isStale()){
         if(error?.message==="IMAGE_RESOLUTION_UNSUPPORTED")
           blocked("OCRを完了できませんでした。画像の解像度が不足しています。画像処理後の横幅750・高さ400ピクセル以上が必要です。拡大コピーではなく鮮明な原本を再撮影するか、電子PDF・手入力をご利用ください。入力原票は送信されません。");
-        else blocked("OCRを完了できませんでした（処理区分："+stage+"）。入力原票は送信されません。画質・ページ構成を確認し、必要なら撮影し直すか手入力してください。");
+        else {
+          // Only fixed public messages; never expose OCR text or arbitrary errors.
+          const hints={
+            IMAGE_ALPHA_UNSUPPORTED:"透過部分を含む画像です。白い背景の原票を撮影し直してください。",
+            IMAGE_TOO_DARK:"画像が暗すぎます。影や逆光を避け、原票全体を均一に明るくしてください。",
+            IMAGE_BLANK_OR_LOW_CONTRAST:"白紙または文字・罫線のコントラスト不足です。鮮明な画像で再試行してください。",
+            IMAGE_DIMENSIONS_UNVERIFIED:"画像の寸法を確認できません。原票全体を鮮明に撮影してください。",
+            IMAGE_PAGE_AMBIGUOUS:"撮影画像に複数の大きな明るい領域があります。原票1枚だけを影のない状態で撮影し直してください。",
+            RECTIFIED_IMAGE_QUALITY_HOLD:"補正後の画像品質が不足しています。原票を正面から撮影してください。"
+          };
+          const hint=Object.prototype.hasOwnProperty.call(hints,error?.message)?hints[error.message]:null;
+          blocked(hint?"OCRを完了できませんでした。"+hint+"入力原票は送信されません。":"OCRを完了できませんでした（処理区分："+stage+"）。入力原票は送信されません。画質・ページ構成を確認し、必要なら撮影し直すか手入力してください。");
+        }
       }
     }finally{
       // Keep the scan button unavailable until ALL cleanup completes.

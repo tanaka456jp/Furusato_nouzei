@@ -44,7 +44,7 @@
   }
   if(bright<w*h*.13||bright>w*h*.85)return unverified;
   const queue=new Int32Array(w*h);
-  let best=[];
+  let best=[],secondSize=0;
   for(let start=0;start<w*h;start++){
    if(!mask[start]||visited[start])continue;
    let front=0,end=1;
@@ -59,9 +59,15 @@
      }
     }
    }
-   if(end>best.length)best=Array.from(queue.subarray(0,end));
+   if(end>best.length){secondSize=best.length;best=Array.from(queue.subarray(0,end));}
+   else secondSize=Math.max(secondSize,end);
   }
   if(best.length<w*h*.12)return unverified;
+  // Do not silently crop to one of several substantial bright regions.
+  // A second document, or a page divided by deep shadow, needs a fresh
+  // photo. This is geometric ambiguity, not recognition of two slips.
+  if(secondSize>=w*h*.06&&secondSize>=best.length*.25)
+   return {status:"AMBIGUOUS_PAGE",corners:null,autoApproved:false};
   let tl=null,tr=null,br=null,bl=null;
   let minS=Infinity,maxS=-Infinity,maxD=-Infinity,minD=Infinity;
   let minX=w,maxX=-1,minY=h,maxY=-1;
@@ -120,6 +126,7 @@
    if(!small)return fallback;
    small.drawImage(input,0,0,sw,sh);
    const guess=findCorners(sw,sh,small.getImageData(0,0,sw,sh).data);
+   if(guess.status==="AMBIGUOUS_PAGE")return {status:"AMBIGUOUS_PAGE",canvas:null,autoApproved:false};
    if(guess.status!=="CORNERS_FOUND")return fallback;
    const sx=input.width/sw,sy=input.height/sh;
    const q=guess.corners.map(p=>({x:p.x*sx,y:p.y*sy}));
