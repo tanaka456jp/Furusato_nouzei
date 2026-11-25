@@ -24,7 +24,7 @@ function syntheticRasterFile(name,type="image/png",size=1024){
 const doc=new JSDOM(html,{url:"https://local-review.invalid/",runScripts:"outside-only"});
 const win=doc.window,dom=win.document;
 function evaluate(name){win.eval(fs.readFileSync(path.join(dir,name),"utf8"));}
-let external=0,calls=0,closed=0,recheckWrong=false,roiCalls=0,separateMode=false,separateConflict=false,gridMode=false;
+let external=0,calls=0,closed=0,recheckWrong=false,roiCalls=0,separateMode=false,separateConflict=false,gridMode=false,gridNumericMode=false,gridReadIndex=0,gridParameters=0;
 win.fetch=()=>{external++;throw Error("REMOTE_REQUEST_FORBIDDEN");};
 win.createImageBitmap=async()=>({width:1200,height:800,close(){}});
 win.HTMLCanvasElement.prototype.getContext=function(){
@@ -67,9 +67,19 @@ win.FurusatoImageQuality={assessCanvas:()=>({status:"REVIEW"})};
 win.FurusatoPerspective={tryRectify:()=>({status:"UNVERIFIED",canvas:null})};
 win.Tesseract={OEM:{LSTM_ONLY:1},createWorker:async()=>{
  roiCalls=0;
- return {recognize:async(_image,options,output)=>{
+ return {setParameters:async params=>{
+  assert.equal(params.tessedit_pageseg_mode,"7");
+  assert.equal(params.tessedit_char_whitelist,"0123456789,");
+  gridParameters++;
+ },recognize:async(_image,options,output)=>{
   calls++;
-  if(gridMode)return {data:{text:"令和8年分 給与所得の源泉徴収票",confidence:90}};
+  if(gridMode){
+   if(gridNumericMode&&gridReadIndex++>=2){
+    const idx=(gridReadIndex-3)%4;
+    return {data:{text:lines[idx][2].replace("円",""),confidence:95}};
+   }
+   return {data:{text:"令和8年分 給与所得の源泉徴収票",confidence:90}};
+  }
   if(separateMode){
    if(output?.blocks){
     const geometry=tableBlocks();
@@ -167,6 +177,22 @@ async function main(){
  assert.equal(dom.getElementById("slipConfirm").disabled,true);
  assert.equal(form.elements.namedItem("salaryGross").value,"");
  assert.match(dom.getElementById("slipReview").textContent,/罫線配置は一致しましたが/);
+ assert.equal(dom.getElementById("result").hidden,true);
+ // All four digit-only results agree across both crops, but the
+ // underlying full-page read remains incomplete: NO positive transfer.
+ gridNumericMode=true;gridReadIndex=0;
+ win.FurusatoOcrRegions.planGridCanvas=()=>({status:"LAYOUT_ONLY",layoutLocated:true,
+  eligibleForManualTransfer:false,rectangles:lines.map(([key],i)=>({key,left:80+i*120,top:120,width:100,height:28}))});
+ file("grid-digits-only.png");
+ const numericBefore=calls;
+ await run();
+ assert.equal(calls-numericBefore,10);
+ assert.equal(gridParameters,1);
+ assert.equal(transfer.disabled,true);
+ assert.equal(dom.getElementById("slipConfirm").disabled,true);
+ assert.equal(form.elements.namedItem("salaryGross").value,"");
+ assert.match(dom.getElementById("slipReview").textContent,/4欄中4欄で2回の認識結果が一致/);
+ assert.equal(dom.getElementById("slipReview").textContent.includes("7,000,000"),false);
  assert.equal(dom.getElementById("result").hidden,true);
  win.FurusatoOcrRegions.planGridCanvas=originalPlan;
  assert.equal(external,0);
