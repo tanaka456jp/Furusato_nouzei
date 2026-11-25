@@ -48,6 +48,10 @@
     if(activePdfSession)stopPdfSession(activePdfSession);
   }
   function stopOcrSession(session){
+    // terminate() may not settle outstanding recognition/parameter jobs.
+    // Unblock our own await, but the caller still awaits worker shutdown.
+    session.cancelled=true;
+    if(session.interrupt)session.interrupt();
     if(!session.stopPromise){
       session.stopPromise=Promise.resolve().then(function(){
         return session.worker.terminate();
@@ -57,6 +61,19 @@
       session.stopPromise.catch(function(){});
     }
     return session.stopPromise;
+  }
+  function runOcrOperation(session,method,...args){
+    if(session.cancelled)return Promise.reject(Error("OCR_SOURCE_CANCELLED"));
+    // At most one operation is in flight. A late reply/rejection from
+    // the interrupted worker is consumed, never used as a candidate.
+    return new Promise((resolve,reject)=>{
+      const interrupt=()=>reject(Error("OCR_SOURCE_CANCELLED"));
+      session.interrupt=interrupt;
+      Promise.resolve().then(()=>{
+        if(session.cancelled)throw Error("OCR_SOURCE_CANCELLED");
+        return session.worker[method](...args);
+      }).then(resolve,reject);
+    }).finally(()=>{session.interrupt=null;});
   }
   function cancelActiveOcr(){
     if(activeOcrSession)stopOcrSession(activeOcrSession);
@@ -475,15 +492,15 @@
         workerBlobURL:false,cacheMethod:"none"
       };
       worker=await window.Tesseract.createWorker("jpn",window.Tesseract.OEM.LSTM_ONLY,paths);
-      session={worker:worker,stopPromise:null};
+      session={worker:worker,stopPromise:null,cancelled:false,interrupt:null};
       activeOcrSession=session;
       ensureCurrent();
       if(deskewed){
-        const untouched=await worker.recognize(image);
+        const untouched=await runOcrOperation(session,"recognize",image);
         ensureCurrent();
         rawReview=window.FurusatoSlipReview.reviewText(untouched?.data?.text,true);
       }
-      var a=await worker.recognize(original,{}, {text:true,blocks:true});
+      var a=await runOcrOperation(session,"recognize",original,{}, {text:true,blocks:true});
       ensureCurrent();
       // Request enhanced geometry only if the first read has a strictly
       // bounded, complete table plan. No added OCR pass for unrelated pages.
@@ -491,8 +508,8 @@
       var firstPlan=regions?.planSeparate?.(a?.data?.blocks,original.width,original.height,
         window.FurusatoSlipReview.reviewText(a?.data?.text));
       var b=firstPlan?.status==="READY"
-        ?await worker.recognize(enhanced,{}, {text:true,blocks:true})
-        :await worker.recognize(enhanced);
+        ?await runOcrOperation(session,"recognize",enhanced,{}, {text:true,blocks:true})
+        :await runOcrOperation(session,"recognize",enhanced);
       ensureCurrent();
       // Whole-page OCR confidence includes irrelevant names/addresses.
       // Compare the required tax fields and tax year only, with no
@@ -517,7 +534,7 @@
             if(!ctx)throw Error("FIELD_REGION_CANVAS_UNAVAILABLE");
             ctx.fillStyle="#fff";ctx.fillRect(0,0,crop.width,crop.height);
             ctx.drawImage(original,region.left,region.top,region.width,region.height,0,0,crop.width,crop.height);
-            const rec=await worker.recognize(crop);
+            const rec=await runOcrOperation(session,"recognize",crop);
             ensureCurrent();
             values.push({key:region.key,text:rec?.data?.text,confidence:rec?.data?.confidence});
           }finally{crop.width=0;crop.height=0;}
@@ -551,7 +568,7 @@
               ctx.drawImage(original,
                 region.left,region.top,region.width,region.height,
                 0,0,crop.width,crop.height);
-              var rec=await worker.recognize(crop);
+              var rec=await runOcrOperation(session,"recognize",crop);
               ensureCurrent();
               values.push({key:region.key,text:rec?.data?.text,
                 confidence:rec?.data?.confidence});
@@ -578,7 +595,7 @@
             const digitReads=[];
             try{
               ensureCurrent();
-              await worker.setParameters({tessedit_pageseg_mode:"7",tessedit_char_whitelist:"0123456789,"});
+              await runOcrOperation(session,"setParameters",{tessedit_pageseg_mode:"7",tessedit_char_whitelist:"0123456789,"});
               for(const pass of [0,1]){
                 const values=[];
                 for(const region of grid.rectangles){
@@ -596,7 +613,7 @@
                     if(!ctx)throw Error("FIELD_REGION_CANVAS_UNAVAILABLE");
                     ctx.fillStyle="#fff";ctx.fillRect(0,0,crop.width,crop.height);
                     ctx.drawImage(source,region.left,region.top,region.width,region.height,border,border,width,height);
-                    const rec=await worker.recognize(crop);
+                    const rec=await runOcrOperation(session,"recognize",crop);
                     ensureCurrent();
                     values.push({key:region.key,text:rec?.data?.text});
                   }finally{crop.width=0;crop.height=0;}
@@ -611,11 +628,11 @@
                 ensureCurrent();
                 // RAW_LINE for the title; SINGLE_LINE for both year
                 // samplings and subsequent field labels. Fixed settings.
-                await worker.setParameters({tessedit_pageseg_mode:"13",tessedit_char_whitelist:""});
+                await runOcrOperation(session,"setParameters",{tessedit_pageseg_mode:"13",tessedit_char_whitelist:""});
                 const reads=[];
                 for(const region of grid.headerRectangles){
                   ensureCurrent();
-                  if(region.key==="year")await worker.setParameters({tessedit_pageseg_mode:"7",tessedit_char_whitelist:""});
+                  if(region.key==="year")await runOcrOperation(session,"setParameters",{tessedit_pageseg_mode:"7",tessedit_char_whitelist:""});
                   ensureCurrent();
                   const crop=document.createElement("canvas");
                   try{
@@ -627,7 +644,7 @@
                     if(!ctx)throw Error("HEADER_REGION_CANVAS_UNAVAILABLE");
                     ctx.fillStyle="#fff";ctx.fillRect(0,0,crop.width,crop.height);
                     ctx.drawImage(original,region.left,region.top,region.width,region.height,border,border,width,height);
-                    const rec=await worker.recognize(crop);
+                    const rec=await runOcrOperation(session,"recognize",crop);
                     ensureCurrent();
                     reads.push({key:region.key,text:rec?.data?.text});
                   }finally{crop.width=0;crop.height=0;}
@@ -652,7 +669,7 @@
                       if(!ctx)throw Error("LABEL_REGION_CANVAS_UNAVAILABLE");
                       ctx.fillStyle="#fff";ctx.fillRect(0,0,crop.width,crop.height);
                       ctx.drawImage(original,region.left,region.top,region.width,region.height,border,border,width,height);
-                      const rec=await worker.recognize(crop);
+                      const rec=await runOcrOperation(session,"recognize",crop);
                       ensureCurrent();
                       labels.push({key:region.key,text:rec?.data?.text});
                     }finally{crop.width=0;crop.height=0;}

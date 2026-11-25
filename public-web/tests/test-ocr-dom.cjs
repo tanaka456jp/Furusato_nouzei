@@ -42,6 +42,7 @@ async function main(){
  assert.equal(check.disabled,true,"confirmation disabled until candidates appear");
  let recognized=0,terminated=0,networkAttempts=0;
  let holdRecognizer=false,releaseRecognition=null;
+ let holdTermination=false,releaseTermination=null;
  win.fetch=function(){networkAttempts++;throw Error("NETWORK_FORBIDDEN");};
  win.createImageBitmap=async()=>({width:1200,height:800,close(){}});
  win.HTMLCanvasElement.prototype.getContext=function(){
@@ -79,7 +80,10 @@ async function main(){
          });
          return {data:{text:text,confidence:0}};
        },
-       terminate:async()=>{terminated++;}
+       terminate:async()=>{
+         terminated++;
+         if(holdTermination)await new Promise(resolve=>{releaseTermination=resolve;});
+       }
      };
    }
  };
@@ -198,6 +202,7 @@ async function main(){
  assert.equal(recognized,oldCount+1);
  const oldRelease=releaseRecognition;releaseRecognition=null;
  const stoppedBeforeSwap=terminated;
+ holdTermination=true;
  Object.defineProperty(file,"files",{configurable:true,value:[syntheticRasterFile("newer-synthetic.png","image/png",1024)]});
  file.dispatchEvent(new win.Event("change",{bubbles:true}));
  assert.equal(form.dataset.ocrReviewPending,"true");
@@ -206,12 +211,17 @@ async function main(){
  assert.equal(terminated,stoppedBeforeSwap+1,
    "source swap must request immediate worker shutdown without waiting for recognize()");
  assert.equal(scan.disabled,true,
-   "overlapping scans remain locked until cancelled run actually finishes");
- holdRecognizer=false;
- oldRelease();
+   "overlapping scans remain locked until worker shutdown finishes");
+ assert.equal(typeof releaseTermination,"function");
+ holdTermination=false;releaseTermination();releaseTermination=null;
+ // Never release the abandoned recognition until after the UI unlocks.
  for(let i=0;i<100 && scan.disabled;i++)
    await new Promise(resolve=>setImmediate(resolve));
- assert.equal(scan.disabled,false);
+ assert.equal(scan.disabled,false,"terminate resolved but recognize still pending");
+ assert.equal(transfer.disabled,true);
+ holdRecognizer=false;
+ oldRelease();
+ await new Promise(resolve=>setImmediate(resolve));
  assert.equal(recognized,oldCount+1,
    "cancelled old file must not run a second full-page OCR pass");
  assert.equal(transfer.disabled,true);
@@ -247,6 +257,28 @@ async function main(){
    "an edit during the first pass must stop subsequent OCR passes");
  assert.equal(field("salaryGross").value,"7150000");
  assert.equal(transfer.disabled,true);
+ // Worker teardown can resolve even if recognize() NEVER settles.
+ form.reset();
+ field("year").value="2026";
+ Object.defineProperty(file,"files",{configurable:true,value:[
+  syntheticRasterFile("synthetic-never-settles.png","image/png",1024)
+ ]});
+ file.dispatchEvent(new win.Event("change",{bubbles:true}));
+ const neverFactory=win.Tesseract.createWorker;
+ let neverCalls=0,neverStops=0;
+ win.Tesseract.createWorker=async()=>({
+  recognize:()=>{neverCalls++;return new Promise(()=>{});},
+  terminate:async()=>{neverStops++;}
+ });
+ try{
+  scan.click();
+  for(let i=0;i<100&&!neverCalls;i++)await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(neverCalls,1);
+  form.reset();
+  for(let i=0;i<100&&scan.disabled;i++)await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(scan.disabled,false,"abandoned recognize must not lock the page");
+  assert.equal(neverStops,1);assert.equal(transfer.disabled,true);
+ }finally{win.Tesseract.createWorker=neverFactory;}
  // A real worker often rejects recognize() immediately when terminate()
  // is requested. Simulate that to prove no external test-release is needed.
  // Old candidates stay blocked while the worker is interrupted.
