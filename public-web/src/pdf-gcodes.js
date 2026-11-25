@@ -213,6 +213,13 @@
    if(amount!==null&&amount>0)sourceIndicators[flag]=true;
   }
   const optionalCandidates={},r8=r8Layout(spans,year);
+  // G27/G28 are calculated income deductions, never annual premiums.
+  // Keep only positive uniquely parsed evidence on verified form years.
+  if(year===2025||r8)for(const [code,key,max,flag] of [["G27","sourceLifeDeductionHint",120000,"hasLifeInsurance"],["G28","sourceEarthDeductionHint",50000,"hasEarthquakeInsurance"]]){
+   const marks=anchors(spans,code);if(marks.length!==1)continue;
+   const n=strictSlotAmount(spans,marks[0]);
+   if(n!==null&&n>0&&n<=max&&sourceIndicators[flag]===true)optionalCandidates[key]=n;
+  }
   // Unlike a positive warning flag, a prefilled amount must have an
   // unambiguous numeric representation. Reject overlapping representations,
   // duplicate compact tokens and conflicting nearby digit sequences.
@@ -284,6 +291,9 @@
   if((coded.year===2025||r8)&&coded.sourceIndicators?.hasDependents===true)for(const [key] of Object.values(R7_COUNTS)){
    if(r8&&key!=="familySpecialRelativeCount")continue;
    const n=coded.optionalCandidates?.[key];if(Number.isSafeInteger(n)&&n>0&&n<=30)result[key]=n;
+  }
+  if(coded.year===2025||r8)for(const [key,max,flag] of [["sourceLifeDeductionHint",120000,"hasLifeInsurance"],["sourceEarthDeductionHint",50000,"hasEarthquakeInsurance"]]){
+   const n=coded.optionalCandidates?.[key];if(Number.isSafeInteger(n)&&n>0&&n<=max&&coded.sourceIndicators?.[flag]===true)result[key]=n;
   }
   const spouse=coded.optionalCandidates?.sourceSpouseIncome;
   if(coded.year===2025&&coded.sourceIndicators?.hasSpouse===true&&Number.isSafeInteger(spouse)&&spouse>0&&spouse<=1330000)result.sourceSpouseIncome=spouse;

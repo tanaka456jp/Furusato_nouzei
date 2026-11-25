@@ -878,7 +878,7 @@
       ul.appendChild(li);
     });
     const countLabels={"familySpecificCount":"特定扶養親族","familyElderlyCount":"老人扶養親族","familyOtherCount":"その他の控除対象扶養親族","familySpecialRelativeCount":"特定親族","familyUnder16Count":"16歳未満の扶養親族"};
-    const optionalLabels={...countLabels,sourceSpouseIncome:"配偶者の合計所得（G43）",mortgageMoveInYear:"居住開始年（西暦）",mortgageSourceApplied:"住宅借入金等特別控除額（G29）",sourceBasicYen:"基礎控除額（G46）",sourceAdjustmentYen:"所得金額調整控除額（G47）",mortgageSourcePossible:"住宅借入金等特別控除可能額（G36）",sourceInsurance_generalNew:"新生命保険料（G30）",sourceInsurance_generalOld:"旧生命保険料（G31）",sourceInsurance_medicalNew:"介護医療保険料（G32）",sourceInsurance_pensionNew:"新個人年金保険料（G33）",sourceInsurance_pensionOld:"旧個人年金保険料（G34）",sourceInsurance_longTermOld:"旧長期損害保険料（G45）"};
+    const optionalLabels={...countLabels,sourceLifeDeductionHint:"生命保険料控除額（G27・年間支払額ではない）",sourceEarthDeductionHint:"地震保険料控除額（G28・年間支払額ではない）",sourceSpouseIncome:"配偶者の合計所得（G43）",mortgageMoveInYear:"居住開始年（西暦）",mortgageSourceApplied:"住宅借入金等特別控除額（G29）",sourceBasicYen:"基礎控除額（G46）",sourceAdjustmentYen:"所得金額調整控除額（G47）",mortgageSourcePossible:"住宅借入金等特別控除可能額（G36）",sourceInsurance_generalNew:"新生命保険料（G30）",sourceInsurance_generalOld:"旧生命保険料（G31）",sourceInsurance_medicalNew:"介護医療保険料（G32）",sourceInsurance_pensionNew:"新個人年金保険料（G33）",sourceInsurance_pensionOld:"旧個人年金保険料（G34）",sourceInsurance_longTermOld:"旧長期損害保険料（G45）"};
     for(const [key,label] of Object.entries(optionalLabels)){
       const n=r.optionalCandidates?.[key];
       if(Number.isSafeInteger(n)&&n>=0){
@@ -1037,6 +1037,8 @@
     if(review.year===2025&&review.sourceIndicators?.hasSpouse===true&&Number.isSafeInteger(review.optionalCandidates?.sourceSpouseIncome)&&review.optionalCandidates.sourceSpouseIncome>0&&review.optionalCandidates.sourceSpouseIncome<=1330000)form.dataset.ocrSpouseIncome=String(review.optionalCandidates.sourceSpouseIncome);
     const familyCountHints=Object.fromEntries(["familySpecificCount","familyElderlyCount","familyOtherCount","familySpecialRelativeCount","familyUnder16Count"].filter(k=>(review.year===2025||(review.year===2026&&review.r8VerifiedLayout===true&&k==="familySpecialRelativeCount"))&&review.sourceIndicators?.hasDependents===true&&Number.isSafeInteger(review.optionalCandidates?.[k])&&review.optionalCandidates[k]>0&&review.optionalCandidates[k]<=30).map(k=>[k,review.optionalCandidates[k]]));
     if(Object.keys(familyCountHints).length)form.dataset.ocrFamilyCountHints=JSON.stringify(familyCountHints);
+    const insuranceHints=Object.fromEntries([["sourceLifeDeductionHint",120000,"hasLifeInsurance"],["sourceEarthDeductionHint",50000,"hasEarthquakeInsurance"]].filter(([k,max,flag])=>(review.year===2025||(review.year===2026&&review.r8VerifiedLayout===true))&&review.sourceIndicators?.[flag]===true&&Number.isSafeInteger(review.optionalCandidates?.[k])&&review.optionalCandidates[k]>0&&review.optionalCandidates[k]<=max).map(([k])=>[k,review.optionalCandidates[k]]));
+    if(Object.keys(insuranceHints).length)form.dataset.ocrInsuranceDeductionHints=JSON.stringify(insuranceHints);
     form.dataset.ocrOriginalGross=String(review.candidates.salaryGross);
     form.dataset.ocrOriginalIncome=String(review.candidates.salaryIncomeReference);
     form.dataset.ocrOriginalSocial=String(review.candidates.socialInsurance);

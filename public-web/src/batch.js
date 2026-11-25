@@ -197,6 +197,8 @@
    const insuranceCell=cell(tr,"","batch-family-editor batch-insurance-editor");
    const insuranceDetails=formControl("details");insuranceDetails.open=openInsuranceRows.has(i);
    insuranceDetails.appendChild(formControl("summary",{text:"保険料明細を入力・確認"}));
+   const deductionHints=[["sourceLifeDeductionHint","生命保険料控除額"],["sourceEarthDeductionHint","地震保険料控除額"]].filter(([k])=>Number.isSafeInteger(r.insuranceDeductionHints?.[k])&&r.insuranceDeductionHints[k]>0).map(([k,l])=>l+"："+yen(r.insuranceDeductionHints[k]));
+   if(deductionHints.length)insuranceDetails.appendChild(formControl("p",{text:"原票の控除額候補："+deductionHints.join("／")+"。年間支払保険料ではありません。原票年の計算額と照合します。"}));
    const premiumLabels=["新一般生命","旧一般生命","介護医療","新個人年金","旧個人年金","地震","旧長期損害"];
    for(const prefix of ["source","target"]){
     const group=formControl("fieldset");

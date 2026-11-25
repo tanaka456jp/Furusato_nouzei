@@ -75,6 +75,10 @@
       });
     }
     if(form.dataset.ocrSpouseIncome!==undefined)input.sourceSpouseIncomeHint=strictYen(form.dataset.ocrSpouseIncome);
+    if(form.dataset.ocrInsuranceDeductionHints!==undefined){
+      try{input.sourceInsuranceDeductionHints=JSON.parse(form.dataset.ocrInsuranceDeductionHints);}
+      catch(_){input.sourceInsuranceDeductionHints=null;}
+    }
     if(form.dataset.ocrFamilyCountHints!==undefined){
       try{input.sourceFamilyCountHints=JSON.parse(form.dataset.ocrFamilyCountHints);}
       catch(_){input.sourceFamilyCountHints=null;}
@@ -441,6 +445,7 @@
         indicators:indicators,
         ...(input.sourceFamilyCountHints!==undefined?{countHints:input.sourceFamilyCountHints}:{}),
         ...(input.sourceSpouseIncomeHint!==undefined?{spouseIncomeHint:input.sourceSpouseIncomeHint}:{}),
+        ...(input.sourceInsuranceDeductionHints!==undefined?{insuranceDeductionHints:input.sourceInsuranceDeductionHints}:{}),
         spouse:sourceSpouse,relatives:sourceRelatives,
         reviewed:sf.reviewed,...(si?{premiums:sourcePremiums,insuranceReviewed:true}:{}),
         ...(so?{otherDeductions:sourceOther,otherReviewed:true,sourceContributionYen:sourceOther.smallEnterpriseContributions}:{}),
@@ -871,6 +876,8 @@
   function resetSourceFamily(){
     document.getElementById("familyCopyStatus").textContent="";
     delete form.dataset.ocrFamilyCountHints;delete form.dataset.ocrSpouseIncome;
+    delete form.dataset.ocrInsuranceDeductionHints;
+    var insuranceHintNote=document.getElementById("sourceInsuranceDeductionHints");if(insuranceHintNote)insuranceHintNote.textContent="";
     document.getElementById("sourceFamilyCountHints").textContent="";
     document.getElementById("premiumCopyStatus").textContent="";
     form.elements.namedItem("medicalNetPaidYen").value="";
@@ -992,6 +999,15 @@
   });
   form.addEventListener("ocr-source-transferred",revealRelevantPanels);
   form.addEventListener("ocr-source-transferred",function(){
+    var insuranceNote=document.getElementById("sourceInsuranceDeductionHints");
+    if(insuranceNote){
+      insuranceNote.textContent="";
+      try{
+        var ih=JSON.parse(form.dataset.ocrInsuranceDeductionHints||"{}");
+        var iparts=[["sourceLifeDeductionHint","生命保険料控除額"],["sourceEarthDeductionHint","地震保険料控除額"]].filter(([k])=>Number.isSafeInteger(ih[k])&&ih[k]>0).map(([k,l])=>l+"："+yen(ih[k]));
+        if(iparts.length)insuranceNote.textContent="原票の控除額候補："+iparts.join("／")+"。年間支払保険料ではありません。入力した年間保険料から算出した原票年の控除額と照合します。";
+      }catch(_){insuranceNote.textContent="原票の保険料控除額候補を確認してください。";}
+    }
     var note=document.getElementById("sourceFamilyCountHints"),labels={"familySpecificCount":"特定扶養親族","familyElderlyCount":"老人扶養親族","familyOtherCount":"その他の控除対象扶養親族","familySpecialRelativeCount":"特定親族","familyUnder16Count":"16歳未満の扶養親族"};
     note.textContent="";
     if(!form.dataset.ocrFamilyCountHints)return;
@@ -1064,6 +1080,8 @@
     if(overrideNotice)overrideNotice.hidden=true;
     delete form.dataset.ocrYear;
     delete form.dataset.ocrFamilyCountHints;delete form.dataset.ocrSpouseIncome;
+    delete form.dataset.ocrInsuranceDeductionHints;
+    var insuranceHintNote=document.getElementById("sourceInsuranceDeductionHints");if(insuranceHintNote)insuranceHintNote.textContent="";
     document.getElementById("sourceFamilyCountHints").textContent="";
     delete form.dataset.ocrOriginalGross;
     delete form.dataset.ocrOriginalIncome;

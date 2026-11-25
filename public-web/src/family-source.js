@@ -15,6 +15,8 @@
   if(withSpouseHint)keys.push("spouseIncomeHint");
   const withInsurance=!!input&&Object.prototype.hasOwnProperty.call(input,"premiums");
   if(withInsurance)keys.push("premiums","insuranceReviewed");
+  const withInsuranceHints=!!input&&Object.prototype.hasOwnProperty.call(input,"insuranceDeductionHints");
+  if(withInsuranceHints)keys.push("insuranceDeductionHints");
   const withOther=!!input&&Object.prototype.hasOwnProperty.call(input,"otherDeductions");
   if(withOther)keys.push("otherDeductions","otherReviewed","sourceContributionYen");
   const high=!!input&&Object.prototype.hasOwnProperty.call(input,"adjustmentFacts");
@@ -29,6 +31,7 @@
      !amount(input.deductions,100000000)||input.reviewed!==true||
      !input.indicators||typeof input.indicators!=="object"||Array.isArray(input.indicators)||
      Object.entries(input.indicators).some(([k,v])=>!allowed.includes(k)||v!==true)||
+     (withInsuranceHints&&!withInsurance)||
      (withInsurance&&(input.insuranceReviewed!==true||!insurance||typeof insurance.calculate!=="function"))||
      (withOther&&(!withInsurance||input.otherReviewed!==true||!amount(input.sourceContributionYen,input.social)||
        !other||typeof other.calculate!=="function"))||
@@ -91,6 +94,15 @@
     conditions:"eligible-net-premiums-and-contract-selection-reviewed"});
    if(result.status!=="COMPONENTS_ONLY")return hold(result.reason);
    insuranceDetails=result.calculation;
+   if(withInsuranceHints){
+    const hints=input.insuranceDeductionHints;
+    const spec={sourceLifeDeductionHint:[120000,"hasLifeInsurance","lifeYen","生命保険料"],sourceEarthDeductionHint:[50000,"hasEarthquakeInsurance","earthquakeYen","地震保険料"]};
+    if(!hints||typeof hints!=="object"||Array.isArray(hints)||!Object.keys(hints).length||
+       Object.entries(hints).some(([k,n])=>!Object.prototype.hasOwnProperty.call(spec,k)||!amount(n,spec[k][0])||n===0||input.indicators[spec[k][1]]!==true))
+     return hold("原票の保険料控除額候補を確認してください");
+    for(const [k,n] of Object.entries(hints))if(insuranceDetails.national[spec[k][2]]!==n)
+     return hold("原票年の"+spec[k][3]+"控除額が入力した年間保険料からの計算額と一致しません");
+   }
    if((input.indicators.hasLifeInsurance&&insuranceDetails.national.lifeYen===0)||
       (input.indicators.hasEarthquakeInsurance&&insuranceDetails.national.earthquakeYen===0))
     return hold("原票で検出した保険料控除と入力明細が一致しません");

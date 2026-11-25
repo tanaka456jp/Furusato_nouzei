@@ -65,8 +65,11 @@ assert.equal(withoutSocial.candidates.socialInsurance,undefined);
 assert.ok(withoutSocial.reasons.includes("CODE_G26_AMOUNT_UNVERIFIED"));
 // Optional numeric fields do not alter eligibility or certify absence.
 const opt=g.review([...parts,...extra,{str:"G46",transform:[1,0,0,1,100,250],width:17},{str:"580,000",transform:[1,0,0,1,165,250],width:40}]);
-assert.deepEqual(opt.optionalCandidates,{mortgageSourceApplied:200000,sourceBasicYen:580000,sourceAdjustmentYen:5000});
+assert.deepEqual(opt.optionalCandidates,{sourceLifeDeductionHint:50000,sourceEarthDeductionHint:10000,mortgageSourceApplied:200000,sourceBasicYen:580000,sourceAdjustmentYen:5000});
 assert.deepEqual(g.verifiedOptional(opt,opt),opt.optionalCandidates);
+assert.equal(opt.optionalCandidates.sourceInsurance_earthquake,undefined);
+assert.equal(g.review([...parts,...extra,{str:"G28",transform:[1,0,0,1,470,400],width:15}]).optionalCandidates.sourceEarthDeductionHint,undefined);
+assert.equal(g.verifiedOptional({...opt,optionalCandidates:{sourceEarthDeductionHint:50001}},opt).sourceEarthDeductionHint,undefined);
 assert.deepEqual(g.verifiedOptional(opt,{...opt,year:2026}),{});
 assert.deepEqual(g.verifiedOptional(opt,{...opt,candidates:{...opt.candidates,socialInsurance:1000001}}),{});
 assert.deepEqual(g.verifiedOptional(opt,{...opt,eligibleForManualTransfer:false}),{});

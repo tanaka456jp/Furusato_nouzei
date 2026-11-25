@@ -123,6 +123,9 @@
   if((review.year===2025||r8)&&optionalReview&&row.sourceIndicators.hasDependents===true){
    row.familyCountHints=Object.freeze(Object.fromEntries(["familySpecificCount","familyElderlyCount","familyOtherCount","familySpecialRelativeCount","familyUnder16Count"].filter(k=>(!r8||k==="familySpecialRelativeCount")&&Number.isSafeInteger(review.optionalCandidates?.[k])&&review.optionalCandidates[k]>0&&review.optionalCandidates[k]<=30).map(k=>[k,review.optionalCandidates[k]])));
   }
+  if(optionalReview&&(review.year===2025||r8)){
+   row.insuranceDeductionHints=Object.freeze(Object.fromEntries([["sourceLifeDeductionHint",120000,"hasLifeInsurance"],["sourceEarthDeductionHint",50000,"hasEarthquakeInsurance"]].filter(([k,max,flag])=>row.sourceIndicators[flag]===true&&Number.isSafeInteger(review.optionalCandidates?.[k])&&review.optionalCandidates[k]>0&&review.optionalCandidates[k]<=max).map(([k])=>[k,review.optionalCandidates[k]])));
+  }
   if(optionalReview){
    for(const [key,max,active] of [["mortgageSourceApplied",600000,row.sourceIndicators.hasMortgage===true],["sourceBasicYen",1040000,isHigh(row.originalCandidates.salaryGross)],["sourceAdjustmentYen",150000,isHigh(row.originalCandidates.salaryGross)],
     ["mortgageSourcePossible",600000,(review.year===2025||r8)&&row.sourceIndicators.hasMortgage===true],
@@ -159,7 +162,7 @@
  // made outside the normal UI event path.
  function snapshot(row){
   return JSON.stringify([row.page,row.label,row.year,row.sourceYear,row.candidates,
-    row.originalCandidates,row.socialZeroEligible,row.socialZeroManuallyConfirmed,row.sourceIndicators,row.familyCountHints,row.spouseIncomeHint,row.sourceValid,row.deductionsOverrideActive,
+    row.originalCandidates,row.socialZeroEligible,row.socialZeroManuallyConfirmed,row.sourceIndicators,row.familyCountHints,row.spouseIncomeHint,row.insuranceDeductionHints,row.sourceValid,row.deductionsOverrideActive,
     row.confirmed,row.noExclusions,row.forecastReviewed,row.municipality,row.filing,row.trialInput,
     row.originalYear,row.familySourceText,row.familyTargetText,row.familyReviewed,row.insuranceReviewed,row.otherReviewed,...OTHER_FIELDS.map(k=>row[k]),...MEDICAL_FIELDS.map(k=>row[k]),row.highReviewed,...HIGH_FIELDS.map(k=>row[k]),row.mortgageReviewed,...MORTGAGE_FIELDS.map(k=>row[k]),
     ...PREMIUM_FIELDS.map(k=>row[k])]);
@@ -337,6 +340,7 @@
     ...(Object.keys(row.familyCountHints||{}).length?{countHints:row.familyCountHints}:{}),
     ...(row.spouseIncomeHint!==undefined?{spouseIncomeHint:row.spouseIncomeHint}:{}),
     ...(insured?{premiums:sourcePremiums,insuranceReviewed:true}:{}),
+    ...(Object.keys(row.insuranceDeductionHints||{}).length?{insuranceDeductionHints:row.insuranceDeductionHints}:{}),
     ...(other?{otherDeductions:sourceOther,otherReviewed:true,sourceContributionYen:sourceOther.smallEnterpriseContributions}:{}),
     ...(sourceHigh?{adjustmentFacts:sourceFacts,sourceBasicYen:sourceBasic,sourceAdjustmentYen:sourceAdjustment,adjustmentReviewed:true}:{})},engine);
    if(original.status!=="RECONCILED"){row.reason=original.reason;return row;}

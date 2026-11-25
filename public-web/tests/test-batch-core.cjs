@@ -361,6 +361,14 @@ assert.equal(batch.canOutputEstimate(insuredRow),true);
 assert.deepEqual(columns(insuredRow).slice(24,27),["3120000","1010000","780000"]);
 assert.deepEqual(columns(insuredRow).slice(27,33),["90000","60000","28000","50000","25000","適用"]);
 assert.equal(insuredRow.comparison.filing,10000);
+// A matching sum cannot conceal a misallocation between insurance types.
+const hintRow=insuredFixture();hintRow.insuranceDeductionHints=Object.freeze({sourceLifeDeductionHint:40000,sourceEarthDeductionHint:50000});
+runFamily(hintRow);assert.equal(batch.canOutputEstimate(hintRow),true,hintRow.reason);
+hintRow.insuranceDeductionHints={sourceLifeDeductionHint:50000,sourceEarthDeductionHint:40000};
+assert.equal(batch.canOutputEstimate(hintRow),false);
+runFamily(hintRow);assert.equal(hintRow.status,"HOLD");assert.match(hintRow.reason,/生命保険料控除額/);assert.equal(columns(hintRow)[11],"");
+const earthMismatch=insuredFixture();earthMismatch.insuranceDeductionHints={sourceEarthDeductionHint:49000};
+runFamily(earthMismatch);assert.equal(earthMismatch.status,"HOLD");assert.match(earthMismatch.reason,/地震保険料控除額/);
 for(const mutate of [
  r=>{r.insuranceReviewed=false;},r=>{r.sourceInsurance_generalNew="0";},
  r=>{r.targetInsurance_generalNew="80000";},r=>{r.sourceIndicators.hasMortgage=true;}
