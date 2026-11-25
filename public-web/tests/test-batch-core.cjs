@@ -679,6 +679,25 @@ assert.equal(batch.canOutputEstimate(gridRow),false);
 for(const review of [{...gridBlank,reasons:["GRID_AMOUNT_DISAGREEMENT"]},{...gridBlank,reasons:[...gridBlank.reasons,"GRID_FULL_PAGE_CONFLICT"]},{...gridBlank,candidates:{...gridBlank.candidates,socialInsurance:123}}]){
  assert.equal(batch.confirmSocialZero(fixture(1,review,2026)),false);
 }
+// Verify that zero is not itself a calculation hold: actual shared engine,
+ // actual Web display guard, same-year and prior-year forecast, synthetic only.
+for(const targetYear of [2025,2026]){
+ const row=fixture(1,gridBlank,targetYear);
+ const calculate=()=>batch.calculate(row,win.FurusatoEngine,guard,selected,win.FurusatoResidentLevy);
+ calculate();assert.equal(row.status,"HOLD");assert.equal(row.donationLimitYen,null);
+ assert.equal(batch.canOutputEstimate(row),false);
+ assert.equal(batch.confirmSocialZero(row),true);
+ calculate();assert.equal(row.status,"HOLD");assert.equal(batch.canOutputEstimate(row),false);
+ assert.equal(batch.confirmBasic(row),true);
+ calculate();
+ assert.equal(row.status,targetYear===2025?"概算":"前年参考概算");
+ assert.equal(row.donationLimitYen,138000);assert.equal(batch.canOutputEstimate(row),true);
+ const explicit=fixture(2,{...gridBlank,eligibleForManualTransfer:true,reasons:[],candidates:{...gridBlank.candidates,socialInsurance:0}},targetYear);
+ assert.equal(batch.confirmBasic(explicit),true);
+ batch.calculate(explicit,win.FurusatoEngine,guard,selected,win.FurusatoResidentLevy);
+ assert.equal(explicit.donationLimitYen,row.donationLimitYen);
+ assert.equal(batch.canOutputEstimate(explicit),true);
+}
 const actual=fixture(1,basic2026);assert.equal(batch.confirmSocialZero(actual),false);
 const optionalBlank={...zeroReview,sourceIndicators:{hasLifeInsurance:true,hasSpouse:true,hasDependents:true},optionalCandidates:{sourceInsurance_generalNew:123456,sourceSpouseIncome:654321,familyUnder16Count:2}};
 const optionalBlankRow=fixture(1,optionalBlank,2026);
