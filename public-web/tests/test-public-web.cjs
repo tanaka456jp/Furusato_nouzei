@@ -826,6 +826,55 @@ assert.equal(field("mortgageReviewed").checked,false);assert.equal(view.hidden,t
 form.dispatchEvent(new Event("family-source-reset"));
 assert.equal(field("mortgageSourceApplied").value,"");assert.equal(field("mortgageSourcePossible").value,"");
 form.reset();
+// Cross-route acceptance: use real single-form DOM + batch core on the
+// same synthetic mortgage facts. Never use an actual tax slip in CI.
+const parityBatch=require("../src/batch-core.js");
+const parityYen=n=>n.toLocaleString("ja-JP")+"円";
+let mortgageParityCases=0;
+for(const sy of [2025,2026])for(const y of [sy,...(sy===2025?[2026]:[])])
+for(const municipality of ["standard","designated"])for(const filing of ["one-stop","return"])
+for(const capClass of ["standard5","transitional7"])for(const possible of [10000,500000])
+for(const medical of [false,true]){
+ if(medical&&filing==="one-stop")continue;
+ form.reset();
+ const applied=possible===10000?10000:sy===2025?286500:278500;
+ const deductions=sy===2025?1630000:1670000;
+ const credit={mortgageSourceApplied:String(applied),mortgageSourcePossible:possible===10000?"":String(possible),mortgageMoveInYear:"2021",mortgageCapClass:capClass};
+ Object.assign(form.dataset,{ocrYear:String(sy),ocrOriginalGross:"7000000",ocrOriginalIncome:"5200000",ocrOriginalSocial:"1000000",ocrOriginalDeductions:String(deductions),ocrSourceIndicators:"hasMortgage"});
+ for(const [k,v] of Object.entries({year:String(y),municipality,filing,salaryGross:"7000000",salaryIncomeReference:"5200000",socialInsurance:"1000000",deductionsReference:String(deductions),...credit}))field(k).value=v;
+ if(medical)field("medicalNetPaidYen").value="300000";
+ field("forecastReviewed").checked=y!==sy;field("acknowledgedExclusions").checked=true;field("mortgageReviewed").checked=true;
+ rawSubmit();assert.equal(view.className,"result",view.textContent);
+ const row=parityBatch.fromPage(1,{year:sy,eligibleForManualTransfer:true,sourceIndicators:{hasMortgage:true},candidates:{salaryGross:7000000,salaryIncomeReference:5200000,socialInsurance:1000000,deductionsReference:deductions}},y);
+ row.municipality=municipality;row.filing=filing;
+ for(const [k,v] of Object.entries(credit))parityBatch.edit(row,k,v);
+ if(medical)parityBatch.edit(row,"medicalNetPaidYen","300000");
+ Object.assign(row,{confirmed:true,noExclusions:true,forecastReviewed:y!==sy,mortgageReviewed:true});
+ const w=dom.window;
+ const calculateParity=()=>parityBatch.calculate(row,w.FurusatoEngine,w.FurusatoEstimateGuard.canDisplayEstimate,w.FurusatoEstimateGuard.selectedReference,w.FurusatoResidentLevy,w.FurusatoFamilyTax,w.FurusatoFamilySource);
+ calculateParity();assert.equal(parityBatch.canOutputEstimate(row),true,row.reason);
+ assert.equal(view.querySelector(".amount").textContent,parityYen(row.donationLimitYen));
+ const values=housingValues();
+ assert.equal(values["確定申告参考上限（千円刻み）"],parityYen(row.comparison.filing));
+ assert.equal(values["ワンストップ参考上限"],medical?undefined:parityYen(row.comparison.oneStop));
+ assert.equal(values["原票住宅ローン控除額（照合済）"],parityYen(row.mortgageSummary.sourceAppliedYen));
+ assert.equal(values["試算住宅ローン控除可能額"],parityYen(row.mortgageSummary.possibleYen));
+ assert.equal(values["寄附前所得税住宅ローン控除"],parityYen(row.mortgageSummary.nationalHousingYen));
+ assert.equal(values["寄附前住民税住宅ローン控除"],parityYen(row.mortgageSummary.residentHousingYen));
+ assert.equal(values["実質自己負担見込額"],parityYen(row.comparison.trial.selfPay));
+ assert.equal(values["2,000円超過額"],parityYen(row.comparison.trial.excess));
+ if(y!==sy){assert.match(view.textContent,/住宅ローン残高の変動は考慮していません/);assert.match(row.reason,/住宅ローン残高の変動は考慮していません/);}
+ // Revoking the mortgage review must block both routes including CSV.
+ field("mortgageReviewed").checked=false;rawSubmit();
+ row.mortgageReviewed=false;assert.equal(parityBatch.canOutputEstimate(row),false);
+ assert.equal(view.className,"result hold");assert.equal(view.querySelector(".amount"),null);
+ const csv=parityBatch.csv([row]).split("\r\n")[1].split(",");
+ assert.equal(csv[11],'""');assert.equal(csv[12],'"HOLD"');
+ calculateParity();assert.equal(row.status,"HOLD");assert.equal(row.donationLimitYen,null);
+ mortgageParityCases++;
+}
+assert.equal(mortgageParityCases,72);
+form.reset();
 // Native disclosure is presentation only: required source/target inputs remain auditable.
 const foldIds=["familyPanelFold","sourceFamilyPanelFold","targetInsurancePanelFold","targetOtherPanelFold","salaryAdjustmentPanelFold","sourceAdjustmentPanelFold","sourceOtherPanelFold","sourceInsurancePanelFold","mortgagePanel"];
 for(const id of foldIds)assert.equal(document.getElementById(id).open,false,id);
