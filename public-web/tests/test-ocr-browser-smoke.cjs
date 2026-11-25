@@ -697,6 +697,7 @@ async function main(){
    window.__cancelSyntheticCalls=0;
    window.__cancelSyntheticTerminations=0;
    window.__releaseSyntheticRecognition=null;
+   window.__releaseSyntheticTermination=null;
    Tesseract.createWorker=async()=>({
     recognize:async()=>{
      window.__cancelSyntheticCalls++;
@@ -704,7 +705,10 @@ async function main(){
        await new Promise(resolve=>{window.__releaseSyntheticRecognition=resolve;});
      return {data:{text:ocrText,confidence:97}};
     },
-    terminate:async()=>{window.__cancelSyntheticTerminations++;}
+    terminate:async()=>{
+     window.__cancelSyntheticTerminations++;
+     await new Promise(resolve=>{window.__releaseSyntheticTermination=resolve;});
+    }
    });
   },fixture);
   await page.locator("#slipFile").setInputFiles({
@@ -718,13 +722,17 @@ async function main(){
   });
   // A stale recognition must trigger immediate worker termination. Do
   // not release the synthetic in-flight Promise until the stop is observed.
-  await page.waitForFunction(()=>window.__cancelSyntheticTerminations===1,
+  await page.waitForFunction(()=>window.__cancelSyntheticTerminations===1&&typeof window.__releaseSyntheticTermination==="function",
     null,{timeout:30000});
   assert.equal(await page.locator("#slipScan").isDisabled(),true,
     "prevent overlapping PDF workers until cleanup finishes");
-  await page.evaluate(()=>window.__releaseSyntheticRecognition());
+  await page.evaluate(()=>window.__releaseSyntheticTermination());
+  // Recognition intentionally remains pending after termination; only
+  // after PDF teardown and unlocking may the abandoned reply arrive.
   await page.waitForFunction(()=>document.getElementById("slipScan").disabled===false,
     null,{timeout:30000});
+  assert.equal(await page.locator("#slipTransfer").isEnabled(),false);
+  await page.evaluate(()=>window.__releaseSyntheticRecognition());
   const aborted=await page.evaluate(()=>({
    calls:window.__cancelSyntheticCalls,
    terminated:window.__cancelSyntheticTerminations,
