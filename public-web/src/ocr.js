@@ -426,7 +426,13 @@
     if(typeof window.Tesseract==="undefined"||
       typeof window.Tesseract.createWorker!=="function")
       throw Error("端末内OCRエンジンを読み込めません。");
-    var original=image,enhanced=null,rectified=null,worker=null,session=null;
+    var original=image,enhanced=null,rectified=null,deskewed=null,rawReview=null,worker=null,session=null;
+    function guarded(result){
+      if(!deskewed||(!result.eligibleForManualTransfer&&!window.FurusatoPdfGCodes?.canConfirmSocialZero(result)))return result;
+      if(window.FurusatoPerspective.deskewConsistent(rawReview,result))return result;
+      return {schema:"furusato-slip-deskew-review/v1",status:"REQUIRES_SOURCE_REVIEW",year:null,candidates:{},
+        reasons:["DESKEW_SOURCE_DISAGREEMENT"],eligibleForManualTransfer:false,autoApproved:false,originalCompared:false};
+    }
     try{
       ensureCurrent();
       if(typeof window.FurusatoImageQuality!=="object"||
@@ -451,6 +457,15 @@
           original=rectified;
         }
       }
+      if(!rectified&&allowGridRecovery&&typeof window.FurusatoPerspective?.tryDeskew==="function"&&
+         typeof window.FurusatoPerspective?.deskewConsistent==="function"){
+        const correction=window.FurusatoPerspective.tryDeskew(image);
+        if(correction.status==="APPLIED"){
+          deskewed=correction.canvas;
+          if(window.FurusatoImageQuality.assessCanvas(deskewed).status!=="REVIEW")throw Error("RECTIFIED_IMAGE_QUALITY_HOLD");
+          original=deskewed;
+        }
+      }
       enhanced=contrastVariant(original);
       ensureCurrent();
       var paths={
@@ -463,6 +478,11 @@
       session={worker:worker,stopPromise:null};
       activeOcrSession=session;
       ensureCurrent();
+      if(deskewed){
+        const untouched=await worker.recognize(image);
+        ensureCurrent();
+        rawReview=window.FurusatoSlipReview.reviewText(untouched?.data?.text,true);
+      }
       var a=await worker.recognize(original,{}, {text:true,blocks:true});
       ensureCurrent();
       // Request enhanced geometry only if the first read has a strictly
@@ -503,7 +523,7 @@
           }finally{crop.width=0;crop.height=0;}
         }
         const checked=regions.assessSeparate(values,agreed);
-        return checked.eligibleForManualTransfer===true?checked:compared;
+        return guarded(checked.eligibleForManualTransfer===true?checked:compared);
       }
       // If the original OCR returns exact positions for all four labels,
       // re-read the four crops at 2x size and VETO disagreement.
@@ -638,7 +658,7 @@
                     }finally{crop.width=0;crop.height=0;}
                   }
                   const recovery=regions.assessGridRecovery(grid,reads,labels,digitReads[0],digitReads[1],fullPageReviews);
-                  if(recovery.eligibleForManualTransfer===true||window.FurusatoPdfGCodes?.canConfirmSocialZero(recovery))return recovery;
+                  if(recovery.eligibleForManualTransfer===true||window.FurusatoPdfGCodes?.canConfirmSocialZero(recovery))return guarded(recovery);
                   compared.reasons=[...(compared.reasons||[]),...recovery.reasons];
                 }
               }catch(_){ensureCurrent();/* diagnostic only */}
@@ -646,7 +666,7 @@
           }
         }
       }
-      return compared;
+      return guarded(compared);
     }finally{
       // Termination can itself reject, e.g. a worker process crash. Never
       // skip release of large intermediate canvases in that case.
@@ -658,6 +678,7 @@
       }finally{
         if(enhanced){enhanced.width=0;enhanced.height=0;}
         if(rectified){rectified.width=0;rectified.height=0;}
+        if(deskewed){deskewed.width=0;deskewed.height=0;}
       }
     }
   }

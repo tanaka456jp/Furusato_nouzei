@@ -54,4 +54,27 @@ try{
  assert.equal(rectified.status,"AMBIGUOUS_PAGE");assert.equal(rectified.canvas,null);
  assert.equal(rectified.autoApproved,false);
 }finally{if(beforeDocument===undefined)delete global.document;else global.document=beforeDocument;}
+// Long parallel synthetic rules, rotated without relying on OCR text.
+function ruled(degrees,rows=[50,90,130,170,210]){
+ const w=400,h=280,a=new Uint8ClampedArray(w*h*4);a.fill(255);
+ for(let y=0;y<h;y++)for(let x=20;x<w-20;x++)
+  if(rows.some(r=>Math.abs(y-r-(x-w/2)*Math.tan(degrees*Math.PI/180))<.85)){
+   const i=(y*w+x)*4;a[i]=a[i+1]=a[i+2]=25;
+  }
+ return a;
+}
+for(const degrees of [-4,-3,-2,2,3,4]){
+ const out=model.estimateSkew(400,280,ruled(degrees));
+ assert.equal(out.status,"SKEW_FOUND");assert.ok(Math.abs(out.degrees-degrees)<=.5);
+ assert.equal(out.autoApproved,false);
+}
+for(const data of [ruled(0),ruled(3,[80]),ruled(3,[]),ruled(3,[80,140])])
+ assert.equal(model.estimateSkew(400,280,data).status,"UNVERIFIED");
+const candidate={year:2026,candidates:{salaryGross:7000000,socialInsurance:1000000}};
+const raw={observedYear:2026,observedCandidates:{salaryGross:7000000},reasons:[]};
+assert.equal(model.deskewConsistent(raw,candidate),true);
+assert.equal(model.deskewConsistent({...raw,observedYear:2025},candidate),false);
+assert.equal(model.deskewConsistent({...raw,observedCandidates:{salaryGross:7100000}},candidate),false);
+assert.equal(model.deskewConsistent({...raw,reasons:["FIELD_DUPLICATE_salaryGross"]},candidate),false);
+assert.equal(model.deskewConsistent({...raw,observedCandidates:{socialInsurance:0}},{year:2026,candidates:{salaryGross:7000000}}),false);
 console.log("PUBLIC_OCR_FOUR_CORNER_PERSPECTIVE_SYNTHETIC_PASS; no OCR accuracy claim");

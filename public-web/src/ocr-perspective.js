@@ -167,5 +167,76 @@
    // No pixel arrays or source information are retained in module state.
   }
  }
- return {findCorners,homography,tryRectify};
+ // Small-angle deskew for light-background scans. Require multiple long
+ // parallel ink rules and a clear peak; text alone is not proof of skew.
+ function estimateSkew(w,h,rgba){
+  const no={status:"UNVERIFIED",degrees:null,autoApproved:false};
+  if(!Number.isSafeInteger(w)||!Number.isSafeInteger(h)||w<160||h<100||w*h>270000||!rgba||rgba.length!==w*h*4)return no;
+  const points=[];let light=0;
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+   const i=(y*w+x)*4,g=grey(rgba,i);
+   if(rgba[i+3]!==255)return no;
+   if(g>205)light++;
+   if(g<115&&x>=w*.04&&x<w*.96&&y>=h*.04&&y<h*.96)points.push([x,y]);
+  }
+  if(light<w*h*.65||points.length<w*h*.002||points.length>w*h*.22)return no;
+  const scores=[];
+  for(let step=-10;step<=10;step++){
+   const degrees=step/2,slope=Math.tan(degrees*Math.PI/180);
+   const counts=new Uint16Array(h+Math.ceil(w*.20)+4),bits=new Uint16Array(counts.length),offset=Math.ceil(w*.10)+2;
+   for(const [x,y] of points){
+    const b=Math.round(y-(x-w/2)*slope)+offset;
+    counts[b]++;bits[b]|=1<<Math.min(11,Math.floor(x*12/w));
+   }
+   let score=0,lines=0,prior=-100,peak=0;
+   for(let y=0;y<counts.length;y++){
+    const coverage=bits[y].toString(2).replace(/0/g,"").length;
+    if(counts[y]<w*.35||coverage<9)continue;
+    if(y-prior>Math.max(4,Math.round(h*.012))){if(peak){score+=peak*peak;lines++;}peak=0;}
+    peak=Math.max(peak,counts[y]);prior=y;
+   }
+   if(peak){score+=peak*peak;lines++;}
+   scores.push({degrees,score,lines});
+  }
+  const zero=scores[10],ranked=scores.slice().sort((a,b)=>b.score-a.score),best=ranked[0];
+  const rival=ranked.find(s=>Math.abs(s.degrees-best.degrees)>=1);
+  if(best.lines<3||Math.abs(best.degrees)<1||Math.abs(best.degrees)>=5||
+     best.score<zero.score*1.25||best.score<(rival?.score||0)*1.18)return no;
+  return {status:"SKEW_FOUND",degrees:best.degrees,autoApproved:false};
+ }
+ function tryDeskew(input){
+  const fallback={status:"UNVERIFIED",canvas:null,autoApproved:false};
+  let sample=null,output=null,success=false;
+  try{
+   const w=input?.width,h=input?.height;
+   if(!Number.isSafeInteger(w)||!Number.isSafeInteger(h)||w<750||h<400||w*h>10000000)return fallback;
+   const factor=Math.min(1,512/Math.max(w,h)),sw=Math.round(w*factor),sh=Math.round(h*factor);
+   if(sw<160||sh<100)return fallback;
+   sample=document.createElement("canvas");sample.width=sw;sample.height=sh;
+   const ctx=sample.getContext("2d",{willReadFrequently:true});if(!ctx)return fallback;
+   ctx.drawImage(input,0,0,sw,sh);
+   const guess=estimateSkew(sw,sh,ctx.getImageData(0,0,sw,sh).data);
+   if(guess.status!=="SKEW_FOUND")return fallback;
+   const radians=-guess.degrees*Math.PI/180,cos=Math.abs(Math.cos(radians)),sin=Math.abs(Math.sin(radians));
+   // Expand, never crop. Do not downsample a small original or exceed
+   // the OCR allocation limit. White margins preserve all source pixels.
+   const ow=Math.ceil(w*cos+h*sin)+2,oh=Math.ceil(w*sin+h*cos)+2;
+   if(ow*oh>10000000)return fallback;
+   output=document.createElement("canvas");output.width=ow;output.height=oh;
+   const out=output.getContext("2d");if(!out)return fallback;
+   out.fillStyle="#fff";out.fillRect(0,0,ow,oh);
+   out.translate(ow/2,oh/2);out.rotate(radians);out.drawImage(input,-w/2,-h/2);
+   success=true;return {status:"APPLIED",canvas:output,degrees:guess.degrees,autoApproved:false};
+  }catch(_){return fallback;}
+  finally{if(sample){sample.width=0;sample.height=0;}if(output&&!success){output.width=0;output.height=0;}}
+ }
+ // Negative evidence from the untouched source can never be erased by
+ // deskew. Missing fields are not evidence of zero, either.
+ function deskewConsistent(raw,candidate){
+  if(!raw||!candidate||raw.yearConflict||raw.yearUnsupported||raw.documentTypeConflict||
+     (raw.reasons||[]).some(x=>/^FIELD_(?:CONFLICT|DUPLICATE|INVALID)_/.test(x)))return false;
+  if(raw.observedYear!==null&&raw.observedYear!==undefined&&raw.observedYear!==candidate.year)return false;
+  return Object.entries(raw.observedCandidates||{}).every(([k,v])=>candidate.candidates?.[k]===v);
+ }
+ return {findCorners,homography,tryRectify,estimateSkew,tryDeskew,deskewConsistent};
 }));
