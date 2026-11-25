@@ -360,3 +360,11 @@ for(const raw of ["7 000000","7.000.000","7,000 000","7,000\n000"]){
 const spacedAmount=tableBlocks();spacedAmount[0].paragraphs[0].lines[4].text="7 000000";
 assert.equal(region.planSeparate(spacedAmount,1100,1000,read).status,"HOLD");
 assert.equal(region.assessSeparate(amounts.map((v,i)=>i?v:{...v,text:"7 000000"}),plan).status,"HOLD");
+
+// A numeric-only OCR pass must preserve visible decimal/minus signs as
+// negative evidence; never erase punctuation and reinterpret the digits.
+for(const text of ["7.000.000","7,000,000.00","-7000000","7-000000","7,000.000","7.000,000"]){
+ const altered=digitReads.map((v,i)=>i? v:{...v,text});
+ assert.equal(region.assessGridDigits(altered,altered).matchedFields,3);
+ assert.equal(region.assessGridDigits(digitReads,altered).matchedFields,3);
+}

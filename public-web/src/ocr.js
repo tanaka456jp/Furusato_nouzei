@@ -595,7 +595,7 @@
             const digitReads=[];
             try{
               ensureCurrent();
-              await runOcrOperation(session,"setParameters",{tessedit_pageseg_mode:"7",tessedit_char_whitelist:"0123456789,"});
+              await runOcrOperation(session,"setParameters",{tessedit_pageseg_mode:"7",tessedit_char_whitelist:"0123456789,.-"});
               for(const pass of [0,1]){
                 const values=[];
                 for(const region of grid.rectangles){

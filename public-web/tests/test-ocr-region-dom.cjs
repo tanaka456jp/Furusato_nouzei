@@ -79,7 +79,7 @@ win.Tesseract={OEM:{LSTM_ONLY:1},createWorker:async()=>{
  roiCalls=0;rawRead=false;
  return {setParameters:async params=>{
   assert.equal(params.tessedit_pageseg_mode,gridHeaderMode&&gridParameters===2?"13":"7");
-  assert.equal(params.tessedit_char_whitelist,gridHeaderMode&&gridParameters>=2?"":"0123456789,");
+  assert.equal(params.tessedit_char_whitelist,gridHeaderMode&&gridParameters>=2?"":"0123456789,.-");
   gridParameters++;
  },recognize:async(_image,options,output)=>{
   calls++;
