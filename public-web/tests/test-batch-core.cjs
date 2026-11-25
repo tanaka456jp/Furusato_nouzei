@@ -627,6 +627,22 @@ for(const text of ["R,20,0,0","R,20,0,0\nR,10,0,0\nR,8,0,0","R,20,0,0\nR,10,5800
 const forecastCounts=countFixture();batch.edit(forecastCounts,"familyTargetText","R,21,0,0");
 Object.assign(forecastCounts,{confirmed:true,noExclusions:true,forecastReviewed:true,familyReviewed:true});
 runFamily(forecastCounts);assert.equal(forecastCounts.status,"前年参考概算",forecastCounts.reason);
+// R8: verified G72 count must reconcile, never infer family details.
+const specialR8={year:2026,eligibleForManualTransfer:true,r8VerifiedLayout:true,sourceIndicators:{hasDependents:true},candidates:{salaryGross:7000000,salaryIncomeReference:5200000,socialInsurance:1000000,deductionsReference:2300000},optionalCandidates:{familySpecialRelativeCount:1}};
+function specialR8Row(){
+ const row=fixture(1,specialR8,2026);
+ batch.edit(row,"familySourceText","R,20,800000,0");batch.edit(row,"familyTargetText","R,20,800000,0");
+ Object.assign(row,{confirmed:true,noExclusions:true,familyReviewed:true});return row;
+}
+const specialMatch=specialR8Row();runFamily(specialMatch);
+assert.equal(specialMatch.status,"概算",specialMatch.reason);
+assert.equal(batch.canOutputEstimate(specialMatch),true);
+for(const hints of [{familySpecialRelativeCount:2},{familySpecialRelativeCount:1,familyOtherCount:1},{familySpecialRelativeCount:0},{familySpecialRelativeCount:"1"}]){
+ const row=specialR8Row();row.familyCountHints=hints;runFamily(row);
+ assert.equal(row.status,"HOLD",row.reason);assert.equal(row.donationLimitYen,null);assert.equal(batch.canOutputEstimate(row),false);
+}
+specialMatch.familyCountHints={familySpecialRelativeCount:2};
+assert.equal(batch.canOutputEstimate(specialMatch),false);
 // Ordinary family forecast copy: source stays intact, ages advance and consent is revoked.
 const familyCopy=fixture(1,{...basic2026,year:2025},2026);
 batch.edit(familyCopy,"familySourceText","S,40,600000\nR,15,0,0\nR,70,0,1");

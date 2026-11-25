@@ -75,8 +75,10 @@
    const kinds={familySpecificCount:["dependent-special"],familyElderlyCount:["dependent-elderly","dependent-cohabiting-elderly"],familyOtherCount:["dependent-general"],familySpecialRelativeCount:["relative-special"],familyUnder16Count:["under16"]};
    const labels={"familySpecificCount":"特定扶養親族","familyElderlyCount":"老人扶養親族","familyOtherCount":"その他の控除対象扶養親族","familySpecialRelativeCount":"特定親族","familyUnder16Count":"16歳未満の扶養親族"};
    const hints=input.countHints;
-   if(input.year!==2025||!hints||typeof hints!=="object"||Array.isArray(hints)||!input.indicators.hasDependents||
-      Object.keys(hints).length===0||Object.entries(hints).some(([k,n])=>!Object.prototype.hasOwnProperty.call(kinds,k)||!amount(n,30)||n===0))
+   // R8 currently has only the verified special-relative count route.
+   // Keep all other R8 count codes outside the accepted evidence scope.
+   if(![2025,2026].includes(input.year)||!hints||typeof hints!=="object"||Array.isArray(hints)||!input.indicators.hasDependents||
+      Object.keys(hints).length===0||Object.entries(hints).some(([k,n])=>!Object.prototype.hasOwnProperty.call(kinds,k)||(input.year===2026&&k!=="familySpecialRelativeCount")||!amount(n,30)||n===0))
      return hold("原票の扶養人数候補を確認してください");
    for(const [k,n] of Object.entries(hints)){
     if(c.items.filter(x=>kinds[k].includes(x.kind)).length!==n)
