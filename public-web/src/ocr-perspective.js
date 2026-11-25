@@ -180,9 +180,8 @@
    if(g<115&&x>=w*.04&&x<w*.96&&y>=h*.04&&y<h*.96)points.push([x,y]);
   }
   if(light<w*h*.65||points.length<w*h*.002||points.length>w*h*.22)return no;
-  const scores=[];
-  for(let step=-10;step<=10;step++){
-   const degrees=step/2,slope=Math.tan(degrees*Math.PI/180);
+  function scoreAt(degrees){
+   const slope=Math.tan(degrees*Math.PI/180);
    const counts=new Uint16Array(h+Math.ceil(w*.20)+4),bits=new Uint16Array(counts.length),offset=Math.ceil(w*.10)+2;
    for(const [x,y] of points){
     const b=Math.round(y-(x-w/2)*slope)+offset;
@@ -196,13 +195,24 @@
     peak=Math.max(peak,counts[y]);prior=y;
    }
    if(peak){score+=peak*peak;lines++;}
-   scores.push({degrees,score,lines});
+   return {degrees,score,lines};
   }
+  const scores=[];for(let step=-10;step<=10;step++)scores.push(scoreAt(step/2));
   const zero=scores[10],ranked=scores.slice().sort((a,b)=>b.score-a.score),best=ranked[0];
   const rival=ranked.find(s=>Math.abs(s.degrees-best.degrees)>=1);
   if(best.lines<3||Math.abs(best.degrees)<1||Math.abs(best.degrees)>=5||
      best.score<zero.score*1.25||best.score<(rival?.score||0)*1.18)return no;
-  return {status:"SKEW_FOUND",degrees:best.degrees,autoApproved:false};
+  // The coarse grid only establishes that a credible skew exists. Refine
+  // within half a degree: a residual quarter degree breaks long grid lines.
+  const refined=[];
+  for(let i=-5;i<=5;i++){
+   const degrees=Math.round((best.degrees+i*.1)*10)/10;
+   if(Math.abs(degrees)<=5)refined.push(scoreAt(degrees));
+  }
+  refined.sort((a,b)=>b.score-a.score||Math.abs(a.degrees-best.degrees)-Math.abs(b.degrees-best.degrees));
+  const fine=refined[0];
+  if(!fine||fine.lines<3||Math.abs(fine.degrees)<1||Math.abs(fine.degrees)>=5)return no;
+  return {status:"SKEW_FOUND",degrees:fine.degrees,autoApproved:false};
  }
  function tryDeskew(input){
   const fallback={status:"UNVERIFIED",canvas:null,autoApproved:false};

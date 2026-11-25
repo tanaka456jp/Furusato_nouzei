@@ -234,7 +234,7 @@ async function main(){
     // Real browser canvas rotation path (synthetic ruled page only).
     const ruled=document.createElement("canvas");ruled.width=1200;ruled.height=840;
     const rc=ruled.getContext("2d");rc.fillStyle="#fff";rc.fillRect(0,0,1200,840);
-    rc.translate(600,420);rc.rotate(3*Math.PI/180);rc.strokeStyle="#181818";rc.lineWidth=5;
+    rc.translate(600,420);rc.rotate(3.2*Math.PI/180);rc.strokeStyle="#181818";rc.lineWidth=5;
     for(const y of [-270,-150,-30,90,210]){rc.beginPath();rc.moveTo(-500,y);rc.lineTo(500,y);rc.stroke();}
     const corrected=window.FurusatoPerspective.tryDeskew(ruled);
     const deskew={status:corrected.status,degrees:corrected.degrees,width:corrected.canvas?.width||0,height:corrected.canvas?.height||0,autoApproved:corrected.autoApproved};
@@ -261,7 +261,7 @@ async function main(){
   assert.equal(status.blocksReturned,true,"OCR word position output is unavailable");
   assert.equal(status.geometry.status,"APPLIED");
   assert.equal(status.deskew.status,"APPLIED");
-  assert.ok(Math.abs(status.deskew.degrees-3)<=.5);
+  assert.ok(Math.abs(status.deskew.degrees-3.2)<=.10001);
   assert.ok(status.deskew.width>=1200&&status.deskew.height>=840);
   assert.equal(status.deskew.autoApproved,false);
   assert.deepEqual(status.ambiguity,{status:"AMBIGUOUS_PAGE",canvas:false,autoApproved:false});

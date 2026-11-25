@@ -68,6 +68,14 @@ for(const degrees of [-4,-3,-2,2,3,4]){
  assert.equal(out.status,"SKEW_FOUND");assert.ok(Math.abs(out.degrees-degrees)<=.5);
  assert.equal(out.autoApproved,false);
 }
+// Non-half-degree slopes: coarse quantization can lose a long printed
+// rule after rotation. Test the refined angle without altering OCR gates.
+for(const degrees of [-3.7,-3.2,-2.7,-2.2,2.2,2.7,3.2,3.7]){
+ const out=model.estimateSkew(400,280,ruled(degrees));
+ assert.equal(out.status,"SKEW_FOUND");
+ assert.ok(Math.abs(out.degrees-degrees)<=.10001);
+ assert.equal(out.autoApproved,false);
+}
 for(const data of [ruled(0),ruled(3,[80]),ruled(3,[]),ruled(3,[80,140])])
  assert.equal(model.estimateSkew(400,280,data).status,"UNVERIFIED");
 const candidate={year:2026,candidates:{salaryGross:7000000,socialInsurance:1000000}};
