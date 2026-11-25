@@ -61,6 +61,9 @@ assert.throws(()=>summarize([]),/BENCHMARK_RECORD_COUNT_INVALID/);
 assert.equal(summary.overall.statisticalTargetMet,false);
 assert.equal(summary.overall.independentlyCheckedRealCount,0);
 assert.equal(summary.byDevice["iphone-safari"].slipCount,0);
+assert.equal(summary.byDevice["android-chrome"].slipCount,0);
+assert.deepEqual(summary.requiredDevices,["windows-edge","iphone-safari","android-chrome"]);
+for(const transfer of [true,false])assert.throws(()=>summarize([{format:"photo",truth,result:{...correct,eligibleForManualTransfer:transfer,autoApproved:true}}]),/BENCHMARK_RESULT_INVALID/);
 assert.throws(()=>summarize([{format:"photo",truth,
  result:{eligibleForManualTransfer:"false"}}]),/BENCHMARK_RESULT_INVALID/);
 function auditFor(i,device="windows-edge",sourceKind="real"){
@@ -80,12 +83,17 @@ assert.throws(()=>summarize([{...audited,
  /BENCHMARK_TRUTH_DISAGREEMENT/);
 assert.equal(summarize([{...audited,
  audit:{...auditFor(4),sourceKind:"synthetic"}}]).overall.statisticalTargetMet,false);
+// Hex representations are case-insensitive, not distinct samples.
+const hexAudit=auditFor(0xabcdef);
+const hexRow={...audited,audit:hexAudit};
+assert.throws(()=>summarize([hexRow,{...audited,audit:{...auditFor(2),caseId:hexAudit.caseId.toUpperCase()}}]),/BENCHMARK_DUPLICATE_CASE/);
+assert.throws(()=>summarize([hexRow,{...audited,audit:{...auditFor(3),sourceFingerprint:hexAudit.sourceFingerprint.toUpperCase()}}]),/BENCHMARK_DUPLICATE_SOURCE/);
 // Model a *hypothetically attested* large sample using synthetic rows.
 // It tests only coverage arithmetic, NOT source identity or OCR accuracy.
 const large=[];
 let seq=100;
 for(const format of ["digital-pdf","scan-pdf","photo"])
- for(const device of ["windows-edge","iphone-safari"])
+ for(const device of ["windows-edge","iphone-safari","android-chrome"])
   for(let k=0;k<800;k++)
    large.push({format,truth,result:correct,audit:auditFor(seq++,device)});
 const ideal=summarize(large);
@@ -93,7 +101,11 @@ assert.equal(ideal.overall.statisticalTargetMet,true);
 assert.equal(ideal.accuracyCertified,false);
 assert.equal(ideal.release.startsWith("HOLD"),true);
 assert.equal(ideal.byDevice["iphone-safari"].slipCount,2400);
-assert.equal(ideal.byFormat.photo.slipCount,1600);
+assert.equal(ideal.byFormat.photo.slipCount,2400);
+assert.equal(ideal.byDevice["android-chrome"].slipCount,2400);
+assert.equal(ideal.byFormatAndDevice.photo["android-chrome"].slipCount,800);
+assert.equal(summarize(large.filter(r=>r.audit.device!=="android-chrome")).overall.statisticalTargetMet,false);
+assert.equal(summarize(large.filter(r=>!(r.format==="photo"&&r.audit.device==="android-chrome"))).overall.statisticalTargetMet,false);
 assert.equal(ideal.byFormatAndDevice.photo["iphone-safari"].slipCount,800);
 assert.equal(summarize(large.filter(r=>
  !(r.format==="photo"&&r.audit.device==="iphone-safari")))

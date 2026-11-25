@@ -8,7 +8,8 @@ const FIELDS=Object.freeze([
  "salaryGross","salaryIncomeReference","deductionsReference","socialInsurance"
 ]);
 const FORMATS=Object.freeze(["digital-pdf","scan-pdf","photo"]);
-const DEVICES=Object.freeze(["windows-edge","iphone-safari","other"]);
+const REQUIRED_DEVICES=Object.freeze(["windows-edge","iphone-safari","android-chrome"]);
+const DEVICES=Object.freeze([...REQUIRED_DEVICES,"other"]);
 const CASE_ID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_RECORDS=100000;
 // Only these values and the income year count towards field accuracy.
@@ -49,6 +50,7 @@ function summarize(records){
   // Missing or malformed OCR output must never be counted as a legitimate
   // deliberate HOLD: otherwise a broken integration can inflate safety.
   if(typeof result.eligibleForManualTransfer!=="boolean"||
+     (result.autoApproved!==undefined&&result.autoApproved!==false)||
      (result.eligibleForManualTransfer&&
        (![2025,2026].includes(result.year)||
         !result.candidates||typeof result.candidates!=="object"||
@@ -65,13 +67,15 @@ function summarize(records){
       typeof audit.independentTruthVerified!=="boolean")
       throw Error("BENCHMARK_AUDIT_INVALID");
     // Random local IDs only: never derive them from names, paths or hashes.
-    if(seenCases.has(audit.caseId))throw Error("BENCHMARK_DUPLICATE_CASE");
-    seenCases.add(audit.caseId);
+    const caseId=audit.caseId.toLowerCase();
+    if(seenCases.has(caseId))throw Error("BENCHMARK_DUPLICATE_CASE");
+    seenCases.add(caseId);
     // A keyed HMAC digest of the original local file detects accidentally
     // counting repeated reads under different random case IDs.
-    if(seenFingerprints.has(audit.sourceFingerprint))
+    const fingerprint=audit.sourceFingerprint.toLowerCase();
+    if(seenFingerprints.has(fingerprint))
       throw Error("BENCHMARK_DUPLICATE_SOURCE");
-    seenFingerprints.add(audit.sourceFingerprint);
+    seenFingerprints.add(fingerprint);
     if(audit.independentTruthVerified){
       const second=audit.secondEntry;
       if(!second||typeof second!=="object"||
@@ -133,11 +137,12 @@ function summarize(records){
  overallResult.statisticalTargetMet=
    overallResult.statisticalTargetMet&&
    FORMATS.every(f=>byFormat[f].statisticalTargetMet)&&
-   ["windows-edge","iphone-safari"].every(d=>byDevice[d].statisticalTargetMet)&&
-   FORMATS.every(f=>["windows-edge","iphone-safari"].every(
+   REQUIRED_DEVICES.every(d=>byDevice[d].statisticalTargetMet)&&
+   FORMATS.every(f=>REQUIRED_DEVICES.every(
      d=>byFormatAndDevice[f][d].statisticalTargetMet));
  return {
-  schema:"furusato-private-ocr-aggregate/v2",
+  schema:"furusato-private-ocr-aggregate/v3",
+  requiredDevices:REQUIRED_DEVICES.slice(),
   qualityScope:QUALITY_SCOPE,
   evaluatedMonetaryFields:FIELDS.slice(),
   overall:overallResult,
