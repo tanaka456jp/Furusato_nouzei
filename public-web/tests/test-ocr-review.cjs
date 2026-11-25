@@ -115,4 +115,30 @@ for(const year of ["令和6年分","令和9年分","令和10年分","2024年分"
  assert.equal(review.compareAttempts(mixed,mixed).eligibleForManualTransfer,false);
 }
 assert.equal(review.reviewDigitalPdf(sample+"\n2026年分").eligibleForManualTransfer,true);
+// A visible ruled year may only veto, never independently promote.
+for(const raw of ["令和|6|年分","令和｜６｜年分","令和 | 9 | 年 分","平成|30|年分"]){
+ const d=review.reviewDigitalPdf(sample+"\n"+raw);
+ assert.equal(d.yearUnsupported,true);
+ assert.equal(d.yearConflict,true);
+ assert.equal(d.eligibleForManualTransfer,false);
+ assert.deepEqual(d.candidates,{});
+ assert.equal(review.compareAttempts(sample+"\n"+raw,sample+"\n"+raw).eligibleForManualTransfer,false);
+}
+for(const raw of ["令和|7|年分","令和｜７｜年分","令和 7 | 年 | 分"]){
+ const d=review.reviewDigitalPdf(sample+"\n"+raw);
+ assert.equal(d.yearConflict,true);
+ assert.equal(d.eligibleForManualTransfer,false);
+}
+const ruledOnly=sample.replace("令和8年分","令和|8|年分");
+assert.equal(review.reviewText(ruledOnly,true).observedYear,2026);
+assert.equal(review.reviewDigitalPdf(ruledOnly).eligibleForManualTransfer,false);
+assert.equal(review.reviewDigitalPdf(sample+"\n令和|8|年分").eligibleForManualTransfer,true);
+for(const raw of ["退職所得の源泉徴収票","公的年金等の源泉徴収票","退 職 所 得 の 源 泉 徴 収 票"]){
+ const d=review.reviewDigitalPdf(sample+"\n"+raw);
+ assert.equal(d.documentTypeConflict,true);
+ assert.equal(d.eligibleForManualTransfer,false);
+ assert.equal(d.year,null);
+ assert.deepEqual(d.candidates,{});
+ assert.equal(review.compareAttempts(sample+"\n"+raw,sample+"\n"+raw).eligibleForManualTransfer,false);
+}
 console.log("PUBLIC_OCR_SLIP_CONSENSUS_SYNTHETIC_PASS; no real recognition proof; HOLD");

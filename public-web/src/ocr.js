@@ -695,7 +695,7 @@
           var crossCheck=window.FurusatoPdfLayout.crossCheckExtracted(
             digital,positioned);
           const codedTaxFields=coded&&[2025,2026].includes(coded.year)&&
-            !digital.yearConflict&&!digital.yearUnsupported&&
+            !digital.yearConflict&&!digital.yearUnsupported&&!digital.documentTypeConflict&&
             (positioned.year===null||positioned.year===coded.year)&&
             !(digital.reasons||[]).some(r=>/^FIELD_(?:CONFLICT|DUPLICATE)_/.test(r))&&
             (positioned.reasons||[]).every(r=>
@@ -710,7 +710,7 @@
             // numbers stay review-only. Missing social insurance stays HOLD.
             result=coded;
           }else if(positioned.positionStatus==="CONFLICT"||
-             hardTextFailure||digital.yearConflict===true||digital.yearUnsupported===true||
+             hardTextFailure||digital.yearConflict===true||digital.yearUnsupported===true||digital.documentTypeConflict===true||
              conflictingYears||crossCheck.status==="CONFLICT"){
             result={
               schema:"furusato-slip-pdf-cross-check/v1",
@@ -718,7 +718,8 @@
               reasons:positioned.positionStatus==="CONFLICT"
                 ?positioned.reasons:digital.yearConflict===true
                   ?["PDF_EXPLICIT_YEAR_CONFLICT"]:digital.yearUnsupported===true
-                    ?["PDF_EXPLICIT_YEAR_UNSUPPORTED"]:crossCheck.status==="CONFLICT"
+                    ?["PDF_EXPLICIT_YEAR_UNSUPPORTED"]:digital.documentTypeConflict===true
+                    ?["PDF_DOCUMENT_TYPE_CONFLICT"]:crossCheck.status==="CONFLICT"
                     ?crossCheck.reasons:["PDF_TEXT_OR_YEAR_CONFLICT"],
               eligibleForManualTransfer:false,originalCompared:false,
               autoApproved:false

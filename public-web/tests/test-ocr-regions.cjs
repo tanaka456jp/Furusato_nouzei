@@ -245,4 +245,11 @@ const negatives=[
  recover(undefined,undefined,lr,digitReads.map(x=>x.key==="salaryGross"?{...x,text:"20000001"}:x),digitReads.map(x=>x.key==="salaryGross"?{...x,text:"20000001"}:x))
 ];
 for(const bad of negatives){assert.equal(bad.eligibleForManualTransfer,false);assert.equal(bad.autoApproved,false);assert.deepEqual(bad.candidates,{});assert.equal(bad.year,null);}
+for(const raw of ["令和|6|年分","令和｜８｜年分","公的年金等の源泉徴収票","令和7年分\n令和|8|年分"]){
+ const bad=recover(undefined,undefined,lr,digitReads,digitReads,[sr.reviewText(raw,true),missingReview[1]]);
+ assert.equal(bad.eligibleForManualTransfer,false);
+ assert.deepEqual(bad.candidates,{});
+ assert.equal(bad.year,null);
+}
+assert.equal(recover(undefined,undefined,lr,digitReads,digitReads,[sr.reviewText("令和|7|年分",true),missingReview[1]]).eligibleForManualTransfer,true);
 console.log("PUBLIC_OCR_BOUNDED_REGION_RECHECK_SYNTHETIC_PASS; no source accuracy claim");

@@ -43,10 +43,22 @@
       var y=m[1]?({令和:2018,平成:1988,昭和:1925}[m[1]])+(m[2]==="元"?1:Number(m[2])):Number(m[3]);
       if (yearCandidates.indexOf(y)<0)yearCandidates.push(y);
     }
+    // Ruling lines can be recognized as vertical bars. Collect such
+    // dates as NEGATIVE evidence only: they can veto contradictory crops
+    // or PDF geometry, but cannot on their own establish a positive year.
+    const observedYears=[...yearCandidates];
+    const ruled=/(令和|平成|昭和)\s*\|?\s*(元|[1-9][0-9]?)\s*\|?\s*年\s*\|?\s*分/g;
+    while((m=ruled.exec(text))){
+      const y=({令和:2018,平成:1988,昭和:1925}[m[1]])+(m[2]==="元"?1:Number(m[2]));
+      if(!observedYears.includes(y))observedYears.push(y);
+    }
+    const documentTypeConflict=/退職所得(?:の)?源泉徴収票|公的年金等(?:の)?源泉徴収票/.test(text.replace(/\s+/g,""));
+    const yearConflict=observedYears.length>1;
     var reasons=[];
     if(!header)reasons.push("DOCUMENT_TITLE_UNVERIFIED");
-    const yearUnsupported=yearCandidates.some(y=>![2025,2026].includes(y));
-    if(yearCandidates.length!==1)reasons.push("DOCUMENT_YEAR_UNVERIFIED");
+    if(documentTypeConflict)reasons.push("DOCUMENT_TYPE_CONFLICT");
+    const yearUnsupported=observedYears.some(y=>![2025,2026].includes(y));
+    if(yearCandidates.length!==1||yearConflict)reasons.push("DOCUMENT_YEAR_UNVERIFIED");
     if(yearUnsupported)reasons.push("DOCUMENT_YEAR_UNSUPPORTED");
     var candidates={},duplicates=[];
     FIELDS.forEach(function(field){
@@ -76,20 +88,20 @@
     // Transient negative evidence for grid recovery only. Never output
     // these partial values as review candidates when title/year is absent.
     const observed=includeObserved?{
-      observedYear:yearCandidates.length===1?yearCandidates[0]:null,
-      observedCandidates:{...candidates},
-      documentTypeConflict:/退職所得(?:の)?源泉徴収票|公的年金等(?:の)?源泉徴収票/.test(text.replace(/\s+/g,""))
+      observedYear:observedYears.length===1?observedYears[0]:null,
+      observedCandidates:{...candidates}
     }:{};
-    if(!header||yearCandidates.length!==1||yearUnsupported)candidates={};
+    if(!header||documentTypeConflict||yearCandidates.length!==1||yearUnsupported||yearConflict)candidates={};
     return {
       ...observed,
       schema:"furusato-slip-field-review/v1",
       status:"REQUIRES_SOURCE_REVIEW",
-      year:header&&yearCandidates.length===1&&!yearUnsupported?yearCandidates[0]:null,
+      year:header&&!documentTypeConflict&&yearCandidates.length===1&&!yearUnsupported&&!yearConflict?yearCandidates[0]:null,
       // Explicit contradictory years must veto a positional PDF fallback.
       // No text years is different: PDF.js may split the title/date cells.
-      yearConflict:yearCandidates.length>1,
+      yearConflict,
       yearUnsupported,
+      documentTypeConflict,
       candidates:candidates,
       reasons:Array.from(new Set(reasons)),
       fullyExtracted:reasons.length===0&&FIELDS.every(function(f){return Number.isSafeInteger(candidates[f.key]);}),
@@ -139,6 +151,7 @@
       year:r.fullyExtracted?r.year:null,
       yearConflict:r.yearConflict===true,
       yearUnsupported:r.yearUnsupported===true,
+      documentTypeConflict:r.documentTypeConflict===true,
       candidates:r.fullyExtracted?r.candidates:{},
       reasons:r.reasons,
       eligibleForManualTransfer:r.fullyExtracted,
