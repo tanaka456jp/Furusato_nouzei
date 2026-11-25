@@ -117,7 +117,7 @@ win.Tesseract={OEM:{LSTM_ONLY:1},createWorker:async()=>{
   return {data:{text:value,confidence:94}};
  },terminate:async()=>{closed++;}};
 }};
-for(const name of ["engine.js","app.js","ocr-review.js","ocr-regions.js","ocr-image-header.js","ocr.js"])
+for(const name of ["engine.js","app.js","ocr-review.js","pdf-gcodes.js","ocr-regions.js","ocr-image-header.js","ocr.js"])
  evaluate(name);
 const form=dom.getElementById("calculator");
 const input=dom.getElementById("slipFile");
