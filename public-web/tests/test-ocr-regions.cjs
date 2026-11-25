@@ -191,29 +191,31 @@ for(const [a,b] of [[blankSocial,falseSocial],[falseSocial,blankSocial],[blankSo
 }
 
 for(const f of [gridFixture(),gridFixture(.8,35,270),gridFixture(1.25,80,470)]){
- const out=gp(f);assert.equal(out.headerRectangles.length,2);
- assert.deepEqual(out.headerRectangles.map(v=>[v.key,v.scale]),[["heading",3],["year",5]]);
+ const out=gp(f);assert.equal(out.headerRectangles.length,3);
+ assert.deepEqual(out.headerRectangles.map(v=>[v.key,v.scale]),[["title",3],["year",5],["yearCheck",3]]);
  for(const v of out.headerRectangles)assert.ok(v.left>=0&&v.top>=0&&v.left+v.width<=f.w&&v.top+v.height<=f.h);
 }
 const clipped=gp(gridFixture(1,55,80));
 assert.equal(clipped.status,"LAYOUT_ONLY");assert.deepEqual(clipped.headerRectangles,[]);
 const title="給与所得の源泉徴収票";
-const headers=(a,b)=>[{key:"heading",text:a},{key:"year",text:b}];
+const headers=(a,b,c=b)=>[{key:"title",text:a},{key:"year",text:b},{key:"yearCheck",text:c}];
 const full=[sr.reviewText(""),sr.reviewText("")];
 for(const n of [7,8]){
- const result=region.assessGridHeader(headers("|令和 |"+n+"| 年分 "+title,"令和｜"+n+"｜年分"),full);
+ const result=region.assessGridHeader(headers(title,"令和｜"+n+"｜年分","令和 |"+n+"| 年分"),full);
  assert.deepEqual(result,{status:"MATCH",eligibleForManualTransfer:false,autoApproved:false});
  assert.equal(result.year,undefined);assert.equal(result.candidates,undefined);
 }
-for(const [a,b] of [["令和6年分"+title,"令和6年分"],["令和9年分"+title,"令和9年分"],["令和10年分"+title,"令和10年分"],["令和7年分"+title,"令和8年分"]])
- assert.equal(region.assessGridHeader(headers(a,b),full).status,"CONFLICT");
-for(const [a,b] of [["令和7年分退職所得の源泉徴収票","令和7年分"],["令和7年分給与所得の源景徴収票","令和7年分"],["令和7年分"+title+"令和8年分","令和7年分"],["令和7年分"+title,"信和7年分"],["令和7年分"+title,"令和||7年分"],["令和7年分"+title,""]])
- assert.equal(region.assessGridHeader(headers(a,b),full).status,"UNVERIFIED");
-const matchingHeaders=headers("令和7年分"+title,"令和7年分");
+for(const [b,c] of [["令和6年分","令和6年分"],["令和9年分","令和9年分"],["令和10年分","令和10年分"],["令和7年分","令和8年分"],["令和8年分","令和6年分"]])
+ assert.equal(region.assessGridHeader(headers(title,b,c),full).status,"CONFLICT");
+for(const [a,b,c] of [["退職所得の源泉徴収票","令和7年分","令和7年分"],["給与所得の源景徴収票","令和7年分","令和7年分"],[title+"令和8年分","令和7年分","令和7年分"],[title,"信和7年分","令和7年分"],[title,"令和||7年分","令和7年分"],[title,"令和7年分",""],[title,"","令和7年分"]])
+ assert.equal(region.assessGridHeader(headers(a,b,c),full).status,"UNVERIFIED");
+const matchingHeaders=headers(title,"令和7年分");
 for(const raw of ["令和6年分 "+title,"令和8年分 "+title,"令和7年分 令和8年分 "+title])
  assert.equal(region.assessGridHeader(matchingHeaders,[sr.reviewText(raw),full[1]]).status,"CONFLICT");
 assert.equal(region.assessGridHeader(matchingHeaders,[]).status,"UNVERIFIED");
-assert.equal(region.assessGridHeader([matchingHeaders[0],matchingHeaders[0]],full).status,"UNVERIFIED");
+assert.equal(region.assessGridHeader(matchingHeaders.slice(0,2),full).status,"UNVERIFIED");
+assert.equal(region.assessGridHeader([matchingHeaders[0],matchingHeaders[1],matchingHeaders[1]],full).status,"UNVERIFIED");
+assert.equal(region.assessGridHeader(headers(title,"令和7年分","令和7年分"),[sr.reviewText("公的年金等の源泉徴収票",true),full[1]]).status,"CONFLICT");
 
 const gridForRecovery=gp(gridFixture());
 assert.equal(gridForRecovery.labelRectangles.length,4);
@@ -231,7 +233,9 @@ assert.equal(fullNeg[0].candidates.salaryGross,undefined);
 assert.equal(fullNeg[0].observedCandidates.salaryGross,123);
 const negatives=[
  recover({...gridForRecovery,labelRectangles:[]}),
- recover(undefined,headers("令和7年分"+title,"令和8年分")),
+ recover(undefined,headers(title,"令和7年分","令和8年分")),
+ recover(undefined,matchingHeaders.slice(0,2)),
+ recover({...gridForRecovery,headerRectangles:gridForRecovery.headerRectangles.slice(0,2)}),
  recover(undefined,undefined,lr.map((x,i)=>i===0?{...x,text:"源泉徴収税額"}:x)),
  recover(undefined,undefined,lr.slice(0,3)),
  recover(undefined,undefined,lr.map((x,i)=>i===3?{...x,text:"社会保険料等の金客"}:x)),

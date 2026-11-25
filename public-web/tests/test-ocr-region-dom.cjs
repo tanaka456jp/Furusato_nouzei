@@ -72,20 +72,20 @@ win.FurusatoPerspective={tryRectify:()=>({status:"UNVERIFIED",canvas:null})};
 win.Tesseract={OEM:{LSTM_ONLY:1},createWorker:async()=>{
  roiCalls=0;
  return {setParameters:async params=>{
-  assert.equal(params.tessedit_pageseg_mode,"7");
-  assert.equal(params.tessedit_char_whitelist,gridHeaderMode&&gridParameters===2?"":"0123456789,");
+  assert.equal(params.tessedit_pageseg_mode,gridHeaderMode&&gridParameters===2?"13":"7");
+  assert.equal(params.tessedit_char_whitelist,gridHeaderMode&&gridParameters>=2?"":"0123456789,");
   gridParameters++;
  },recognize:async(_image,options,output)=>{
   calls++;
   if(gridMode){
-   if(gridLabelMode&&gridReadIndex>=12){
-    const idx=gridReadIndex++-12;
+   if(gridLabelMode&&gridReadIndex>=13){
+    const idx=gridReadIndex++-13;
     const headings=["支払金額","給与所得控除後の金額(調整控除後)","所得控除の額の合計額","社会保険料等の金額"];
     return {data:{text:gridLabelConflict&&idx===3?"社会保険料等の金客":headings[idx],confidence:95}};
    }
    if(gridHeaderMode&&gridReadIndex>=10){
     const idx=gridReadIndex++;
-    return {data:{text:idx===10?"|令和|8|年分給与所得の源泉徴収票":gridHeaderConflict?"令和|7|年分":"令和|8|年分",confidence:95}};
+    return {data:{text:idx===10?"給与所得の源泉徴収票":gridHeaderConflict&&idx===12?"令和|7|年分":"令和|8|年分",confidence:95}};
    }
    if(gridNumericMode&&gridReadIndex++>=2){
     const idx=(gridReadIndex-3)%4;
@@ -219,16 +219,17 @@ async function main(){
  gridHeaderMode=true;
  const numericPlan=win.FurusatoOcrRegions.planGridCanvas;
  win.FurusatoOcrRegions.planGridCanvas=()=>({...numericPlan(),headerRectangles:[
-  {key:"heading",left:80,top:30,width:200,height:30,scale:3},
-  {key:"year",left:80,top:30,width:90,height:30,scale:5}
+  {key:"title",left:180,top:30,width:200,height:30,scale:3},
+  {key:"year",left:80,top:30,width:90,height:30,scale:5},
+  {key:"yearCheck",left:80,top:30,width:90,height:30,scale:3}
  ]});
  for(const conflict of [false,true]){
   gridHeaderConflict=conflict;gridReadIndex=0;gridParameters=1;
   file("grid-header-"+conflict+".png");
   const before=calls;
   await run();
-  assert.equal(calls-before,12);
-  assert.equal(gridParameters,3);
+  assert.equal(calls-before,13);
+  assert.equal(gridParameters,4);
   assert.equal(transfer.disabled,true);
   assert.equal(dom.getElementById("slipConfirm").disabled,true);
   assert.equal(form.elements.namedItem("salaryGross").value,"");
@@ -243,7 +244,7 @@ async function main(){
  for(const conflict of [true,false]){
   gridLabelConflict=conflict;gridReadIndex=0;gridParameters=1;
   file("grid-label-"+conflict+".png");const before=calls;await run();
-  assert.equal(calls-before,16);
+  assert.equal(calls-before,17);
   assert.equal(transfer.disabled,conflict);
   assert.equal(form.elements.namedItem("salaryGross").value,"");
   assert.equal(dom.getElementById("slipConfirm").checked,false);

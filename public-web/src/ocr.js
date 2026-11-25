@@ -581,12 +581,16 @@
               const check=regions.assessGridDigits(digitReads[0],digitReads[1]);
               if(check.status==="DIAGNOSTIC_ONLY")compared.gridDigitsMatched=check.matchedFields;
             }catch(_){ensureCurrent();/* preserve HOLD even on diagnostic failure */}
-            if(grid.headerRectangles?.length===2&&regions.assessGridHeader){
+            if(grid.headerRectangles?.length===3&&regions.assessGridHeader){
               try{
                 ensureCurrent();
-                await worker.setParameters({tessedit_pageseg_mode:"7",tessedit_char_whitelist:""});
+                // RAW_LINE for the title; SINGLE_LINE for both year
+                // samplings and subsequent field labels. Fixed settings.
+                await worker.setParameters({tessedit_pageseg_mode:"13",tessedit_char_whitelist:""});
                 const reads=[];
                 for(const region of grid.headerRectangles){
+                  ensureCurrent();
+                  if(region.key==="year")await worker.setParameters({tessedit_pageseg_mode:"7",tessedit_char_whitelist:""});
                   ensureCurrent();
                   const crop=document.createElement("canvas");
                   try{

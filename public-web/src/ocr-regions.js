@@ -303,7 +303,7 @@
       v.left<0||v.top<0||v.left+v.width>width||v.top+v.height>height))continue;
    // Printed heading geometry is only a diagnostic, not proof of form type.
    // Exclude the small print above the date and the lower horizontal rule.
-   const headerRectangles=[["heading",118,672,-267,-236,3],["year",118,334,-265,-238,5]].map(([key,x1,x2,y1,y2,scale])=>{
+   const headerRectangles=[["title",408,672,-267,-236,3],["year",118,334,-265,-238,5],["yearCheck",118,334,-265,-238,3]].map(([key,x1,x2,y1,y2,scale])=>{
     const left=Math.round(l+w*x1/1080),top=Math.round(t+w*y1/1080);
     return {key,left,top,width:Math.round(w*(x2-x1)/1080),height:Math.round(w*(y2-y1)/1080),scale};
    });
@@ -386,7 +386,7 @@
  // Never correct a misrecognized character, infer a year or emit candidates.
  function gridHeaderEvidence(reads,fullPageReviews){
   const result=status=>({status,eligibleForManualTransfer:false,autoApproved:false});
-  if(!Array.isArray(reads)||reads.length!==2||!Array.isArray(fullPageReviews)||
+  if(!Array.isArray(reads)||reads.length!==3||!Array.isArray(fullPageReviews)||
      fullPageReviews.length!==2||fullPageReviews.some(v=>!v||typeof v!=="object"))
    return result("UNVERIFIED");
   if(fullPageReviews.some(v=>v.yearConflict===true||v.yearUnsupported===true))return result("CONFLICT");
@@ -396,11 +396,14 @@
    const m=pattern.exec(a[0].text.normalize("NFKC").replace(/\s+/g,""));
    return m?2018+Number(m[1]):null;
   };
-  const heading=parse("heading",/^\|?令和\|?([1-9][0-9]?)\|?年分\|?給与所得の源泉徴収票\|?$/);
-  const year=parse("year",/^\|?令和\|?([1-9][0-9]?)\|?年分\|?$/);
-  if([heading,year].some(v=>v!==null&&![2025,2026].includes(v))||
-    (heading!==null&&year!==null&&heading!==year))return result("CONFLICT");
-  if(heading===null||year===null)return result("UNVERIFIED");
+  const datePattern=/^\|?令和\|?([1-9][0-9]?)\|?年分\|?$/;
+  const year=parse("year",datePattern),yearCheck=parse("yearCheck",datePattern);
+  if([year,yearCheck].some(v=>v!==null&&![2025,2026].includes(v))||
+    (year!==null&&yearCheck!==null&&year!==yearCheck))return result("CONFLICT");
+  const titles=reads.filter(v=>v?.key==="title");
+  if(titles.length!==1||typeof titles[0].text!=="string"||titles[0].text.length>120||
+     titles[0].text.normalize("NFKC").replace(/\s+/g,"")!=="給与所得の源泉徴収票"||
+     year===null||yearCheck===null)return result("UNVERIFIED");
   if(fullPageReviews.some(v=>(v.observedYear!=null&&v.observedYear!==year)||(v.year!=null&&v.year!==year)||v.documentTypeConflict===true))return result("CONFLICT");
   return {...result("MATCH"),year};
  }
@@ -415,7 +418,7 @@
   const reject=reason=>({schema:"furusato-slip-grid-review/v1",status:"REQUIRES_SOURCE_REVIEW",
    year:null,candidates:{},reasons:[reason],eligibleForManualTransfer:false,autoApproved:false,originalCompared:false});
   if(grid?.status!=="LAYOUT_ONLY"||grid.layoutLocated!==true||
-     grid.rectangles?.length!==4||grid.headerRectangles?.length!==2||grid.labelRectangles?.length!==4||
+     grid.rectangles?.length!==4||grid.headerRectangles?.length!==3||!["title","year","yearCheck"].every(k=>grid.headerRectangles.filter(v=>v?.key===k).length===1)||grid.labelRectangles?.length!==4||
      !LABELS.every(f=>grid.rectangles.filter(v=>v?.key===f.key).length===1&&grid.labelRectangles.filter(v=>v?.key===f.key).length===1))
    return reject("GRID_LAYOUT_UNVERIFIED");
   const header=gridHeaderEvidence(headers,fullPageReviews);
