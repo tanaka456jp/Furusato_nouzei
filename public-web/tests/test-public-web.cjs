@@ -12,12 +12,29 @@ assert.equal(result.release,"HOLD");
 assert.equal(result.ads,"NOT_ENABLED");
 assert.equal(result.ocr,"LOCAL_ONLY_REVIEW");
 assert.equal(result.deployment,"NOT_RUN");
-for(const name of ["index.html","style.css","app.js","about.html","privacy.html",
+for(const name of ["index.html","style.css","app.js","about.html","privacy.html","terms.html",
  "engine.js","robots.txt","_headers", "ocr.js","batch.js","batch-name.js","batch-core.js","ocr-review.js","ocr-quality.js","ocr-layout.js","ocr-regions.js","ocr-image-header.js","pdf-compat.js","pdf-gcodes.js",
  "vendor/tesseract/tesseract.min.js","vendor/tesseract/worker.min.js",
  "vendor/tesseract/lang/jpn.traineddata.gz","vendor/pdf.mjs","vendor/pdf.worker.mjs",
  "licenses/THIRD_PARTY_NOTICES.txt"])
  assert.ok(fs.statSync(path.join(out,name)).size>10,name);
+for(const page of ["index.html","about.html","privacy.html","terms.html"]){
+ const source=fs.readFileSync(path.join(out,page),"utf8");
+ assert.match(source,/name="robots" content="noindex,nofollow,noarchive"/);
+ assert.doesNotMatch(source,/adsbygoogle|googlesyndication|googletagmanager/i);
+ for(const link of source.matchAll(/href="\.\/([a-z-]+\.html)"/g))
+  assert.ok(fs.statSync(path.join(out,link[1])).isFile(),page+" -> "+link[1]);
+ if(page!=="terms.html")assert.match(source,/href="\.\/terms\.html"/);
+}
+const about=fs.readFileSync(path.join(out,"about.html"),"utf8"),terms=fs.readFileSync(path.join(out,"terms.html"),"utf8");
+for(const source of [about,terms]){
+ assert.match(source,/給与収入2,000万円以下/);
+ assert.match(source,/特定親族/);assert.match(source,/継続住宅ローン控除/);
+ assert.match(source,/住宅ローン残高の変動は考慮していません/);
+ assert.match(source,/HOLD/);
+ assert.doesNotMatch(source,/給与850万円以下/);
+}
+assert.match(terms,/運営者の正式表示、連絡先、公開URL、正式規約の適用開始日、責任範囲は未確定/);
 const engine=fs.readFileSync(path.join(out,"engine.js"),"utf8");
 assert.equal(engine,fs.readFileSync(path.join(root,"..","gas","Engine.gs"),"utf8"));
 const html=fs.readFileSync(path.join(out,"index.html"),"utf8");

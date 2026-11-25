@@ -24,12 +24,13 @@ if(!html.includes('name="robots" content="noindex,nofollow,noarchive"')||
    !app.includes("FurusatoEngine.calculate")||
    /(?:\bfetch\s*\(|XMLHttpRequest|sendBeacon|localStorage|sessionStorage|document\.cookie|google\.script\.run)/.test(app))
  throw Error("PUBLIC_REVIEW_PRIVACY_CONTRACT_FAILED");
-const files=["index.html","style.css","app.js","about.html","privacy.html",
+const files=["index.html","style.css","app.js","about.html","privacy.html","terms.html",
  "ocr.js","ocr-review.js","ocr-quality.js","ocr-layout.js","ocr-perspective.js","ocr-regions.js","ocr-image-header.js","pdf-compat.js","pdf-gcodes.js",
  "batch-name.js","batch-core.js","batch.js","resident-levy.js","family-deductions.js","family-tax.js","family-source.js","insurance-deductions.js","other-deductions.js","medical-deductions.js","salary-adjustment.js"];
 for(const name of files){
  const contents=fs.readFileSync(path.join(sourceDir,name),"utf8");
  if(!contents.trim())throw Error("MISSING_PUBLIC_SOURCE");
+ if(name.endsWith(".html")&&(!contents.includes('name="robots" content="noindex,nofollow,noarchive"')||/adsbygoogle|googlesyndication|googletagmanager/i.test(contents)))throw Error("PUBLIC_REVIEW_PAGE_GUARD_FAILED:"+name);
 }
 // Refuse overwriting a symbolic-link or out-of-tree build directory.
 if(fs.existsSync(dest)){

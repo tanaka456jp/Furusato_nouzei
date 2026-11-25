@@ -2,7 +2,7 @@
 // Read-only local QA server. Never use real slips over LAN HTTP.
 const http=require("node:http"),fs=require("node:fs"),path=require("node:path"),net=require("node:net");
 const mime=Object.freeze({".html":"text/html; charset=utf-8",".css":"text/css; charset=utf-8",".js":"text/javascript; charset=utf-8",".mjs":"text/javascript; charset=utf-8",".wasm":"application/wasm",".gz":"application/gzip",".txt":"text/plain; charset=utf-8"});
-const top=new Set(["index.html","about.html","privacy.html","style.css","app.js","engine.js","ocr.js","ocr-review.js","ocr-quality.js","ocr-image-header.js","ocr-layout.js","ocr-perspective.js","ocr-regions.js","pdf-compat.js","pdf-gcodes.js","batch-name.js","batch-core.js","batch.js","resident-levy.js","family-deductions.js","family-tax.js","family-source.js","insurance-deductions.js","other-deductions.js","medical-deductions.js","salary-adjustment.js","robots.txt"]);
+const top=new Set(["index.html","about.html","privacy.html","terms.html","style.css","app.js","engine.js","ocr.js","ocr-review.js","ocr-quality.js","ocr-image-header.js","ocr-layout.js","ocr-perspective.js","ocr-regions.js","pdf-compat.js","pdf-gcodes.js","batch-name.js","batch-core.js","batch.js","resident-levy.js","family-deductions.js","family-tax.js","family-source.js","insurance-deductions.js","other-deductions.js","medical-deductions.js","salary-adjustment.js","robots.txt"]);
 function privateAddress(host){
  if(!net.isIPv4(host))return false;
  const [a,b]=host.split(".").map(Number);

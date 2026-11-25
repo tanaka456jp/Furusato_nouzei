@@ -134,7 +134,7 @@
             <summary>配偶者・扶養親族（必要な場合）</summary>
           <fieldset class="conditions family-panel" id="familyPanel">
             <legend>配偶者・扶養親族の明細（手入力・検証版）</legend>
-            <p>該当する上のチェックを付け、対象年の12月31日時点の年齢と年間合計所得金額（給与収入ではありません）を入力してください。16歳未満も含めます。OCR取込の場合は原票年分の家族明細も別途確認してください。非居住親族・その他控除は未対応です。</p>
+            <p>該当する上のチェックを付け、対象年の12月31日時点の年齢と年間合計所得金額（給与収入ではありません）を入力してください。16歳未満も含めます。OCR取込の場合は原票年分の家族明細も別途確認してください。非居住親族や明細にない控除は未対応です。対応するその他所得控除は専用欄で入力してください。</p>
             <div class="fields family-spouse">
               <label>配偶者の年齢<input type="text" inputmode="numeric" autocomplete="off" name="familySpouseAge" maxlength="3"></label>
               <label>配偶者の合計所得（円）<input type="text" inputmode="numeric" autocomplete="off" name="familySpouseIncome" maxlength="12"></label>
@@ -289,7 +289,7 @@
       <p class="eyebrow">OPTIONAL · MULTI-PERSON LOCAL REVIEW</p>
       <h2 id="batch-title">複数人を一括試算（複数ページPDF）</h2>
       <p>1ページにつき<strong>1人分の源泉徴収票</strong>があるPDFを、端末内でページ順に読み取ります（最大20ページ・8MB）。受給者氏名はB列相当欄へ入力・訂正でき、参照源泉票の年分と試算対象年を別々に扱います。2025年原票から2026年を試算する場合は2026年の見込額へ修正してください。</p>
-      <p class="notice">同じ方の複数勤務先の源泉徴収票や1ページに複数人分を配置したPDFは自動合算できません。配偶者・扶養親族は各対象者の家族明細から原票年と試算年を照合します。住宅ローン控除・複数給与など未対応条件がある方は、確認チェックを付けずHOLDのままにしてください。</p>
+      <p class="notice">同じ方の複数勤務先の源泉徴収票や1ページに複数人分を配置したPDFは自動合算できません。配偶者・扶養親族は各対象者の家族明細から原票年と試算年を照合します。住宅ローン控除初年度・複数給与など未対応条件がある方は、確認チェックを付けずHOLDのままにしてください。</p>
       <label class="batch-file-label">複数ページの源泉徴収票PDF（端末内のみ）
         <input id="batchPdf" type="file" accept="application/pdf">
       </label>
@@ -333,6 +333,6 @@
       <p class="source">出典：<a href="https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1155.htm" target="_blank" rel="noopener noreferrer">国税庁「ふるさと納税（寄附金控除）」</a>。制度解説は一般的な内容で、個々の税務判断を保証しません。</p>
     </section>
   </main>
-  <footer class="footer"><div class="container footerlinks"><span>ふるさと納税 限度額シミュレーター · 検証版</span><nav aria-label="フッター"><a href="./about.html">このサイトについて</a><a href="./privacy.html">プライバシー</a></nav></div></footer>
+  <footer class="footer"><div class="container footerlinks"><span>ふるさと納税 限度額シミュレーター · 検証版</span><nav aria-label="フッター"><a href="./about.html">このサイトについて</a><a href="./privacy.html">プライバシー</a><a href="./terms.html">利用条件（検証版）</a></nav></div></footer>
 </body>
 </html>

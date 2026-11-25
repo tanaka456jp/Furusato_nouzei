@@ -127,6 +127,7 @@ jobs:
             public-web/dist/
             public-web/scripts/serve-review.cjs
             public-web/docs/MOBILE_QA.md
+            public-web/docs/RELEASE_ACCEPTANCE.md
             public-web/qa-fixtures/
             public-web/docs/OCR_QUALITY_ACCEPTANCE.md
           if-no-files-found: error
@@ -142,6 +143,7 @@ jobs:
             public-web/dist/index.html
             public-web/dist/about.html
             public-web/dist/privacy.html
+            public-web/dist/terms.html
             public-web/dist/app.js
             public-web/dist/ocr.js
             public-web/dist/batch.js
