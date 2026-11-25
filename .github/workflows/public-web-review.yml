@@ -84,9 +84,18 @@ jobs:
           node public-web/tests/test-batch-name.cjs
           node public-web/tests/test-pdf-gcodes.cjs
           node public-web/tests/test-batch-dom.cjs
+      - name: Generate fictional Japanese positive PDF fixtures
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends fonts-noto-cjk
+          python3 -m venv "$RUNNER_TEMP/furusato-qa-venv"
+          "$RUNNER_TEMP/furusato-qa-venv/bin/pip" install --disable-pip-version-check PyMuPDF==1.26.7 fonttools==4.63.0
+          "$RUNNER_TEMP/furusato-qa-venv/bin/python" public-web/scripts/make-positive-fixtures.py --font /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc
       - name: Install isolated Chromium for on-device OCR WASM startup
         run: ./gas/node_modules/.bin/playwright install chromium
       - name: Real browser OCR startup smoke (synthetic canvas, no upload)
+        env:
+          FURUSATO_POSITIVE_FIXTURES: '1'
         run: node public-web/tests/test-ocr-browser-smoke.cjs
       - name: Confirm no deployment or ads
         run: |

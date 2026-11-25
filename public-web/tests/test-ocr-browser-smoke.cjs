@@ -164,6 +164,48 @@ async function main(){
   assert.equal(await page.locator("#familyRelatives .family-relative").count(),0);
   assert.equal(await familyField("familyReviewed").isChecked(),false);
 
+  // Positive real text-layer fixture: no OCR mock, no real taxpayer data.
+  if(process.env.FURUSATO_POSITIVE_FIXTURES==="1"){
+   const fixtures=path.resolve(__dirname,"../qa-fixtures");
+   await familyField("year").selectOption("2026");
+   await familyField("municipality").selectOption("standard");
+   await page.locator("#slipFile").setInputFiles(path.join(fixtures,"06-positive-electronic.pdf"));
+   await page.locator("#slipScan").click();
+   await page.waitForFunction(()=>!document.getElementById("slipScan").disabled,null,{timeout:30000});
+   assert.equal(await page.locator("#slipTransfer").isDisabled(),false);
+   assert.equal(await familyField("salaryGross").inputValue(),"");
+   await page.locator("#slipTransfer").click();
+   assert.equal(await familyField("salaryGross").inputValue(),"");
+   await page.locator("#slipConfirm").check();
+   await page.locator("#slipTransfer").click();
+   assert.equal(await familyField("salaryGross").inputValue(),"7000000");
+   await familyField("municipality").selectOption("standard");
+   await familyField("acknowledgedExclusions").check();
+   await page.locator('#calculator button[type="submit"]').click();
+   assert.equal(await page.locator("#result .amount").textContent(),"109,000円");
+   await page.locator("#batchPdf").setInputFiles(path.join(fixtures,"07-positive-mixed-batch.pdf"));
+   await page.locator("#batchScan").click();
+   await page.waitForFunction(()=>!document.getElementById("batchScan").disabled&&document.querySelectorAll("#batchRows tr").length===2,null,{timeout:30000});
+   await page.locator("#batchCalculate").click();
+   assert.deepEqual(await page.locator("#batchRows .batch-result").allTextContents(),["—","—"]);
+   await page.locator('#batchRows select[data-field="municipality"]').first().selectOption("standard");
+   await page.locator('#batchRows input[data-field="confirmed"]').first().check();
+   await page.locator('#batchRows input[data-field="noExclusions"]').first().check();
+   await page.locator("#batchCalculate").click();
+   assert.deepEqual(await page.locator("#batchRows .batch-result").allTextContents(),["109,000円","—"]);
+   const downloading=page.waitForEvent("download");
+   await page.locator("#batchDownload").click();
+   const download=await downloading;
+   const csv=require("node:fs").readFileSync(await download.path(),"utf8");
+   const lines=csv.trim().split(/\r?\n/).map(line=>line.split('","').map(value=>value.replace(/^"|"$/g,"")));
+   assert.equal(lines.length,3);assert.equal(lines[1][11],"109000");
+   assert.equal(lines[2][11],"");assert.equal(lines[2][12],"HOLD");
+   await download.delete();
+   await page.locator("#batchClear").click();
+   await page.locator('#calculator button[type="reset"]').click();
+   console.log("PUBLIC_POSITIVE_REAL_PDF_AND_MIXED_CSV_PASS; synthetic only");
+  }
+
   const status=await page.evaluate(async function(){
    if(typeof Tesseract==="undefined"||!Tesseract.createWorker)
     throw Error("TESSERACT_NOT_LOADED");
