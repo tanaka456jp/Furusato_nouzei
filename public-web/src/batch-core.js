@@ -19,7 +19,7 @@
   "hasSplitIncome","hasIncomeAdjustment","hasNonstandardConditions"]);
  const MAX_ROWS=20;
  const PREMIUM_KEYS=Object.freeze(["generalNew","generalOld","medicalNew","pensionNew","pensionOld","earthquake","longTermOld"]);
- const PREMIUM_FIELDS=Object.freeze(["source","target"].flatMap(prefix=>PREMIUM_KEYS.map(k=>prefix+"Insurance_"+k)));
+ const PREMIUM_FIELDS=Object.freeze(["source","target"].flatMap(prefix=>[...PREMIUM_KEYS,"otherClaimUnder23"].map(k=>prefix+"Insurance_"+k)));
  const OTHER_FIELDS=Object.freeze(["otherSourceText","otherTargetText"]);
  const MEDICAL_FIELDS=Object.freeze(["medicalNetPaidYen"]);
  const MEDICAL_SUMMARY_KEYS=Object.freeze(["nationalDeductionYen","netEligibleYen","thresholdYen"]);
@@ -45,7 +45,7 @@
    if(p.length!==3||age===null||income===null||!["0","1"].includes(p[2])||!(age<23||p[2]==="1"))return null;
    extras.push({age,income,specialDisability:p[2]==="1",relationshipReviewed:true});
   }
-  if(year===2026&&premiums.generalNew>0&&extras.some(m=>m.age<23)&&!household.relatives.some(m=>m.age<23&&m.income<=threshold))return null;
+  if(year===2026&&premiums.generalNew>0&&premiums.otherClaimUnder23!==true&&extras.some(m=>m.age<23)&&!household.relatives.some(m=>m.age<23&&m.income<=threshold))return null;
   return {year,grossSalary:gross,selfSpecialDisability:other.disability.self==="special",
    spouse:household.spouse?{income:household.spouse.income,specialDisability:special(other.disability.spouse),relationshipReviewed:true}:null,
    relatives:household.relatives.map((m,i)=>({age:m.age,income:m.income,specialDisability:special(other.disability.relatives[i]),relationshipReviewed:true})).concat(extras),
@@ -67,6 +67,9 @@
    const n=raw===""?0:Number(raw);if(n>100000000)return null;
    values[k]=n;
   }
+  const flag=row[prefix+"Insurance_otherClaimUnder23"];
+  if(flag!==""&&flag!=="yes")return null;
+  if(flag==="yes")values.otherClaimUnder23=true;
   return values;
  }
  function safeAmount(value){
@@ -261,6 +264,7 @@
   if(!row||!canEstimate(row)||!parsePremiums(row,"source")||
      !PREMIUM_KEYS.some(k=>row["sourceInsurance_"+k]!==""))return false;
   for(const k of PREMIUM_KEYS)edit(row,"targetInsurance_"+k,row["sourceInsurance_"+k]);
+  edit(row,"targetInsurance_otherClaimUnder23",row.sourceYear===row.year?row.sourceInsurance_otherClaimUnder23:"");
   row.reason="原票年の年間保険料を試算年へコピーしました。変更があれば訂正し、再確認してください";
   return true;
  }

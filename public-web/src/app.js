@@ -28,12 +28,13 @@
   function readInsurance(prefix,reviewName){
     var premiums={};
     premiumKeys.forEach(function(key){premiums[key]=form.elements.namedItem(prefix+"Insurance_"+key).value.trim();});
-    return {premiums:premiums,reviewed:form.elements.namedItem(reviewName).checked===true};
+    return {premiums:premiums,otherClaimUnder23:form.elements.namedItem(prefix+"Insurance_otherClaimUnder23").checked===true,reviewed:form.elements.namedItem(reviewName).checked===true};
   }
-  function insuranceActive(details){return details.reviewed||premiumKeys.some(function(k){return details.premiums[k]!=="";});}
+  function insuranceActive(details){return details.reviewed||details.otherClaimUnder23||premiumKeys.some(function(k){return details.premiums[k]!=="";});}
   function parsePremiums(details){
     var values={};
     premiumKeys.forEach(function(k){values[k]=details.premiums[k]===""?0:strictYen(details.premiums[k]);});
+    if(details.otherClaimUnder23)values.otherClaimUnder23=true;
     return values;
   }
   function getInput() {
@@ -406,7 +407,7 @@
       if(extras.some(function(m){return m.age===null||m.income===null||m.income>threshold||!(m.age<23||m.specialDisability);}))return null;
       // Enhanced general-life premium rule with independently claimed U23
       // witnesses is not yet audited; fail closed for both years' routes.
-      if(y===2026&&premiums.generalNew>0&&extras.some(function(m){return m.age<23;})&&
+      if(y===2026&&premiums.generalNew>0&&premiums.otherClaimUnder23!==true&&extras.some(function(m){return m.age<23;})&&
          !relatives.some(function(m){return m.age<23&&m.income<=threshold;}))return null;
       return {year:y,grossSalary:g,selfSpecialDisability:other.disability.self==="special",
         spouse:spouse?{income:spouse.income,specialDisability:special(other.disability.spouse),relationshipReviewed:true}:null,
@@ -469,7 +470,7 @@
         return fail("同一年分の原票家族明細と試算明細が一致しません。");
       if(sourceYear===year&&(od||so)&&JSON.stringify(targetOther)!==JSON.stringify(sourceOther))
         return fail("同一年分の原票と試算のその他所得控除明細が一致しません。");
-      if(sourceYear===year&&(ip||si)&&premiumKeys.some(function(k){return (sourcePremiums?sourcePremiums[k]:0)!==(targetPremiums?targetPremiums[k]:0);}))
+      if(sourceYear===year&&(ip||si)&&(premiumKeys.some(function(k){return (sourcePremiums?sourcePremiums[k]:0)!==(targetPremiums?targetPremiums[k]:0);})||!!sourcePremiums?.otherClaimUnder23!==!!targetPremiums?.otherClaimUnder23))
         return fail("同一年分の原票保険料明細と試算明細が一致しません。");
     }else if(input.sourceFamily)return fail("原票が取り込まれていません。原票年分の入力をクリアしてください。");
     if(flags.some(function(k){return !["hasSpouse","hasDependents","hasLifeInsurance","hasEarthquakeInsurance"].includes(k)&&!(k==="hasMedical"&&md)&&!(k==="hasMortgage"&&hd&&housing)&&!(k==="hasIncomeAdjustment"&&high)&&input[k]!==false;})||
@@ -887,6 +888,7 @@
     ["sourceAdjustment_basic","sourceAdjustment_amount"].forEach(function(name){form.elements.namedItem(name).value="";});
     ["sourceSpouseAge","sourceSpouseIncome"].forEach(function(name){form.elements.namedItem(name).value="";});
     premiumKeys.forEach(function(k){form.elements.namedItem("sourceInsurance_"+k).value="";});
+    form.elements.namedItem("sourceInsurance_otherClaimUnder23").checked=false;
     ["self","spouse","marital"].forEach(function(k){form.elements.namedItem("sourceOther_"+k).value="none";});
     ["child","contribution"].forEach(function(k){form.elements.namedItem("sourceOther_"+k).value="";});
     form.elements.namedItem("sourceOther_student").checked=false;
@@ -970,6 +972,7 @@
       note.textContent="原票年の年間保険料と参照年分を正しく確認してください。";return;
     }
     premiumKeys.forEach(function(k,i){form.elements.namedItem("targetInsurance_"+k).value=values[i];});
+    form.elements.namedItem("targetInsurance_otherClaimUnder23").checked=sourceYear===year&&form.elements.namedItem("sourceInsurance_otherClaimUnder23").checked;
     form.elements.namedItem("hasLifeInsurance").checked=values.slice(0,5).some(v=>Number(v)>0);
     form.elements.namedItem("hasEarthquakeInsurance").checked=values.slice(5).some(v=>Number(v)>0);
     revokeFamily();revealRelevantPanels();note.textContent="原票年の年間保険料を試算年へコピーしました。変更があれば訂正し、再確認してください。";

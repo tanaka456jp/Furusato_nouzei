@@ -659,6 +659,19 @@ for(const invalid of [{year:2027},{year:"2026"},{conditions:""},
  assert.equal(held.status,"HOLD");assert.equal(held.calculation,null);
  assert.equal(held.donationLimitYen,null);
 }
+// NTA 41-15-5-1: shared-child eligibility is separate from family deductions.
+const sharedFamily={...baseFamily,year:2026,spouse:null,relatives:[]};
+const sharedInsurance={...insBase,year:2026,family:sharedFamily,premiums:{...premiumsZero,generalNew:120000,otherClaimUnder23:true}};
+const shared=insurance.calculate(sharedInsurance);
+assert.equal(shared.status,"COMPONENTS_ONLY");
+assert.equal(shared.calculation.national.lifeYen,60000);
+assert.equal(shared.calculation.resident.lifeYen,28000);
+for(const bad of [
+ {...sharedInsurance,year:2025,family:{...sharedFamily,year:2025}},
+ {...sharedInsurance,premiums:{...sharedInsurance.premiums,otherClaimUnder23:"true"}},
+ {...sharedInsurance,premiums:{...sharedInsurance.premiums,otherClaimUnder23:false}},
+ {...sharedInsurance,premiums:{...sharedInsurance.premiums,generalNew:0}}
+])assert.equal(insurance.calculate(bad).status,"HOLD");
 console.log(JSON.stringify({schema:"web-insurance-deductions/v1",insuranceCases,
  independentBoundaryOracle:true,uiIntegrated:false,actualExcelCOM:false,release:"HOLD"}));
 

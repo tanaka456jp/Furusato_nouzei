@@ -33,7 +33,7 @@
  function calculate(input){
   if(!exact(input,["year","family","premiums","conditions"])||![2025,2026].includes(input.year)||
     input.conditions!=="eligible-net-premiums-and-contract-selection-reviewed"||
-    !exact(input.premiums,keys)||!keys.every(k=>valid(input.premiums[k]))||
+    !(exact(input.premiums,keys)||(input.year===2026&&exact(input.premiums,[...keys,"otherClaimUnder23"])&&input.premiums.otherClaimUnder23===true&&input.premiums.generalNew>0))||!keys.every(k=>valid(input.premiums[k]))||
     !input.family||input.family.year!==input.year||!family)
    return hold("年分・保険料の区分・控除証明書・家族条件を確認してください");
   // Household must be separately reviewed, even if there are no relatives.
@@ -42,7 +42,10 @@
   const p=input.premiums;
   // Under-16 dependants qualify; spouse and special-relative-only claims
   // do not. Do not infer eligibility from the number of dependants.
-  const eligible=input.family.relatives.some(m=>m.age<23&&m.income<=f.calculation.incomeThresholdYen);
+  // NTA 41-15-5-1: shared qualifying child may support the insurance
+  // special rule for both residents, without duplicate family deductions.
+  // https://www.nta.go.jp/law/tsutatsu/kobetsu/shotoku/sochiho/801226/sinkoku/57/41/15_5.htm
+  const eligible=p.otherClaimUnder23===true||input.family.relatives.some(m=>m.age<23&&m.income<=f.calculation.incomeThresholdYen);
   const enhanced=input.year===2026&&eligible;
   const nationalGeneral=choose((enhanced?nSpecial:nNew)(p.generalNew),nOld(p.generalOld),enhanced?60000:40000);
   const nationalPension=choose(nNew(p.pensionNew),nOld(p.pensionOld),40000);

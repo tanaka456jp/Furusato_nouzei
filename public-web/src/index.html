@@ -177,6 +177,7 @@
             </div>
             <button type="button" class="secondary" id="copySourcePremiums">原票年の保険料を試算年へコピー（上書き）</button>
             <p id="premiumCopyStatus" role="status" aria-live="polite"></p>
+            <label class="confirm"><input type="checkbox" name="targetInsurance_otherClaimUnder23"> 令和8年分：本人の扶養明細には含めない、他の所得者が扶養控除等を受ける23歳未満の扶養親族について、年齢・合計所得62万円以下・生計同一等の特例条件を確認済み（生命保険料控除の特例のみ。扶養控除は加算しません）。</label>
             <label class="confirm"><input type="checkbox" name="insuranceReviewed"> 年間支払額・新旧契約・控除対象・重複なし・家族条件を確認しました（該当なしの確認も含む）。</label>
           </fieldset>
           </details>
@@ -251,6 +252,7 @@
               <label>地震保険料<input type="text" inputmode="numeric" autocomplete="off" spellcheck="false" name="sourceInsurance_earthquake" maxlength="12" placeholder="0"></label>
               <label>旧長期損害保険料<input type="text" inputmode="numeric" autocomplete="off" spellcheck="false" name="sourceInsurance_longTermOld" maxlength="12" placeholder="0"></label>
             </div>
+            <label class="confirm"><input type="checkbox" name="sourceInsurance_otherClaimUnder23"> 令和8年分：本人の扶養明細には含めない、他の所得者が扶養控除等を受ける23歳未満の扶養親族について、年齢・合計所得62万円以下・生計同一等の特例条件を確認済み（生命保険料控除の特例のみ。扶養控除は加算しません）。</label>
             <label class="confirm"><input type="checkbox" name="sourceInsuranceReviewed"> 年間支払額・新旧契約・控除対象・重複なし・家族条件を確認しました（該当なしの確認も含む）。</label>
           </fieldset>
           </details>

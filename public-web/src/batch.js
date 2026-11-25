@@ -211,6 +211,11 @@
       "aria-label":"対象者 "+r.page+" "+(prefix==="source"?"原票年":"試算年")+" "+premiumLabels[n]});
      field.value=r[key];label.appendChild(field);group.appendChild(label);
     });
+    const flagKey=prefix+"Insurance_otherClaimUnder23";
+    const label=formControl("label",{text:"令和8年：本人の扶養明細に含めない、他の所得者が扶養控除等を受ける23歳未満の扶養親族による生命保険料控除特例"});
+    const field=formControl("select",{"data-row":String(i),"data-field":flagKey,"aria-label":"対象者 "+r.page+" "+(prefix==="source"?"原票年":"試算年")+" の生命保険料控除特例（他の所得者の扶養）"});
+    for(const [value,text] of [["","該当なし"],["yes","該当あり（年齢・所得62万円以下等を確認済み）"]])field.appendChild(formControl("option",{value,text}));
+    field.value=r[flagKey];label.appendChild(field);group.appendChild(label);
     insuranceDetails.appendChild(group);
    }
    const copyPremiums=formControl("button",{type:"button",text:"原票年の保険料を試算年へコピー（上書き）","data-copy-premiums":String(i),class:"secondary"});

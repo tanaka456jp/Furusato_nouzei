@@ -361,6 +361,22 @@ assert.equal(batch.canOutputEstimate(insuredRow),true);
 assert.deepEqual(columns(insuredRow).slice(24,27),["3120000","1010000","780000"]);
 assert.deepEqual(columns(insuredRow).slice(27,33),["90000","60000","28000","50000","25000","適用"]);
 assert.equal(insuredRow.comparison.filing,10000);
+// Shared-child insurance eligibility must not add a family deduction.
+const sharedChild=fixture(1,{year:2025,eligibleForManualTransfer:true,sourceIndicators:{hasLifeInsurance:true},candidates:{salaryGross:7000000,salaryIncomeReference:5200000,socialInsurance:1000000,deductionsReference:1670000}},2026);
+for(const prefix of ["source","target"])batch.edit(sharedChild,prefix+"Insurance_generalNew","120000");
+batch.edit(sharedChild,"familySourceText","なし");batch.edit(sharedChild,"familyTargetText","なし");
+batch.edit(sharedChild,"targetInsurance_otherClaimUnder23","yes");
+Object.assign(sharedChild,{confirmed:true,noExclusions:true,forecastReviewed:true,insuranceReviewed:true,familyReviewed:true});
+runFamily(sharedChild);
+assert.equal(batch.canOutputEstimate(sharedChild),true,sharedChild.reason);
+assert.equal(sharedChild.familySummary.national,0);
+assert.equal(sharedChild.familySummary.resident,0);
+assert.equal(sharedChild.insuranceSummary.nationalLife,60000);
+assert.equal(sharedChild.insuranceSummary.residentLife,28000);
+batch.edit(sharedChild,"targetInsurance_otherClaimUnder23","");
+assert.equal(batch.canOutputEstimate(sharedChild),false);
+Object.assign(sharedChild,{confirmed:true,noExclusions:true,forecastReviewed:true,insuranceReviewed:true,familyReviewed:true});
+runFamily(sharedChild);assert.equal(sharedChild.insuranceSummary.nationalLife,40000);
 // A matching sum cannot conceal a misallocation between insurance types.
 const hintRow=insuredFixture();hintRow.insuranceDeductionHints=Object.freeze({sourceLifeDeductionHint:40000,sourceEarthDeductionHint:50000});
 runFamily(hintRow);assert.equal(batch.canOutputEstimate(hintRow),true,hintRow.reason);
