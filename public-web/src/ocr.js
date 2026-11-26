@@ -869,7 +869,28 @@
     report.appendChild(title);
     if(!r.eligibleForManualTransfer){
       var errors=document.createElement("p");
-      errors.textContent="停止理由："+(r.reasons||[]).join(" / ");
+      // Keep machine reason codes in the review model, but do not require
+      // users to interpret internal codes or display arbitrary OCR strings.
+      const labels={
+        DOCUMENT_TITLE_UNVERIFIED:"源泉徴収票の表題を確認できません",
+        DOCUMENT_TYPE_CONFLICT:"書類の種類に矛盾があります",
+        DOCUMENT_YEAR_UNVERIFIED:"原票の所得年を確認できません",
+        DOCUMENT_YEAR_UNSUPPORTED:"対応する所得年ではありません",
+        YEAR_DISAGREEMENT:"所得年の読み取り結果が一致しません",
+        INCOMPLETE_OCR:"必要な項目をすべて確認できません",
+        PDF_TEXT_OR_YEAR_CONFLICT:"PDFの文字情報または所得年に矛盾があります"
+      };
+      const fields=window.FurusatoSlipReview.FIELDS;
+      const messages=(Array.isArray(r.reasons)?r.reasons:[]).map(code=>{
+        if(typeof code!=="string")return "読み取りの確認条件を満たしていません";
+        if(Object.hasOwn(labels,code))return labels[code];
+        const m=/^FIELD_(INVALID|DUPLICATE|MISSING|CONFLICT|DISAGREEMENT)_(\w+)$/.exec(code);
+        const field=m&&fields.find(f=>f.key===m[2]);
+        const descriptions={INVALID:"の金額形式を確認できません",DUPLICATE:"の候補が複数あります",MISSING:"を取得できません",CONFLICT:"の候補に矛盾があります",DISAGREEMENT:"の読み取り結果が一致しません"};
+        return field?field.label+descriptions[m[1]]:"読み取りの確認条件を満たしていません";
+      });
+      errors.textContent="停止理由："+(Array.from(new Set(messages)).join("／")||"読み取りの確認条件を満たしていません");
+
       report.appendChild(errors);
       if(r.gridLayoutLocated===true){
         const note=document.createElement("p");
