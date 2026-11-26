@@ -137,6 +137,55 @@ async function main(){
   await page.locator('#calculator button[type="submit"]').click();
   assert.equal(await page.locator("#result .amount").textContent(),"109,000円");
   await save("recovery-after-repeat",page.locator("#result"));
+  await page.locator('#calculator button[type="reset"]').click();
+  const batch20=path.join(fixtures,"04-batch-20-pages.pdf");
+  const cancelled=[];
+  // Cancel only after real page processing has begun. No mocks, no uploads.
+  for(let i=0;i<3;i++){
+    await page.locator("#batchPdf").setInputFiles(batch20);
+    await page.locator("#batchScan").click();
+    await page.waitForFunction(()=>document.getElementById("batchScan").disabled&&document.querySelectorAll("#batchRows tr").length>=1,null,{timeout:90000});
+    const start=Date.now();
+    await page.locator("#batchClear").click();
+    assert.equal(await page.locator("#batchRows tr").count(),0);
+    await page.waitForFunction(()=>!document.getElementById("batchScan").disabled,null,{timeout:90000});
+    assert.equal(await page.locator("#batchRows tr").count(),0);
+    assert.equal(await page.locator("#batchCalculate").isEnabled(),false);
+    assert.equal(await page.locator("#batchDownload").isEnabled(),false);
+    assert.equal(await page.locator("#batchPrint").isEnabled(),false);
+    cancelled.push({cycle:i+1,elapsedMs:Date.now()-start});
+  }
+  await save("batch-cancelled",page.locator("#batchStatus"));
+  await page.locator("#batchPdf").setInputFiles(batch20);
+  const batchStarted=Date.now();
+  await page.locator("#batchScan").click();
+  await page.waitForFunction(()=>!document.getElementById("batchScan").disabled&&document.querySelectorAll("#batchRows tr").length===20,null,{timeout:600000});
+  const batchElapsedMs=Date.now()-batchStarted;
+  await page.locator("#batchCalculate").click();
+  assert.deepEqual(await page.locator("#batchRows .batch-result").allTextContents(),Array(20).fill("—"));
+  assert.deepEqual(await page.locator("#batchRows tr td:first-child").allTextContents(),Array.from({length:20},(_,i)=>String(i+1)));
+  assert.match(await page.locator("#batchStatus").textContent(),/HOLD 20件/);
+  await save("batch20-all-hold",page.locator("#batchStatus"));
+  const batchCsvPending=page.waitForEvent("download");
+  await page.locator("#batchDownload").click();
+  const batchCsv=await batchCsvPending;
+  const batchLines=fs.readFileSync(await batchCsv.path(),"utf8").trim().split(/\r?\n/).map(line=>line.split('","').map(value=>value.replace(/^"|"$/g,"")));
+  assert.equal(batchLines.length,21);
+  for(const line of batchLines.slice(1)){assert.equal(line[11],"");assert.equal(line[12],"HOLD");}
+  await batchCsv.delete();
+  await page.locator("#batchClear").click();
+  // Prove the batch lock is released after cancellation and complete read.
+  await page.locator("#batchPdf").setInputFiles(path.join(fixtures,"07-positive-mixed-batch.pdf"));
+  await page.locator("#batchScan").click();
+  await page.waitForFunction(()=>!document.getElementById("batchScan").disabled&&document.querySelectorAll("#batchRows tr").length===2,null,{timeout:90000});
+  await page.locator('#batchRows select[data-field="municipality"]').first().selectOption("standard");
+  await page.locator('#batchRows input[data-field="confirmed"]').first().check();
+  await page.locator('#batchRows input[data-field="noExclusions"]').first().check();
+  await page.locator("#batchCalculate").click();
+  assert.deepEqual(await page.locator("#batchRows .batch-result").allTextContents(),["109,000円","—"]);
+  await save("batch-recovery",page.locator("#batchStatus"));
+  await page.locator("#batchClear").click();
+  console.log("SYNTHETIC_BATCH_20_AND_CANCEL_PASS");
   await page.goto(origin+"/terms.html");
   await save("terms");
   await page.goto(origin+"/privacy.html");
@@ -144,7 +193,7 @@ async function main(){
   assert.deepEqual(external,[]);
   fs.writeFileSync(path.join(out,"result.json"),JSON.stringify({
    status:"PASS",scope:"synthetic headless Edge, not interactive desktop or mobile device",
-   sha:process.env.GITHUB_SHA||null,os:os.release(),browser:browser.version(),checks,repeatReads,externalRequests:external.length
+   sha:process.env.GITHUB_SHA||null,os:os.release(),browser:browser.version(),checks,repeatReads,batch20:{elapsedMs:batchElapsedMs,cancelled,holdRows:20,recovered:true},externalRequests:external.length
   },null,2));
   console.log("WINDOWS_EDGE_SYNTHETIC_SCREENSHOT_ACCEPTANCE_PASS");
   await context.close();
