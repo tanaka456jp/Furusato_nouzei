@@ -5,6 +5,10 @@ on:
       - 'public-web/**'
       - 'gas/Engine.gs'
       - '.github/workflows/public-web-review.yml'
+  # Trusted branch push only; never execute physical PC jobs for PRs.
+  push:
+    branches: ['feature/public-web-ads-20261109']
+    paths: ['.github/workflows/public-web-review.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -236,3 +240,64 @@ jobs:
         run: |
           echo 'Headless Linux WebKit synthetic tests passed. This is NOT iPhone Safari real-device acceptance.' >> "$GITHUB_STEP_SUMMARY"
           echo 'No source documents. NO DEPLOY. NO ADS. RELEASE=HOLD.' >> "$GITHUB_STEP_SUMMARY"
+
+  windows-physical-edge:
+    name: Physical Windows Edge synthetic acceptance and screenshots (NO DEPLOY)
+    if: github.event_name == 'push' && github.repository == 'tanaka456jp/Furusato_nouzei' && github.ref == 'refs/heads/feature/public-web-ads-20261109'
+    needs: public-web
+    runs-on: [self-hosted, Windows, furusato-excel]
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated pinned test dependencies
+        run: npm ci --prefix gas --ignore-scripts --no-audit --no-fund
+      - name: Download same-run synthetic QA package
+        uses: actions/download-artifact@v4
+        with:
+          name: Furusato_MOBILE_LOCAL_QA_${{ github.run_id }}
+          path: public-web
+      - name: Confirm exact revision and positive fixtures
+        shell: pwsh
+        run: |
+          if ((git rev-parse HEAD) -ne $env:GITHUB_SHA) { throw 'HEAD mismatch' }
+          if (!(Test-Path public-web/dist/index.html) -or !(Test-Path public-web/qa-fixtures/06-positive-electronic.pdf)) { throw 'Missing QA assets' }
+          node --check public-web/tests/test-windows-edge-screenshots.cjs
+      - name: Windows Edge real browser OCR and PDF regression
+        env:
+          FURUSATO_BROWSER_CHANNEL: msedge
+          FURUSATO_POSITIVE_FIXTURES: '1'
+        run: node public-web/tests/test-ocr-browser-smoke.cjs
+      - name: Capture and assert synthetic browser layouts and results
+        env:
+          FURUSATO_SCREENSHOT_DIR: ${{ runner.temp }}/furusato-web-synthetic-${{ github.run_id }}-${{ github.run_attempt }}
+        run: node public-web/tests/test-windows-edge-screenshots.cjs
+      - name: Upload synthetic browser screenshots only (no desktop, expires in 1 day)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Furusato_Physical_Edge_Synthetic_Screenshots_${{ github.run_id }}_${{ github.run_attempt }}
+          path: ${{ runner.temp }}/furusato-web-synthetic-${{ github.run_id }}-${{ github.run_attempt }}/
+          if-no-files-found: warn
+          retention-days: 1
+      - name: Delete only this run's synthetic screenshot directory
+        if: always()
+        shell: pwsh
+        env:
+          FURUSATO_SCREENSHOT_DIR: ${{ runner.temp }}/furusato-web-synthetic-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          if (Test-Path -LiteralPath $env:FURUSATO_SCREENSHOT_DIR) {
+            Remove-Item -LiteralPath $env:FURUSATO_SCREENSHOT_DIR -Recurse -Force
+          }
+      - name: Acceptance boundary
+        if: always()
+        shell: pwsh
+        run: |
+          "Dedicated Windows runner; headless Edge, synthetic sources only. Human visual review and physical iPhone are separate gates. No Android test; no deployment." | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
