@@ -71,6 +71,10 @@ async function main(){
   await page.waitForFunction(()=>!document.getElementById("slipScan").disabled,null,{timeout:60000});
   assert.equal(await page.locator("#slipTransfer").isEnabled(),false);
   assert.equal(await page.locator("#result").isVisible(),false);
+  const holdText=await page.locator("#slipReview").textContent();
+  assert.match(holdText,/停止理由：/);
+  assert.match(holdText,/所得年の読み取り結果が一致しません/);
+  assert.doesNotMatch(holdText,/YEAR_DISAGREEMENT|FIELD_DISAGREEMENT_|INCOMPLETE_OCR/);
   await save("invalid-source-hold",page.locator(".ocr-panel"));
   await page.locator("#batchPdf").setInputFiles(path.join(fixtures,"07-positive-mixed-batch.pdf"));
   await page.locator("#batchScan").click();
@@ -83,6 +87,15 @@ async function main(){
   await page.locator("#batchCalculate").click();
   assert.deepEqual(await page.locator("#batchRows .batch-result").allTextContents(),["109,000円","—"]);
   await save("mixed-batch",page.locator("#batchRows"));
+  for(const width of [390,360]){
+    await page.setViewportSize({width,height:900});
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),"Populated batch page overflow at "+width);
+    const row=page.locator("#batchRows tr").first();
+    assert.ok(await row.isVisible());
+    assert.ok((await row.boundingBox()).width<=width);
+    await save("mixed-batch-"+width,page.locator("#batchRows"));
+  }
+  await page.setViewportSize({width:1280,height:900});
   const pending=page.waitForEvent("download");
   await page.locator("#batchDownload").click();
   const download=await pending;
