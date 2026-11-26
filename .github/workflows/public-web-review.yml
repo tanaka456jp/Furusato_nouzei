@@ -64,6 +64,7 @@ jobs:
           node --check public-web/tests/test-ocr-layout.cjs
           node --check public-web/tests/test-ocr-quality.cjs
           node --check public-web/tests/test-ocr-browser-smoke.cjs
+          node --check public-web/tests/test-windows-edge-screenshots.cjs
           node --check public-web/tests/test-ocr-dom.cjs
       - name: Build private review site and run synthetic browser acceptance
         run: |
