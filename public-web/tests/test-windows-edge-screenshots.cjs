@@ -186,6 +186,44 @@ async function main(){
   await save("batch-recovery",page.locator("#batchStatus"));
   await page.locator("#batchClear").click();
   console.log("SYNTHETIC_BATCH_20_AND_CANCEL_PASS");
+  // Actual Japanese image recognition, separate from safety-only negatives.
+  // HOLD is a measured failure to extract, not a successful recognition.
+  // A wrong transferable candidate always fails the job.
+  const positiveImageResults=[];
+  const expected={salaryGross:"7000000",salaryIncomeReference:"5200000",deductionsReference:"1670000",socialInsurance:"1000000"};
+  for(const name of ["08-positive-image.png","09-positive-lines.png"]){
+    await page.locator('#calculator button[type="reset"]').click();
+    await field("year").selectOption("2026");
+    await page.locator("#slipFile").setInputFiles(path.join(fixtures,name));
+    const started=Date.now();
+    await page.locator("#slipScan").click();
+    await page.waitForFunction(()=>!document.getElementById("slipScan").disabled&&!document.getElementById("slipReview").hidden,null,{timeout:90000});
+    const elapsedMs=Date.now()-started;
+    const eligible=await page.locator("#slipTransfer").isEnabled();
+    const report=await page.locator("#slipReview").textContent();
+    assert.equal(await page.locator("#slipConfirm").isChecked(),false);
+    assert.equal(await page.locator("#result").isVisible(),false);
+    for(const key of Object.keys(expected))assert.equal(await field(key).inputValue(),"");
+    await save(name.slice(0,2)+"-image-review",page.locator(".ocr-panel"));
+    if(eligible){
+      await page.locator("#slipTransfer").click();
+      for(const key of Object.keys(expected))assert.equal(await field(key).inputValue(),"");
+      await page.locator("#slipConfirm").check();
+      await page.locator("#slipTransfer").click();
+      for(const [key,value] of Object.entries(expected))assert.equal(await field(key).inputValue(),value,"Wrong transferable candidate: "+name+" "+key);
+      assert.equal(await page.locator("#calculator").getAttribute("data-ocr-year"),"2026");
+      await field("municipality").selectOption("standard");
+      await field("acknowledgedExclusions").check();
+      await page.locator('#calculator button[type="submit"]').click();
+      assert.equal(await page.locator("#result .amount").textContent(),"109,000円");
+      positiveImageResults.push({fixture:name,status:"EXACT_CANDIDATE",elapsedMs});
+    }else{
+      assert.equal(await page.locator("#slipConfirm").isEnabled(),false);
+      assert.match(report,/保留|OCRを完了できません/);
+      positiveImageResults.push({fixture:name,status:"HOLD",elapsedMs});
+    }
+    console.log("SYNTHETIC_POSITIVE_IMAGE "+name+" "+positiveImageResults.at(-1).status);
+  }
   await page.goto(origin+"/terms.html");
   await save("terms");
   await page.goto(origin+"/privacy.html");
@@ -193,7 +231,7 @@ async function main(){
   assert.deepEqual(external,[]);
   fs.writeFileSync(path.join(out,"result.json"),JSON.stringify({
    status:"PASS",scope:"synthetic headless Edge, not interactive desktop or mobile device",
-   sha:process.env.GITHUB_SHA||null,os:os.release(),browser:browser.version(),checks,repeatReads,batch20:{elapsedMs:batchElapsedMs,cancelled,holdRows:20,recovered:true},externalRequests:external.length
+   sha:process.env.GITHUB_SHA||null,os:os.release(),browser:browser.version(),checks,repeatReads,batch20:{elapsedMs:batchElapsedMs,cancelled,holdRows:20,recovered:true},positiveImageResults,externalRequests:external.length
   },null,2));
   console.log("WINDOWS_EDGE_SYNTHETIC_SCREENSHOT_ACCEPTANCE_PASS");
   await context.close();
