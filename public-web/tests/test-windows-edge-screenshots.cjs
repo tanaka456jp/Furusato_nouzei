@@ -190,11 +190,41 @@ async function main(){
   // HOLD is a measured failure to extract, not a successful recognition.
   // A wrong transferable candidate always fails the job.
   const positiveImageResults=[];
+  // Instrument ONLY this isolated synthetic-fixture browser. Delegate to
+  // the real worker without modifying results or recognition parameters.
+  // No diagnostic hook in production code; never use this on user slips.
+  await page.evaluate(()=>{
+    window.__syntheticOcrTrace=[];
+    const create=Tesseract.createWorker;
+    Tesseract.createWorker=async function(...args){
+      const worker=await create.apply(this,args);
+      const recognize=worker.recognize.bind(worker);
+      const set=worker.setParameters?.bind(worker);
+      if(set)worker.setParameters=async function(parameters,...rest){
+        window.__syntheticOcrTrace.push({kind:"parameters",parameters:{...parameters}});
+        return set(parameters,...rest);
+      };
+      worker.recognize=async function(image,...rest){
+        const result=await recognize(image,...rest);
+        const data=result?.data;
+        const lines=[];
+        for(const block of data?.blocks||[])
+          for(const para of block.paragraphs||[])
+            for(const line of para.lines||[])
+              if(lines.length<100)lines.push({text:String(line.text||"").slice(0,240),bbox:line.bbox});
+        window.__syntheticOcrTrace.push({kind:"recognize",width:image?.width||null,height:image?.height||null,
+          text:String(data?.text||"").slice(0,3000),confidence:data?.confidence??null,lines});
+        return result;
+      };
+      return worker;
+    };
+  });
   const expected={salaryGross:"7000000",salaryIncomeReference:"5200000",deductionsReference:"1670000",socialInsurance:"1000000"};
   for(const name of ["08-positive-image.png","09-positive-lines.png"]){
     await page.locator('#calculator button[type="reset"]').click();
     await field("year").selectOption("2026");
     await page.locator("#slipFile").setInputFiles(path.join(fixtures,name));
+    await page.evaluate(()=>{window.__syntheticOcrTrace=[];});
     const started=Date.now();
     await page.locator("#slipScan").click();
     await page.waitForFunction(()=>!document.getElementById("slipScan").disabled&&!document.getElementById("slipReview").hidden,null,{timeout:90000});
@@ -222,6 +252,9 @@ async function main(){
       assert.match(report,/保留|OCRを完了できません/);
       positiveImageResults.push({fixture:name,status:"HOLD",elapsedMs});
     }
+    const trace=await page.evaluate(()=>window.__syntheticOcrTrace);
+    assert.ok(trace.some(x=>x.kind==="recognize"),"No real OCR observations: "+name);
+    fs.writeFileSync(path.join(out,name.slice(0,2)+"-synthetic-ocr-trace.json"),JSON.stringify({fixture:name,scope:"synthetic only",observations:trace},null,2));
     console.log("SYNTHETIC_POSITIVE_IMAGE "+name+" "+positiveImageResults.at(-1).status);
   }
   await page.goto(origin+"/terms.html");
