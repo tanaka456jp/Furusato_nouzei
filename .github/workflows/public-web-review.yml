@@ -247,7 +247,7 @@ jobs:
     if: github.event_name == 'push' && github.repository == 'tanaka456jp/Furusato_nouzei' && github.ref == 'refs/heads/feature/public-web-ads-20261109'
     needs: public-web
     runs-on: [self-hosted, Windows, furusato-excel]
-    timeout-minutes: 25
+    timeout-minutes: 35
     permissions:
       contents: read
     steps:
@@ -277,7 +277,7 @@ jobs:
           FURUSATO_BROWSER_CHANNEL: msedge
           FURUSATO_POSITIVE_FIXTURES: '1'
         run: node public-web/tests/test-ocr-browser-smoke.cjs
-      - name: Capture and assert synthetic browser layouts and results
+      - name: Capture synthetic layouts and results, repeat ten image reads, and verify recovery
         env:
           FURUSATO_SCREENSHOT_DIR: ${{ runner.temp }}/furusato-web-synthetic-${{ github.run_id }}-${{ github.run_attempt }}
         run: node public-web/tests/test-windows-edge-screenshots.cjs
