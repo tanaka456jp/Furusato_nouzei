@@ -257,6 +257,11 @@ async function main(){
     fs.writeFileSync(path.join(out,name.slice(0,2)+"-synthetic-ocr-trace.json"),JSON.stringify({fixture:name,scope:"synthetic only",observations:trace},null,2));
     console.log("SYNTHETIC_POSITIVE_IMAGE "+name+" "+positiveImageResults.at(-1).status);
   }
+  // 09 has two exact full-page readings on the previous physical Edge
+  // baseline. Require recovery of that positive fixture, without weakening
+  // the third-read check. Preserve traces/screenshots even if this fails.
+  fs.writeFileSync(path.join(out,"positive-image-baseline-comparison.json"),JSON.stringify({baselineSha:"74f791200efeb83fbfc713e6e0d77730cc1bf9de",baseline:["HOLD","HOLD"],current:positiveImageResults},null,2));
+  assert.equal(positiveImageResults.find(x=>x.fixture==="09-positive-lines.png")?.status,"EXACT_CANDIDATE","09 must recover with exact regional corroboration");
   await page.goto(origin+"/terms.html");
   await save("terms");
   await page.goto(origin+"/privacy.html");
