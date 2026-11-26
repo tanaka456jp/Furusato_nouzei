@@ -878,12 +878,20 @@
         DOCUMENT_YEAR_UNSUPPORTED:"対応する所得年ではありません",
         YEAR_DISAGREEMENT:"所得年の読み取り結果が一致しません",
         INCOMPLETE_OCR:"必要な項目をすべて確認できません",
-        PDF_TEXT_OR_YEAR_CONFLICT:"PDFの文字情報または所得年に矛盾があります"
+        PDF_TEXT_OR_YEAR_CONFLICT:"PDFの文字情報または所得年に矛盾があります",
+        FIELD_RECHECK_INCOMPLETE:"金額欄の部分再読み取りを完了できません",
+        DESKEW_SOURCE_DISAGREEMENT:"傾き補正前後の読み取り結果が一致しません"
       };
       const fields=window.FurusatoSlipReview.FIELDS;
       const messages=(Array.isArray(r.reasons)?r.reasons:[]).map(code=>{
         if(typeof code!=="string")return "読み取りの確認条件を満たしていません";
         if(Object.hasOwn(labels,code))return labels[code];
+        const regional=/^(FIELD_RECHECK_MISMATCH|FIELD_RECHECK_MISSING|REGION_DUPLICATE_LABEL|REGION_SOURCE_AMOUNT_MISMATCH)_(\w+)$/.exec(code);
+        if(regional){
+          const field=fields.find(f=>f.key===regional[2]);
+          const desc={FIELD_RECHECK_MISMATCH:"の部分再読み取りで一致または必要な信頼度を確認できません",FIELD_RECHECK_MISSING:"の部分再読み取り結果を取得できません",REGION_DUPLICATE_LABEL:"の項目名が複数検出されました",REGION_SOURCE_AMOUNT_MISMATCH:"の全体読み取りと部分読み取りに矛盾があります"};
+          if(field)return field.label+desc[regional[1]];
+        }
         const m=/^FIELD_(INVALID|DUPLICATE|MISSING|CONFLICT|DISAGREEMENT)_(\w+)$/.exec(code);
         const field=m&&fields.find(f=>f.key===m[2]);
         const descriptions={INVALID:"の金額形式を確認できません",DUPLICATE:"の候補が複数あります",MISSING:"を取得できません",CONFLICT:"の候補に矛盾があります",DISAGREEMENT:"の読み取り結果が一致しません"};
