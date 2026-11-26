@@ -557,17 +557,25 @@
         };
         if(plan.status==="READY"){
           var values=[];
+          // A single already-segmented Japanese line is not a full page.
+          // Preserve native glyph size (the two full-page passes used it),
+          // and use a deterministic single-line mode with white padding.
+          // Keep the exact label, exact amount and confidence veto unchanged.
+          const singleLine=typeof worker.setParameters==="function";
+          if(singleLine)await runOcrOperation(session,"setParameters",{tessedit_pageseg_mode:"7",tessedit_char_whitelist:""});
           for(const region of plan.rectangles){
             ensureCurrent();
             var crop=document.createElement("canvas");
             try{
-              crop.width=region.width*2;crop.height=region.height*2;
+              const scale=singleLine?1:2,border=singleLine?20:0;
+              const w=region.width*scale,h=region.height*scale;
+              crop.width=w+2*border;crop.height=h+2*border;
               var ctx=crop.getContext("2d");
               if(!ctx)throw Error("FIELD_REGION_CANVAS_UNAVAILABLE");
               ctx.fillStyle="#fff";ctx.fillRect(0,0,crop.width,crop.height);
               ctx.drawImage(original,
                 region.left,region.top,region.width,region.height,
-                0,0,crop.width,crop.height);
+                border,border,w,h);
               var rec=await runOcrOperation(session,"recognize",crop);
               ensureCurrent();
               values.push({key:region.key,text:rec?.data?.text,
