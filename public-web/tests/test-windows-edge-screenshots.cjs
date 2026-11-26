@@ -104,6 +104,39 @@ async function main(){
   assert.equal(lines[2][11],"");assert.equal(lines[2][12],"HOLD");
   await download.delete();
   await page.locator("#batchClear").click();
+  const repeatReads=[];
+  // Use the unmodified, real browser OCR path (no worker mocks).
+  // A negative synthetic image is a safety/availability test, not accuracy.
+  for(let i=0;i<10;i++){
+    await page.locator('#calculator button[type="reset"]').click();
+    await page.locator("#slipFile").setInputFiles(path.join(fixtures,"03-photo-not-slip.png"));
+    const started=Date.now();
+    await page.locator("#slipScan").click();
+    await page.waitForFunction(()=>!document.getElementById("slipScan").disabled&&!document.getElementById("slipReview").hidden,null,{timeout:90000});
+    assert.equal(await page.locator("#slipTransfer").isEnabled(),false,"negative image must not transfer, cycle "+i);
+    assert.equal(await page.locator("#slipConfirm").isEnabled(),false);
+    assert.equal(await page.locator("#result").isVisible(),false);
+    assert.equal(await field("salaryGross").inputValue(),"");
+    repeatReads.push({cycle:i+1,elapsedMs:Date.now()-started,status:"HOLD"});
+    console.log("SYNTHETIC_REPEAT_READ "+(i+1)+"/10 HOLD");
+  }
+  await save("repeat-negative-image-hold",page.locator(".ocr-panel"));
+  // After ten negative reads, a fresh valid PDF must remain usable.
+  await page.locator('#calculator button[type="reset"]').click();
+  await field("year").selectOption("2026");
+  await page.locator("#slipFile").setInputFiles(path.join(fixtures,"06-positive-electronic.pdf"));
+  await page.locator("#slipScan").click();
+  await page.waitForFunction(()=>!document.getElementById("slipScan").disabled,null,{timeout:60000});
+  assert.equal(await page.locator("#slipTransfer").isEnabled(),true);
+  assert.equal(await page.locator("#slipConfirm").isChecked(),false);
+  assert.equal(await field("salaryGross").inputValue(),"");
+  await page.locator("#slipConfirm").check();
+  await page.locator("#slipTransfer").click();
+  await field("municipality").selectOption("standard");
+  await field("acknowledgedExclusions").check();
+  await page.locator('#calculator button[type="submit"]').click();
+  assert.equal(await page.locator("#result .amount").textContent(),"109,000円");
+  await save("recovery-after-repeat",page.locator("#result"));
   await page.goto(origin+"/terms.html");
   await save("terms");
   await page.goto(origin+"/privacy.html");
@@ -111,7 +144,7 @@ async function main(){
   assert.deepEqual(external,[]);
   fs.writeFileSync(path.join(out,"result.json"),JSON.stringify({
    status:"PASS",scope:"synthetic headless Edge, not interactive desktop or mobile device",
-   sha:process.env.GITHUB_SHA||null,os:os.release(),browser:browser.version(),checks,externalRequests:external.length
+   sha:process.env.GITHUB_SHA||null,os:os.release(),browser:browser.version(),checks,repeatReads,externalRequests:external.length
   },null,2));
   console.log("WINDOWS_EDGE_SYNTHETIC_SCREENSHOT_ACCEPTANCE_PASS");
   await context.close();
