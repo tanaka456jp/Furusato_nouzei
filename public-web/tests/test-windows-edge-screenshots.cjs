@@ -332,7 +332,7 @@ async function main(){
         served++;
         await route.fulfill({path:model,contentType:"application/gzip"});
       };
-      await page.route(modelUrl,serveModel);
+      await context.route(modelUrl,serveModel);
       try{
         const english=await runCropExperiment("eng",10);
         assert.equal(english.length,16);
@@ -343,7 +343,7 @@ async function main(){
           scope:"synthetic only; not production transfer",model:"@tesseract.js-data/eng@1.0.0/4.0.0_best_int",
           margin:10,observations:english,byVariant:englishVariants
         },null,2));
-      }finally{await page.unroute(modelUrl,serveModel);}
+      }finally{await context.unroute(modelUrl,serveModel);}
       assert.equal(await page.locator("#slipConfirm").isEnabled(),false);
       assert.equal(await page.locator("#slipTransfer").isEnabled(),false);
       for(const key of Object.keys(expected))assert.equal(await field(key).inputValue(),"");
