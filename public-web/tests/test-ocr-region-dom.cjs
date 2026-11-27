@@ -27,11 +27,12 @@ function evaluate(name){win.eval(fs.readFileSync(path.join(dir,name),"utf8"));}
 let external=0,calls=0,closed=0,recheckWrong=false,roiCalls=0,separateMode=false,separateConflict=false,gridMode=false,gridNumericMode=false,gridReadIndex=0,gridParameters=0,gridHeaderMode=false,gridHeaderConflict=false,gridLabelMode=false,gridLabelConflict=false,gridSocialBlank=false;
 win.fetch=()=>{external++;throw Error("REMOTE_REQUEST_FORBIDDEN");};
 win.createImageBitmap=async()=>({width:1200,height:800,close(){}});
-const gridDraws=[];
+const gridDraws=[],lineDraws=[];let lineParameters=0;
 win.HTMLCanvasElement.prototype.getContext=function(){
  const canvas=this;
  return {fillStyle:"white",fillRect(){},drawImage(...args){
   if(gridNumericMode&&args.length===9)gridDraws.push({source:args[0],width:canvas.width,height:canvas.height});
+  if(!gridMode&&!separateMode&&args.length===9)lineDraws.push({width:canvas.width,height:canvas.height,args:args.slice(1)});
  },
   getImageData(x,y,w,h){
    return {data:new Uint8ClampedArray((w||this.canvas?.width||1200)*(h||this.canvas?.height||800)*4)};
@@ -78,6 +79,12 @@ win.FurusatoPerspective={tryRectify:()=>({status:"UNVERIFIED",canvas:null}),
 win.Tesseract={OEM:{LSTM_ONLY:1},createWorker:async()=>{
  roiCalls=0;rawRead=false;
  return {setParameters:async params=>{
+  if(!gridMode){
+   assert.equal(separateMode,false,"separate-cell mode must not change parameters");
+   assert.equal(params.tessedit_pageseg_mode,"7");
+   assert.equal(params.tessedit_char_whitelist,"");
+   lineParameters++;return;
+  }
   assert.equal(params.tessedit_pageseg_mode,gridHeaderMode&&gridParameters===2?"13":"7");
   assert.equal(params.tessedit_char_whitelist,gridHeaderMode&&gridParameters>=2?"":"0123456789,.-");
   gridParameters++;
@@ -161,6 +168,14 @@ async function main(){
  file("first.png");
  await run();
  assert.equal(calls,6,"two whole-page and four region rereads");
+ assert.equal(lineParameters,1);
+ assert.equal(lineDraws.length,4);
+ for(const draw of lineDraws){
+  const [, ,w,h,x,y,dw,dh]=draw.args;
+  assert.equal(x,20);assert.equal(y,20);
+  assert.equal(dw,w);assert.equal(dh,h);
+  assert.equal(draw.width,w+40);assert.equal(draw.height,h+40);
+ }
  assert.equal(closed,1);
  assert.equal(transfer.disabled,false,"corroborated is still manually gated");
  assert.equal(form.elements.namedItem("salaryGross").value,"");
@@ -171,6 +186,7 @@ async function main(){
  const before=calls;
  await run();
  assert.equal(calls-before,6);
+ assert.equal(lineParameters,2);
  assert.equal(transfer.disabled,true,"mismatched field reread must disable transfer");
  assert.match(dom.getElementById("slipReview").textContent,/HOLD|保留|停止/);
  assert.equal(dom.getElementById("slipReview").textContent.includes("1,970,000"),false);
