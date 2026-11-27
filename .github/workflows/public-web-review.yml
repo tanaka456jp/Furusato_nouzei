@@ -167,6 +167,19 @@ jobs:
             public-web/dist/_headers
           if-no-files-found: error
           retention-days: 3
+      - name: Prepare pinned English digit model for synthetic research ONLY
+        if: github.event_name == 'push' && github.repository == 'tanaka456jp/Furusato_nouzei' && github.ref == 'refs/heads/feature/public-web-ads-20261109'
+        run: |
+          npm install --prefix "$RUNNER_TEMP/furusato-eng-research" --ignore-scripts --no-audit --no-fund --no-package-lock @tesseract.js-data/eng@1.0.0
+          test -s "$RUNNER_TEMP/furusato-eng-research/node_modules/@tesseract.js-data/eng/4.0.0_best_int/eng.traineddata.gz"
+      - name: Upload isolated research model (NOT a site asset)
+        if: github.event_name == 'push' && github.repository == 'tanaka456jp/Furusato_nouzei' && github.ref == 'refs/heads/feature/public-web-ads-20261109'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Furusato_English_Model_RESEARCH_ONLY_${{ github.run_id }}
+          path: ${{ runner.temp }}/furusato-eng-research/node_modules/@tesseract.js-data/eng/4.0.0_best_int/eng.traineddata.gz
+          if-no-files-found: error
+          retention-days: 1
       - name: Release boundary
         run: |
           echo 'Local OCR review only. No source documents uploaded. NO Cloudflare deployment, NO ads, NO indexing.' >> "$GITHUB_STEP_SUMMARY"
@@ -266,6 +279,11 @@ jobs:
         with:
           name: Furusato_MOBILE_LOCAL_QA_${{ github.run_id }}
           path: public-web
+      - name: Download isolated same-run English research model
+        uses: actions/download-artifact@v4
+        with:
+          name: Furusato_English_Model_RESEARCH_ONLY_${{ github.run_id }}
+          path: ${{ runner.temp }}/furusato-eng-research-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Confirm exact revision and positive fixtures
         shell: powershell
         run: |
@@ -281,6 +299,7 @@ jobs:
       - name: Capture layouts, endurance, batch recovery and synthetic numeric crop research
         env:
           FURUSATO_SCREENSHOT_DIR: ${{ runner.temp }}/furusato-web-synthetic-${{ github.run_id }}-${{ github.run_attempt }}
+          FURUSATO_ENGLISH_RESEARCH_MODEL: ${{ runner.temp }}/furusato-eng-research-${{ github.run_id }}-${{ github.run_attempt }}/eng.traineddata.gz
         run: node public-web/tests/test-windows-edge-screenshots.cjs
       - name: Upload synthetic browser screenshots and fixed-fixture OCR traces (expires in 1 day)
         if: always()
@@ -298,6 +317,15 @@ jobs:
         run: |
           if (Test-Path -LiteralPath $env:FURUSATO_SCREENSHOT_DIR) {
             Remove-Item -LiteralPath $env:FURUSATO_SCREENSHOT_DIR -Recurse -Force
+          }
+      - name: Delete this run's isolated English research model
+        if: always()
+        shell: powershell
+        env:
+          FURUSATO_ENGLISH_RESEARCH_DIR: ${{ runner.temp }}/furusato-eng-research-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          if (Test-Path -LiteralPath $env:FURUSATO_ENGLISH_RESEARCH_DIR) {
+            Remove-Item -LiteralPath $env:FURUSATO_ENGLISH_RESEARCH_DIR -Recurse -Force
           }
       - name: Acceptance boundary
         if: always()

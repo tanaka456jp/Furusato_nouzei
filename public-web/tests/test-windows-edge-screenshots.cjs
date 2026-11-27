@@ -261,7 +261,8 @@ async function main(){
       // A fixed-fixture research experiment, NOT a production fallback.
       // The OCR bounding boxes supply the amount regions, not a template
       // or the expected numbers. Preserve period and minus as recognized.
-      const experiment=await page.evaluate(async trace=>{
+      const runCropExperiment=(language,margin)=>page.evaluate(async ({trace,language,margin})=>{
+        if(!["jpn","eng"].includes(language)||![6,10].includes(margin))throw Error("unexpected research configuration");
         const first=trace.find(o=>o.kind==="recognize"&&o.lines?.length);
         const lines=first?.lines||[];
         const fields=FurusatoSlipReview.FIELDS;
@@ -280,7 +281,7 @@ async function main(){
         const observations=[];
         try{
           if(bitmap.width!==first.width||bitmap.height!==first.height)throw Error("research dimensions mismatch");
-          worker=await Tesseract.createWorker("jpn",Tesseract.OEM.LSTM_ONLY,{
+          worker=await Tesseract.createWorker(language,Tesseract.OEM.LSTM_ONLY,{
             workerPath:new URL("./vendor/tesseract/worker.min.js",location.href).href,
             corePath:new URL("./vendor/tesseract/core",location.href).href,
             langPath:new URL("./vendor/tesseract/lang",location.href).href,
@@ -290,8 +291,8 @@ async function main(){
             await worker.setParameters({tessedit_pageseg_mode:variant.mode,tessedit_char_whitelist:"0123456789,.-"});
             for(const region of plans){
               const {x0,y0,x1,y1}=region.bbox;
-              const x=Math.max(0,x0-6),y=Math.max(0,y0-6);
-              const w=Math.min(bitmap.width,x1+6)-x,h=Math.min(bitmap.height,y1+6)-y;
+              const x=Math.max(0,x0-margin),y=Math.max(0,y0-margin);
+              const w=Math.min(bitmap.width,x1+margin)-x,h=Math.min(bitmap.height,y1+margin)-y;
               if(w<8||h<8||w*h>100000)throw Error("research crop out of bounds");
               const canvas=document.createElement("canvas"),pad=20;
               try{
@@ -309,7 +310,8 @@ async function main(){
           }
           return observations;
         }finally{bitmap.close();if(worker)await worker.terminate();}
-      },trace);
+      },{trace,language,margin});
+      const experiment=await runCropExperiment("jpn",6);
       assert.equal(experiment.length,16);
       const byVariant=summarizeAmountCrop(experiment,expected);
       for(const variant of byVariant){
@@ -318,6 +320,34 @@ async function main(){
         console.log("SYNTHETIC_AMOUNT_CROP_METRICS "+JSON.stringify(variant));
       }
       fs.writeFileSync(path.join(out,"08-synthetic-amount-crop-experiment.json"),JSON.stringify({scope:"synthetic only; not production transfer",observations:experiment,byVariant},null,2));
+      // A test-only local route: the production server, build and package
+      // never expose this model. No CDN, no user data, no transfer path.
+      const model=process.env.FURUSATO_ENGLISH_RESEARCH_MODEL;
+      assert.ok(model&&fs.statSync(model).isFile(),"Isolated research model missing");
+      const modelUrl=origin+"/vendor/tesseract/lang/eng.traineddata.gz";
+      let served=0;
+      const serveModel=async route=>{
+        assert.equal(route.request().method(),"GET");
+        assert.equal(route.request().url(),modelUrl);
+        served++;
+        await route.fulfill({path:model,contentType:"application/gzip"});
+      };
+      await page.route(modelUrl,serveModel);
+      try{
+        const english=await runCropExperiment("eng",10);
+        assert.equal(english.length,16);
+        assert.ok(served>0,"English model was not served locally");
+        const englishVariants=summarizeAmountCrop(english,expected);
+        for(const variant of englishVariants)console.log("SYNTHETIC_ENGLISH_AMOUNT_CROP_METRICS "+JSON.stringify(variant));
+        fs.writeFileSync(path.join(out,"08-synthetic-english-amount-crop-experiment.json"),JSON.stringify({
+          scope:"synthetic only; not production transfer",model:"@tesseract.js-data/eng@1.0.0/4.0.0_best_int",
+          margin:10,observations:english,byVariant:englishVariants
+        },null,2));
+      }finally{await page.unroute(modelUrl,serveModel);}
+      assert.equal(await page.locator("#slipConfirm").isEnabled(),false);
+      assert.equal(await page.locator("#slipTransfer").isEnabled(),false);
+      for(const key of Object.keys(expected))assert.equal(await field(key).inputValue(),"");
+
     }
   }
   // 09 has two exact full-page readings on the previous physical Edge
