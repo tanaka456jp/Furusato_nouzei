@@ -394,10 +394,29 @@ async function main(){
   // A wrong research match is evidence to reject the experimental method,
   // not a product transfer. Preserve observations instead of hiding them.
   console.log("SYNTHETIC_BILINGUAL_PROBE_SUMMARY "+JSON.stringify({exact:results.filter(x=>x.outcome==="EXACT_RESEARCH_MATCH").length,wrong:results.filter(x=>x.outcome==="WRONG_RESEARCH_MATCH").length,hold:results.filter(x=>x.outcome==="HOLD").length}));
+  // Exercise the actual bundled model and ordinary product UI for the
+  // second positive fixture too, after removing the research route.
+  await page.locator('#calculator button[type="reset"]').click();
+  await field("year").selectOption("2026");
+  await page.locator("#slipFile").setInputFiles(path.join(fixtures,"10-bilingual-varied.png"));
+  await page.locator("#slipScan").click();
+  await page.waitForFunction(()=>!document.getElementById("slipScan").disabled&&!document.getElementById("slipReview").hidden,null,{timeout:90000});
+  await save("10-bilingual-product-review",page.locator(".ocr-panel"));
+  assert.equal(await page.locator("#slipTransfer").isEnabled(),true,"10 must recover");
+  assert.equal(await page.locator("#slipConfirm").isChecked(),false);
+  await page.locator("#slipTransfer").click();
+  for(const key of Object.keys(expected))assert.equal(await field(key).inputValue(),"");
+  await page.locator("#slipConfirm").check();
+  await page.locator("#slipTransfer").click();
+  for(const [key,value] of Object.entries(researchCases[1][2]))assert.equal(await field(key).inputValue(),value);
+  assert.equal(await page.locator("#calculator").getAttribute("data-ocr-year"),"2025");
+  assert.equal(await field("year").inputValue(),"2026");
+  console.log("BILINGUAL_PRODUCT_PREVIOUS_YEAR_REVIEW_PASS");
   // 09 has two exact full-page readings on the previous physical Edge
   // baseline. Require recovery of that positive fixture, without weakening
   // the third-read check. Preserve traces/screenshots even if this fails.
   fs.writeFileSync(path.join(out,"positive-image-baseline-comparison.json"),JSON.stringify({baselineSha:"74f791200efeb83fbfc713e6e0d77730cc1bf9de",baseline:["HOLD","HOLD"],current:positiveImageResults},null,2));
+  assert.equal(positiveImageResults.find(x=>x.fixture==="08-positive-image.png")?.status,"EXACT_CANDIDATE","08 must recover with exact bilingual corroboration");
   assert.equal(positiveImageResults.find(x=>x.fixture==="09-positive-lines.png")?.status,"EXACT_CANDIDATE","09 must recover with exact regional corroboration");
   await page.goto(origin+"/terms.html");
   await save("terms");

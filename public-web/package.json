@@ -10,6 +10,7 @@
   "dependencies": {
     "tesseract.js": "7.0.0",
     "@tesseract.js-data/jpn": "1.0.0",
+    "@tesseract.js-data/eng": "1.0.0",
     "pdfjs-dist": "6.3.289"
   }
 }

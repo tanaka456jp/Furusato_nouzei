@@ -368,3 +368,42 @@ for(const text of ["7.000.000","7,000,000.00","-7000000","7-000000","7,000.000",
  assert.equal(region.assessGridDigits(altered,altered).matchedFields,3);
  assert.equal(region.assessGridDigits(digitReads,altered).matchedFields,3);
 }
+
+// Production bilingual route: synthetic geometry only; no private data.
+const stackLines=labels.flatMap(([key,label,n],i)=>[
+ {text:label,bbox:{x0:100,y0:120+i*200,x1:430,y1:150+i*200}},
+ {text:n.toLocaleString("en-US").replace(/,/g,"."),bbox:{x0:130,y0:168+i*200,x1:310,y1:205+i*200}}
+]);
+const stackBlocks=lines=>[{paragraphs:[{lines}]}];
+const stackReview=sr.reviewText("令和8年分 給与所得の源泉徴収票\n"+stackLines.map(l=>l.text).join("\n"));
+const stacked=region.planBilingual(stackBlocks(stackLines),1000,1100,stackReview);
+assert.equal(stacked.status,"READY");
+const engReads=labels.map(([key,_,n])=>({key,text:n.toLocaleString("en-US"),confidence:96}));
+const recovered=region.assessBilingual(stacked,stacked,engReads,engReads);
+assert.equal(recovered.eligibleForManualTransfer,true);
+assert.equal(recovered.originalCompared,false);assert.equal(recovered.autoApproved,false);
+assert.deepEqual(recovered.candidates,expected);
+for(const alter of [
+ a=>a.push({...a[0]}),a=>{a[1].text="-7,000,000";},
+ a=>{a[1].bbox.x0=900;},a=>a.push({text:"999",bbox:{x0:350,x1:420,y0:170,y1:190}})
+]){
+ const ls=JSON.parse(JSON.stringify(stackLines));alter(ls);
+ assert.notEqual(region.planBilingual(stackBlocks(ls),1000,1100,stackReview).status,"READY");
+}
+const moved=JSON.parse(JSON.stringify(stacked));moved.fields[0].bbox.x1+=300;
+assert.equal(region.agreeBilingual(stacked,moved),false);
+for(const bad of [
+ engReads.map((x,i)=>i?x:{...x,text:"7.000.000"}),
+ engReads.map((x,i)=>i?x:{...x,text:"1,000,000"}),
+ engReads.map((x,i)=>i?x:{...x,confidence:74.9}),
+ engReads.map((x,i)=>i?x:{...x,text:"-7,000,000"}),
+ engReads.map((x,i)=>i?x:{...x,text:"7,000,000.00"}),
+ [...engReads.slice(1),engReads[1]]
+]){
+ const result=region.assessBilingual(stacked,stacked,bad,bad);
+ assert.notEqual(result.eligibleForManualTransfer,true);assert.deepEqual(result.candidates,{});
+}
+const conflict=JSON.parse(JSON.stringify(stacked));conflict.fields[0].raw="8,000,000";
+assert.notEqual(region.assessBilingual(conflict,stacked,engReads,engReads).eligibleForManualTransfer,true);
+assert.notEqual(region.assessBilingual(stacked,{...stacked,year:2025},engReads,engReads).eligibleForManualTransfer,true);
+console.log("PUBLIC_BILINGUAL_RECOVERY_SYNTHETIC_CONTRACT_PASS; manual confirmation required");

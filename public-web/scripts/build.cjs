@@ -52,6 +52,7 @@ const requireVersion=function(pkg,version){
 };
 requireVersion("tesseract.js","7.0.0");
 requireVersion("@tesseract.js-data/jpn","1.0.0");
+requireVersion("@tesseract.js-data/eng","1.0.0");
 requireVersion("pdfjs-dist","6.3.289");
 fs.mkdirSync(path.join(vendor,"tesseract","core"),{recursive:true});
 fs.mkdirSync(path.join(vendor,"tesseract","lang"),{recursive:true});
@@ -76,6 +77,8 @@ for(const name of cores)copy(path.join(coreSrc,name),
  path.join(vendor,"tesseract","core",name));
 copy(path.join(readNpm("@tesseract.js-data/jpn"),"4.0.0_best_int","jpn.traineddata.gz"),
  path.join(vendor,"tesseract","lang","jpn.traineddata.gz"));
+copy(path.join(readNpm("@tesseract.js-data/eng"),"4.0.0_best_int","eng.traineddata.gz"),
+ path.join(vendor,"tesseract","lang","eng.traineddata.gz"));
 copy(path.join(readNpm("pdfjs-dist"),"build","pdf.mjs"),
  path.join(vendor,"pdf.mjs"));
 copy(path.join(readNpm("pdfjs-dist"),"build","pdf.worker.mjs"),
@@ -84,6 +87,7 @@ const notices=[
   {name:"tesseract.js",version:"7.0.0",license:"Apache-2.0",folder:"tesseract-js"},
   {name:"tesseract.js-core",version:"7.0.0",license:"Apache-2.0",folder:"tesseract-core"},
   {name:"@tesseract.js-data/jpn",version:"1.0.0",license:"MIT",folder:"tesseract-jpn"},
+  {name:"@tesseract.js-data/eng",version:"1.0.0",license:"MIT",folder:"tesseract-eng"},
   {name:"pdfjs-dist",version:"6.3.289",license:"Apache-2.0",folder:"pdfjs"}
 ];
 const legal=path.join(dest,"licenses");

@@ -110,6 +110,7 @@ jobs:
           grep -q 'Disallow: /' public-web/dist/robots.txt
           grep -q "connect-src 'self'" public-web/dist/_headers
           test -s public-web/dist/vendor/tesseract/lang/jpn.traineddata.gz
+          test -s public-web/dist/vendor/tesseract/lang/eng.traineddata.gz
           test -s public-web/dist/vendor/pdf.worker.mjs
           if grep -R -E 'adsbygoogle|googlesyndication|googletagmanager' public-web/dist; then
             echo 'Unexpected advertising or analytics script detected'

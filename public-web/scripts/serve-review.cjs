@@ -10,14 +10,14 @@ function privateAddress(host){
 }
 function allowed(name){
  return top.has(name)||/^vendor\/pdf(?:\.worker)?\.mjs$/.test(name)||
- /^vendor\/tesseract\/(?:tesseract\.min\.js|worker\.min\.js|lang\/jpn\.traineddata\.gz|core\/tesseract-core[\w-]*\.wasm(?:\.js)?)$/.test(name)||
+ /^vendor\/tesseract\/(?:tesseract\.min\.js|worker\.min\.js|lang\/(?:jpn|eng)\.traineddata\.gz|core\/tesseract-core[\w-]*\.wasm(?:\.js)?)$/.test(name)||
  /^licenses\/[A-Za-z0-9_.-]+\.txt$/.test(name);
 }
 function createReviewServer({root,host="127.0.0.1",port=8765,lan=false}){
  if(!(host==="127.0.0.1"&&!lan)&&!(lan===true&&privateAddress(host)))throw Error("REVIEW_BIND_NOT_ALLOWED");
  if(!Number.isInteger(port)||port<0||port>65535)throw Error("REVIEW_PORT_INVALID");
  const base=fs.realpathSync(root);
- for(const name of ["index.html","_headers","robots.txt","vendor/pdf.worker.mjs","vendor/tesseract/lang/jpn.traineddata.gz"]){
+ for(const name of ["index.html","_headers","robots.txt","vendor/pdf.worker.mjs","vendor/tesseract/lang/jpn.traineddata.gz","vendor/tesseract/lang/eng.traineddata.gz"]){
   const file=path.join(base,name);
   if(!fs.statSync(file).isFile()||!fs.realpathSync(file).startsWith(base+path.sep))throw Error("REVIEW_BUILD_INCOMPLETE");
  }

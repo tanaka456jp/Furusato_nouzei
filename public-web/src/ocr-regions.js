@@ -471,5 +471,79 @@
    year:header.year,candidates,reasons:socialMissing?["GRID_SOCIAL_AMOUNT_UNVERIFIED"]:[],eligibleForManualTransfer:!socialMissing,autoApproved:false,originalCompared:false,
    qualityScope:"INCOME_YEAR_AND_FOUR_AMOUNTS_ONLY"};
  }
- return {plan,assessRechecks,planSeparate,agreeSeparate,assessSeparate,planGridPixels,planGridCanvas,assessGridDigits,gridReadVariant,gridCropSize,assessGridHeader,assessGridRecovery};
+
+ // Restricted fallback for vertically stacked exact labels and amounts.
+ // Two page reads establish year/labels/geometry; only strict crop OCR
+ // establishes amounts. The malformed source token is NEVER parsed as yen.
+ const stackedLabels=["支払金額","給与所得控除後の金額","所得控除の額の合計額","社会保険料等の金額"];
+ function planBilingual(blocks,width,height,review){
+  const no=()=>fail("BILINGUAL_SOURCE_UNVERIFIED");
+  if(!Number.isSafeInteger(width)||!Number.isSafeInteger(height)||width<750||height<400||width*height>10000000||
+    !review||![2025,2026].includes(review.year)||review.yearConflict||review.yearUnsupported||review.documentTypeConflict||
+    !Array.isArray(review.reasons)||!review.reasons.length||review.reasons.some(x=>!/^FIELD_MISSING_/.test(x)))return no();
+  const lines=lineRecords(blocks);
+  if(!lines||lines.length>200)return no();
+  const valid=b=>b&&[b.x0,b.x1,b.y0,b.y1].every(Number.isSafeInteger)&&b.x0>=0&&b.y0>=0&&b.x1<=width&&b.y1<=height&&b.x1>b.x0&&b.y1>b.y0;
+  const fields=[];
+  for(let i=0;i<LABELS.length;i++){
+   const {key,pattern}=LABELS[i],label=stackedLabels[i];
+   const hits=lines.map((l,j)=>({l,j})).filter(x=>x.l.str===label||pattern.test(x.l.str));
+   if(hits.length!==1||hits[0].l.str!==label)return no();
+   const at=hits[0].j,l=hits[0].l.bbox,amount=lines[at+1],q=amount?.bbox;
+   if(!valid(l)||!valid(q)||! /^[0-9][0-9,.]{0,15}$/.test(amount.str))return no();
+   if(q.y0<l.y1||q.y0-l.y1>Math.max(12,(l.y1-l.y0)*2)||q.x0<l.x0-10||q.x0>l.x1+10||
+     q.x1-q.x0<8||q.y1-q.y0<8||(q.x1-q.x0+20)*(q.y1-q.y0+20)>100000)return no();
+   if(fields.some(x=>x.bbox.y1>=l.y0))return no();
+   // Do not select a value out of competing lines in the amount band or
+   // allow the 10px crop margin to overlap a different OCR line.
+   if(lines.some((v,j)=>j!==at+1&&valid(v.bbox)&&v.bbox.y0<q.y1+10&&v.bbox.y1>q.y0-10&&
+     (v.bbox.y0>=l.y1||v.bbox.x0<q.x1+10&&v.bbox.x1>q.x0-10)))return no();
+   const left=Math.max(0,q.x0-10),top=Math.max(0,q.y0-10);
+   fields.push({key,bbox:q,labelBox:l,raw:amount.str,left,top,width:Math.min(width,q.x1+10)-left,height:Math.min(height,q.y1+10)-top});
+  }
+  return {status:"READY",year:review.year,fields,autoApproved:false};
+ }
+ function agreeBilingual(a,b){
+  if(a?.status!=="READY"||b?.status!=="READY"||a.year!==b.year||a.fields?.length!==4||b.fields?.length!==4)return false;
+  for(const {key} of LABELS){
+   const xs=a.fields.filter(v=>v.key===key),ys=b.fields.filter(v=>v.key===key);
+   if(xs.length!==1||ys.length!==1)return false;
+   for(const prop of ["bbox","labelBox"]){
+    const p=xs[0][prop],q=ys[0][prop];
+    if(!p||!q)return false;
+    const ix=Math.max(0,Math.min(p.x1,q.x1)-Math.max(p.x0,q.x0)),iy=Math.max(0,Math.min(p.y1,q.y1)-Math.max(p.y0,q.y0));
+    if(!Number.isFinite(ix*iy)||ix*iy<.8*Math.max((p.x1-p.x0)*(p.y1-p.y0),(q.x1-q.x0)*(q.y1-q.y0)))return false;
+   }
+  }
+  return true;
+ }
+ function assessBilingual(a,b,left,right){
+  const reject=()=>fail("BILINGUAL_AMOUNT_UNVERIFIED");
+  if(!agreeBilingual(a,b)||!Array.isArray(left)||!Array.isArray(right)||left.length!==4||right.length!==4)return reject();
+  const candidates={};
+  for(const {key} of LABELS){
+   const u=left.filter(v=>v?.key===key),v=right.filter(v=>v?.key===key);
+   if(u.length!==1||v.length!==1)return reject();
+   const x=u[0],y=v[0];
+   if(typeof x.text!=="string"||typeof y.text!=="string"||clean(x.text)!==clean(y.text)||
+     [x,y].some(z=>!Number.isFinite(z.confidence)||z.confidence<75||z.confidence>100))return reject();
+   const n=yen(x.text);
+   if(n===null)return reject();
+   for(const p of [a,b]){
+    const raw=p.fields.find(f=>f.key===key).raw;
+    if(typeof raw!=="string"||! /^[0-9][0-9,.]{0,15}$/.test(raw))return reject();
+    const known=yen(raw);
+    if(known!==null&&known!==n)return reject();
+    // Digit sequence is a veto only, never a conversion or positive
+    // numeric candidate. No digit insertion, deletion, or substitution.
+    if(raw.match(/[0-9]/g)?.join("")!==String(n))return reject();
+   }
+   candidates[key]=n;
+  }
+  if(candidates.salaryGross<=0||candidates.salaryGross>20000000||
+    candidates.salaryIncomeReference>candidates.salaryGross||candidates.socialInsurance>candidates.deductionsReference)return reject();
+  return {schema:"furusato-slip-bilingual-review/v1",status:"REQUIRES_SOURCE_REVIEW",year:a.year,candidates,reasons:[],
+   eligibleForManualTransfer:true,autoApproved:false,originalCompared:false,qualityScope:"INCOME_YEAR_AND_FOUR_AMOUNTS_ONLY"};
+ }
+ return {plan,assessRechecks,planSeparate,agreeSeparate,assessSeparate,planGridPixels,planGridCanvas,assessGridDigits,gridReadVariant,gridCropSize,assessGridHeader,assessGridRecovery,planBilingual,agreeBilingual,assessBilingual};
 }));

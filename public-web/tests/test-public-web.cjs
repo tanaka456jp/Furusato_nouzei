@@ -15,7 +15,7 @@ assert.equal(result.deployment,"NOT_RUN");
 for(const name of ["index.html","style.css","app.js","about.html","privacy.html","terms.html",
  "engine.js","robots.txt","_headers", "ocr.js","batch.js","batch-name.js","batch-core.js","ocr-review.js","ocr-quality.js","ocr-layout.js","ocr-regions.js","ocr-image-header.js","pdf-compat.js","pdf-gcodes.js",
  "vendor/tesseract/tesseract.min.js","vendor/tesseract/worker.min.js",
- "vendor/tesseract/lang/jpn.traineddata.gz","vendor/pdf.mjs","vendor/pdf.worker.mjs",
+ "vendor/tesseract/lang/jpn.traineddata.gz","vendor/tesseract/lang/eng.traineddata.gz","vendor/pdf.mjs","vendor/pdf.worker.mjs",
  "licenses/THIRD_PARTY_NOTICES.txt"])
  assert.ok(fs.statSync(path.join(out,name)).size>10,name);
 for(const page of ["index.html","about.html","privacy.html","terms.html"]){

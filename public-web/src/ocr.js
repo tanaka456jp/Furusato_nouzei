@@ -507,7 +507,11 @@
       var regions=window.FurusatoOcrRegions;
       var firstPlan=regions?.planSeparate?.(a?.data?.blocks,original.width,original.height,
         window.FurusatoSlipReview.reviewText(a?.data?.text));
-      var b=firstPlan?.status==="READY"
+      // Restrict new recovery to an unrectified image / empty-text raster
+      // PDF. A partial digital text layer cannot take this route.
+      const bilingualA=allowGridRecovery&&!rectified&&!deskewed&&regions?.planBilingual?.(
+        a?.data?.blocks,original.width,original.height,window.FurusatoSlipReview.reviewText(a?.data?.text));
+      var b=firstPlan?.status==="READY"||bilingualA?.status==="READY"
         ?await runOcrOperation(session,"recognize",enhanced,{}, {text:true,blocks:true})
         :await runOcrOperation(session,"recognize",enhanced);
       ensureCurrent();
@@ -590,6 +594,45 @@
             eligibleForManualTransfer:false,autoApproved:false,originalCompared:false
           };
         }
+      }
+      if(!compared.eligibleForManualTransfer&&bilingualA?.status==="READY"){
+        const bilingualB=regions.planBilingual(b?.data?.blocks,enhanced.width,enhanced.height,window.FurusatoSlipReview.reviewText(b?.data?.text));
+        if(!regions.agreeBilingual(bilingualA,bilingualB))return guarded(compared);
+        try{
+          // Terminate the Japanese worker before loading the English
+          // model; never keep two WASM engines active. Stale sources veto.
+          await stopOcrSession(session);
+          if(activeOcrSession===session)activeOcrSession=null;
+          session=null;worker=null;
+          ensureCurrent();
+          worker=await window.Tesseract.createWorker("eng",window.Tesseract.OEM.LSTM_ONLY,paths);
+          session={worker,stopPromise:null,cancelled:false,interrupt:null};
+          activeOcrSession=session;
+          ensureCurrent();
+          await runOcrOperation(session,"setParameters",{tessedit_pageseg_mode:"7",tessedit_char_whitelist:"0123456789,.-"});
+          const reads=[];
+          for(const pass of [0,1]){
+            const source=pass===0?original:enhanced,plan=pass===0?bilingualA:bilingualB,scale=pass===0?1:2,values=[];
+            for(const region of plan.fields){
+              ensureCurrent();
+              const crop=document.createElement("canvas");
+              try{
+                const w=region.width*scale,h=region.height*scale,pad=20;
+                crop.width=w+2*pad;crop.height=h+2*pad;
+                const ctx=crop.getContext("2d");if(!ctx)throw Error("FIELD_REGION_CANVAS_UNAVAILABLE");
+                ctx.fillStyle="#fff";ctx.fillRect(0,0,crop.width,crop.height);
+                ctx.drawImage(source,region.left,region.top,region.width,region.height,pad,pad,w,h);
+                const rec=await runOcrOperation(session,"recognize",crop);
+                ensureCurrent();
+                values.push({key:region.key,text:rec?.data?.text,confidence:rec?.data?.confidence});
+              }finally{crop.width=0;crop.height=0;}
+            }
+            reads.push(values);
+          }
+          const result=regions.assessBilingual(bilingualA,bilingualB,reads[0],reads[1]);
+          if(result.eligibleForManualTransfer)return guarded(result);
+        }catch(_){ensureCurrent();/* model or crop failure remains HOLD */}
+        return guarded(compared);
       }
       // Geometry is diagnostic unless all exact heading/label/amount
       // evidence agrees. No recovery over a partial digital text layer.

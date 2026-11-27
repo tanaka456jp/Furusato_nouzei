@@ -21,7 +21,7 @@ for(const name of [".env","_headers","private.pdf","vendor/","scripts/serve-revi
   });
  }
  try{
-  for(const url of ["/","/index.html","/terms.html","/engine.js","/vendor/pdf.worker.mjs","/vendor/tesseract/lang/jpn.traineddata.gz"]){
+  for(const url of ["/","/index.html","/terms.html","/engine.js","/vendor/pdf.worker.mjs","/vendor/tesseract/lang/jpn.traineddata.gz","/vendor/tesseract/lang/eng.traineddata.gz"]){
    const r=await req(url,"HEAD");assert.equal(r.status,200);assert.equal(r.length,0);assert.equal(r.headers["cache-control"],"no-store");assert.match(r.headers["content-security-policy"],/connect-src 'self'/);assert.equal(r.headers["x-robots-tag"],"noindex, nofollow, noarchive");
   }
   const home=await req("/");assert.equal(home.status,200);assert.ok(home.length>0);
