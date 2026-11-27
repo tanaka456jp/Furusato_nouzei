@@ -35,6 +35,7 @@ jobs:
           node --check public-web/tests/test-public-web.cjs
           node --check public-web/tests/test-ocr-review.cjs
           node --check public-web/tests/synthetic-amount-crop-metrics.cjs
+          node --check public-web/tests/synthetic-bilingual-probe.cjs
           node --check public-web/src/ocr-review.js
           node --check public-web/src/ocr.js
           node --check public-web/src/batch-name.js

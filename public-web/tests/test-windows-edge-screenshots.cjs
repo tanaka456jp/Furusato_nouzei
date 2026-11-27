@@ -350,6 +350,50 @@ async function main(){
 
     }
   }
+  // Fixed research suite, including actually printed malformed tokens.
+  // Keep experimental evidence separate from UI/transfer eligibility.
+  const {assessProbe,bilingualProbeInBrowser}=require("./synthetic-bilingual-probe.cjs");
+  const researchCases=[
+    ["08-positive-image.png",2026,expected],
+    ["10-bilingual-varied.png",2025,{salaryGross:"6431200",salaryIncomeReference:"4704960",deductionsReference:"1389240",socialInsurance:"824600"}],
+    ["11-bilingual-printed-period.png",null,null],
+    ["12-bilingual-printed-minus.png",null,null],
+    ["13-bilingual-duplicate-label.png",null,null],
+    ["14-bilingual-conflicting-year.png",null,null]
+  ];
+  const model=process.env.FURUSATO_ENGLISH_RESEARCH_MODEL,modelUrl=origin+"/vendor/tesseract/lang/eng.traineddata.gz";
+  assert.ok(model&&fs.statSync(model).isFile());
+  const serve=route=>route.fulfill({path:model,contentType:"application/gzip"});
+  const results=[];
+  await context.route(modelUrl,serve);
+  try{
+    for(const [name,year,truth] of researchCases){
+      await page.locator('#calculator button[type="reset"]').click();
+      await field("year").selectOption("2026");
+      await page.locator("#slipFile").setInputFiles(path.join(fixtures,name));
+      const probe=await page.evaluate(bilingualProbeInBrowser);
+      const assessment=assessProbe(probe);
+      const correct=!!truth&&assessment.status==="RESEARCH_MATCH"&&assessment.year===year&&Object.entries(truth).every(([k,v])=>assessment.values[k]===Number(v));
+      const outcome=assessment.status==="RESEARCH_MATCH"?(correct?"EXACT_RESEARCH_MATCH":"WRONG_RESEARCH_MATCH"):"HOLD";
+      // No experimental values are ever written to the actual calculator.
+      assert.equal(assessment.eligibleForManualTransfer,false);
+      assert.equal(assessment.autoApproved,false);
+      for(const key of Object.keys(expected))assert.equal(await field(key).inputValue(),"");
+      // Negative source files also have to remain nontransferable in the existing product.
+      if(!truth){
+        await page.locator("#slipScan").click();
+        await page.waitForFunction(()=>!document.getElementById("slipScan").disabled&&!document.getElementById("slipReview").hidden,null,{timeout:90000});
+        assert.equal(await page.locator("#slipTransfer").isEnabled(),false,"Existing product unsafe: "+name);
+        await save(name.slice(0,2)+"-bilingual-negative-hold",page.locator(".ocr-panel"));
+      }
+      results.push({fixture:name,outcome,assessment,probe});
+      console.log("SYNTHETIC_BILINGUAL_PROBE "+name+" "+outcome);
+      fs.writeFileSync(path.join(out,"synthetic-bilingual-probe.json"),JSON.stringify({scope:"synthetic research only; NEVER transfer",results},null,2));
+    }
+  }finally{await context.unroute(modelUrl,serve);}
+  // A wrong research match is evidence to reject the experimental method,
+  // not a product transfer. Preserve observations instead of hiding them.
+  console.log("SYNTHETIC_BILINGUAL_PROBE_SUMMARY "+JSON.stringify({exact:results.filter(x=>x.outcome==="EXACT_RESEARCH_MATCH").length,wrong:results.filter(x=>x.outcome==="WRONG_RESEARCH_MATCH").length,hold:results.filter(x=>x.outcome==="HOLD").length}));
   // 09 has two exact full-page readings on the previous physical Edge
   // baseline. Require recovery of that positive fixture, without weakening
   // the third-read check. Preserve traces/screenshots even if this fails.

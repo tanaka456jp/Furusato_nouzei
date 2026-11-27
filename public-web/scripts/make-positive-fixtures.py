@@ -15,15 +15,17 @@ MARK = "架空の試験用資料　提出・申告には使用不可"
 TITLE = "給与所得の源泉徴収票"
 YEAR = "令和8年分"
 
-def make_page(doc, font, bad=False):
+def make_page(doc, font, bad=False, amounts=None, year=YEAR, duplicate_year=False):
     p = doc.new_page(width=595, height=842)
     p.insert_font(fontname="jpn", fontfile=str(font))
     def txt(x, y, text, size=14):
         p.insert_text((x, y), text, fontname="jpn", fontsize=size)
     txt(42, 42, MARK, 16)
-    txt(42, 93, YEAR, 16)
+    txt(42, 93, year, 16)
+    if duplicate_year:
+        txt(300, 93, "令和7年分", 16)
     txt(42, 122, TITLE, 20)
-    for i, (label, amount) in enumerate(zip(LABELS, AMOUNTS)):
+    for i, (label, amount) in enumerate(zip(LABELS, AMOUNTS if amounts is None else amounts)):
         y = 190 + i * 125
         p.draw_rect(fitz.Rect(35, y-25, 560, y+50), color=(.3,.3,.3))
         txt(50, y, label, 16)
@@ -40,7 +42,14 @@ def main():
     dest = Path(__file__).resolve().parent.parent / "qa-fixtures"
     dest.mkdir(exist_ok=True)
     names = ["06-positive-electronic.pdf", "07-positive-mixed-batch.pdf", "08-positive-image.png", "09-positive-lines.png"]
-    if any((dest / n).exists() for n in names):
+    research = [
+        ("10-bilingual-varied.png", ["6,431,200", "4,704,960", "1,389,240", "824,600"], "令和7年分", False, False),
+        ("11-bilingual-printed-period.png", ["7.000.000", "5,200,000", "1,670,000", "1,000,000"], YEAR, False, False),
+        ("12-bilingual-printed-minus.png", ["7,000,000", "5,200,000", "1,670,000", "-1,000,000"], YEAR, False, False),
+        ("13-bilingual-duplicate-label.png", AMOUNTS, YEAR, True, False),
+        ("14-bilingual-conflicting-year.png", AMOUNTS, YEAR, False, True),
+    ]
+    if any((dest / n).exists() for n in names + [v[0] for v in research]):
         raise ValueError("Refuse to overwrite existing QA files")
     with tempfile.TemporaryDirectory() as tmp:
         font = Path(tmp) / "subset.otf"
@@ -50,7 +59,7 @@ def main():
             # CFF glyphs disagree with the PDF text layer.
             options.retain_gids = True
             sub = subset.Subsetter(options=options)
-            sub.populate(text=MARK+TITLE+YEAR+"".join(LABELS+AMOUNTS)+"8,000,000SYNTHETIC QA ONLY")
+            sub.populate(text=MARK+TITLE+YEAR+"".join(LABELS+AMOUNTS)+"8,000,000SYNTHETIC QA ONLY0123456789.-令和7年分")
             sub.subset(original)
             original.save(font)
         for name, multi in [(names[0], False), (names[1], True)]:
@@ -72,7 +81,11 @@ def main():
             for x,y,text,size in lines:
                 p.insert_text((x,y),text,fontname="jpn",fontsize=size)
             p.get_pixmap(matrix=fitz.Matrix(2,2)).save(dest/names[3])
-    for name in names:
+        for name, amounts, year, duplicate_label, duplicate_year in research:
+            with fitz.open() as doc:
+                make_page(doc, font, bad=duplicate_label, amounts=amounts, year=year, duplicate_year=duplicate_year)
+                doc[0].get_pixmap(matrix=fitz.Matrix(2,2)).save(dest/name)
+    for name in names + [v[0] for v in research]:
         assert 100 < (dest/name).stat().st_size < 8*1024*1024
     print("MOBILE_POSITIVE_FIXTURES_4_CREATED; fictional only")
 

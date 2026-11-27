@@ -201,3 +201,25 @@ assert.throws(()=>summarizeAmountCrop(researchRows.slice(1),researchExpected));
 assert.throws(()=>summarizeAmountCrop([...researchRows.slice(1),researchRows[1]],researchExpected));
 assert.throws(()=>summarizeAmountCrop(researchRows.map((x,i)=>i?x:{...x,confidence:Infinity}),researchExpected));
 console.log("SYNTHETIC_AMOUNT_CROP_METRICS_AND_CORRELATED_SEPARATOR_HOLD_PASS");
+
+// Test-only bilingual consensus must not promote a product candidate.
+const {assessProbe}=require("./synthetic-bilingual-probe.cjs");
+const probeKeys=Object.keys(a.candidates);
+const probeFields=probeKeys.map((key,i)=>({key,bbox:{x0:50,x1:150,y0:100+i*60,y1:120+i*60},labelBox:{x0:40,x1:160,y0:70+i*60,y1:90+i*60},raw:String(a.candidates[key])}));
+const probeGood={plans:[{year:2026,fields:probeFields},{year:2026,fields:probeFields}],reads:[0,1].flatMap(pass=>probeKeys.map(key=>({pass,key,text:String(a.candidates[key]),confidence:96})))};
+assert.equal(assessProbe(probeGood).status,"RESEARCH_MATCH");
+assert.equal(assessProbe(probeGood).eligibleForManualTransfer,false);
+const clone=()=>JSON.parse(JSON.stringify(probeGood));
+for(const mutate of [
+ x=>{x.plans[1].year=2025;},
+ x=>{x.plans[1].fields[0].labelBox.x1=80;},
+ x=>{x.plans[0].fields[0].raw="6000000";},
+ x=>{x.plans[0].fields[0].raw="-7000000";},
+ x=>{x.reads[0].text="7.000.000";},
+ x=>{x.reads[0].confidence=74.9;},
+ x=>{x.reads[0].text="1000000";},
+ x=>{x.reads[0].text="";},
+ x=>{x.reads[1]=x.reads[0];},
+ x=>{x.plans[0].fields[1]=x.plans[0].fields[0];}
+]){const p=clone();mutate(p);const v=assessProbe(p);assert.equal(v.status,"HOLD");assert.equal(v.eligibleForManualTransfer,false);}
+console.log("SYNTHETIC_BILINGUAL_RESEARCH_GATE_PASS");
