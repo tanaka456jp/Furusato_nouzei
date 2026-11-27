@@ -157,3 +157,47 @@ for(const mutated of [
  const out=review.compareAttempts(mutated,mutated);
  assert.equal(out.eligibleForManualTransfer,false);assert.deepEqual(out.candidates,{});
 }
+
+// Correlated separator errors in both reads must fail for every material field.
+const separatorCases=[
+ ["7,000,000","7.000.000"],["5,200,000","5,200.000"],
+ ["1,670,000","1,670.000"],["1,000,000","1,000.000"]
+];
+for(const [correct,malformed] of separatorCases){
+ for(const badText of [malformed,malformed.replace(/\./g,"．"),correct.replace(/,/g,"."),"-"+correct,correct+".00"]){
+  const bad=sample.replace(correct,badText);
+  assert.notEqual(bad,sample);
+  for(const [left,right] of [[bad,bad],[sample,bad],[bad,sample]]){
+   const result=review.compareAttempts(left,right,100,100);
+   assert.equal(result.eligibleForManualTransfer,false);
+   assert.deepEqual(result.candidates,{});
+   assert.equal(result.autoApproved,false);
+  }
+  assert.equal(review.reviewDigitalPdf(bad).eligibleForManualTransfer,false);
+ }
+}
+const allMalformed=separatorCases.reduce((s,[good,bad])=>s.replace(good,bad),sample);
+assert.equal(review.compareAttempts(allMalformed,allMalformed,100,100).eligibleForManualTransfer,false);
+// Test research metrics independently of the browser. Fixed variants must
+// expose high-confidence wrong digits and never cherry-pick across settings.
+const {summarizeAmountCrop}=require("./synthetic-amount-crop-metrics.cjs");
+const researchExpected=a.candidates;
+const researchRows=[];
+for(const mode of ["7","13"])for(const scale of [1,2]){
+ for(const [i,key] of Object.keys(researchExpected).entries()){
+  researchRows.push({mode,scale,key,strictAmount:i===1?null:i===2?researchExpected[key]+1:researchExpected[key],
+   confidence:i===3?74.9:90,elapsedMs:10});
+ }
+}
+const researchSummary=summarizeAmountCrop(researchRows,researchExpected);
+assert.equal(researchSummary.length,4);
+for(const variant of researchSummary){
+ assert.deepEqual([variant.exact,variant.malformed,variant.lowConfidence,variant.wrongHighConfidence,variant.elapsedMs],[1,1,1,1,40]);
+ assert.equal(variant.byField.salaryGross.status,"EXACT");
+ assert.equal(variant.byField.deductionsReference.status,"WRONG_HIGH_CONFIDENCE");
+ assert.equal(variant.byField.socialInsurance.status,"LOW_CONFIDENCE");
+}
+assert.throws(()=>summarizeAmountCrop(researchRows.slice(1),researchExpected));
+assert.throws(()=>summarizeAmountCrop([...researchRows.slice(1),researchRows[1]],researchExpected));
+assert.throws(()=>summarizeAmountCrop(researchRows.map((x,i)=>i?x:{...x,confidence:Infinity}),researchExpected));
+console.log("SYNTHETIC_AMOUNT_CROP_METRICS_AND_CORRELATED_SEPARATOR_HOLD_PASS");

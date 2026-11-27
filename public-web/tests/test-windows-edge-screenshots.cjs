@@ -7,6 +7,7 @@ const path=require("node:path");
 const os=require("node:os");
 const {chromium}=require("../../gas/node_modules/playwright");
 const {createReviewServer}=require("../scripts/serve-review.cjs");
+const {summarizeAmountCrop}=require("./synthetic-amount-crop-metrics.cjs");
 async function main(){
  const out=process.env.FURUSATO_SCREENSHOT_DIR;
  assert.ok(out,"Explicit screenshot output directory required");
@@ -310,12 +311,11 @@ async function main(){
         }finally{bitmap.close();if(worker)await worker.terminate();}
       },trace);
       assert.equal(experiment.length,16);
-      const byVariant=[];
-      for(const mode of ["7","13"])for(const scale of [1,2]){
-        const samples=experiment.filter(x=>x.mode===mode&&x.scale===scale);
-        const exact=samples.filter(x=>x.strictAmount===Number(expected[x.key])&&x.confidence>=75).length;
-        byVariant.push({mode,scale,exact,fields:4});
-        console.log("SYNTHETIC_AMOUNT_CROP_PSM_"+mode+"_SCALE_"+scale+" "+exact+"/4");
+      const byVariant=summarizeAmountCrop(experiment,expected);
+      for(const variant of byVariant){
+        console.log("SYNTHETIC_AMOUNT_CROP_PSM_"+variant.mode+"_SCALE_"+variant.scale+" "+variant.exact+"/4");
+        // Only fixed-fixture aggregate diagnostics: no document text or amounts in logs.
+        console.log("SYNTHETIC_AMOUNT_CROP_METRICS "+JSON.stringify(variant));
       }
       fs.writeFileSync(path.join(out,"08-synthetic-amount-crop-experiment.json"),JSON.stringify({scope:"synthetic only; not production transfer",observations:experiment,byVariant},null,2));
     }
