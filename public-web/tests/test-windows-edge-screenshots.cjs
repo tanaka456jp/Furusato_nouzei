@@ -256,6 +256,69 @@ async function main(){
     assert.ok(trace.some(x=>x.kind==="recognize"),"No real OCR observations: "+name);
     fs.writeFileSync(path.join(out,name.slice(0,2)+"-synthetic-ocr-trace.json"),JSON.stringify({fixture:name,scope:"synthetic only",observations:trace},null,2));
     console.log("SYNTHETIC_POSITIVE_IMAGE "+name+" "+positiveImageResults.at(-1).status);
+    if(name==="08-positive-image.png"&&!eligible){
+      // A fixed-fixture research experiment, NOT a production fallback.
+      // The OCR bounding boxes supply the amount regions, not a template
+      // or the expected numbers. Preserve period and minus as recognized.
+      const experiment=await page.evaluate(async trace=>{
+        const first=trace.find(o=>o.kind==="recognize"&&o.lines?.length);
+        const lines=first?.lines||[];
+        const fields=FurusatoSlipReview.FIELDS;
+        const norm=s=>FurusatoSlipReview.normalize(s);
+        const plans=fields.map(field=>{
+          const hits=lines.map((line,i)=>({line,i})).filter(x=>norm(x.line.text)===field.label);
+          if(hits.length!==1)throw Error("synthetic label not unique");
+          const next=lines[hits[0].i+1];
+          if(!next||!next.bbox||!/^[0-9][0-9,.]+$/.test(norm(next.text)))throw Error("synthetic amount line missing");
+          return {key:field.key,bbox:next.bbox};
+        });
+        const file=document.getElementById("slipFile").files[0];
+        if(file?.name!=="08-positive-image.png")throw Error("unexpected research source");
+        const bitmap=await createImageBitmap(file);
+        let worker;
+        const observations=[];
+        try{
+          if(bitmap.width!==first.width||bitmap.height!==first.height)throw Error("research dimensions mismatch");
+          worker=await Tesseract.createWorker("jpn",Tesseract.OEM.LSTM_ONLY,{
+            workerPath:new URL("./vendor/tesseract/worker.min.js",location.href).href,
+            corePath:new URL("./vendor/tesseract/core",location.href).href,
+            langPath:new URL("./vendor/tesseract/lang",location.href).href,
+            workerBlobURL:false,cacheMethod:"none"
+          });
+          for(const variant of [{mode:"7",scale:1},{mode:"7",scale:2},{mode:"13",scale:1},{mode:"13",scale:2}]){
+            await worker.setParameters({tessedit_pageseg_mode:variant.mode,tessedit_char_whitelist:"0123456789,.-"});
+            for(const region of plans){
+              const {x0,y0,x1,y1}=region.bbox;
+              const x=Math.max(0,x0-6),y=Math.max(0,y0-6);
+              const w=Math.min(bitmap.width,x1+6)-x,h=Math.min(bitmap.height,y1+6)-y;
+              if(w<8||h<8||w*h>100000)throw Error("research crop out of bounds");
+              const canvas=document.createElement("canvas"),pad=20;
+              try{
+                canvas.width=w*variant.scale+2*pad;canvas.height=h*variant.scale+2*pad;
+                const ctx=canvas.getContext("2d");ctx.fillStyle="#fff";ctx.fillRect(0,0,canvas.width,canvas.height);
+                ctx.drawImage(bitmap,x,y,w,h,pad,pad,w*variant.scale,h*variant.scale);
+                const started=Date.now();
+                const res=await worker.recognize(canvas);
+                const text=norm(res?.data?.text);
+                observations.push({key:region.key,mode:variant.mode,scale:variant.scale,text,
+                  confidence:res?.data?.confidence??null,elapsedMs:Date.now()-started,
+                  strictAmount:FurusatoSlipReview.parseYen(text)});
+              }finally{canvas.width=0;canvas.height=0;}
+            }
+          }
+          return observations;
+        }finally{bitmap.close();if(worker)await worker.terminate();}
+      },trace);
+      assert.equal(experiment.length,16);
+      const byVariant=[];
+      for(const mode of ["7","13"])for(const scale of [1,2]){
+        const samples=experiment.filter(x=>x.mode===mode&&x.scale===scale);
+        const exact=samples.filter(x=>x.strictAmount===Number(expected[x.key])&&x.confidence>=75).length;
+        byVariant.push({mode,scale,exact,fields:4});
+        console.log("SYNTHETIC_AMOUNT_CROP_PSM_"+mode+"_SCALE_"+scale+" "+exact+"/4");
+      }
+      fs.writeFileSync(path.join(out,"08-synthetic-amount-crop-experiment.json"),JSON.stringify({scope:"synthetic only; not production transfer",observations:experiment,byVariant},null,2));
+    }
   }
   // 09 has two exact full-page readings on the previous physical Edge
   // baseline. Require recovery of that positive fixture, without weakening
