@@ -498,14 +498,26 @@ async function main(){
   // result for the ordinary product decision, or tune by expected amounts.
   const {probeFormatInBrowser}=require("./synthetic-format-probe.cjs");
   const variantReports=[];
-  for(const name of ["15-bilingual-jpeg.jpg","17-bilingual-raster.pdf"]){
+  for(const [name,year,truth,count] of [
+    ["15-bilingual-jpeg.jpg",2026,expected,3],
+    ["17-bilingual-raster.pdf",2026,expected,2],
+    ["20-raster-period.pdf",null,null,1],
+    ["21-raster-minus.pdf",null,null,1],
+    ["22-raster-duplicate.pdf",null,null,1],
+    ["23-raster-year-conflict.pdf",null,null,1],
+    ["24-raster-prior-year.pdf",2025,priorTruth,1]
+  ]){
     await page.locator('#calculator button[type="reset"]').click();
     await page.locator("#slipFile").setInputFiles(path.join(fixtures,name));
     const reports=await page.evaluate(probeFormatInBrowser);
-    assert.equal(reports.length,2);
+    assert.equal(reports.length,count);
     for(const report of reports){
       const match=report.status==="RESEARCH_MATCH";
-      const exact=match&&report.assessment?.year===2026&&Object.entries(expected).every(([k,v])=>report.assessment.candidates[k]===Number(v));
+      if(report.assessment){
+        assert.equal(report.assessment.eligibleForManualTransfer,false);
+        assert.equal(report.assessment.autoApproved,false);
+      }
+      const exact=match&&!!truth&&report.assessment?.year===year&&Object.entries(truth).every(([k,v])=>report.assessment.candidates[k]===Number(v));
       const outcome=match?(exact?"EXACT_RESEARCH_MATCH":"WRONG_RESEARCH_MATCH"):"HOLD";
       variantReports.push({fixture:name,outcome,report});
       console.log("SYNTHETIC_FORMAT_VARIANT "+JSON.stringify({fixture:name,id:report.id,outcome,reason:report.reason||null,dimensions:report.dimensions,years:report.pages.map(p=>p.year),plans:report.pages.map(p=>p.plan.status)}));

@@ -3,15 +3,19 @@
 // Each configuration uses the production geometry and strict amount gate.
 async function probeFormatInBrowser(){
  const file=document.getElementById("slipFile").files[0];
- const jpeg=file?.name==="15-bilingual-jpeg.jpg",pdf=file?.name==="17-bilingual-raster.pdf";
+ const jpeg=file?.name==="15-bilingual-jpeg.jpg";
+ const pdfBaseline=file?.name==="17-bilingual-raster.pdf";
+ const pdfExtra=["20-raster-period.pdf","21-raster-minus.pdf","22-raster-duplicate.pdf","23-raster-year-conflict.pdf","24-raster-prior-year.pdf"].includes(file?.name);
+ const pdf=pdfBaseline||pdfExtra;
  if(!jpeg&&!pdf)throw Error("RESEARCH_SOURCE_NOT_SYNTHETIC");
  const regions=FurusatoOcrRegions,review=FurusatoSlipReview;
  const paths={workerPath:new URL("./vendor/tesseract/worker.min.js",location.href).href,
   corePath:new URL("./vendor/tesseract/core",location.href).href,
   langPath:new URL("./vendor/tesseract/lang",location.href).href,workerBlobURL:false,cacheMethod:"none"};
  const variants=jpeg?
-  [{id:"JPEG_CURRENT",scale:1,gain:1.35,mid:139},{id:"JPEG_MILD",scale:1,gain:1.15,mid:128}]:
-  [{id:"PDF_CURRENT",scale:3,gain:1.35,mid:139},{id:"PDF_2X",scale:2,gain:1.35,mid:139}];
+  [{id:"JPEG_CURRENT",scale:1,gain:1.35,mid:139},{id:"JPEG_MILD",scale:1,gain:1.15,mid:128},
+   {id:"JPEG_RESAMPLE_1_18",scale:1.18,gain:1.35,mid:139}]:
+  [...(pdfBaseline?[{id:"PDF_CURRENT",scale:3,gain:1.35,mid:139}]:[]),{id:"PDF_2X",scale:2,gain:1.35,mid:139}];
  let bitmap,loading,documentPdf,pdfPage;
  const results=[];
  try{
@@ -38,7 +42,12 @@ async function probeFormatInBrowser(){
    const report={id:variant.id,configuration:variant,pages:[],reads:[],status:"HOLD"};
    try{
     let base;
-    if(jpeg){base=canvas(bitmap.width,bitmap.height);base.getContext("2d").drawImage(bitmap,0,0);}
+    if(jpeg){
+     base=canvas(Math.round(bitmap.width*variant.scale),Math.round(bitmap.height*variant.scale));
+     const cx=base.getContext("2d");
+     cx.imageSmoothingEnabled=true;cx.imageSmoothingQuality="high";
+     cx.drawImage(bitmap,0,0,base.width,base.height);
+    }
     else{
      const viewport=pdfPage.getViewport({scale:variant.scale});
      base=canvas(Math.ceil(viewport.width),Math.ceil(viewport.height));
@@ -79,7 +88,7 @@ async function probeFormatInBrowser(){
     }
     const assessed=regions.assessBilingual(plans[0],plans[1],report.reads[0],report.reads[1]);
     report.status=assessed.eligibleForManualTransfer?"RESEARCH_MATCH":"HOLD";
-    report.assessment=assessed;
+    report.assessment={...assessed,eligibleForManualTransfer:false,autoApproved:false,scope:"SYNTHETIC_RESEARCH_ONLY"};
     // Diagnostic only, no transfer through the actual calculator.
    }finally{
     try{await stop();}finally{for(const c of canvases)c.width=c.height=0;results.push(report);}

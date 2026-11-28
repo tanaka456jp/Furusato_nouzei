@@ -50,7 +50,9 @@ def main():
         ("14-bilingual-conflicting-year.png", AMOUNTS, YEAR, False, True),
     ]
     extra = ["15-bilingual-jpeg.jpg", "16-bilingual-low-contrast.png", "17-bilingual-raster.pdf",
-             "18-bilingual-raster-mixed.pdf", "19-bilingual-previous-year.png"]
+             "18-bilingual-raster-mixed.pdf", "19-bilingual-previous-year.png",
+             "20-raster-period.pdf", "21-raster-minus.pdf", "22-raster-duplicate.pdf",
+             "23-raster-year-conflict.pdf", "24-raster-prior-year.pdf"]
     if any((dest / n).exists() for n in names + [v[0] for v in research] + extra):
         raise ValueError("Refuse to overwrite existing QA files")
     with tempfile.TemporaryDirectory() as tmp:
@@ -97,7 +99,12 @@ def main():
             make_page(doc, font, amounts=["5,000,000","3,560,000","1,430,000","750,000"], year="令和7年分")
             doc[0].get_pixmap(matrix=fitz.Matrix(2,2)).save(dest/extra[4])
         # Real image-only PDFs: no hidden or searchable text layer.
-        for filename, images in [(extra[2], [names[2]]), (extra[3], [names[2], "11-bilingual-printed-period.png"])]:
+        for filename, images in [
+            (extra[2], [names[2]]), (extra[3], [names[2], "11-bilingual-printed-period.png"]),
+            (extra[5], ["11-bilingual-printed-period.png"]), (extra[6], ["12-bilingual-printed-minus.png"]),
+            (extra[7], ["13-bilingual-duplicate-label.png"]), (extra[8], ["14-bilingual-conflicting-year.png"]),
+            (extra[9], [extra[4]])
+        ]:
             with fitz.open() as doc:
                 for image in images:
                     page = doc.new_page(width=595, height=842)
