@@ -1580,8 +1580,9 @@ console.log(JSON.stringify({schema:"web-high-salary-tax-integration/v1",highCase
     const adjusted=(localTaxable*2n-min(localTaxable,50000n))*share*50000n*ratio;
     const baseCredit=d*share*100000n*ratio;
     const special=min(d*share*ratio*10n*ratio,adjusted/5n);
-    const supplemental=oneStop?special*(90000n-ratio)/ratio:0n;
-    const donationCredit=ceil(baseCredit+special+supplemental,unit);
+    // Independent integer arithmetic with two distinct whole-yen ceilings.
+    const donationCredit=ceil(baseCredit+special,unit)+
+     (oneStop?ceil(special*(90000n-ratio),unit*ratio):0n);
     const housingCredit=st.residentCredit*share*unit/5n;
     return max(0n,adjusted-housingCredit-donationCredit*unit)/(unit*100n)*100n;
    });
@@ -2158,4 +2159,74 @@ console.log(JSON.stringify({schema:"web-high-salary-tax-integration/v1",highCase
  }
  assert.deepEqual([cases,holds],[16,14]);
  console.log(JSON.stringify({schema:"web-income-levy-relief-post-credit-comparison/v1",cases,holds,uiIntegrated:false,intermediateRoundingCertified:false,release:"HOLD"}));
+}
+
+
+// Official Oamishirasato STEP4/5 source example: keep the published
+// adjusted levies and statutory rate as inputs (not a 2025/26 salary
+// example), and separately verify current-year near-threshold scenarios.
+// Fixed expected values for synthetic relief cases independently computed
+// with Python Fraction and per-municipality final 100-yen floors.
+{
+ const relief=require("../src/income-levy-relief.js");
+ let published=0,combined=0,rejections=0,product=0;
+ for(const year of [2025,2026]){
+  const official={year,incomeYen:3560000,familyCount:1,municipality:"standard",specialRatePercent:10,donationYen:100000,
+   housingBeforeYen:0,housingAfterYen:0,cityAdjusted100:12240000,prefectureAdjusted100:8160000,filing:"one-stop"};
+  const o=relief.compareCredits(official);
+  assert.equal(o.status,"COMPONENTS_ONLY");
+  assert.deepEqual(o.calculation.parts.map(p=>[p.ordinaryDonationCreditYen,p.applicationSpecialCreditYen]),[[30360,3133],[20240,2089]]);
+  published++;
+  for(const [municipality,levies,baseBills,rows] of [
+   ["standard",[8670000,5780000],[48000,32000],[
+    [3000,0,0,"return",[570,380],[0,0],[48000,32000],0],
+    [3000,0,0,"one-stop",[570,380],[31,21],[47900,31900],200],
+    [20000,0,0,"return",[10249,6833],[0,0],[48000,31900],100],
+    [20000,0,0,"one-stop",[10249,6833],[552,368],[47400,31600],1000],
+    [36000,30000,33000,"return",[19359,12906],[0,0],[47500,31600],900],
+    [36000,30000,30000,"one-stop",[19359,12906],[1042,695],[46900,31300],1800],
+    [50000,50000,50000,"one-stop",[20220,13480],[1043,696],[35400,23600],21000]
+   ]],
+   ["designated",[11560000,2890000],[64000,16000],[
+    [3000,0,0,"return",[760,190],[0,0],[64000,16000],0],
+    [3000,0,0,"one-stop",[760,190],[41,11],[63900,15900],200],
+    [20000,0,0,"return",[13665,3417],[0,0],[64000,15900],100],
+    [20000,0,0,"one-stop",[13665,3417],[736,184],[63200,15800],1000],
+    [36000,30000,33000,"return",[25812,6453],[0,0],[63300,15800],900],
+    [36000,30000,30000,"one-stop",[25812,6453],[1389,348],[62600,15600],1800],
+    [50000,50000,50000,"one-stop",[26960,6740],[1391,348],[47200,11800],21000]
+   ]]
+  ]){
+   const b={year,incomeYen:1900000,familyCount:3,municipality,specialRatePercent:5,donationYen:3000,
+    housingBeforeYen:0,housingAfterYen:0,cityAdjusted100:levies[0],prefectureAdjusted100:levies[1],filing:"return"};
+   for(const [donationYen,housingBeforeYen,housingAfterYen,filing,ordinary,extra,bills,saving] of rows){
+    const out=relief.compareCredits({...b,donationYen,housingBeforeYen,housingAfterYen,filing});
+    assert.equal(out.status,"COMPONENTS_ONLY");assert.equal(out.donationLimitYen,null);
+    const c=out.calculation;
+    assert.deepEqual(c.parts.map(p=>p.ordinaryDonationCreditYen),ordinary);
+    assert.deepEqual(c.parts.map(p=>p.applicationSpecialCreditYen),extra);
+    assert.deepEqual([c.before.cityYen,c.before.prefectureYen],baseBills);
+    assert.deepEqual([c.after.cityYen,c.after.prefectureYen,c.residentSavingYen],[...bills,saving]);
+    assert.equal(c.upstreamHousingCertified,false);combined++;
+   }
+   for(const patch of [{specialRatePercent:6},{donationYen:1999},{donationYen:570001},{housingAfterYen:136501},
+    {filing:"one-stop",housingAfterYen:1},{cityAdjusted100:0.5},{incomeYen:1820000},{extra:true}]){
+    const out=relief.compareCredits({...b,...patch});assert.equal(out.status,"HOLD");assert.equal(out.calculation,null);assert.equal(out.donationLimitYen,null);rejections++;
+   }
+  }
+  // Product mortgage path: 166-yen excess donation, separate rounding
+  // reduces city bill by an additional 100 yen versus old pooled ceiling.
+  // Housing credit wholly national (10,000 yen), so adjusted local levies
+  // 224,700/149,800 are unchanged before the donation.
+  const tax={year,salaryIncome:5200000,socialInsurance:1000000,municipality:"standard",spouse:null,relatives:[],
+   conditions:"salary-basic-social-family-only-reviewed"};
+  const housing={moveInYear:2024,capClass:"standard5",possibleYen:10000,eligibilityReviewed:true};
+  const out=familyTax.mortgageTrial({tax,housing,filing:"one-stop"},2166);
+  assert.equal(out.status,"COMPONENTS_ONLY");assert.equal(out.donationLimitYen,null);
+  assert.deepEqual(out.calculation.localBefore,[224700,149800]);
+  assert.deepEqual(out.calculation.localAfter.map(p=>[p.assessedYen,p.ordinaryDonationCreditYen,p.applicationSpecialCreditYen]),[[224500,80,21],[149700,53,14]]);
+  assert.equal(out.calculation.selfPayYen,1866);product++;
+ }
+ assert.deepEqual([published,combined,rejections,product],[2,28,32,2]);
+ console.log(JSON.stringify({schema:"web-relief-credit-bridge-and-rounding/v1",published,combined,rejections,product,upstreamHousingCertified:false,reliefUiIntegrated:false,release:"HOLD"}));
 }

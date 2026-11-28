@@ -378,11 +378,17 @@
    // The special donation cap itself uses the pre-housing adjusted levy.
    const special=Math.min(p.beforeRounding100*1000,base*c.specialDenominator*p.share);
    const regular=base*p.share*10000;
-   const extra=oneStop?Math.floor(special*(90000-c.specialDenominator)/c.specialDenominator):0;
-   const donationCredit=Math.floor((regular+special+extra+499999)/500000);
+   // Oamishirasato STEP4/5 and Minato: ceil the combined basic+special,
+   // then separately ceil application-special from the UNROUNDED special.
+   // https://www.city.oamishirasato.lg.jp/faq/faq_detail.php?frmId=30
+   // https://www.city.minato.tokyo.jp/kazei/kihukinzeigakukoujo.html
+   const ordinaryCredit=Math.floor((regular+special+499999)/500000);
+   const den=500000n*BigInt(c.specialDenominator);
+   const extraCredit=oneStop?Number((BigInt(special)*BigInt(90000-c.specialDenominator)+den-1n)/den):0;
+   const donationCredit=ordinaryCredit+extraCredit;
    const housing100=n.residentHousingYen*p.share*20;
    const assessed=Math.max(0,Math.floor((p.beforeRounding100-housing100-donationCredit*100)/10000))*100;
-   return {assessedYen:assessed,donationCreditYen:donationCredit};
+   return {assessedYen:assessed,donationCreditYen:donationCredit,ordinaryDonationCreditYen:ordinaryCredit,applicationSpecialCreditYen:extraCredit};
   }
   const before=nationalHousing(c.nationalTaxableYen);
   if(!before)return hold("住宅ローン控除前の所得税額が0円の条件は個別確認が必要です");

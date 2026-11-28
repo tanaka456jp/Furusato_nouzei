@@ -6,7 +6,7 @@ on:
       - 'gas/Engine.gs'
       - '.github/workflows/public-web-review.yml'
   # Trusted branch push only; never execute physical PC jobs for PRs.
-  # Acceptance checkpoint: post-credit comparison research and visible mixed raster evidence; product HOLD.
+  # Acceptance checkpoint: separate application-special rounding and relief credit bridge; product HOLD.
   push:
     branches: ['feature/public-web-ads-20261109']
     paths: ['.github/workflows/public-web-review.yml']

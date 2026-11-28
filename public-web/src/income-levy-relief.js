@@ -67,4 +67,41 @@ function compare(input){
   finalRoundingModel:"exact-rational-then-floor-each-100-research",
   intermediateRoundingCertified:false,upstreamCreditsCertified:false}};
 }
-module.exports=Object.freeze({calculate,compare});
+// Research bridge: accept reviewed adjusted levy and computed housing
+// amounts, derive ordinary and application-special credits separately,
+// then compare both relief-adjusted states. No source-slip inputs or UI.
+// Upstream housing calculation and its rounding remain separate gates.
+function compareCredits(input){
+ const keys=["year","incomeYen","familyCount","municipality","specialRatePercent","donationYen","housingBeforeYen","housingAfterYen","cityAdjusted100","prefectureAdjusted100","filing"];
+ if(!input||typeof input!=="object"||Array.isArray(input)||Object.keys(input).length!==keys.length||
+   !keys.every(k=>Object.prototype.hasOwnProperty.call(input,k))||
+   ![2025,2026].includes(input.year)||!valid(input.incomeYen,18050000)||!valid(input.familyCount,31)||
+   !["standard","designated"].includes(input.municipality)||![5,10,20,23,33].includes(input.specialRatePercent)||
+   !valid(input.donationYen,Math.floor(input.incomeYen*3/10))||input.donationYen<2000||
+   !valid(input.housingBeforeYen,136500)||!valid(input.housingAfterYen,136500)||
+   !valid(input.cityAdjusted100,180500000)||!valid(input.prefectureAdjusted100,180500000)||
+   !["return","one-stop"].includes(input.filing)||
+   (input.filing==="one-stop"&&input.housingBeforeYen!==input.housingAfterYen))return hold();
+ const ratio=BigInt(90000-input.specialRatePercent*1021),unit=500000n;
+ const shares=input.municipality==="standard"?[3n,2n]:[4n,1n];
+ const levies=[BigInt(input.cityAdjusted100),BigInt(input.prefectureAdjusted100)];
+ const base=BigInt(input.donationYen-2000);
+ const ceil=(n,d)=>(n+d-1n)/d,min=(a,b)=>a<b?a:b,max0=n=>n<0n?0n:n;
+ const parts=shares.map((s,i)=>{
+  const special=min(base*s*ratio,levies[i]*1000n);
+  const ordinary=ceil(base*s*10000n+special,unit);
+  const extra=input.filing==="one-stop"?ceil(special*(90000n-ratio),unit*ratio):0n;
+  return {ordinaryDonationCreditYen:Number(ordinary),applicationSpecialCreditYen:Number(extra),
+   before100:Number(max0(levies[i]-BigInt(input.housingBeforeYen)*s*20n)),
+   after100:Number(max0(levies[i]-BigInt(input.housingAfterYen)*s*20n-ordinary*100n))};
+ });
+ const state=(after)=>({cityAfterCredits100:after?parts[0].after100:parts[0].before100,
+  prefectureAfterCredits100:after?parts[1].after100:parts[1].before100,
+  cityOneStop100:after?parts[0].applicationSpecialCreditYen*100:0,
+  prefectureOneStop100:after?parts[1].applicationSpecialCreditYen*100:0});
+ const out=compare({year:input.year,incomeYen:input.incomeYen,familyCount:input.familyCount,
+  filing:input.filing,before:state(false),after:state(true)});
+ if(out.status!=="COMPONENTS_ONLY")return out;
+ return {...out,calculation:{...out.calculation,parts,upstreamHousingCertified:false}};
+}
+module.exports=Object.freeze({calculate,compare,compareCredits});
