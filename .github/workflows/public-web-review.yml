@@ -6,7 +6,7 @@ on:
       - 'gas/Engine.gs'
       - '.github/workflows/public-web-review.yml'
   # Trusted branch push only; never execute physical PC jobs for PRs.
-  # Acceptance checkpoint: annual scope regression fix and consolidated tax audit; product HOLD.
+  # Acceptance checkpoint: synthetic mobile package integrity and current physical QA instructions; product HOLD.
   push:
     branches: ['feature/public-web-ads-20261109']
     paths: ['.github/workflows/public-web-review.yml']
@@ -132,6 +132,10 @@ jobs:
           if-no-files-found: error
           retention-days: 1
           compression-level: 0
+      - name: Create and verify synthetic mobile package manifest
+        run: |
+          node public-web/scripts/verify-mobile-package.cjs --create "$GITHUB_SHA" "$GITHUB_RUN_ID"
+          node public-web/scripts/verify-mobile-package.cjs --verify
       - name: Upload mobile local QA package (SYNTHETIC ONLY; NO DEPLOY)
         uses: actions/upload-artifact@v4
         with:
@@ -139,6 +143,8 @@ jobs:
           path: |
             public-web/dist/
             public-web/scripts/serve-review.cjs
+            public-web/scripts/verify-mobile-package.cjs
+            public-web/MOBILE_QA_MANIFEST.json
             public-web/docs/MOBILE_QA.md
             public-web/docs/RELEASE_ACCEPTANCE.md
             public-web/qa-fixtures/01-electronic-not-slip.pdf
