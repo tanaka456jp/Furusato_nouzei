@@ -206,7 +206,17 @@ async function main(){
         return set(parameters,...rest);
       };
       worker.recognize=async function(image,...rest){
-        const result=await recognize(image,...rest);
+        const pending=recognize(image,...rest);
+        // Test-only gate around a REAL English recognition. Do not alter
+        // OCR results or the production worker; let cancellation occur
+        // while a recognition promise is outstanding.
+        if(args[0]==="eng"&&window.__pauseSyntheticEnglish){
+          window.__pauseSyntheticEnglish=false;
+          window.__syntheticEnglishStarted=true;
+          pending.catch(()=>{});
+          await new Promise(resolve=>{window.__releaseSyntheticEnglish=resolve;});
+        }
+        const result=await pending;
         const data=result?.data;
         const lines=[];
         for(const block of data?.blocks||[])
@@ -412,6 +422,102 @@ async function main(){
   assert.equal(await page.locator("#calculator").getAttribute("data-ocr-year"),"2025");
   assert.equal(await field("year").inputValue(),"2026");
   console.log("BILINGUAL_PRODUCT_PREVIOUS_YEAR_REVIEW_PASS");
+  // Format diversity: never count HOLD as recognition success. A wrong
+  // transferable candidate fails, even for an exploratory fixture.
+  const formatResults=[];
+  const priorTruth={salaryGross:"5000000",salaryIncomeReference:"3560000",deductionsReference:"1430000",socialInsurance:"750000"};
+  for(const [name,year,truth] of [
+    ["15-bilingual-jpeg.jpg",2026,expected],
+    ["16-bilingual-low-contrast.png",2026,expected],
+    ["17-bilingual-raster.pdf",2026,expected],
+    ["19-bilingual-previous-year.png",2025,priorTruth]
+  ]){
+    await page.locator('#calculator button[type="reset"]').click();
+    await field("year").selectOption("2026");
+    await page.locator("#slipFile").setInputFiles(path.join(fixtures,name));
+    const started=Date.now();
+    await page.locator("#slipScan").click();
+    await page.waitForFunction(()=>!document.getElementById("slipScan").disabled&&!document.getElementById("slipReview").hidden,null,{timeout:90000});
+    const eligible=await page.locator("#slipTransfer").isEnabled();
+    await save(name.slice(0,2)+"-format-review",page.locator(".ocr-panel"));
+    assert.equal(await page.locator("#slipConfirm").isChecked(),false);
+    assert.equal(await page.locator("#result").isVisible(),false);
+    for(const key of Object.keys(truth))assert.equal(await field(key).inputValue(),"");
+    if(eligible){
+      await page.locator("#slipTransfer").click();
+      for(const key of Object.keys(truth))assert.equal(await field(key).inputValue(),"");
+      await page.locator("#slipConfirm").check();
+      await page.locator("#slipTransfer").click();
+      for(const [key,value] of Object.entries(truth))assert.equal(await field(key).inputValue(),value,"Wrong format candidate "+name+" "+key);
+      assert.equal(await page.locator("#calculator").getAttribute("data-ocr-year"),String(year));
+      if(year===2026){
+        await field("municipality").selectOption("standard");
+        await field("acknowledgedExclusions").check();
+        await page.locator('#calculator button[type="submit"]').click();
+        assert.equal(await page.locator("#result .amount").textContent(),"109,000円");
+      }
+    }else{
+      assert.equal(await page.locator("#slipConfirm").isEnabled(),false);
+    }
+    formatResults.push({fixture:name,status:eligible?"EXACT_CANDIDATE":"HOLD",elapsedMs:Date.now()-started});
+    console.log("SYNTHETIC_FORMAT_RESULT "+name+" "+formatResults.at(-1).status);
+    fs.writeFileSync(path.join(out,"synthetic-format-results.json"),JSON.stringify({scope:"synthetic only",results:formatResults},null,2));
+  }
+  // Mixed raster PDF: both rows are processed independently; no result
+  // before review, no incorrect value in the positive row or negative CSV.
+  await page.locator('#calculator button[type="reset"]').click();
+  await field("year").selectOption("2026");
+  await page.locator("#batchPdf").setInputFiles(path.join(fixtures,"18-bilingual-raster-mixed.pdf"));
+  await page.locator("#batchScan").click();
+  await page.waitForFunction(()=>!document.getElementById("batchScan").disabled&&document.querySelectorAll("#batchRows tr").length===2,null,{timeout:120000});
+  const rows=page.locator("#batchRows tr");
+  await page.locator("#batchCalculate").click();
+  assert.deepEqual(await page.locator("#batchRows .batch-result").allTextContents(),["—","—"]);
+  assert.equal(await rows.nth(1).locator('[data-field="confirmed"]').isEnabled(),false);
+  const rasterBatchEligible=await rows.first().locator('[data-field="confirmed"]').isEnabled();
+  if(rasterBatchEligible){
+    for(const [key,value] of Object.entries(expected))assert.equal(await rows.first().locator('[data-field="'+key+'"]').inputValue(),value);
+    assert.equal(await rows.first().locator('[data-field="sourceYear"]').inputValue(),"2026");
+    await rows.first().locator('[data-field="municipality"]').selectOption("standard");
+    await rows.first().locator('[data-field="confirmed"]').check();
+    await rows.first().locator('[data-field="noExclusions"]').check();
+    await page.locator("#batchCalculate").click();
+    assert.deepEqual(await page.locator("#batchRows .batch-result").allTextContents(),["109,000円","—"]);
+  }
+  const mixedPending=page.waitForEvent("download");
+  await page.locator("#batchDownload").click();
+  const mixedDownload=await mixedPending;
+  const mixedLines=fs.readFileSync(await mixedDownload.path(),"utf8").trim().split(/\r?\n/).map(line=>line.split('","').map(value=>value.replace(/^"|"$/g,"")));
+  assert.equal(mixedLines.length,3);
+  assert.equal(mixedLines[1][11],rasterBatchEligible?"109000":"");
+  assert.equal(mixedLines[2][11],"");assert.equal(mixedLines[2][12],"HOLD");
+  await mixedDownload.delete();
+  await save("18-raster-batch",page.locator("#batchStatus"));
+  await page.locator("#batchClear").click();
+  console.log("SYNTHETIC_RASTER_BATCH "+(rasterBatchEligible?"EXACT_CANDIDATE":"HOLD")+" NEGATIVE_HOLD");
+  // Cancel during the English worker recognition itself, then prove a
+  // replacement slip is the only source eligible for manual transfer.
+  await page.locator('#calculator button[type="reset"]').click();
+  await field("year").selectOption("2026");
+  await page.locator("#slipFile").setInputFiles(path.join(fixtures,"08-positive-image.png"));
+  await page.evaluate(()=>{window.__syntheticEnglishStarted=false;window.__pauseSyntheticEnglish=true;});
+  await page.locator("#slipScan").click();
+  await page.waitForFunction(()=>window.__syntheticEnglishStarted===true,null,{timeout:90000});
+  await page.locator("#slipFile").setInputFiles(path.join(fixtures,"06-positive-electronic.pdf"));
+  await page.evaluate(()=>{window.__releaseSyntheticEnglish?.();window.__releaseSyntheticEnglish=null;});
+  await page.waitForFunction(()=>!document.getElementById("slipScan").disabled,null,{timeout:90000});
+  assert.equal(await page.locator("#slipTransfer").isEnabled(),false);
+  assert.equal(await page.locator("#slipConfirm").isEnabled(),false);
+  for(const key of Object.keys(expected))assert.equal(await field(key).inputValue(),"");
+  await page.locator("#slipScan").click();
+  await page.waitForFunction(()=>!document.getElementById("slipScan").disabled&&!document.getElementById("slipReview").hidden,null,{timeout:90000});
+  assert.equal(await page.locator("#slipTransfer").isEnabled(),true);
+  assert.equal(await page.locator("#slipConfirm").isChecked(),false);
+  await page.locator("#slipConfirm").check();
+  await page.locator("#slipTransfer").click();
+  for(const [key,value] of Object.entries(expected))assert.equal(await field(key).inputValue(),value);
+  await save("english-cancel-recovery",page.locator(".ocr-panel"));
+  console.log("SYNTHETIC_ENGLISH_CANCEL_AND_REPLACEMENT_PASS");
   // 09 has two exact full-page readings on the previous physical Edge
   // baseline. Require recovery of that positive fixture, without weakening
   // the third-read check. Preserve traces/screenshots even if this fails.
@@ -425,7 +531,7 @@ async function main(){
   assert.deepEqual(external,[]);
   fs.writeFileSync(path.join(out,"result.json"),JSON.stringify({
    status:"PASS",scope:"synthetic headless Edge, not interactive desktop or mobile device",
-   sha:process.env.GITHUB_SHA||null,os:os.release(),browser:browser.version(),checks,repeatReads,batch20:{elapsedMs:batchElapsedMs,cancelled,holdRows:20,recovered:true},positiveImageResults,externalRequests:external.length
+   sha:process.env.GITHUB_SHA||null,os:os.release(),browser:browser.version(),checks,repeatReads,batch20:{elapsedMs:batchElapsedMs,cancelled,holdRows:20,recovered:true},positiveImageResults,formatResults,rasterBatchEligible,englishCancelRecovery:true,externalRequests:external.length
   },null,2));
   console.log("WINDOWS_EDGE_SYNTHETIC_SCREENSHOT_ACCEPTANCE_PASS");
   await context.close();

@@ -597,7 +597,10 @@
       }
       if(!compared.eligibleForManualTransfer&&bilingualA?.status==="READY"){
         const bilingualB=regions.planBilingual(b?.data?.blocks,enhanced.width,enhanced.height,window.FurusatoSlipReview.reviewText(b?.data?.text));
-        if(!regions.agreeBilingual(bilingualA,bilingualB))return guarded(compared);
+        if(!regions.agreeBilingual(bilingualA,bilingualB)){
+          compared.reasons=[...compared.reasons,"BILINGUAL_GEOMETRY_DISAGREEMENT"];
+          return guarded(compared);
+        }
         try{
           // Terminate the Japanese worker before loading the English
           // model; never keep two WASM engines active. Stale sources veto.
@@ -631,7 +634,8 @@
           }
           const result=regions.assessBilingual(bilingualA,bilingualB,reads[0],reads[1]);
           if(result.eligibleForManualTransfer)return guarded(result);
-        }catch(_){ensureCurrent();/* model or crop failure remains HOLD */}
+          compared.reasons=[...compared.reasons,"BILINGUAL_AMOUNT_UNVERIFIED"];
+        }catch(_){ensureCurrent();compared.reasons=[...compared.reasons,"BILINGUAL_RECHECK_FAILED"];/* model or crop failure remains HOLD */}
         return guarded(compared);
       }
       // Geometry is diagnostic unless all exact heading/label/amount
@@ -931,6 +935,9 @@
         INCOMPLETE_OCR:"必要な項目をすべて確認できません",
         PDF_TEXT_OR_YEAR_CONFLICT:"PDFの文字情報または所得年に矛盾があります",
         FIELD_RECHECK_INCOMPLETE:"金額欄の部分再読み取りを完了できません",
+        BILINGUAL_GEOMETRY_DISAGREEMENT:"金額欄の位置が2回の読み取りで一致しません",
+        BILINGUAL_AMOUNT_UNVERIFIED:"金額欄の再読み取りで完全一致または必要な信頼度を確認できません",
+        BILINGUAL_RECHECK_FAILED:"金額欄の再読み取りを完了できません",
         DESKEW_SOURCE_DISAGREEMENT:"傾き補正前後の読み取り結果が一致しません"
       };
       const fields=window.FurusatoSlipReview.FIELDS;
@@ -988,9 +995,9 @@
       }
       return;
     }
-    if(r.schema==="furusato-slip-grid-review/v1"){
+    if(r.schema==="furusato-slip-grid-review/v1"||r.schema==="furusato-slip-bilingual-review/v1"){
       const note=document.createElement("p");
-      note.textContent="画像の部分読取による候補です。追加控除・扶養等は未読取です。原票の年分・4項目・その他の控除を必ず確認してください。";
+      note.textContent=(r.schema==="furusato-slip-bilingual-review/v1"?"金額欄を英数字用OCRで再読取した候補です。":"画像の部分読取による候補です。")+"追加控除・扶養等は未読取です。原票の年分・4項目・その他の控除を必ず確認してください。";
       report.appendChild(note);
     }
     var ul=document.createElement("ul");

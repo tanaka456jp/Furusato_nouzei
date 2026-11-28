@@ -15,11 +15,11 @@ MARK = "架空の試験用資料　提出・申告には使用不可"
 TITLE = "給与所得の源泉徴収票"
 YEAR = "令和8年分"
 
-def make_page(doc, font, bad=False, amounts=None, year=YEAR, duplicate_year=False):
+def make_page(doc, font, bad=False, amounts=None, year=YEAR, duplicate_year=False, shade=0):
     p = doc.new_page(width=595, height=842)
     p.insert_font(fontname="jpn", fontfile=str(font))
     def txt(x, y, text, size=14):
-        p.insert_text((x, y), text, fontname="jpn", fontsize=size)
+        p.insert_text((x, y), text, fontname="jpn", fontsize=size, color=(shade, shade, shade))
     txt(42, 42, MARK, 16)
     txt(42, 93, year, 16)
     if duplicate_year:
@@ -49,7 +49,9 @@ def main():
         ("13-bilingual-duplicate-label.png", AMOUNTS, YEAR, True, False),
         ("14-bilingual-conflicting-year.png", AMOUNTS, YEAR, False, True),
     ]
-    if any((dest / n).exists() for n in names + [v[0] for v in research]):
+    extra = ["15-bilingual-jpeg.jpg", "16-bilingual-low-contrast.png", "17-bilingual-raster.pdf",
+             "18-bilingual-raster-mixed.pdf", "19-bilingual-previous-year.png"]
+    if any((dest / n).exists() for n in names + [v[0] for v in research] + extra):
         raise ValueError("Refuse to overwrite existing QA files")
     with tempfile.TemporaryDirectory() as tmp:
         font = Path(tmp) / "subset.otf"
@@ -85,9 +87,26 @@ def main():
             with fitz.open() as doc:
                 make_page(doc, font, bad=duplicate_label, amounts=amounts, year=year, duplicate_year=duplicate_year)
                 doc[0].get_pixmap(matrix=fitz.Matrix(2,2)).save(dest/name)
-    for name in names + [v[0] for v in research]:
+        # Different image encoding/contrast and a tax-consistent prior-year case.
+        with fitz.open(dest/names[0]) as doc:
+            doc[0].get_pixmap(matrix=fitz.Matrix(1.7,1.7)).save(dest/extra[0], jpg_quality=75)
+        with fitz.open() as doc:
+            make_page(doc, font, shade=.30)
+            doc[0].get_pixmap(matrix=fitz.Matrix(2,2)).save(dest/extra[1])
+        with fitz.open() as doc:
+            make_page(doc, font, amounts=["5,000,000","3,560,000","1,430,000","750,000"], year="令和7年分")
+            doc[0].get_pixmap(matrix=fitz.Matrix(2,2)).save(dest/extra[4])
+        # Real image-only PDFs: no hidden or searchable text layer.
+        for filename, images in [(extra[2], [names[2]]), (extra[3], [names[2], "11-bilingual-printed-period.png"])]:
+            with fitz.open() as doc:
+                for image in images:
+                    page = doc.new_page(width=595, height=842)
+                    page.insert_image(page.rect, filename=str(dest/image))
+                    assert not page.get_text().strip()
+                doc.save(dest/filename, garbage=4, deflate=True)
+    for name in names + [v[0] for v in research] + extra:
         assert 100 < (dest/name).stat().st_size < 8*1024*1024
-    print("MOBILE_POSITIVE_FIXTURES_4_CREATED; fictional only")
+    print("MOBILE_POSITIVE_FIXTURES_AND_BILINGUAL_FORMATS_CREATED; fictional only")
 
 if __name__ == "__main__":
     main()
