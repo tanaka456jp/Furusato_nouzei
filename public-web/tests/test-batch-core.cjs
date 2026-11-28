@@ -337,6 +337,35 @@ attest(familyRow);runFamily(familyRow);assert.equal(familyRow.donationLimitYen,5
 batch.edit(familyRow,"trialInput","120000");runFamily(familyRow);
 assert.equal(familyRow.comparison.trial.donation,120000);
 assert.equal(familyRow.familyReviewed,true);
+// Source-reconciled multi-row product: same synthetic family and
+// annual income boundary as the manual form, including CSV fail-closed.
+{
+ let cases=0;
+ for(const year of [2025,2026])for(const municipality of ["standard","designated"])for(const filing of ["one-stop","return"]){
+  const make=gross=>{
+   const row=fixture(1,{year,eligibleForManualTransfer:true,sourceIndicators:{hasDependents:true},
+    candidates:{salaryGross:gross,salaryIncomeReference:win.FurusatoEngine.salaryIncome(gross,year),socialInsurance:0,
+     deductionsReference:year===2025?880000:1040000}},year);
+   row.municipality=municipality;row.filing=filing;
+   for(const key of ["familySourceText","familyTargetText"])batch.edit(row,key,"R,5,0,0\nR,8,0,0\nR,12,0,0");
+   attest(row);return row;
+  };
+  const positive=make(3000000);runFamily(positive);assert.equal(batch.canOutputEstimate(positive),true,positive.reason);
+  const held=make(2800000);runFamily(held);assert.equal(held.status,"HOLD");
+  assert.match(held.reason,/住民税所得割の非課税限度額付近の調整措置/);
+  assert.equal(held.donationLimitYen,null);assert.equal(batch.canOutputEstimate(held),false);
+  assert.equal(columns(held)[12],"HOLD");
+  for(const i of [7,11,15,16,17,18,20,21,22])assert.equal(columns(held)[i],"");
+  // A previously accepted row with altered salary cannot export old values.
+  positive.candidates.salaryGross=2800000;
+  positive.candidates.salaryIncomeReference=win.FurusatoEngine.salaryIncome(2800000,year);
+  assert.equal(batch.canOutputEstimate(positive),false);
+  for(const i of [7,11,15,16,17,18,20,21,22])assert.equal(columns(positive)[i],"");
+  cases++;
+ }
+ assert.equal(cases,8);
+ console.log("WEB_CLIFF_BATCH_CSV_8_PASS");
+}
 // Insurance and family source-year audit: the same premiums receive
 // different national deductions in 2025 and 2026.
 const insuredReview={...familyReview,sourceIndicators:{hasDependents:true,hasLifeInsurance:true,hasEarthquakeInsurance:true},

@@ -551,6 +551,35 @@ field("familyReviewed").checked=true;field("acknowledgedExclusions").checked=tru
 rawSubmit();assert.equal(view.className,"result hold");
 form.reset();assert.equal(document.querySelectorAll("#familyRelatives .family-relative").length,0);
 assert.equal(field("familySpouseAge").value,"");assert.equal(field("familyReviewed").checked,false);
+// Real single-form regression for the ordinary income-levy cliff.
+let cliffSingleCases=0;
+for(const year of [2025,2026])for(const municipality of ["standard","designated"])for(const filing of ["one-stop","return"]){
+ form.reset();
+ for(const [k,v] of Object.entries({year:String(year),municipality,filing,salaryGross:"3000000",socialInsurance:"0"}))field(k).value=v;
+ field("hasDependents").checked=true;
+ for(const age of [5,8,12]){
+  document.getElementById("familyAdd").click();
+  const rows=document.querySelectorAll("#familyRelatives .family-relative"),last=rows[rows.length-1];
+  last.querySelector('[data-family="age"]').value=String(age);
+  last.querySelector('[data-family="income"]').value="0";
+ }
+ field("familyReviewed").checked=true;field("acknowledgedExclusions").checked=true;
+ rawSubmit();assert.equal(view.className,"result",view.textContent);assert.ok(view.querySelector(".amount"));
+ // Salary 2.8m -> income 1.88m, above exemption 1.82m but inside
+ // relief range. A stale positive result must not remain printable.
+ field("salaryGross").value="2800000";
+ dom.window.dispatchEvent(new Event("beforeprint"));
+ assert.equal(view.className,"result hold");assert.equal(view.querySelector(".amount"),null);
+ rawSubmit();assert.equal(view.className,"result hold");
+ assert.match(view.textContent,/住民税所得割の非課税限度額付近の調整措置/);
+ assert.equal(view.querySelector(".amount"),null);assert.equal(view.querySelector(".filing-trial"),null);
+ field("salaryGross").value="3000000";rawSubmit();
+ assert.equal(view.className,"result",view.textContent);assert.ok(view.querySelector(".amount"));
+ cliffSingleCases++;
+}
+assert.equal(cliffSingleCases,8);
+console.log("WEB_CLIFF_SINGLE_FORM_8_PASS");
+form.reset();
 // Synthetic transferred original (2025) and separately entered forecast (2026).
 field("year").value="2026";field("municipality").value="standard";
 field("salaryGross").value="6500000";field("socialInsurance").value="1340000";
