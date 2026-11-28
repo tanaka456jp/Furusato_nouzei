@@ -433,7 +433,8 @@ async function main(){
     ["16-bilingual-low-contrast.png",2026,expected],
     ["17-bilingual-raster.pdf",2026,expected],
     ["19-bilingual-previous-year.png",2025,priorTruth],
-    ["24-raster-prior-year.pdf",2025,priorTruth]
+    ["24-raster-prior-year.pdf",2025,priorTruth],
+    ["29-jpeg-prior-year.jpg",2025,priorTruth]
   ]){
     await page.locator('#calculator button[type="reset"]').click();
     await field("year").selectOption("2026");
@@ -449,6 +450,10 @@ async function main(){
     if(name==="17-bilingual-raster.pdf"||name==="24-raster-prior-year.pdf"){
       assert.ok(formatTrace.some(t=>t.kind==="recognize"&&t.width===1190&&t.height===1684),"Fixed 2x PDF rendering not observed");
       assert.equal(eligible,true,"Previously recovered raster must work in product: "+name);
+    }
+    if(name==="15-bilingual-jpeg.jpg"||name==="29-jpeg-prior-year.jpg"){
+      assert.ok(formatTrace.some(t=>t.kind==="recognize"&&t.width===1194&&t.height===1690),"Fixed JPEG resampling not observed");
+      assert.equal(eligible,true,"Previously recovered JPEG must work in product: "+name);
     }
     assert.equal(await page.locator("#slipConfirm").isChecked(),false);
     assert.equal(await page.locator("#result").isVisible(),false);
@@ -499,9 +504,10 @@ async function main(){
     console.log("SYNTHETIC_FORMAT_RESULT "+name+" "+formatResults.at(-1).status);
     fs.writeFileSync(path.join(out,"synthetic-format-results.json"),JSON.stringify({scope:"synthetic only",results:formatResults},null,2));
   }
-  // Exercise all four 2x PDF negatives through the production reader,
+  // Exercise all eight PDF/JPEG negatives through the production reader,
   // not just the experimental region assessment.
-  for(const name of ["20-raster-period.pdf","21-raster-minus.pdf","22-raster-duplicate.pdf","23-raster-year-conflict.pdf"]){
+  for(const name of ["20-raster-period.pdf","21-raster-minus.pdf","22-raster-duplicate.pdf","23-raster-year-conflict.pdf",
+    "25-jpeg-period.jpg","26-jpeg-minus.jpg","27-jpeg-duplicate.jpg","28-jpeg-year-conflict.jpg"]){
     await page.locator('#calculator button[type="reset"]').click();
     await field("year").selectOption("2026");
     await page.locator("#slipFile").setInputFiles(path.join(fixtures,name));
@@ -511,8 +517,8 @@ async function main(){
     assert.equal(await page.locator("#slipConfirm").isEnabled(),false,name);
     assert.equal(await page.locator("#result").isVisible(),false,name);
     for(const key of Object.keys(expected))assert.equal(await field(key).inputValue(),"",name);
-    await save(name.slice(0,2)+"-raster-product-hold",page.locator(".ocr-panel"));
-    console.log("SYNTHETIC_RASTER_PRODUCT_NEGATIVE_HOLD "+name);
+    await save(name.slice(0,2)+"-"+(name.endsWith(".jpg")?"jpeg":"raster")+"-product-hold",page.locator(".ocr-panel"));
+    console.log((name.endsWith(".jpg")?"SYNTHETIC_JPEG_PRODUCT_NEGATIVE_HOLD ":"SYNTHETIC_RASTER_PRODUCT_NEGATIVE_HOLD ")+name);
   }
   // Test-only candidate configurations. Do not substitute a research
   // result for the ordinary product decision, or tune by expected amounts.

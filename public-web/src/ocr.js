@@ -236,10 +236,15 @@
       show("所得年が変更されました。以前の原票からの読取結果は使えません。新規入力または原票の再確認が必要です。");
     }
   });
-  function safeCanvas(source,width,height){
-    var factor=Math.min(1,2600/Math.max(width,height));
-    var w=Math.max(1,Math.floor(width*factor));
-    var h=Math.max(1,Math.floor(height*factor));
+  function safeCanvas(source,width,height,mime){
+    // Fixed preprocessing selected by decoded format and dimensions,
+    // never by recognition results. Limit upsampling to already-valid
+    // small JPEGs; do not rescue below-minimum resolution or enlarge
+    // large photos. All other formats retain their previous sizing.
+    var resample=mime==="image/jpeg"&&width>=750&&height>=400&&Math.max(width,height)<=1600;
+    var factor=Math.min(resample?1.18:1,2600/Math.max(width,height));
+    var w=Math.max(1,resample?Math.round(width*factor):Math.floor(width*factor));
+    var h=Math.max(1,resample?Math.round(height*factor):Math.floor(height*factor));
     if(w<750||h<400||w*h>10000000)throw Error("IMAGE_RESOLUTION_UNSUPPORTED");
     var canvas=document.createElement("canvas");
     canvas.width=w;canvas.height=h;
@@ -247,6 +252,7 @@
       var context=canvas.getContext("2d",{willReadFrequently:true});
       if(!context)throw Error("画像処理に対応していません。");
       context.fillStyle="#fff";context.fillRect(0,0,w,h);
+      if(resample){context.imageSmoothingEnabled=true;context.imageSmoothingQuality="high";}
       context.drawImage(source,0,0,w,h);
       return canvas;
     }catch(error){
@@ -298,7 +304,7 @@
           if(window.FurusatoImageHeader.verifyDecodedSize(
               imageInfo,image.width,image.height).status!=="ACCEPT")
             throw Error("IMAGE_HEADER_DECODED_DIMENSION_HOLD");
-          return safeCanvas(image,image.width,image.height);
+          return safeCanvas(image,image.width,image.height,file.type);
         }finally{if(typeof image.close==="function")image.close();}
       }
     }
@@ -313,7 +319,7 @@
       if(window.FurusatoImageHeader.verifyDecodedSize(
           imageInfo,image.naturalWidth,image.naturalHeight).status!=="ACCEPT")
         throw Error("IMAGE_HEADER_DECODED_DIMENSION_HOLD");
-      return safeCanvas(image,image.naturalWidth,image.naturalHeight);
+      return safeCanvas(image,image.naturalWidth,image.naturalHeight,file.type);
     }finally{URL.revokeObjectURL(url);}
   }
   async function openPdf(file,isStale,maxPages){

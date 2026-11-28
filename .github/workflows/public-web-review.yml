@@ -329,7 +329,7 @@ jobs:
           FURUSATO_BROWSER_CHANNEL: msedge
           FURUSATO_POSITIVE_FIXTURES: '1'
         run: node public-web/tests/test-ocr-browser-smoke.cjs
-      - name: Capture layouts, raster 2x product and JPEG negative controls
+      - name: Capture layouts, raster and bounded JPEG product acceptance
         env:
           FURUSATO_SCREENSHOT_DIR: ${{ runner.temp }}/furusato-web-synthetic-${{ github.run_id }}-${{ github.run_attempt }}
           FURUSATO_ENGLISH_RESEARCH_MODEL: ${{ runner.temp }}/furusato-eng-research-${{ github.run_id }}-${{ github.run_attempt }}/eng.traineddata.gz
