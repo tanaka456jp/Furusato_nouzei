@@ -22,6 +22,11 @@ if not exist "%~dp0TaxLawUpdater.bas" (
   >>"%LAUNCHER%" echo ERROR: TaxLawUpdater.bas missing.
   goto :fail
 )
+if not exist "%~dp0BatchWithholding.bas" (
+  echo ERROR: BatchWithholding.bas missing.
+  >>"%LAUNCHER%" echo ERROR: BatchWithholding.bas missing.
+  goto :fail
+)
 where powershell.exe >nul 2>&1
 if errorlevel 1 (
   echo ERROR: Windows PowerShell is unavailable.

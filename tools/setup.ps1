@@ -8,6 +8,7 @@ $folder = $PSScriptRoot
 $source = Join-Path $folder 'Furusato_nouzei.xlsx'
 $final = Join-Path $folder 'Furusato_nouzei.xlsm'
 $moduleUtf8 = Join-Path $folder 'TaxLawUpdater.bas'
+$batchModuleUtf8 = Join-Path $folder 'BatchWithholding.bas'
 $logFile = Join-Path $folder 'setup.log'
 $utf8 = New-Object System.Text.UTF8Encoding($true)
 $strictUtf8 = New-Object System.Text.UTF8Encoding($false, $true)
@@ -28,7 +29,8 @@ try {
     Log '開始。入力ファイルは上書きしません。'
     $phase = 'ファイル存在確認'
     Assert (Test-Path -LiteralPath $source -PathType Leaf) "Furusato_nouzei.xlsx が見つかりません。"
-    Assert (Test-Path -LiteralPath $moduleUtf8 -PathType Leaf) "TaxLawUpdater.bas が見つかりません。"
+    Assert (Test-Path -LiteralPath $moduleUtf8 -PathType Leaf) "TaxLawUpdater.bas が見つかりません."
+    Assert (Test-Path -LiteralPath $batchModuleUtf8 -PathType Leaf) "BatchWithholding.bas が見つかりません."
     Assert (-not (Test-Path -LiteralPath $final)) "同名の出力ブックが既に存在します（上書きしません）。"
     $phase = '入力ブック事前診断'
     $inputBytes = (Get-Item -LiteralPath $source).Length
@@ -58,6 +60,14 @@ try {
         $sourceVba, '^Attribute VB_Name = "TaxLawUpdater"\r?\n', '')
     Assert (-not $sourceBody.StartsWith('Attribute VB_Name')) 'VBA属性行の取り除きに失敗しました。'
     Assert ($sourceBody.Contains('Public Sub TaxLawUpdate()')) '税制更新の実行プロシージャがありません。'
+    $batchVba = [System.IO.File]::ReadAllText($batchModuleUtf8, $strictUtf8)
+    if ($batchVba.Length -gt 0 -and $batchVba[0] -eq [char]0xFEFF) {
+        $batchVba = $batchVba.Substring(1)
+    }
+    Assert ($batchVba.StartsWith('Attribute VB_Name = "BatchWithholding"')) '一括VBAモジュールの属性名が不正です。'
+    $batchBody = [System.Text.RegularExpressions.Regex]::Replace(
+        $batchVba, '^Attribute VB_Name = "BatchWithholding"\r?\n', '')
+    Assert ($batchBody.Contains('Public Sub BatchCalculate()')) '一括試算の実行プロシージャがありません。'
     $phase = 'Excel起動'
     Log 'Microsoft Excel (COM) を起動します。'
     $excel = New-Object -ComObject Excel.Application
@@ -129,17 +139,24 @@ try {
     $component.CodeModule.AddFromString($sourceBody)
     Assert ($component.CodeModule.CountOfLines -gt 50) 'VBAソースを登録できませんでした。'
     Assert ([string]$component.Name -eq 'TaxLawUpdater') ('予期しないVBAモジュール名です: ' + $component.Name)
+    $batchComponent = $workbook.VBProject.VBComponents.Add(1)
+    Assert ($null -ne $batchComponent) '一括取込VBAモジュールを作成できません。'
+    $batchComponent.Name = 'BatchWithholding'
+    $batchComponent.CodeModule.AddFromString($batchBody)
+    Assert ($batchComponent.CodeModule.CountOfLines -gt 150) '一括試算VBAソースを登録できません。'
     $phase = '再計算イベント登録'
     $eventCode = @'
 
 Private Sub Workbook_Open()
     TaxLawUpdater.BindButtons
+    BatchWithholding.BindButtons
     TaxLawUpdater.ReturnHome
     Application.Calculate
 End Sub
 
 Private Sub Workbook_SheetChange(ByVal Sh As Object, ByVal Target As Range)
     If Sh Is Me.Worksheets(1) Then Application.Calculate
+    If Sh.Name = "一括試算一覧" Then BatchWithholding.BatchInvalidate Target
 End Sub
 '@
     $bookModule = $workbook.VBProject.VBComponents.Item($workbook.CodeName).CodeModule
@@ -154,7 +171,8 @@ End Sub
             $control.Name = 'btn' + $macro
             # Qualify with the final workbook name; Workbook_Open will rebind
             # automatically if a case is later opened under a different name.
-            $control.OnAction = "'" + [IO.Path]::GetFileName($final).Replace("'", "''") + "'!TaxLawUpdater." + $macro
+            $moduleName = if ($macro -eq 'ShowBatch' -or $macro.StartsWith('Batch')) { 'BatchWithholding' } else { 'TaxLawUpdater' }
+            $control.OnAction = "'" + [IO.Path]::GetFileName($final).Replace("'", "''") + "'!" + $moduleName + "." + $macro
             $control.Characters().Text = $caption
         } finally {
             foreach ($obj in @($control, $area)) {
@@ -171,6 +189,20 @@ End Sub
     Add-WorkbookButton $sheet 'B5' '追加所得・分離課税' 'ShowAdvanced'
     Add-WorkbookButton $sheet 'B3' '源泉票を取込' 'ImportWithholding'
     Add-WorkbookButton $sheet 'C3' '読取内容の確認' 'ReviewWithholding'
+    Add-WorkbookButton $sheet 'D3' '複数人一括試算' 'ShowBatch'
+    $batchSheet = $workbook.Worksheets.Item('一括試算一覧')
+    try {
+        $batchSheet.Visible = -1 # xlSheetVisible
+        Add-WorkbookButton $batchSheet 'A4' 'PDF一括読込' 'BatchImport'
+        Add-WorkbookButton $batchSheet 'B4' '一括試算' 'BatchCalculate'
+        Add-WorkbookButton $batchSheet 'C4' '一覧初期化' 'BatchClear'
+        Add-WorkbookButton $batchSheet 'D4' '印刷/PDF' 'BatchPrint'
+        Add-WorkbookButton $batchSheet 'E4' 'メインに戻る' 'BatchReturnHome'
+    } finally {
+        $sheet.Activate()
+        $batchSheet.Visible = 2 # xlSheetVeryHidden
+        [void][Runtime.InteropServices.Marshal]::ReleaseComObject($batchSheet)
+    }
     $details = $workbook.Worksheets.Item('計算根拠')
     try {
         Add-WorkbookButton $details 'A17' 'メイン画面に戻る' 'ReturnHome'
@@ -192,6 +224,8 @@ End Sub
     $phase = 'VBA実行スモーク'
     Log 'マクロを実際に実行して、Excel/VBA連携を検査します。'
     $excel.Run('TaxLawUpdater.BindButtons')
+    $excel.Run('BatchWithholding.BindButtons')
+    Assert ([bool]($excel.Run('BatchWithholding.BatchReadyForTest'))) '一括試算VBAのボタン登録・読込に失敗しました。'
     $excel.Run('TaxLawUpdater.RecalculateCase')
     Assert ($workbook.Worksheets.Item('自動回帰テスト').Range('B49').Value2 -ceq 'PASS') 'マクロの実行後、回帰試験が不合格です。'
     $phase = 'ファイル確定保存'

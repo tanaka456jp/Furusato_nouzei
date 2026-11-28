@@ -12,8 +12,17 @@ const readerCode=slice(reader,"CODE_MAP =","AMOUNT =");
 const browserFields=slice(html,"var allowedReaderFields=[","];");
 const sourceFields=new Set([...readerCode.matchAll(/"[^"]+"\s*:\s*"([a-z][a-z0-9_]*)"/g)].map(x=>x[1]));
 const acceptedFields=new Set([...browserFields.matchAll(/"([a-z][a-z0-9_]*)"/g)].map(x=>x[1]));
-assert.deepEqual([...sourceFields].sort(),[...acceptedFields].sort(),"Browser field allowlist must exactly match source reader keys");
-console.log("PASS: Python source-reader keys = GAS import allowlist ("+sourceFields.size+" unique)");
+// The Excel/local PDF reader has grown family fields that the PRIVATE GAS
+// workflow does not yet support. GAS must be a strict reviewed SUBSET of the
+// local reader, not automatically ingest every newly discovered personal tax
+// field. Never expand the private GAS attack surface just to match Excel.
+for(const key of acceptedFields)
+ assert.ok(sourceFields.has(key),"Private GAS must not invent source field: "+key);
+for(const key of ["salary_gross","salary_reference","deductions_reference",
+                  "income_tax_withheld","social_insurance"])
+ assert.ok(acceptedFields.has(key),"Required private GAS field missing: "+key);
+console.log("PASS: Private GAS reviewed field allowlist subset of expanded local reader ("+
+ acceptedFields.size+"/"+sourceFields.size+"); unsupported family fields excluded");
 assert.deepEqual(ignore,["**/**","!Code.gs","!Engine.gs","!Index.html","!appsscript.json","!SourceOCR.gs"],"No test/preview file may be pushed to Google");
 console.log("PASS: clasp pushes only approved 5 files");
 for(const key of [".clasp.json",".clasprc.json","node_modules/","dist/"])assert.ok(gitignore.includes(key),"Missing git ignore for "+key);

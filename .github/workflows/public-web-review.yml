@@ -1,0 +1,375 @@
+name: Public web offline review (NO DEPLOY)
+on:
+  pull_request:
+    paths:
+      - 'public-web/**'
+      - 'gas/Engine.gs'
+      - '.github/workflows/public-web-review.yml'
+  # Trusted branch push only; never execute physical PC jobs for PRs.
+  # Acceptance checkpoint: synthetic mobile package integrity and current physical QA instructions; product HOLD.
+  push:
+    branches: ['feature/public-web-ads-20261109']
+    paths: ['.github/workflows/public-web-review.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  public-web:
+    name: Static build and offline browser privacy acceptance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned local browser test dependency
+        run: npm ci --prefix gas --ignore-scripts --no-audit --no-fund
+      - name: Install pinned OCR build dependencies (review only)
+        run: npm install --prefix public-web --ignore-scripts --no-audit --no-fund --no-package-lock
+      - name: Syntax and privacy contract
+        run: |
+          node --check public-web/scripts/build.cjs
+          node --check public-web/src/app.js
+          node --check public-web/tests/test-public-web.cjs
+          node --check public-web/tests/test-ocr-review.cjs
+          node --check public-web/tests/synthetic-amount-crop-metrics.cjs
+          node --check public-web/tests/synthetic-bilingual-probe.cjs
+          node --check public-web/tests/synthetic-format-probe.cjs
+          node --check public-web/src/ocr-review.js
+          node --check public-web/src/ocr.js
+          node --check public-web/src/batch-name.js
+          node --check public-web/src/batch.js
+          node --check public-web/src/batch-core.js
+          node --check public-web/tests/test-batch-core.cjs
+          node --check public-web/tests/test-batch-name.cjs
+          node --check public-web/tests/test-pdf-gcodes.cjs
+          node --check public-web/tests/test-batch-dom.cjs
+          node --check public-web/src/ocr-quality.js
+          node --check public-web/src/ocr-image-header.js
+          node --check public-web/tests/test-ocr-image-header.cjs
+          node --check public-web/tests/test-statutory-boundaries.cjs
+          # Includes annual gross-wage to family/insurance boundary oracle.
+          node --check public-web/tests/test-donation-oracle.cjs
+          node --check public-web/src/ocr-layout.js
+          node --check public-web/src/pdf-gcodes.js
+          node --check public-web/src/pdf-compat.js
+          node --check public-web/tests/test-ocr-pdf-compat.cjs
+          node --check public-web/src/ocr-perspective.js
+          node --check public-web/tests/test-ocr-perspective.cjs
+          node --check public-web/src/ocr-regions.js
+          node --check public-web/tests/test-ocr-regions.cjs
+          node --check public-web/tests/test-ocr-region-dom.cjs
+          node --check public-web/scripts/ocr-accuracy-metrics.cjs
+          node --check public-web/tests/test-ocr-accuracy-metrics.cjs
+          node --check public-web/quality/score-private.cjs
+          node --check public-web/tests/test-ocr-benchmark.cjs
+          node --check public-web/tests/test-ocr-layout.cjs
+          node --check public-web/tests/test-ocr-quality.cjs
+          node --check public-web/tests/test-ocr-browser-smoke.cjs
+          node --check public-web/tests/test-windows-edge-screenshots.cjs
+          node --check public-web/tests/test-ocr-dom.cjs
+      - name: Build private review site and run synthetic browser acceptance
+        run: |
+          node public-web/scripts/build.cjs
+          node public-web/tests/test-review-server.cjs
+          node public-web/scripts/make-mobile-fixtures.cjs
+          node public-web/tests/test-ocr-review.cjs
+          node public-web/tests/test-ocr-quality.cjs
+          node public-web/tests/test-ocr-image-header.cjs
+          node public-web/tests/test-statutory-boundaries.cjs
+          node public-web/tests/test-donation-oracle.cjs
+          node public-web/tests/test-ocr-layout.cjs
+          node public-web/tests/test-ocr-pdf-compat.cjs
+          node public-web/tests/test-ocr-perspective.cjs
+          node public-web/tests/test-ocr-regions.cjs
+          node public-web/tests/test-ocr-region-dom.cjs
+          node public-web/tests/test-ocr-accuracy-metrics.cjs
+          node public-web/tests/test-ocr-benchmark.cjs
+          node public-web/tests/test-public-web.cjs
+          node public-web/tests/test-ocr-dom.cjs
+          node public-web/tests/test-batch-core.cjs
+          node public-web/tests/test-batch-name.cjs
+          node public-web/tests/test-pdf-gcodes.cjs
+          node public-web/tests/test-batch-dom.cjs
+      - name: Generate fictional Japanese positive PDF fixtures
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends fonts-noto-cjk
+          python3 -m venv "$RUNNER_TEMP/furusato-qa-venv"
+          "$RUNNER_TEMP/furusato-qa-venv/bin/pip" install --disable-pip-version-check PyMuPDF==1.26.7 fonttools==4.63.0
+          "$RUNNER_TEMP/furusato-qa-venv/bin/python" public-web/scripts/make-positive-fixtures.py --font /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc
+      - name: Verify fixed synthetic-only fixture inventory before packaging
+        run: node public-web/scripts/check-qa-fixtures.cjs
+      - name: Install isolated Chromium for on-device OCR WASM startup
+        run: ./gas/node_modules/.bin/playwright install chromium
+      - name: Real browser OCR startup smoke (synthetic canvas, no upload)
+        env:
+          FURUSATO_POSITIVE_FIXTURES: '1'
+        run: node public-web/tests/test-ocr-browser-smoke.cjs
+      - name: Confirm no deployment or ads
+        run: |
+          test -f public-web/dist/robots.txt
+          grep -q 'Disallow: /' public-web/dist/robots.txt
+          grep -q "connect-src 'self'" public-web/dist/_headers
+          test -s public-web/dist/vendor/tesseract/lang/jpn.traineddata.gz
+          test -s public-web/dist/vendor/tesseract/lang/eng.traineddata.gz
+          test -s public-web/dist/vendor/pdf.worker.mjs
+          if grep -R -E 'adsbygoogle|googlesyndication|googletagmanager' public-web/dist; then
+            echo 'Unexpected advertising or analytics script detected'
+            exit 1
+          fi
+      # Short-lived full offline preview for production acceptance. This
+      # contains ONLY application assets, NEVER a user's tax slips, OCR data,
+      # account credentials, user-entered names or input values. No publish.
+      - name: Upload complete OFFLINE PREVIEW (NO DEPLOY; expires in 1 day)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Furusato_Public_Web_COMPLETE_OFFLINE_QA_${{ github.run_id }}
+          path: public-web/dist/
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+      - name: Create and verify synthetic mobile package manifest
+        run: |
+          node public-web/scripts/verify-mobile-package.cjs --create "$GITHUB_SHA" "$GITHUB_RUN_ID"
+          node public-web/scripts/verify-mobile-package.cjs --verify
+      - name: Upload mobile local QA package (SYNTHETIC ONLY; NO DEPLOY)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Furusato_MOBILE_LOCAL_QA_${{ github.run_id }}
+          path: |
+            public-web/dist/
+            public-web/scripts/serve-review.cjs
+            public-web/scripts/verify-mobile-package.cjs
+            public-web/MOBILE_QA_MANIFEST.json
+            public-web/docs/MOBILE_QA.md
+            public-web/docs/RELEASE_ACCEPTANCE.md
+            public-web/qa-fixtures/01-electronic-not-slip.pdf
+            public-web/qa-fixtures/02-scan-not-slip.pdf
+            public-web/qa-fixtures/03-photo-not-slip.png
+            public-web/qa-fixtures/04-batch-20-pages.pdf
+            public-web/qa-fixtures/05-blank.pdf
+            public-web/qa-fixtures/06-positive-electronic.pdf
+            public-web/qa-fixtures/07-positive-mixed-batch.pdf
+            public-web/qa-fixtures/08-positive-image.png
+            public-web/qa-fixtures/09-positive-lines.png
+            public-web/qa-fixtures/10-bilingual-varied.png
+            public-web/qa-fixtures/11-bilingual-printed-period.png
+            public-web/qa-fixtures/12-bilingual-printed-minus.png
+            public-web/qa-fixtures/13-bilingual-duplicate-label.png
+            public-web/qa-fixtures/14-bilingual-conflicting-year.png
+            public-web/qa-fixtures/15-bilingual-jpeg.jpg
+            public-web/qa-fixtures/16-bilingual-low-contrast.png
+            public-web/qa-fixtures/17-bilingual-raster.pdf
+            public-web/qa-fixtures/18-bilingual-raster-mixed.pdf
+            public-web/qa-fixtures/19-bilingual-previous-year.png
+            public-web/qa-fixtures/20-raster-period.pdf
+            public-web/qa-fixtures/21-raster-minus.pdf
+            public-web/qa-fixtures/22-raster-duplicate.pdf
+            public-web/qa-fixtures/23-raster-year-conflict.pdf
+            public-web/qa-fixtures/24-raster-prior-year.pdf
+            public-web/qa-fixtures/25-jpeg-period.jpg
+            public-web/qa-fixtures/26-jpeg-minus.jpg
+            public-web/qa-fixtures/27-jpeg-duplicate.jpg
+            public-web/qa-fixtures/28-jpeg-year-conflict.jpg
+            public-web/qa-fixtures/29-jpeg-prior-year.jpg
+            public-web/docs/OCR_QUALITY_ACCEPTANCE.md
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+      # Small UI-only copy is kept for issue review. The complete preview
+      # is short-lived to limit artifact storage, especially WASM assets.
+      - name: Upload small NONDEPLOYABLE UI review only (no model/WASM)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Furusato_Public_Web_UI_ONLY_NOT_DEPLOYABLE_${{ github.run_id }}
+          path: |
+            public-web/dist/index.html
+            public-web/dist/about.html
+            public-web/dist/privacy.html
+            public-web/dist/terms.html
+            public-web/dist/app.js
+            public-web/dist/ocr.js
+            public-web/dist/batch.js
+            public-web/dist/batch-core.js
+            public-web/dist/ocr-review.js
+            public-web/dist/ocr-quality.js
+            public-web/dist/ocr-image-header.js
+            public-web/dist/ocr-layout.js
+            public-web/dist/pdf-compat.js
+            public-web/dist/ocr-perspective.js
+            public-web/dist/ocr-regions.js
+            public-web/dist/engine.js
+            public-web/dist/style.css
+            public-web/dist/robots.txt
+            public-web/dist/_headers
+          if-no-files-found: error
+          retention-days: 3
+      - name: Prepare pinned English digit model for synthetic research ONLY
+        if: github.event_name == 'push' && github.repository == 'tanaka456jp/Furusato_nouzei' && github.ref == 'refs/heads/feature/public-web-ads-20261109'
+        run: |
+          npm install --prefix "$RUNNER_TEMP/furusato-eng-research" --ignore-scripts --no-audit --no-fund --no-package-lock @tesseract.js-data/eng@1.0.0
+          test -s "$RUNNER_TEMP/furusato-eng-research/node_modules/@tesseract.js-data/eng/4.0.0_best_int/eng.traineddata.gz"
+      - name: Upload isolated research model (NOT a site asset)
+        if: github.event_name == 'push' && github.repository == 'tanaka456jp/Furusato_nouzei' && github.ref == 'refs/heads/feature/public-web-ads-20261109'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Furusato_English_Model_RESEARCH_ONLY_${{ github.run_id }}
+          path: ${{ runner.temp }}/furusato-eng-research/node_modules/@tesseract.js-data/eng/4.0.0_best_int/eng.traineddata.gz
+          if-no-files-found: error
+          retention-days: 1
+      - name: Release boundary
+        run: |
+          echo 'Local OCR review only. No source documents uploaded. NO Cloudflare deployment, NO ads, NO indexing.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Supported tax cases still require independent real-device and legal acceptance. RELEASE=HOLD' >> "$GITHUB_STEP_SUMMARY"
+
+  windows-edge:
+    name: Windows Edge local OCR browser acceptance (SYNTHETIC ONLY)
+    runs-on: windows-2025
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated browser test dependency
+        run: npm ci --prefix gas --ignore-scripts --no-audit --no-fund
+      - name: Install pinned local OCR and Japanese model
+        working-directory: public-web
+        run: npm install --ignore-scripts --no-audit --no-fund --no-package-lock
+      - name: Build offline review assets (NO DEPLOY)
+        run: node public-web/scripts/build.cjs
+      - name: Real Windows Microsoft Edge OCR and PDF smoke (synthetic only)
+        env:
+          FURUSATO_BROWSER_CHANNEL: msedge
+        run: node public-web/tests/test-ocr-browser-smoke.cjs
+      - name: Record limited Windows hosted acceptance boundary
+        shell: pwsh
+        run: |
+          "Windows-hosted Edge synthetic-only browser acceptance. Not a user's Windows PC or a real-source accuracy audit." | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          "NO DEPLOY. NO ADS. NO REAL SOURCE FILES. RELEASE=HOLD." | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+  webkit-browser:
+    name: Linux WebKit local OCR browser acceptance (SYNTHETIC ONLY)
+    runs-on: ubuntu-24.04
+    # The packaged browsers and OS dependencies are baked into the official
+    # Playwright image. The previous --with-deps installation downloaded
+    # hundreds of apt packages and exhausted the 20-minute job window.
+    # Keep this image version equal to gas/package.json playwright 1.56.1.
+    container:
+      image: mcr.microsoft.com/playwright:v1.56.1-noble
+      options: --user 1001
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated browser test dependency
+        run: npm ci --prefix gas --ignore-scripts --no-audit --no-fund
+      - name: Install pinned local OCR and Japanese model
+        working-directory: public-web
+        run: npm install --ignore-scripts --no-audit --no-fund --no-package-lock
+      - name: Build offline review assets (NO DEPLOY)
+        run: node public-web/scripts/build.cjs
+      - name: Verify matching preinstalled WebKit runtime (NO APT)
+        run: |
+          test "$(node -p 'require("./gas/node_modules/playwright/package.json").version')" = "1.56.1"
+          test -f "$(node -p 'require("./gas/node_modules/playwright").webkit.executablePath()')"
+          echo 'Playwright WebKit runtime available without apt-get.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Run local OCR/PDF privacy gates in WebKit (synthetic only)
+        env:
+          FURUSATO_BROWSER_CHANNEL: webkit
+        run: node public-web/tests/test-ocr-browser-smoke.cjs
+      - name: Record WebKit-only acceptance boundary
+        run: |
+          echo 'Headless Linux WebKit synthetic tests passed. This is NOT iPhone Safari real-device acceptance.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'No source documents. NO DEPLOY. NO ADS. RELEASE=HOLD.' >> "$GITHUB_STEP_SUMMARY"
+
+  windows-physical-edge:
+    name: Physical Windows Edge synthetic acceptance and screenshots (NO DEPLOY)
+    if: github.event_name == 'push' && github.repository == 'tanaka456jp/Furusato_nouzei' && github.ref == 'refs/heads/feature/public-web-ads-20261109'
+    needs: public-web
+    runs-on: [self-hosted, Windows, furusato-excel]
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated pinned test dependencies
+        run: npm ci --prefix gas --ignore-scripts --no-audit --no-fund
+      - name: Download same-run synthetic QA package
+        uses: actions/download-artifact@v4
+        with:
+          name: Furusato_MOBILE_LOCAL_QA_${{ github.run_id }}
+          path: public-web
+      - name: Download isolated same-run English research model
+        uses: actions/download-artifact@v4
+        with:
+          name: Furusato_English_Model_RESEARCH_ONLY_${{ github.run_id }}
+          path: ${{ runner.temp }}/furusato-eng-research-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Confirm exact revision and positive fixtures
+        shell: powershell
+        run: |
+          if ((git rev-parse HEAD) -ne $env:GITHUB_SHA) { throw 'HEAD mismatch' }
+          if (!(Test-Path public-web/dist/index.html) -or !(Test-Path public-web/qa-fixtures/06-positive-electronic.pdf)) { throw 'Missing QA assets' }
+          node --check public-web/tests/test-windows-edge-screenshots.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'Screenshot test syntax error' }
+      - name: Windows Edge real browser OCR and PDF regression
+        env:
+          FURUSATO_BROWSER_CHANNEL: msedge
+          FURUSATO_POSITIVE_FIXTURES: '1'
+        run: node public-web/tests/test-ocr-browser-smoke.cjs
+      - name: Capture layouts, raster and bounded JPEG product acceptance
+        env:
+          FURUSATO_SCREENSHOT_DIR: ${{ runner.temp }}/furusato-web-synthetic-${{ github.run_id }}-${{ github.run_attempt }}
+          FURUSATO_ENGLISH_RESEARCH_MODEL: ${{ runner.temp }}/furusato-eng-research-${{ github.run_id }}-${{ github.run_attempt }}/eng.traineddata.gz
+        run: node public-web/tests/test-windows-edge-screenshots.cjs
+      - name: Upload synthetic browser screenshots and fixed-fixture OCR traces (expires in 1 day)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Furusato_Physical_Edge_Synthetic_Screenshots_${{ github.run_id }}_${{ github.run_attempt }}
+          path: ${{ runner.temp }}/furusato-web-synthetic-${{ github.run_id }}-${{ github.run_attempt }}/
+          if-no-files-found: warn
+          retention-days: 1
+      - name: Delete only this run's synthetic screenshot directory
+        if: always()
+        shell: powershell
+        env:
+          FURUSATO_SCREENSHOT_DIR: ${{ runner.temp }}/furusato-web-synthetic-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          if (Test-Path -LiteralPath $env:FURUSATO_SCREENSHOT_DIR) {
+            Remove-Item -LiteralPath $env:FURUSATO_SCREENSHOT_DIR -Recurse -Force
+          }
+      - name: Delete this run's isolated English research model
+        if: always()
+        shell: powershell
+        env:
+          FURUSATO_ENGLISH_RESEARCH_DIR: ${{ runner.temp }}/furusato-eng-research-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          if (Test-Path -LiteralPath $env:FURUSATO_ENGLISH_RESEARCH_DIR) {
+            Remove-Item -LiteralPath $env:FURUSATO_ENGLISH_RESEARCH_DIR -Recurse -Force
+          }
+      - name: Acceptance boundary
+        if: always()
+        shell: powershell
+        run: |
+          "Dedicated Windows runner; headless Edge, synthetic sources only. Human visual review and physical iPhone are separate gates. No Android test; no deployment." | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8

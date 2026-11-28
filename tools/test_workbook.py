@@ -6,7 +6,7 @@ import unittest
 from zipfile import ZipFile
 
 from openpyxl import load_workbook
-from build_workbook import ROOT, HOME, ENGINE, DETAIL, RESIDENT, ADVANCED, INPUT, build
+from build_workbook import ROOT, HOME, ENGINE, DETAIL, RESIDENT, ADVANCED, INPUT, BATCH, build
 
 
 class WorkbookTest(unittest.TestCase):
@@ -27,6 +27,67 @@ class WorkbookTest(unittest.TestCase):
         with ZipFile(self.target) as archive:
             self.assertIsNone(archive.testzip())
             self.assertFalse(any(n.startswith(("xl/externalLinks/", "xl/vbaProject")) for n in archive.namelist()))
+
+    def test_local_multi_person_sheet_fail_closed(self):
+        self.assertIn(BATCH, self.book.sheetnames)
+        sheet = self.book[BATCH]
+        self.assertEqual(sheet.sheet_state, "veryHidden")
+        self.assertEqual(sheet.max_row, 26)
+        self.assertGreaterEqual(sheet.max_column, 50)
+        self.assertEqual(sheet["AG6"].value, "配偶者控除額（所得税）")
+        self.assertEqual(sheet["AH6"].value, "配偶者控除有（1/2）")
+        self.assertEqual(sheet["AK6"].value, "特定扶養人数")
+        self.assertEqual(sheet["AN6"].value, "一般扶養人数")
+        self.assertEqual(sheet["AW6"].value, "非居住親族人数")
+        self.assertEqual(sheet["AX6"].value, "参照源泉票の年分（読取値）")
+        self.assertEqual(sheet["C6"].value, "試算対象年")
+        self.assertEqual(sheet["A6"].value, "PDF頁")
+        self.assertEqual(sheet["B6"].value, "氏名（源泉票から自動読取・訂正可）")
+        self.assertEqual(sheet["B7"].number_format, "@")
+        self.assertFalse(sheet["B7"].protection.locked)
+        self.assertIn("氏名だけをPDFからB列へ", sheet["A3"].value)
+        self.assertNotIn("氏名・住所・会社名は自動抽出しません", sheet["A3"].value)
+        self.assertEqual(sheet["E6"].value, "限度額の目安")
+        self.assertEqual(sheet["H6"].value, "対象年見込額・控除条件を照合済")
+        self.assertEqual(sheet["I6"].value, "源泉票外の追加所得・控除なしを確認")
+        self.assertEqual(sheet["AE6"].value, "読取判定")
+        self.assertTrue(all(sheet[f"E{i}"].value is None for i in range(7,27)))
+        self.assertTrue(all(sheet[f"F{i}"].value is None for i in range(7,27)))
+        self.assertEqual(str(sheet.print_area), "'一括試算一覧'!$A$1:$J$26")
+        self.assertEqual(sheet.freeze_panes, "D7")
+        self.assertEqual(len(sheet.data_validations.dataValidation), 3)
+        self.assertEqual([s.title for s in self.book if s.sheet_state == "visible"], [HOME])
+
+    def test_batch_corrected_fields_are_editable_and_explained(self):
+        sheet = self.book[BATCH]
+        for address in ("C7", "D7", "K7", "L7", "M7", "N7",
+                        "O7", "P7", "AG7", "AJ7", "AW7",
+                        "H7", "I7", "J7"):
+            self.assertFalse(sheet[address].protection.locked, address)
+            self.assertEqual(sheet[address].fill.fgColor.rgb[-6:],
+                             "FFF6DB", address)
+        for address in ("E7", "F7", "G7"):
+            self.assertNotEqual(sheet[address].fill.fgColor.rgb[-6:],
+                                "FFF6DB", address)
+        self.assertIn("自動再試算", sheet["A5"].value)
+        self.assertIn("手入力値を優先", sheet["A5"].value)
+        self.assertIn("原票年分はAX列", sheet["A5"].value)
+        self.assertTrue(sheet["AX7"].protection.locked)
+        self.assertNotEqual(sheet["AX7"].fill.fgColor.rgb[-6:], "FFF6DB")
+
+    def test_zero_spouse_income_first_band(self):
+        # Only D=0 is special; every positive spouse-income bracket retains
+        # its strict lower boundary to prevent counting adjacent bands twice.
+        for row in (36, 37):
+            for col in ("F", "H"):
+                address = f"{col}{row}"
+                baseline = self.baseline[ENGINE][address].value
+                generated = self.book[ENGINE][address].value
+                old_floor = f'"<"&$D{row}'
+                revised_floor = f'"<"&IF($D{row}=0,1,$D{row})'
+                self.assertEqual(baseline.count(old_floor), 1, address)
+                self.assertIn(revised_floor, generated, address)
+                self.assertNotIn(old_floor, generated, address)
 
     def test_a4_single_page_layout_and_legible_status(self):
         for name in (HOME, DETAIL):
@@ -163,6 +224,10 @@ class WorkbookTest(unittest.TestCase):
         self.assertIn("旧長期損害保険料", extra["A21"].value)
         self.assertNotIn("旧方式", " ".join(str(extra[f"A{i}"].value or "") for i in range(4,33)))
         self.assertIn("所得年内", extra["A3"].value)
+        self.assertIn("参照源泉票の年分", extra["A40"].value)
+        self.assertTrue(extra["B40"].protection.locked)
+        self.assertIsNone(extra["B40"].value)
+        self.assertIn("$D$40", str(extra.print_area))
         self.assertIn("ROUNDDOWN", extra["B7"].value)
         self.assertIn("MIN(100000", extra["B29"].value)
         self.assertIn("MAX(0,N(B8)-N(B9))", extra["B28"].value)

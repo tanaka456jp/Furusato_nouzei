@@ -57,6 +57,17 @@ jobs:
           if ($errors.Count -gt 0) {
             throw ($errors | Out-String)
           }
+      - name: Parse private five-person acceptance (PowerShell syntax only)
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          $file = (Resolve-Path ./tools/private_5person_oracle_acceptance.ps1).Path
+          [System.Management.Automation.Language.Parser]::ParseFile($file, [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            $details = @($errors | ForEach-Object { 'line=' + $_.Extent.StartLineNumber + ',id=' + $_.ErrorId + ',message=' + $_.Message })
+            throw ($details -join '; ')
+          }
       - name: Attach one-click diagnostic launcher
         run: |
           cp tools/START_EXCEL_PROBE.cmd tools/run_excel_open_probe.ps1 tools/probe_excel_open.ps1 Excel_open_probes/
@@ -147,6 +158,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Offline parser contract failed' }
           python -m PyInstaller --onefile --clean --noconfirm --name FurusatoDocumentReader tools/withholding_reader.py
           if ($LASTEXITCODE -ne 0) { throw 'Reader executable build failed' }
+          # Verify the ACTUAL standalone reader with a synthetic five-page
+          # source on this Windows runner; no blobs need downloading on PC1.
+          python tools/test_synthetic_pdf_reader_exe.py dist/FurusatoDocumentReader.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Five-page PDF reader executable regression failed' }
           $temp = Join-Path $env:RUNNER_TEMP ('furusato_reader_' + [guid]::NewGuid().ToString('N'))
           New-Item -ItemType Directory -Path $temp | Out-Null
           try {
@@ -189,7 +204,8 @@ jobs:
     if: >-
       (github.event_name == 'pull_request' &&
        github.event.pull_request.head.repo.full_name == github.repository &&
-       contains(github.event.pull_request.body, '[run-windows-excel]')) ||
+       (contains(github.event.pull_request.body, '[run-windows-excel]') ||
+        contains(github.event.pull_request.body, '[run-private-local-5person]'))) ||
       (github.event_name == 'workflow_dispatch' && inputs.excel)
     # Both PC1 and PC2 may host this repository-scoped runner alongside
     # their existing runners. Accept only the Furusato Excel runner label.
@@ -313,3 +329,77 @@ jobs:
           if (Test-Path -LiteralPath $work) {
             Remove-Item -LiteralPath $work -Recurse -Force
           }
+
+
+  # Special opt-in: only a trusted same-repository PR and an explicitly
+  # provisioned local directory. PDF/oracle never enter checkout/artifacts.
+  private_five_person:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      contains(github.event.pull_request.body, '[run-private-local-5person]')
+    needs: [document_reader, excel]
+    runs-on: [self-hosted, Windows, furusato-excel]
+    timeout-minutes: 12
+    steps:
+      - name: Check local-only staged files without reading their contents
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $private = 'C:\FurusatoPrivateQA'
+          $pdf = Join-Path $private 'source_2025_5pages.pdf'
+          $oracle = Join-Path $private 'private_5person_oracle.csv'
+          if (-not (Test-Path -LiteralPath $pdf -PathType Leaf) -or
+              -not (Test-Path -LiteralPath $oracle -PathType Leaf)) {
+            'PRIVATE_5PERSON_INPUTS_NOT_STAGED_HOLD' >> $env:GITHUB_STEP_SUMMARY
+            throw 'PRIVATE_5PERSON_INPUTS_NOT_STAGED_HOLD'
+          }
+          if ((Get-Item -LiteralPath $pdf).Length -gt 25MB -or
+              (Get-Item -LiteralPath $oracle).Length -gt 16KB) {
+            throw 'PRIVATE_5PERSON_INVALID_FILE_SIZE_HOLD'
+          }
+          Write-Host 'PRIVATE_5PERSON_LOCAL_INPUTS_PRESENT'
+      - uses: actions/download-artifact@v4
+        with:
+          name: Furusato_nouzei_Windows_REVIEW_${{ github.run_id }}
+          path: ${{ runner.temp }}/furusato-private-five-review
+      - name: Run private five-person Excel acceptance on disposable workbook
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $private = 'C:\FurusatoPrivateQA'
+          $pdf = Join-Path $private 'source_2025_5pages.pdf'
+          $oracle = Join-Path $private 'private_5person_oracle.csv'
+          $artifactDir = Join-Path $env:RUNNER_TEMP 'furusato-private-five-review'
+          $packageZip = Join-Path $artifactDir 'Furusato_nouzei_Windows_REVIEW.zip'
+          if (-not (Test-Path -LiteralPath $packageZip -PathType Leaf)) {
+            throw 'PRIVATE_WINDOWS_PACKAGE_MISSING_HOLD'
+          }
+          $work = Join-Path $env:RUNNER_TEMP ('furusato-five-' + $env:GITHUB_RUN_ID + '-' + $env:GITHUB_RUN_ATTEMPT)
+          if (Test-Path -LiteralPath $work) { throw 'PRIVATE_WORKSPACE_ALREADY_EXISTS_HOLD' }
+          New-Item -ItemType Directory -Path $work | Out-Null
+          try {
+            Expand-Archive -LiteralPath $packageZip -DestinationPath $work
+            $setup = Join-Path $work 'setup.ps1'
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $setup
+            if ($LASTEXITCODE -ne 0) {
+              throw 'PRIVATE_EXCEL_SETUP_HOLD'
+            }
+            $script = Join-Path $work 'private_5person_oracle_acceptance.ps1'
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Pdf $pdf -Workbook (Join-Path $work 'Furusato_nouzei.xlsm') -Reader (Join-Path $work 'FurusatoDocumentReader.exe') -OracleCsv $oracle -ExpectedPages 5 -QaAssumeNoOutsideIncome
+            if ($LASTEXITCODE -ne 0) {
+              throw 'PRIVATE_5PERSON_NUMERIC_DIFFERENCE_HOLD'
+            }
+            'PRIVATE_5PERSON_EXCEL_NUMERIC_PASS; ACTUAL_TAXPAYER_ELIGIBILITY_NOT_CERTIFIED' >> $env:GITHUB_STEP_SUMMARY
+            Write-Host 'PRIVATE_5PERSON_EXCEL_NUMERIC_PASS'
+          }
+          finally {
+            if (Test-Path -LiteralPath $work) {
+              Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction Stop
+            }
+          }
+      - name: No personal-data artifact or upload
+        if: always()
+        shell: powershell
+        run: |
+          Write-Host 'No PDF, oracle, numeric CSV, workbook or source hashes are uploaded by this job.'

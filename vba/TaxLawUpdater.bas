@@ -64,6 +64,11 @@ Private Function ApplyApprovedYear(ByVal noDialogs As Boolean) As Boolean
     home.Range("B29").Value2 = BUNDLED_REVISION
     home.Range("B30").Value2 = "適用済 " & Format$(Now, "yyyy/mm/dd hh:nn")
     Application.Calculate
+    ' Cached results are tied to the former approved year and tax master.
+    ' They cannot remain visible after any successful tax-master update.
+    If Not BatchWithholding.BatchMasterChanged() Then
+        Err.Raise vbObjectError + 119, , "一括試算結果の無効化に失敗しました。税制更新を中止します。"
+    End If
     book.Save
     ApplyApprovedYear = True
     If Not noDialogs Then
@@ -178,14 +183,60 @@ Public Sub BindButtons()
 End Sub
 
 
+' Inspect PDF structure before running any single-slip extraction.
+' A multi-page PDF must never be mistaken for one taxpayer; the reader
+' writes only the ASCII count, no text, image, name, or income value.
+' Count the page boundaries in a numeric-only, local ASCII bridge.
+' The source PDF was already read once by --batch-bridge. We never run the
+' 40MB PyInstaller reader a SECOND time when the document is multi-page.
+Private Function PdfPagesForImport(ByVal bridgePath As String, ByVal fso As Object) As Long
+    Dim stream As Object, line As String, parts As Variant
+    Dim opened As Long, closed As Long, raw As String
+    On Error GoTo Broken
+    Set stream = fso.OpenTextFile(bridgePath, 1, False, 0)
+    Do Until stream.AtEndOfStream
+        line = stream.ReadLine
+        parts = Split(line, vbTab)
+        If UBound(parts) <> 1 Then Err.Raise vbObjectError + 220, , "取込境界が不正です。"
+        If CStr(parts(0)) = "PAGE" Or CStr(parts(0)) = "ENDPAGE" Then
+            raw = CStr(parts(1))
+            If Len(raw) = 0 Or Len(raw) > 2 Or raw Like "*[!0-9]*" Then _
+                Err.Raise vbObjectError + 221, , "PDFページ番号が不正です。"
+            If CStr(parts(0)) = "PAGE" Then
+                opened = opened + 1
+                If CLng(raw) <> opened Then _
+                    Err.Raise vbObjectError + 222, , "ページ順序が不正です。"
+            Else
+                closed = closed + 1
+                If CLng(raw) <> closed Or closed > opened Then _
+                    Err.Raise vbObjectError + 223, , "ページ終端に不整合があります。"
+            End If
+        End If
+    Loop
+    stream.Close
+    Set stream = Nothing
+    If opened < 1 Or opened > 20 Or opened <> closed Then _
+        Err.Raise vbObjectError + 224, , "PDFページ数が不正です。"
+    PdfPagesForImport = opened
+    Exit Function
+Broken:
+    On Error Resume Next
+    If Not stream Is Nothing Then stream.Close
+    On Error GoTo 0
+    Err.Raise vbObjectError + 225, "TaxLawUpdater", _
+              "PDFページ構成を確認できません。20ページ以下のPDFを指定してください。"
+End Function
+
 ' Import only allowlisted numeric fields from a local, explicitly selected file.
 ' Do not put names, addresses, tax IDs, or raw document text into the workbook.
 ' An immutable snapshot is saved before mutating a user's current input.
 Public Sub ImportWithholding()
     Dim picked As Variant, fso As Object, shell As Object, reader As String
-    Dim tempJson As String, tempTsv As String, command As String, line As String
+    Dim tempJson As String, tempTsv As String, tempProbe As String
+    Dim tempBatchJson As String, probeCommand As String
+    Dim command As String, line As String, pageCount As Long
     Dim inFile As Object, fields As Object, fragments As Variant
-    Dim key As Variant, value As Double, year As Long, exitCode As Long
+    Dim key As Variant, value As Double, year As Long, targetYear As Long, exitCode As Long
     Dim status As String, raw As String, backup As String, caution As String
     Dim home As Worksheet, extra As Worksheet, code As Long, problem As String
     On Error GoTo Failed
@@ -207,6 +258,38 @@ Public Sub ImportWithholding()
     End If
     command = Chr$(34) & reader & Chr$(34)
     Set shell = CreateObject("WScript.Shell")
+    ' When the user uses the single-slip button for a multipage PDF,
+    ' automatically route to the per-person batch interface. This is the
+    ' only safe behavior: the legacy single source reader explicitly
+    ' rejects multi-page documents and otherwise reports "year missing".
+    If LCase$(fso.GetExtensionName(CStr(picked))) = "pdf" Then
+        tempProbe = fso.BuildPath(fso.GetSpecialFolder(2), fso.GetTempName & ".tsv")
+        tempBatchJson = fso.BuildPath(fso.GetSpecialFolder(2), fso.GetTempName & ".json")
+        probeCommand = Chr$(34) & reader & Chr$(34) & _
+                       " --input " & Chr$(34) & CStr(picked) & Chr$(34) & _
+                       " --output " & Chr$(34) & tempBatchJson & Chr$(34) & _
+                       " --batch-bridge " & Chr$(34) & tempProbe & Chr$(34)
+        exitCode = shell.Run(probeCommand, 0, True)
+        If exitCode <> 0 Or Not fso.FileExists(tempProbe) Then _
+            Err.Raise vbObjectError + 220, , _
+                "PDFのページ別読取に失敗しました（READER_BATCH:" & CStr(exitCode) & "）。" & vbCrLf & _
+                "「複数人一括試算」からPDF一括読込もお試しください。"
+        pageCount = PdfPagesForImport(tempProbe, fso)
+        If pageCount > 1 Then
+            If Not BatchWithholding.BatchImportBridgeLocalFile(tempProbe) Then _
+                Err.Raise vbObjectError + 226, , _
+                    "複数ページPDFの一括取込に失敗しました（" & _
+                    BatchWithholding.BatchImportFailureCode() & "）。" & vbCrLf & _
+                    "以前の一覧がある場合は、保存後に初期化してから再取込してください。"
+            BatchWithholding.ShowBatch
+            MsgBox CStr(pageCount) & "ページのPDFから、" & _
+                   "対象者ごとの一括試算一覧を作成しました。" & vbCrLf & _
+                   "必要5金額・年分と控除条件を各ページで確認してください。" & vbCrLf & _
+                   "確認前の限度額は表示しません。", vbInformation, _
+                   "複数人の源泉徴収票を検出"
+            GoTo CleanUp
+        End If
+    End If
     tempJson = fso.BuildPath(fso.GetSpecialFolder(2), fso.GetTempName & ".json")
     tempTsv = fso.BuildPath(fso.GetSpecialFolder(2), fso.GetTempName & ".tsv")
     command = command & " --input " & Chr$(34) & CStr(picked) & Chr$(34) & _
@@ -241,6 +324,16 @@ Public Sub ImportWithholding()
     If Not IsNumeric(fields("YEAR")) Then Err.Raise vbObjectError + 208, , "所得年を認識できません。"
     year = CLng(fields("YEAR"))
     If year <> 2025 And year <> 2026 Then Err.Raise vbObjectError + 209, , "未承認の年分です。"
+    ' The document YEAR is reference evidence, not a command to change
+    ' the tax year. The operator's chosen and approved year stays intact.
+    Set home = ThisWorkbook.Worksheets("操作画面")
+    If Not IsNumeric(home.Range("B4").Value2) Then _
+        Err.Raise vbObjectError + 227, , "試算対象年が不正です。"
+    targetYear = CLng(home.Range("B4").Value2)
+    If (targetYear <> 2025 And targetYear <> 2026) Or _
+       year > targetYear Or year < targetYear - 1 Then _
+        Err.Raise vbObjectError + 228, , _
+                  "参照元の源泉票は試算対象年の当年または前年である必要があります。"
     For Each key In Array("salary_gross", "income_tax_withheld", "social_insurance")
         If Not fields.Exists(CStr(key)) Then
             Err.Raise vbObjectError + 210, , "必須の支払金額・源泉税・社会保険料が読み取れていません。"
@@ -274,6 +367,12 @@ Public Sub ImportWithholding()
     Next key
     caution = "源泉徴収票の読み取れた数値を転記し、現在の入力を置換しますか？" & vbCrLf & _
               "既存データはバックアップします。"
+    If year <> targetYear Then
+        caution = caution & vbCrLf & vbCrLf & _
+                  CStr(year) & "年分の源泉票を" & CStr(targetYear) & _
+                  "年の試算の参考として取り込みます。" & vbCrLf & _
+                  "給与・所得控除・扶養などを対象年の見込値へ直してから確認してください。"
+    End If
     If status = "REQUIRES_REVIEW" Then
         caution = caution & vbCrLf & vbCrLf & _
               "このPDFは一部項目が未確定です。読み取れた数値だけを仮転記します。" & vbCrLf & _
@@ -294,8 +393,9 @@ Public Sub ImportWithholding()
     home.Range("B25").Value2 = "なし"
     home.Range("D22").Value2 = "該当なし"
     home.Range("D24").Value2 = "ワンストップ"
-    home.Range("B4").Value2 = year
-    home.Range("B11").Value2 = year
+    ' Keep the 2026 tax-year selection, even when the reference slip is 2025.
+    home.Range("B11").Value2 = targetYear
+    extra.Range("B40").Value2 = year
     For Each key In fields.Keys
         If key <> "STATUS" And key <> "YEAR" And key <> "WARNINGS" Then
             value = CDbl(fields(key))
@@ -329,10 +429,21 @@ Public Sub ImportWithholding()
     ' Housing credit is a routine on-sheet input, not an advanced-case switch.
     ' The sheet formula still blocks missing applied amounts or unsupported years.
     extra.Range("B19").Value2 = "ローカル・項目コード照合"
-    extra.Range("B20").Value2 = status
-    If fields.Exists("WARNINGS") Then extra.Range("B32").Value2 = fields("WARNINGS")
+    If year < targetYear Then
+        ' Prior-year figures are provisional until this year's income and
+        ' deduction outlook has been explicitly confirmed.
+        extra.Range("B20").Value2 = "REQUIRES_REVIEW"
+        extra.Range("B32").Value2 = "PRIOR_YEAR_REFERENCE_FORECAST"
+        If fields.Exists("WARNINGS") Then
+            If Len(CStr(fields("WARNINGS"))) > 0 Then _
+                extra.Range("B32").Value2 = "PRIOR_YEAR_REFERENCE_FORECAST;" & CStr(fields("WARNINGS"))
+        End If
+    Else
+        extra.Range("B20").Value2 = status
+        If fields.Exists("WARNINGS") Then extra.Range("B32").Value2 = fields("WARNINGS")
+    End If
     Application.Calculate
-    If status = "REQUIRES_REVIEW" Then
+    If status = "REQUIRES_REVIEW" Or year < targetYear Then
         MsgBox "読み取れた金額を仮転記しました（未確定）。" & vbCrLf & _
                "空欄・不一致を源泉徴収票と照合した後「読取内容の確認」を押してください。" & vbCrLf & _
                "住宅ローン控除可能額は所得税適用額と別項目です。", vbExclamation
@@ -345,6 +456,8 @@ CleanUp:
     If Not fso Is Nothing Then
         If Len(tempTsv) > 0 Then If fso.FileExists(tempTsv) Then fso.DeleteFile tempTsv, True
         If Len(tempJson) > 0 Then If fso.FileExists(tempJson) Then fso.DeleteFile tempJson, True
+        If Len(tempProbe) > 0 Then If fso.FileExists(tempProbe) Then fso.DeleteFile tempProbe, True
+        If Len(tempBatchJson) > 0 Then If fso.FileExists(tempBatchJson) Then fso.DeleteFile tempBatchJson, True
     End If
     Exit Sub
 Failed:
@@ -507,7 +620,7 @@ Public Sub NewCase()
     End With
     With ThisWorkbook.Worksheets("例外・分離課税")
         ' Preserve calculated cells B7/B22/B28-B30.
-        .Range("B5:B6,B8:B12,B13:B21,B24:B26,B32,B36,B38:B39").ClearContents
+        .Range("B5:B6,B8:B12,B13:B21,B24:B26,B32,B36,B38:B40").ClearContents
         .Range("B25").Value2 = "なし"
         .Range("B33").Value2 = "なし"
         ' B4 is calculated from B24, and must survive NewCase.
