@@ -6,7 +6,7 @@ on:
       - 'gas/Engine.gs'
       - '.github/workflows/public-web-review.yml'
   # Trusted branch push only; never execute physical PC jobs for PRs.
-  # Acceptance checkpoint: 403a0896 (income-levy boundary and OCR evidence).
+  # Acceptance checkpoint: exact rational post-credit relief research; product HOLD.
   push:
     branches: ['feature/public-web-ads-20261109']
     paths: ['.github/workflows/public-web-review.yml']

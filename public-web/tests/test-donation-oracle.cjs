@@ -2072,3 +2072,54 @@ console.log(JSON.stringify({schema:"web-high-salary-tax-integration/v1",highCase
  assert.deepEqual([holds,accepted],[44,24]);
  console.log(JSON.stringify({schema:"web-income-levy-exemption-cliff-guard/v1",holds,accepted,postCreditReliefCertified:false,release:"HOLD"}));
 }
+
+
+// Separate post-credit relief research: fixed exact ratios; no final
+// assessment, no one-stop credit and no product ceiling.
+// Independent expected fractions use published combined cap and residual
+// proportions, including unequal residuals caused by local tax credits.
+{
+ const relief=require("../src/income-levy-relief.js");
+ const stage="after-ordinary-credits-before-relief-and-one-stop";
+ const frac=(numerator,denominator=1)=>({numerator:String(numerator),denominator:String(denominator)});
+ let exactCases=0,invalidCases=0,propertyCases=0;
+ for(const year of [2025,2026]){
+  const b={year,incomeYen:1900000,familyCount:3,cityAfterCredits100:9000000,prefectureAfterCredits100:6000000,stage};
+  const rows=[
+   [b,70000,48000,1,32000,1,42000,1,28000,1],
+   [{...b,cityAfterCredits100:5000000,prefectureAfterCredits100:4000000},10000,400000,9,320000,9,50000,9,40000,9],
+   [{...b,cityAfterCredits100:4800000,prefectureAfterCredits100:3200000},0,48000,1,32000,1,0,1,0,1],
+   [{...b,cityAfterCredits100:8000001,prefectureAfterCredits100:0},0.01,80000,1,0,1,1,100,0,1],
+   [{...b,cityAfterCredits100:0,prefectureAfterCredits100:0},0,0,1,0,1,0,1,0,1],
+   [{...b,incomeYen:1820001,cityAfterCredits100:100,prefectureAfterCredits100:200},2,1,3,2,3,2,3,4,3],
+   [{...b,incomeYen:1900000,cityAfterCredits100:12000000,prefectureAfterCredits100:3000000},70000,64000,1,16000,1,56000,1,14000,1]
+  ];
+  for(const [q,total,cn,cd,pn,pd,crn,crd,prn,prd] of rows){
+   const out=relief.calculate(q);assert.equal(out.status,"COMPONENTS_ONLY");assert.equal(out.donationLimitYen,null);
+   const c=out.calculation;assert.equal(c.residentYear,year+1);assert.equal(c.thresholdYen,1820000);
+   assert.deepEqual(c.totalReliefYen,total===0.01?frac(1,100):frac(total));
+   assert.deepEqual(c.city.remainingYen,frac(cn,cd));assert.deepEqual(c.prefecture.remainingYen,frac(pn,pd));
+   assert.deepEqual(c.city.reliefYen,frac(crn,crd));assert.deepEqual(c.prefecture.reliefYen,frac(prn,prd));
+   assert.equal(c.finalRoundingCertified,false);assert.equal(c.oneStopCreditApplied,false);exactCases++;
+  }
+  for(const q of [{...b,incomeYen:1820000},{...b,incomeYen:1819999},{...b,stage:"after-one-stop"},{...b,stage:"before-housing"},
+   {...b,cityAfterCredits100:-1},{...b,prefectureAfterCredits100:0.5},{...b,familyCount:32},{...b,year:2027},{...b,extra:true}]){
+   const out=relief.calculate(q);assert.equal(out.status,"HOLD");assert.equal(out.calculation,null);assert.equal(out.donationLimitYen,null);invalidCases++;
+  }
+  // Independent identity: each residual has equal proportional reduction;
+  // combined residual never exceeds the income gap or original levy.
+  for(const gap of [1,49,50,51,100,1000,80000])for(const city of [0,1,99,100,150001,9000000])for(const pref of [0,1,101,500003,6000000]){
+   const q={...b,incomeYen:1820000+gap,cityAfterCredits100:city,prefectureAfterCredits100:pref};
+   const c=relief.calculate(q).calculation;assert.ok(c);
+   const asPair=f=>[BigInt(f.numerator),BigInt(f.denominator)];
+   const [x,xd]=asPair(c.city.remainingYen),[y,yd]=asPair(c.prefecture.remainingYen);
+   const combined=Math.min((city+pref),gap*100);
+   assert.equal((x*yd+y*xd)*100n,BigInt(combined)*xd*yd);
+   assert.equal(x*yd*BigInt(pref),y*xd*BigInt(city));
+   assert.ok(x*100n<=BigInt(city)*xd&&y*100n<=BigInt(pref)*yd);
+   propertyCases++;
+  }
+ }
+ assert.deepEqual([exactCases,invalidCases,propertyCases],[14,18,420]);
+ console.log(JSON.stringify({schema:"web-income-levy-relief-rational-research/v1",exactCases,invalidCases,propertyCases,finalRoundingCertified:false,uiIntegrated:false,release:"HOLD"}));
+}
