@@ -2238,6 +2238,7 @@ console.log(JSON.stringify({schema:"web-high-salary-tax-integration/v1",highCase
 // Python fractions and statutory integer national-tax/100-yen local floors.
 // Existing product API must still reject relief-boundary inputs.
 {
+ const researchApi=require("../src/family-tax.js").createResearchApi(require("../src/income-levy-relief.js"));
  const cases=[
   [2025,"standard",3000,10000,"one-stop",0,0,48000,32000,47900,31900,0,200,2800],
   [2025,"standard",20000,10000,"return",0,0,48000,32000,48000,31900,919,100,18981],
@@ -2266,7 +2267,7 @@ console.log(JSON.stringify({schema:"web-high-salary-tax-integration/v1",highCase
    conditions:"salary-basic-social-family-only-reviewed"};
   const housing={moveInYear:2024,capClass:"standard5",possibleYen,eligibilityReviewed:true};
   const request={tax,housing,filing};
-  const t=familyTax.mortgageReliefResearchTrial(request,donation);
+  const t=researchApi.mortgageReliefResearchTrial(request,donation);
   assert.equal(t.status,"COMPONENTS_ONLY",t.reason);assert.equal(t.donationLimitYen,null);
   const c=t.calculation;assert.equal(c.researchOnly,true);assert.equal(c.intermediateRoundingCertified,false);
   assert.deepEqual([c.before.residentHousingYen,c.after.residentHousingYen,...c.localBefore,...c.localAfter.map(x=>x.assessedYen),c.nationalSavingYen,c.residentSavingYen,c.selfPayYen],[hb,ha,cb,pb,ca,pa,ns,rs,self]);
@@ -2275,11 +2276,11 @@ console.log(JSON.stringify({schema:"web-high-salary-tax-integration/v1",highCase
    assert.equal(p.status,"HOLD");assert.equal(p.calculation,null);assert.equal(p.donationLimitYen,null);productHolds++;
   }
   for(const q of [{...request,tax:{...tax,salaryIncome:1820000}},{...request,housing:{...housing,eligibilityReviewed:false}}]){
-   const result=familyTax.mortgageReliefResearchTrial(q,donation);
+   const result=researchApi.mortgageReliefResearchTrial(q,donation);
    assert.equal(result.status,"HOLD");assert.equal(result.donationLimitYen,null);invalid++;
   }
   const normal={...request,tax:{...tax,salaryIncome:5200000,socialInsurance:1000000,relatives:[]}};
-  const a=familyTax.mortgageTrial(normal,donation),b=familyTax.mortgageReliefResearchTrial(normal,donation);
+  const a=familyTax.mortgageTrial(normal,donation),b=researchApi.mortgageReliefResearchTrial(normal,donation);
   assert.equal(a.status,"COMPONENTS_ONLY");assert.equal(b.status,"COMPONENTS_ONLY");
   for(const k of ["localBefore","localAfter","nationalSavingYen","residentSavingYen","selfPayYen"])
    assert.deepEqual(a.calculation[k],b.calculation[k],k);
@@ -2291,5 +2292,9 @@ console.log(JSON.stringify({schema:"web-high-salary-tax-integration/v1",highCase
  const sandbox={window:{}};
  vm.runInNewContext(fs.readFileSync(path.join(__dirname,"../src/family-tax.js"),"utf8"),sandbox);
  assert.equal(typeof sandbox.window.FurusatoFamilyTax.mortgageReliefResearchTrial,"undefined");
+ assert.equal(typeof sandbox.window.FurusatoFamilyTax.createResearchApi,"undefined");
+ assert.equal(typeof familyTax.mortgageReliefResearchTrial,"undefined");
+ assert.equal(fs.existsSync(path.join(__dirname,"../dist/income-levy-relief.js")),false);
+ assert.equal(typeof researchApi.mortgageReliefResearchTrial,"function");
  console.log(JSON.stringify({schema:"web-mortgage-relief-integrated-research/v1",integrated,productHolds,invalid,unaffected,browserResearchEntry:false,release:"HOLD"}));
 }

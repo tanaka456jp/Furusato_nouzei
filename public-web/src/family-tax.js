@@ -10,7 +10,13 @@
  * https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1155.htm
  */
 (function(root,factory){
- if(typeof module==="object"&&module.exports)module.exports=factory(require("./family-deductions.js"),require("./insurance-deductions.js"),require("./other-deductions.js"),require("./medical-deductions.js"),require("./salary-adjustment.js"),require("./income-levy-relief.js"));
+ if(typeof module==="object"&&module.exports){
+  const deps=[require("./family-deductions.js"),require("./insurance-deductions.js"),require("./other-deductions.js"),require("./medical-deductions.js"),require("./salary-adjustment.js")];
+  // Ordinary CommonJS loading (including dist) has no research dependency.
+  // Explicit dependency injection is available only to Node test callers.
+  const api=factory(...deps);
+  module.exports=Object.freeze({...api,createResearchApi:research=>factory(...deps,research)});
+ }
  else root.FurusatoFamilyTax=factory(root.FurusatoFamilyDeductions,root.FurusatoInsuranceDeductions,root.FurusatoOtherDeductions,root.FurusatoMedicalDeductions,root.FurusatoSalaryAdjustment);
 }(typeof window!=="undefined"?window:this,function(family,insurance,other,medical,salaryAdjustment,reliefResearch){
  const valid=(n,max)=>Number.isSafeInteger(n)&&n>=0&&n<=max;
