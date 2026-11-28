@@ -98,6 +98,25 @@ function submit(){
  if(field("municipality").value==="")field("municipality").value="standard";
  rawSubmit();
 }
+// Unsupported-year tampering must not preserve a previous positive result.
+// The select itself may only offer the two audited income years.
+assert.deepEqual([...field("year").options].map(o=>o.value),["2026","2025"]);
+for(const year of ["2024","2027","2028"]){
+ form.reset();field("year").value="2026";field("salaryGross").value="7000000";
+ field("socialInsurance").value="1000000";field("municipality").value="standard";
+ field("acknowledgedExclusions").checked=true;rawSubmit();
+ assert.equal(view.className,"result");assert.equal(view.querySelector(".amount").textContent,"109,000円");
+ const injected=document.createElement("option");injected.value=year;injected.textContent=year;field("year").append(injected);
+ field("year").value=year;dom.window.dispatchEvent(new Event("beforeprint"));
+ assert.equal(view.className,"result hold");assert.equal(view.querySelector(".amount"),null);
+ rawSubmit();assert.equal(view.className,"result hold");assert.equal(view.querySelector(".amount"),null);
+ injected.remove();
+}
+form.reset();
+for(const file of ["dist/index.html","dist/about.html","dist/terms.html","README.md"]){
+ assert.ok(fs.readFileSync(path.join(__dirname,"..",file),"utf8").includes("2027年分（2028年度住民税）以降は未対応です。2026年分の計算を流用しないでください。"),file);
+}
+console.log("WEB_UNSUPPORTED_YEAR_SINGLE_AND_SCOPE_PASS");
 // Verified low-income manual case: no numeric ceiling, stale print blocked.
 field("year").value="2025";field("salaryGross").value="900000";
 field("socialInsurance").value="0";field("municipality").value="standard";

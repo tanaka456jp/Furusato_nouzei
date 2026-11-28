@@ -142,6 +142,28 @@ assert.equal(autoForecast.appliedDeductionsYen,1840000);
 assert.equal(autoForecast.originalCandidates.deductionsReference,1430000);
 assert.equal(autoForecast.deductionsOverrideActive,false);
 assert.match(batch.csv([autoForecast]),/1840000/);
+// Reject unsupported source/target years, including stale CSV snapshots.
+{
+ let cases=0;
+ for(const year of [2024,2027,2028])for(const key of ["year","sourceYear"]){
+  const candidate=fixture(1,basic2026);candidate.confirmed=true;candidate.noExclusions=true;
+  batch.calculate(candidate,win.FurusatoEngine,guard,selected,win.FurusatoResidentLevy);
+  assert.equal(batch.canOutputEstimate(candidate),true);
+  candidate[key]=year;
+  assert.equal(batch.canOutputEstimate(candidate),false);
+  const cells=columns(candidate);
+  assert.equal(cells[11],"");assert.equal(cells[12],"HOLD");
+  batch.calculate(candidate,win.FurusatoEngine,guard,selected,win.FurusatoResidentLevy);
+  assert.equal(candidate.status,"HOLD");assert.equal(candidate.donationLimitYen,null);
+  const edited=fixture(1,basic2026);batch.edit(edited,key,String(year));
+  edited.confirmed=true;edited.noExclusions=true;
+  batch.calculate(edited,win.FurusatoEngine,guard,selected,win.FurusatoResidentLevy);
+  assert.equal(edited.status,"HOLD");assert.equal(edited.donationLimitYen,null);
+  cases++;
+ }
+ assert.equal(cases,6);
+ console.log("WEB_UNSUPPORTED_YEAR_BATCH_CSV_6_PASS");
+}
 // An original slip containing unrecognized extra deductions must never be
 // silently converted into a basic/social-only estimate.
 const unsupportedSource=fixture(15,{...basic2026,
