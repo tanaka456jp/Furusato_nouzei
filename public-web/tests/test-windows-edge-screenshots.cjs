@@ -455,6 +455,7 @@ async function main(){
       assert.ok(formatTrace.some(t=>t.kind==="recognize"&&t.width===1194&&t.height===1690),"Fixed JPEG resampling not observed");
       assert.equal(eligible,true,"Previously recovered JPEG must work in product: "+name);
     }
+    assert.equal(eligible,true,"Previously recovered PNG/JPEG/PDF must stay recoverable: "+name);
     assert.equal(await page.locator("#slipConfirm").isChecked(),false);
     assert.equal(await page.locator("#result").isVisible(),false);
     for(const key of Object.keys(truth))assert.equal(await field(key).inputValue(),"");
@@ -470,6 +471,7 @@ async function main(){
         await field("acknowledgedExclusions").check();
         await page.locator('#calculator button[type="submit"]').click();
         assert.equal(await page.locator("#result .amount").textContent(),"109,000円");
+        await save(name.slice(0,2)+"-current-year-result",page.locator("#result"));
       }else{
         await field("municipality").selectOption("standard");
         await field("acknowledgedExclusions").check();
@@ -588,6 +590,7 @@ async function main(){
   assert.equal(mixedLines[2][11],"");assert.equal(mixedLines[2][12],"HOLD");
   await mixedDownload.delete();
   await save("18-raster-batch",page.locator("#batchStatus"));
+  await save("18-raster-batch-rows",page.locator("#batchRows"));
   await page.locator("#batchClear").click();
   console.log("SYNTHETIC_RASTER_BATCH "+(rasterBatchEligible?"EXACT_CANDIDATE":"HOLD")+" NEGATIVE_HOLD");
   // Cancel during the English worker recognition itself, then prove a

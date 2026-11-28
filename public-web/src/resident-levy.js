@@ -52,6 +52,14 @@
   }
   const city=part(rate[0],rate[2]),prefecture=part(rate[1],rate[3]);
   const assessed=city.assessedYen+prefecture.assessedYen;
+  // Distinct income-levy relief near the ordinary exemption threshold.
+  // Conservative pre-credit bound; no final levy or donation estimate
+  // until the interaction with subsequent credits is independently audited.
+  // https://www.city.osaka.lg.jp/zaisei/page/0000384084.html
+  // https://www.city.imizu.toyama.jp/guide/svGuideDtl.aspx?servno=54771
+  if(Math.round(city.beforeRoundingYen*100)+Math.round(prefecture.beforeRoundingYen*100)>
+     (salaryIncome-450000)*100)
+   return {...hold("住民税所得割の非課税限度額付近の調整措置は個別確認してください"),donationLimitYen:null};
   if(assessed===0)return hold("住民税所得割がありません");
   return {status:"ESTIMATE",calculation:{municipality,residentTaxableYen:taxable,
     personalDifferenceYen:difference,adjustmentBasisYen:basis,

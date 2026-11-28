@@ -2027,3 +2027,48 @@ console.log(JSON.stringify({schema:"web-high-salary-tax-integration/v1",highCase
  }
  console.log(JSON.stringify({schema:"web-annual-family-gross-source-cross-check/v1",grossCases,exemptionCases,studentCases,source:"NTA / Fukuoka FY2027 Q&A",syntheticOnly:true,release:"HOLD"}));
 }
+
+ 
+// Independent ordinary income-levy exemption cliff audit.
+// Osaka city and Imizu city: after-credit levy relief avoids leaving income
+// net of levy below the ordinary exemption threshold. We deliberately
+// HOLD potentially affected cases until the post-credit model is audited.
+// Three reviewed children under 16: exemption threshold 1,820,000;
+// no dependent deduction, only 430,000 local basic deduction.
+// At 1,971,599 and 1,971,600 the unrounded levy is 151,600;
+// the excess income is respectively 151,599 and 151,600.
+{
+ const reason="住民税所得割の非課税限度額付近の調整措置";
+ let holds=0,accepted=0;
+ for(const year of [2025,2026])for(const municipality of ["standard","designated"]){
+  const b={year,municipality,socialInsurance:0,conditions:"basic-only-reviewed"};
+  for(const salaryIncome of [451000,451049]){
+   const out=local.calculate({...b,salaryIncome});
+   assert.equal(out.status,"HOLD");assert.match(out.reason,new RegExp(reason));
+   assert.equal(out.calculation,null);assert.equal(out.donationLimitYen,null);holds++;
+  }
+  for(const salaryIncome of [451050,451051,452000]){
+   const out=local.calculate({...b,salaryIncome});
+   assert.equal(out.status,"ESTIMATE");assert.equal(out.donationLimitYen,null);accepted++;
+  }
+  const f={year,municipality,socialInsurance:0,spouse:null,
+   relatives:[relative(5),relative(8),relative(12)],
+   conditions:"salary-basic-social-family-only-reviewed"};
+  for(const salaryIncome of [1820001,1971000,1971599]){
+   const q={...f,salaryIncome};
+   for(const out of [familyTax.calculate(q),familyTax.filingTrial(q,3000),familyTax.filingPrefix(q)]){
+    assert.equal(out.status,"HOLD");assert.match(out.reason,new RegExp(reason));
+    assert.equal(out.calculation,null);assert.equal(out.donationLimitYen,null);holds++;
+   }
+  }
+  for(const salaryIncome of [1971600,1971601,1972000]){
+   const out=familyTax.calculate({...f,salaryIncome});
+   assert.equal(out.status,"ESTIMATE",out.reason);
+   assert.equal(out.calculation.family.ordinaryResidentIncomeLevyExemptionLimitYen,1820000);
+   assert.equal(out.calculation.residentTaxableYen,salaryIncome<1972000?1541000:1542000);
+   accepted++;
+  }
+ }
+ assert.deepEqual([holds,accepted],[44,24]);
+ console.log(JSON.stringify({schema:"web-income-levy-exemption-cliff-guard/v1",holds,accepted,postCreditReliefCertified:false,release:"HOLD"}));
+}

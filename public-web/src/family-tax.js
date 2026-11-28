@@ -140,6 +140,15 @@
   }
   const city=part(share),prefecture=part(5-share);
   const levy=city.assessedYen+prefecture.assessedYen;
+  // Income-levy relief near the ordinary exemption boundary is a distinct
+  // post-credit adjustment, not the personal-deduction adjustment above.
+  // https://www.city.osaka.lg.jp/zaisei/page/0000384084.html
+  // https://www.city.imizu.toyama.jp/guide/svGuideDtl.aspx?servno=54771
+  // Until the pre/post donation and housing interaction is audited, stop
+  // if even the unrounded pre-credit levy could trigger that relief.
+  if(city.beforeRounding100+prefecture.beforeRounding100>
+     (income-c.ordinaryResidentIncomeLevyExemptionLimitYen)*100)
+   return hold("住民税所得割の非課税限度額付近の調整措置は個別確認してください");
   if(levy<=0)return hold("住民税所得割がありません");
   const incomeCap=Math.floor(income*3/10);
   const exactReference=Math.min(city.referenceLimitYen,prefecture.referenceLimitYen,incomeCap);
