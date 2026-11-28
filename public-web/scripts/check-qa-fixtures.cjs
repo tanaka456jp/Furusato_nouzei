@@ -26,7 +26,12 @@ const expected=[
   "21-raster-minus.pdf",
   "22-raster-duplicate.pdf",
   "23-raster-year-conflict.pdf",
-  "24-raster-prior-year.pdf"
+  "24-raster-prior-year.pdf",
+  "25-jpeg-period.jpg",
+  "26-jpeg-minus.jpg",
+  "27-jpeg-duplicate.jpg",
+  "28-jpeg-year-conflict.jpg",
+  "29-jpeg-prior-year.jpg"
 ];
 const root=path.resolve(__dirname,"../qa-fixtures");
 assert.ok(fs.lstatSync(root).isDirectory(),"QA_FIXTURE_DIRECTORY_INVALID");
@@ -46,4 +51,4 @@ for(const name of expected){
   ext===".jpg"?bytes[0]===255&&bytes[1]===216&&bytes[2]===255:false;
  assert.ok(valid,"QA_FIXTURE_SIGNATURE");
 }
-console.log("SYNTHETIC_QA_FIXTURE_INVENTORY_24_PASS");
+console.log("SYNTHETIC_QA_FIXTURE_INVENTORY_29_PASS");

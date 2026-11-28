@@ -3,7 +3,9 @@
 // Each configuration uses the production geometry and strict amount gate.
 async function probeFormatInBrowser(){
  const file=document.getElementById("slipFile").files[0];
- const jpeg=file?.name==="15-bilingual-jpeg.jpg";
+ const jpegBaseline=file?.name==="15-bilingual-jpeg.jpg";
+ const jpegExtra=["25-jpeg-period.jpg","26-jpeg-minus.jpg","27-jpeg-duplicate.jpg","28-jpeg-year-conflict.jpg","29-jpeg-prior-year.jpg"].includes(file?.name);
+ const jpeg=jpegBaseline||jpegExtra;
  const pdfBaseline=file?.name==="17-bilingual-raster.pdf";
  const pdfExtra=["20-raster-period.pdf","21-raster-minus.pdf","22-raster-duplicate.pdf","23-raster-year-conflict.pdf","24-raster-prior-year.pdf"].includes(file?.name);
  const pdf=pdfBaseline||pdfExtra;
@@ -13,7 +15,7 @@ async function probeFormatInBrowser(){
   corePath:new URL("./vendor/tesseract/core",location.href).href,
   langPath:new URL("./vendor/tesseract/lang",location.href).href,workerBlobURL:false,cacheMethod:"none"};
  const variants=jpeg?
-  [{id:"JPEG_CURRENT",scale:1,gain:1.35,mid:139},{id:"JPEG_MILD",scale:1,gain:1.15,mid:128},
+  [...(jpegBaseline?[{id:"JPEG_CURRENT",scale:1,gain:1.35,mid:139},{id:"JPEG_MILD",scale:1,gain:1.15,mid:128}]:[]),
    {id:"JPEG_RESAMPLE_1_18",scale:1.18,gain:1.35,mid:139}]:
   [...(pdfBaseline?[{id:"PDF_CURRENT",scale:3,gain:1.35,mid:139}]:[]),{id:"PDF_2X",scale:2,gain:1.35,mid:139}];
  let bitmap,loading,documentPdf,pdfPage;

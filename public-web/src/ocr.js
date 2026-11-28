@@ -404,9 +404,16 @@
       try{reader.releaseLock();}catch(_){}
     }
   }
-  async function rasterizePdf(page,session){
+  async function rasterizePdf(page,session,emptyTextLayer=false){
     var viewport=page.getViewport({scale:1});
     var scale=Math.min(3,2600/Math.max(viewport.width,viewport.height));
+    // Choose the bounded raster scale BEFORE recognition, never select
+    // between amounts after OCR. The 2x configuration was tested on
+    // image-only PDFs; retain the previous scale on smaller pages and
+    // all partial text-layer paths.
+    var scanScale=Math.min(2,2600/Math.max(viewport.width,viewport.height));
+    if(emptyTextLayer===true&&viewport.width*scanScale>=750&&viewport.height*scanScale>=400)
+      scale=scanScale;
     if(scale<=0||!Number.isFinite(scale)||viewport.width*scale<750||
        viewport.height*scale<400)throw Error("PDFの解像度が不足しています。");
     var view=page.getViewport({scale:scale});
@@ -768,7 +775,7 @@
           if(extracted.emptyTextLayer){
             // No PDF text operators: scanned image-only single-page PDF.
             // This is the only fallback for EMPTY, not for malformed layers.
-            canvas=await rasterizePdf(page,pdfSession);
+            canvas=await rasterizePdf(page,pdfSession,true);
             ensureCurrent();
             result=await twoPass(canvas,isStale,true);
           }else{

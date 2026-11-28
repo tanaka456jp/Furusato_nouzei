@@ -432,7 +432,8 @@ async function main(){
     ["15-bilingual-jpeg.jpg",2026,expected],
     ["16-bilingual-low-contrast.png",2026,expected],
     ["17-bilingual-raster.pdf",2026,expected],
-    ["19-bilingual-previous-year.png",2025,priorTruth]
+    ["19-bilingual-previous-year.png",2025,priorTruth],
+    ["24-raster-prior-year.pdf",2025,priorTruth]
   ]){
     await page.locator('#calculator button[type="reset"]').click();
     await field("year").selectOption("2026");
@@ -445,6 +446,10 @@ async function main(){
     const formatTrace=await page.evaluate(()=>window.__syntheticOcrTrace);
     fs.writeFileSync(path.join(out,name.slice(0,2)+"-format-ocr-trace.json"),JSON.stringify({scope:"fixed synthetic only",fixture:name,observations:formatTrace},null,2));
     await save(name.slice(0,2)+"-format-review",page.locator(".ocr-panel"));
+    if(name==="17-bilingual-raster.pdf"||name==="24-raster-prior-year.pdf"){
+      assert.ok(formatTrace.some(t=>t.kind==="recognize"&&t.width===1190&&t.height===1684),"Fixed 2x PDF rendering not observed");
+      assert.equal(eligible,true,"Previously recovered raster must work in product: "+name);
+    }
     assert.equal(await page.locator("#slipConfirm").isChecked(),false);
     assert.equal(await page.locator("#result").isVisible(),false);
     for(const key of Object.keys(truth))assert.equal(await field(key).inputValue(),"");
@@ -473,15 +478,15 @@ async function main(){
         assert.equal(await page.locator("#result .result-tax-year").textContent(),"試算対象：2026年分 ／ 住民税：2027年度");
         assert.equal(await page.locator("#result .result-source-year").textContent(),"参照源泉票：2025年分（前年参考・対象年の見込額で試算）");
         assert.equal(await page.locator("#result details").first().getAttribute("open"),null);
-        await save("19-forecast-confirmed",page.locator("#result"));
+        await save(name.slice(0,2)+"-forecast-confirmed",page.locator("#result"));
         await page.setViewportSize({width:360,height:900});
         assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
-        await save("19-forecast-confirmed-360",page.locator("#result"));
+        await save(name.slice(0,2)+"-forecast-confirmed-360",page.locator("#result"));
         await page.emulateMedia({media:"print"});
         await page.evaluate(()=>window.dispatchEvent(new Event("beforeprint")));
         assert.equal(await page.locator("#result .result-tax-year").isVisible(),true);
         assert.equal(await page.locator("#result .result-source-year").isVisible(),true);
-        await save("19-forecast-print-css",page.locator("#result"));
+        await save(name.slice(0,2)+"-forecast-print-css",page.locator("#result"));
         await page.evaluate(()=>window.dispatchEvent(new Event("afterprint")));
         await page.emulateMedia({media:null});
         await page.setViewportSize({width:1280,height:900});
@@ -494,6 +499,21 @@ async function main(){
     console.log("SYNTHETIC_FORMAT_RESULT "+name+" "+formatResults.at(-1).status);
     fs.writeFileSync(path.join(out,"synthetic-format-results.json"),JSON.stringify({scope:"synthetic only",results:formatResults},null,2));
   }
+  // Exercise all four 2x PDF negatives through the production reader,
+  // not just the experimental region assessment.
+  for(const name of ["20-raster-period.pdf","21-raster-minus.pdf","22-raster-duplicate.pdf","23-raster-year-conflict.pdf"]){
+    await page.locator('#calculator button[type="reset"]').click();
+    await field("year").selectOption("2026");
+    await page.locator("#slipFile").setInputFiles(path.join(fixtures,name));
+    await page.locator("#slipScan").click();
+    await page.waitForFunction(()=>!document.getElementById("slipScan").disabled&&!document.getElementById("slipReview").hidden,null,{timeout:90000});
+    assert.equal(await page.locator("#slipTransfer").isEnabled(),false,name);
+    assert.equal(await page.locator("#slipConfirm").isEnabled(),false,name);
+    assert.equal(await page.locator("#result").isVisible(),false,name);
+    for(const key of Object.keys(expected))assert.equal(await field(key).inputValue(),"",name);
+    await save(name.slice(0,2)+"-raster-product-hold",page.locator(".ocr-panel"));
+    console.log("SYNTHETIC_RASTER_PRODUCT_NEGATIVE_HOLD "+name);
+  }
   // Test-only candidate configurations. Do not substitute a research
   // result for the ordinary product decision, or tune by expected amounts.
   const {probeFormatInBrowser}=require("./synthetic-format-probe.cjs");
@@ -505,7 +525,12 @@ async function main(){
     ["21-raster-minus.pdf",null,null,1],
     ["22-raster-duplicate.pdf",null,null,1],
     ["23-raster-year-conflict.pdf",null,null,1],
-    ["24-raster-prior-year.pdf",2025,priorTruth,1]
+    ["24-raster-prior-year.pdf",2025,priorTruth,1],
+    ["25-jpeg-period.jpg",null,null,1],
+    ["26-jpeg-minus.jpg",null,null,1],
+    ["27-jpeg-duplicate.jpg",null,null,1],
+    ["28-jpeg-year-conflict.jpg",null,null,1],
+    ["29-jpeg-prior-year.jpg",2025,priorTruth,1]
   ]){
     await page.locator('#calculator button[type="reset"]').click();
     await page.locator("#slipFile").setInputFiles(path.join(fixtures,name));
@@ -538,6 +563,7 @@ async function main(){
   assert.deepEqual(await page.locator("#batchRows .batch-result").allTextContents(),["—","—"]);
   assert.equal(await rows.nth(1).locator('[data-field="confirmed"]').isEnabled(),false);
   const rasterBatchEligible=await rows.first().locator('[data-field="confirmed"]').isEnabled();
+  assert.equal(rasterBatchEligible,true,"Normal raster batch page must recover");
   if(rasterBatchEligible){
     for(const [key,value] of Object.entries(expected))assert.equal(await rows.first().locator('[data-field="'+key+'"]').inputValue(),value);
     assert.equal(await rows.first().locator('[data-field="sourceYear"]').inputValue(),"2026");

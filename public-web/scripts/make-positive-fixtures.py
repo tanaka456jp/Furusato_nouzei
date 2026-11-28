@@ -52,7 +52,9 @@ def main():
     extra = ["15-bilingual-jpeg.jpg", "16-bilingual-low-contrast.png", "17-bilingual-raster.pdf",
              "18-bilingual-raster-mixed.pdf", "19-bilingual-previous-year.png",
              "20-raster-period.pdf", "21-raster-minus.pdf", "22-raster-duplicate.pdf",
-             "23-raster-year-conflict.pdf", "24-raster-prior-year.pdf"]
+             "23-raster-year-conflict.pdf", "24-raster-prior-year.pdf",
+             "25-jpeg-period.jpg", "26-jpeg-minus.jpg", "27-jpeg-duplicate.jpg",
+             "28-jpeg-year-conflict.jpg", "29-jpeg-prior-year.jpg"]
     if any((dest / n).exists() for n in names + [v[0] for v in research] + extra):
         raise ValueError("Refuse to overwrite existing QA files")
     with tempfile.TemporaryDirectory() as tmp:
@@ -98,6 +100,18 @@ def main():
         with fitz.open() as doc:
             make_page(doc, font, amounts=["5,000,000","3,560,000","1,430,000","750,000"], year="令和7年分")
             doc[0].get_pixmap(matrix=fitz.Matrix(2,2)).save(dest/extra[4])
+        # Same JPEG encoder, scale and compression as 15. These are
+        # separately generated synthetic negatives and prior-year positives.
+        for filename, amounts, year, bad, conflict in [
+            (extra[10], ["7.000.000","5,200,000","1,670,000","1,000,000"], YEAR, False, False),
+            (extra[11], ["7,000,000","5,200,000","1,670,000","-1,000,000"], YEAR, False, False),
+            (extra[12], AMOUNTS, YEAR, True, False),
+            (extra[13], AMOUNTS, YEAR, False, True),
+            (extra[14], ["5,000,000","3,560,000","1,430,000","750,000"], "令和7年分", False, False)
+        ]:
+            with fitz.open() as doc:
+                make_page(doc, font, bad=bad, amounts=amounts, year=year, duplicate_year=conflict)
+                doc[0].get_pixmap(matrix=fitz.Matrix(1.7,1.7)).save(dest/filename, jpg_quality=75)
         # Real image-only PDFs: no hidden or searchable text layer.
         for filename, images in [
             (extra[2], [names[2]]), (extra[3], [names[2], "11-bilingual-printed-period.png"]),
