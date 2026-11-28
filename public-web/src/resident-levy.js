@@ -59,7 +59,7 @@
   // https://www.city.imizu.toyama.jp/guide/svGuideDtl.aspx?servno=54771
   if(Math.round(city.beforeRoundingYen*100)+Math.round(prefecture.beforeRoundingYen*100)>
      (salaryIncome-450000)*100)
-   return {...hold("住民税所得割の非課税限度額付近の調整措置は個別確認してください"),donationLimitYen:null};
+   return {...hold("住民税所得割の非課税限度額付近の調整措置は個別確認してください。寄附金・住宅ローン控除との併用により実際の税負担が変わるため、この条件では限度額を表示しません。課税自治体または税理士に確認してください。"),donationLimitYen:null};
   if(assessed===0)return hold("住民税所得割がありません");
   return {status:"ESTIMATE",calculation:{municipality,residentTaxableYen:taxable,
     personalDifferenceYen:difference,adjustmentBasisYen:basis,

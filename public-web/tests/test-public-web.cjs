@@ -572,6 +572,7 @@ for(const year of [2025,2026])for(const municipality of ["standard","designated"
  assert.equal(view.className,"result hold");assert.equal(view.querySelector(".amount"),null);
  rawSubmit();assert.equal(view.className,"result hold");
  assert.match(view.textContent,/住民税所得割の非課税限度額付近の調整措置/);
+ assert.match(view.textContent,/課税自治体または税理士に確認してください/);
  assert.equal(view.querySelector(".amount"),null);assert.equal(view.querySelector(".filing-trial"),null);
  field("salaryGross").value="3000000";rawSubmit();
  assert.equal(view.className,"result",view.textContent);assert.ok(view.querySelector(".amount"));
@@ -1045,3 +1046,13 @@ field("salaryGross").value="7000000";historyEvent("pageshow",false);
 assert.equal(field("salaryGross").value,"7000000");
 form.reset();dom.window.close();
 console.log("PUBLIC_WEB_STATIC_AND_BROWSER_SYNTHETIC_PASS; no network; ads off; deploy off");
+
+// Published scope must agree on the still-unapproved income-levy relief.
+{
+ const fs=require("node:fs"),path=require("node:path");
+ for(const file of ["dist/index.html","dist/about.html","dist/terms.html","README.md"]){
+  const content=fs.readFileSync(path.join(__dirname,"..",file),"utf8");
+  assert.ok(content.includes("住民税所得割の非課税限度額付近の調整措置が必要となる可能性がある場合もHOLDです。入力を変更して回避せず、課税自治体または税理士に確認してください。"),file);
+ }
+ console.log("WEB_RELIEF_SCOPE_CONSISTENCY_PASS");
+}

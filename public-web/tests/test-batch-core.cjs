@@ -353,6 +353,7 @@ assert.equal(familyRow.familyReviewed,true);
   const positive=make(3000000);runFamily(positive);assert.equal(batch.canOutputEstimate(positive),true,positive.reason);
   const held=make(2800000);runFamily(held);assert.equal(held.status,"HOLD");
   assert.match(held.reason,/住民税所得割の非課税限度額付近の調整措置/);
+  assert.match(held.reason,/課税自治体または税理士に確認してください/);
   assert.equal(held.donationLimitYen,null);assert.equal(batch.canOutputEstimate(held),false);
   assert.equal(columns(held)[12],"HOLD");
   for(const i of [7,11,15,16,17,18,20,21,22])assert.equal(columns(held)[i],"");

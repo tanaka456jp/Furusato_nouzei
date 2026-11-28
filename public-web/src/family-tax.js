@@ -154,7 +154,7 @@
   // if even the unrounded pre-credit levy could trigger that relief.
   if(!research&&city.beforeRounding100+prefecture.beforeRounding100>
      (income-c.ordinaryResidentIncomeLevyExemptionLimitYen)*100)
-   return hold("住民税所得割の非課税限度額付近の調整措置は個別確認してください");
+   return hold("住民税所得割の非課税限度額付近の調整措置は個別確認してください。寄附金・住宅ローン控除との併用により実際の税負担が変わるため、この条件では限度額を表示しません。課税自治体または税理士に確認してください。");
   if(levy<=0)return hold("住民税所得割がありません");
   const incomeCap=Math.floor(income*3/10);
   const exactReference=Math.min(city.referenceLimitYen,prefecture.referenceLimitYen,incomeCap);
