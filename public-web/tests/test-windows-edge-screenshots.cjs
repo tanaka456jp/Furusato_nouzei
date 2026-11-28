@@ -435,10 +435,13 @@ async function main(){
     await page.locator('#calculator button[type="reset"]').click();
     await field("year").selectOption("2026");
     await page.locator("#slipFile").setInputFiles(path.join(fixtures,name));
+    await page.evaluate(()=>{window.__syntheticOcrTrace=[];});
     const started=Date.now();
     await page.locator("#slipScan").click();
     await page.waitForFunction(()=>!document.getElementById("slipScan").disabled&&!document.getElementById("slipReview").hidden,null,{timeout:90000});
     const eligible=await page.locator("#slipTransfer").isEnabled();
+    const formatTrace=await page.evaluate(()=>window.__syntheticOcrTrace);
+    fs.writeFileSync(path.join(out,name.slice(0,2)+"-format-ocr-trace.json"),JSON.stringify({scope:"fixed synthetic only",fixture:name,observations:formatTrace},null,2));
     await save(name.slice(0,2)+"-format-review",page.locator(".ocr-panel"));
     assert.equal(await page.locator("#slipConfirm").isChecked(),false);
     assert.equal(await page.locator("#result").isVisible(),false);
@@ -474,6 +477,26 @@ async function main(){
     formatResults.push({fixture:name,status:eligible?"EXACT_CANDIDATE":"HOLD",elapsedMs:Date.now()-started});
     console.log("SYNTHETIC_FORMAT_RESULT "+name+" "+formatResults.at(-1).status);
     fs.writeFileSync(path.join(out,"synthetic-format-results.json"),JSON.stringify({scope:"synthetic only",results:formatResults},null,2));
+  }
+  // Test-only candidate configurations. Do not substitute a research
+  // result for the ordinary product decision, or tune by expected amounts.
+  const {probeFormatInBrowser}=require("./synthetic-format-probe.cjs");
+  const variantReports=[];
+  for(const name of ["15-bilingual-jpeg.jpg","17-bilingual-raster.pdf"]){
+    await page.locator('#calculator button[type="reset"]').click();
+    await page.locator("#slipFile").setInputFiles(path.join(fixtures,name));
+    const reports=await page.evaluate(probeFormatInBrowser);
+    assert.equal(reports.length,2);
+    for(const report of reports){
+      const match=report.status==="RESEARCH_MATCH";
+      const exact=match&&report.assessment?.year===2026&&Object.entries(expected).every(([k,v])=>report.assessment.candidates[k]===Number(v));
+      const outcome=match?(exact?"EXACT_RESEARCH_MATCH":"WRONG_RESEARCH_MATCH"):"HOLD";
+      variantReports.push({fixture:name,outcome,report});
+      console.log("SYNTHETIC_FORMAT_VARIANT "+JSON.stringify({fixture:name,id:report.id,outcome,reason:report.reason||null,dimensions:report.dimensions,years:report.pages.map(p=>p.year),plans:report.pages.map(p=>p.plan.status)}));
+    }
+    for(const key of Object.keys(expected))assert.equal(await field(key).inputValue(),"");
+    assert.equal(await page.locator("#slipTransfer").isEnabled(),false);
+    fs.writeFileSync(path.join(out,"synthetic-format-variant-research.json"),JSON.stringify({scope:"synthetic research only; NEVER transfer",results:variantReports},null,2));
   }
   // Mixed raster PDF: both rows are processed independently; no result
   // before review, no incorrect value in the positive row or negative CSV.
