@@ -58,8 +58,15 @@
      ![2025,2026].includes(input.year)||!valid(input.salaryIncome,18050000)||
      !valid(input.netEligibleYen,100000000000))
    return hold("補填後の対象医療費支払額と合計所得金額を確認してください");
-  const threshold=Math.min(100000,Math.floor(input.salaryIncome/20));
-  const deduction=Math.min(2000000,Math.max(0,input.netEligibleYen-threshold));
+  // Use exact twentieths of a yen, not floating 5% arithmetic. The
+  // positive deduction is rounded UP; display the equivalent whole-yen
+  // threshold. For integer other deductions, flooring the exact taxable
+  // income to 1,000 yen gives the same result as rounding the deduction up.
+  // The grouped research path retains its independent fractional HOLD.
+  const threshold20=Math.min(2000000,input.salaryIncome);
+  const threshold=Math.floor(threshold20/20);
+  const positive20=Math.max(0,input.netEligibleYen*20-threshold20);
+  const deduction=Math.min(2000000,Math.floor((positive20+19)/20));
   return {status:"COMPONENTS_ONLY",donationLimitYen:null,release:"HOLD",calculation:{
    method:"ordinaryNet",netEligibleYen:input.netEligibleYen,thresholdYen:threshold,
    nationalDeductionYen:deduction,residentDeductionYen:deduction,

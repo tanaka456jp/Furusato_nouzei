@@ -2298,3 +2298,76 @@ console.log(JSON.stringify({schema:"web-high-salary-tax-integration/v1",highCase
  assert.equal(typeof researchApi.mortgageReliefResearchTrial,"function");
  console.log(JSON.stringify({schema:"web-mortgage-relief-integrated-research/v1",integrated,productHolds,invalid,unaffected,browserResearchEntry:false,release:"HOLD"}));
 }
+
+// Audit every possible 1/20-yen residue of the 5% threshold, including
+// zero and 2m caps. Toyonaka explicitly ceils the resulting local
+// deduction. NTA No.1120 / Income Tax Act Art.73 give the exact formula.
+// The national taxable base floor is invariant: for integer X,
+// floor((X - exactDeduction)/1000) = floor((X - ceil(exactDeduction))/1000).
+// This checks mathematical equivalence, NOT a claim that NTA expressly
+// prescribes whole-yen rounding of the deduction field itself.
+{
+ const max0=n=>n<0n?0n:n,min=(a,b)=>a<b?a:b;
+ const exactDed=(income,net)=>min(40000000n,max0(BigInt(net)*20n-min(2000000n,BigInt(income))));
+ const taxBase=(income,ded,med20,donation=0)=>Number(max0((BigInt(income)-BigInt(ded)-BigInt(donation))*20n-med20)/20000n*1000n);
+ let componentCases=0,trialCases=0,groupedHolds=0;
+ for(const year of [2025,2026])for(const start of [0,1500000,1999980,2000000])for(let residue=0;residue<20;residue++){
+  const income=start+residue,t=Math.min(100000,Math.floor(income/20));
+  for(const net of [0,Math.max(0,t-1),t,t+1,t+2000000,t+2000001,100000000000]){
+   const out=medicalDeductions.calculateNet({year,salaryIncome:income,netEligibleYen:net});
+   const exact=exactDed(income,net),expected=Number((exact+19n)/20n);
+   assert.equal(out.status,"COMPONENTS_ONLY");assert.equal(out.donationLimitYen,null);
+   assert.equal(out.calculation.nationalDeductionYen,expected);
+   assert.equal(out.calculation.residentDeductionYen,expected);
+   assert.equal(out.calculation.thresholdYen,t);
+   assert.equal(out.calculation.requiresFilingToClaim,expected>0);
+   componentCases++;
+  }
+  if(income<2000000&&residue!==0){
+   const out=medicalDeductions.calculate({year,salaryIncome:income,method:"ordinary",
+    groups:[{paidYen:300000,reimbursedYen:0,eligibilityReviewed:true}],
+    conditions:"annual-salary-only-eligible-paid-expenses-compensation-reviewed"});
+   assert.equal(out.status,"HOLD");assert.equal(out.donationLimitYen,null);groupedHolds++;
+  }
+ }
+ for(const year of [2025,2026])for(const municipality of ["standard","designated"])
+ for(const start of [1500000,1999980])for(let residue=0;residue<20;residue++){
+  const income=start+residue,basic=year===2025?880000:1040000;
+  const net=300000,exact=exactDed(income,net);
+  // Deliberately position national taxable income on both sides of a
+  // thousand-yen boundary by varying integer social insurance deductions.
+  const rounded=Number((exact+19n)/20n);
+  for(const offset of [-1,0,1]){
+   const social=income-basic-rounded-100000+offset;
+   const args={year,salaryIncome:income,socialInsurance:social,municipality,spouse:null,relatives:[],
+    conditions:"salary-basic-social-family-only-reviewed",medicalNetPaidYen:net};
+   const c=familyTax.medicalFilingCalculation(args);
+   assert.equal(c.status,"ESTIMATE",c.reason);assert.equal(c.donationLimitYen,null);
+   const n0=taxBase(income,basic+social,exact),l0=taxBase(income,430000+social,exact);
+   assert.equal(c.calculation.nationalTaxableYen,n0);
+   assert.equal(c.calculation.residentTaxableYen,l0);
+   for(const donation of [2000,3001,9000]){
+    const out=familyTax.filingTrial(args,donation);assert.equal(out.status,"ESTIMATE",out.reason);
+    const q=out.calculation,n1=taxBase(income,basic+social,exact,donation-2000);
+    const tax=n=>Math.floor(n/20)+Math.floor(Math.floor(n/20)*21/1000);
+    assert.equal(q.nationalBefore.taxable,n0);assert.equal(q.nationalAfter.taxable,n1);
+    assert.equal(q.nationalSavingYen,tax(n0)-tax(n1));
+    // Independent municipal integer calculation in units of 1/500000 yen.
+    const shares=municipality==="standard"?[3n,2n]:[4n,1n];
+    const bills=shares.map(s=>{
+     const gross=BigInt(l0)*s*10000n,adjust=BigInt(Math.min(l0,50000))*s*5000n;
+     const levy=gross-adjust,base=BigInt(donation-2000);
+     const special=min(levy/5n,base*s*84895n);
+     const credit=(base*s*10000n+special+499999n)/500000n;
+     return [Number(levy/50000000n*100n),Number(max0(levy-credit*500000n)/50000000n*100n)];
+    });
+    assert.deepEqual([q.city.beforeYen,q.city.afterYen],bills[0]);
+    assert.deepEqual([q.prefecture.beforeYen,q.prefecture.afterYen],bills[1]);
+    assert.equal(q.selfPayYen,donation-(tax(n0)-tax(n1))-bills.reduce((sum,p)=>sum+p[0]-p[1],0));
+    trialCases++;
+   }
+  }
+ }
+ assert.deepEqual([componentCases,trialCases,groupedHolds],[1120,1440,114]);
+ console.log(JSON.stringify({schema:"web-medical-exact-twentieths-tax-base-audit/v1",componentCases,trialCases,groupedHolds,localDeductionRoundingSource:true,nationalTaxBaseEquivalent:true,nationalDeductionFieldRoundingCertified:false,release:"HOLD"}));
+}

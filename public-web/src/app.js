@@ -608,7 +608,7 @@
     if(!c.medical)pairs.splice(pairs.length-1,0,["ワンストップ参考上限",result.oneStop]);
     if(c.medical){
       add("p",details,"医療費控除を申告するためワンストップ特例は利用できません。すべてのふるさと納税を確定申告に含めてください。","muted");
-      add("p",details,"通常の医療費控除：補填後の対象医療費と対象年の合計所得金額から自動計算。","muted");
+      add("p",details,"通常の医療費控除：補填後の対象医療費と対象年の合計所得金額から自動計算。5％の足切額に1円未満の端数があるときは、控除額の円単位切上げと等価な計算用足切額（円未満切捨て）を表示します。","muted");
       pairs.push(["補填後の医療費支払額",c.medical.netEligibleYen],["医療費控除の足切額",c.medical.thresholdYen],["医療費控除額（所得税・住民税）",c.medical.nationalDeductionYen]);
     }
     if(result.housing){
