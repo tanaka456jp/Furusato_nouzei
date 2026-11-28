@@ -103,6 +103,8 @@ field("year").value="2025";field("salaryGross").value="900000";
 field("socialInsurance").value="0";field("municipality").value="standard";
 field("acknowledgedExclusions").checked=true;rawSubmit();
 assert.match(view.textContent,/控除余地なし（課税所得ゼロ）/);
+assert.equal(view.querySelector(".result-tax-year").textContent,"試算対象：2025年分 ／ 住民税：2026年度");
+assert.equal(view.querySelector(".result-source-year").textContent,"参照源泉票：OCR未取込（手入力）");
 assert.equal(view.querySelector(".amount"),null);
 field("salaryGross").value="900001";
 dom.window.dispatchEvent(new Event("beforeprint"));
@@ -120,6 +122,8 @@ submit();
 assert.equal(view.hidden,false);
 assert.equal(view.className,"result");
 assert.match(view.textContent,/109,000円/);
+assert.equal(view.querySelector(".result-tax-year").textContent,"試算対象：2026年分 ／ 住民税：2027年度");
+assert.equal(view.querySelector(".result-source-year").textContent,"参照源泉票：OCR未取込（手入力）");
 const localComparison=view.querySelector(".municipal-comparison");
 assert.ok(localComparison);
 assert.match(localComparison.textContent,/標準市町村：所得割 374,500円/);
@@ -318,6 +322,19 @@ field("acknowledgedExclusions").checked=true;
 submit();
 assert.equal(view.className,"result");
 assert.match(view.textContent,/57,000円/);
+assert.equal(view.querySelector(".result-tax-year").textContent,"試算対象：2026年分 ／ 住民税：2027年度");
+assert.equal(view.querySelector(".result-source-year").textContent,"参照源泉票：2025年分（前年参考・対象年の見込額で試算）");
+assert.equal(view.querySelector("details").open,false);
+dom.window.dispatchEvent(new Event("beforeprint"));
+assert.equal(view.querySelector(".result-source-year").textContent,"参照源泉票：2025年分（前年参考・対象年の見込額で試算）");
+dom.window.dispatchEvent(new Event("afterprint"));
+// A silently changed year must not allow printing the former estimate.
+field("year").value="2025";
+dom.window.dispatchEvent(new Event("beforeprint"));
+assert.equal(view.className,"result hold");
+assert.equal(view.querySelector(".amount"),null);
+field("year").value="2026";submit();
+assert.equal(view.className,"result");
 // An OCR source's detected mortgage/insurance amounts remain a hard HOLD
 // regardless of the UI exclusion checkbox or forecast re-attestation.
 form.dataset.ocrSourceIndicators="hasMortgage,hasLifeInsurance";

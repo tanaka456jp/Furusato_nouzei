@@ -63,6 +63,8 @@ async function main(){
   await field("acknowledgedExclusions").check();
   await page.locator('#calculator button[type="submit"]').click();
   assert.equal(await page.locator("#result .amount").textContent(),"109,000円");
+  assert.equal(await page.locator("#result .result-tax-year").textContent(),"試算対象：2026年分 ／ 住民税：2027年度");
+  assert.equal(await page.locator("#result .result-source-year").textContent(),"参照源泉票：2026年分（同年）");
   await save("confirmed-result",page.locator("#result"));
   await field("salaryGross").fill("7100000");
   assert.equal(await page.locator("#result").isVisible(),false);
@@ -468,7 +470,21 @@ async function main(){
         await page.locator('#calculator button[type="submit"]').click();
         assert.equal(await page.locator("#result .amount").textContent(),"57,000円");
         assert.equal(await field("deductionsReference").inputValue(),"1430000");
+        assert.equal(await page.locator("#result .result-tax-year").textContent(),"試算対象：2026年分 ／ 住民税：2027年度");
+        assert.equal(await page.locator("#result .result-source-year").textContent(),"参照源泉票：2025年分（前年参考・対象年の見込額で試算）");
+        assert.equal(await page.locator("#result details").first().getAttribute("open"),null);
         await save("19-forecast-confirmed",page.locator("#result"));
+        await page.setViewportSize({width:360,height:900});
+        assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+        await save("19-forecast-confirmed-360",page.locator("#result"));
+        await page.emulateMedia({media:"print"});
+        await page.evaluate(()=>window.dispatchEvent(new Event("beforeprint")));
+        assert.equal(await page.locator("#result .result-tax-year").isVisible(),true);
+        assert.equal(await page.locator("#result .result-source-year").isVisible(),true);
+        await save("19-forecast-print-css",page.locator("#result"));
+        await page.evaluate(()=>window.dispatchEvent(new Event("afterprint")));
+        await page.emulateMedia({media:null});
+        await page.setViewportSize({width:1280,height:900});
         console.log("SYNTHETIC_PRIOR_YEAR_FORECAST_57000_PASS");
       }
     }else{

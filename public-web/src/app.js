@@ -572,14 +572,27 @@
       trial:trial,income:income,social:social,sourceReconciliation:original?original.calculation:null};
   }
   var printableInputSnapshot=null,printableResult=null;
+  // Keep the target tax year distinct from the OCR reference year, even
+  // when the calculation details are collapsed or the result is printed.
+  function renderYearContext(input){
+    const target=Number(input?.year);
+    if(![2025,2026].includes(target))return;
+    const source=Number(input?.sourceYear);
+    add("p",output,"試算対象："+target+"年分 ／ 住民税："+(target+1)+"年度","muted result-tax-year");
+    if([2025,2026].includes(source)&&(source===target||source===target-1)){
+      add("p",output,"参照源泉票："+source+"年分"+(source===target-1?"（前年参考・対象年の見込額で試算）":"（同年）"),"muted result-source-year");
+    }else{
+      add("p",output,"参照源泉票：OCR未取込（手入力）","muted result-source-year");
+    }
+  }
   function renderFamily(result,input){
     if(result.status!=="ESTIMATE"){render(result,input);return;}
     output.replaceChildren();output.hidden=false;output.className="result";
     printableInputSnapshot=JSON.stringify(input);printableResult=result;
     add("h3",output,result.sourceReconciliation?"寄附上限額の概算（家族控除・原票照合済）":"寄附上限額の概算（家族控除・手入力検証）");
-    if(result.sourceReconciliation)add("p",output,"参照源泉票："+result.sourceReconciliation.year+"年分 ／ 試算対象："+input.year+"年分","muted");
+    renderYearContext(input);
     add("p",output,yen(result.amount),"amount");
-    add("p",output,"所得年 "+input.year+"年 ／ 住民税 "+(Number(input.year)+1)+"年度 ／ "+
+    add("p",output,
       (input.municipality==="standard"?"標準市町村":"政令指定都市")+" ／ "+
       (input.filing==="return"?"確定申告参考":"ワンストップ参考"),"muted");
     add("p",output,"限定条件の参考値です。自己負担2,000円を保証するものではありません。","muted");
@@ -664,6 +677,7 @@
       printableInputSnapshot=JSON.stringify(input);printableResult={noTax:true};
       output.className="result";
       add("h3",output,"控除余地なし（課税所得ゼロ）");
+      renderYearContext(input);
       add("p",output,"確認した試算条件では所得税・住民税所得割の課税所得がともに0円です。寄附による税負担の軽減は見込まれません。");
       add("p",output,"寄附自体は可能です。限度額の数値は表示しません。所得・控除条件が変わる場合は再試算してください。","muted");
       var noTaxPrint=add("button",output,"この判定を印刷・PDF保存","secondary");
@@ -692,6 +706,7 @@
       return;
     }
     add("h3", output, "寄附上限額の概算（対応条件内）");
+    renderYearContext(input);
     add("p", output, yen(selected.amount), "amount");
     add("p", output, (input.municipality==="standard"?"標準市町村":"政令指定都市")+" ／ "+selected.basis, "muted");
     add("p", output, "概算であり、自己負担2,000円を必ず保証するものではありません。申告前に制度・控除・住民税額を確認してください。", "muted");
