@@ -298,7 +298,7 @@ jobs:
           FURUSATO_BROWSER_CHANNEL: msedge
           FURUSATO_POSITIVE_FIXTURES: '1'
         run: node public-web/tests/test-ocr-browser-smoke.cjs
-      - name: Capture layouts, bilingual formats, worker cancellation and batch recovery
+      - name: Capture layouts, bilingual formats, prior-year forecast and cancellation
         env:
           FURUSATO_SCREENSHOT_DIR: ${{ runner.temp }}/furusato-web-synthetic-${{ github.run_id }}-${{ github.run_attempt }}
           FURUSATO_ENGLISH_RESEARCH_MODEL: ${{ runner.temp }}/furusato-eng-research-${{ github.run_id }}-${{ github.run_attempt }}/eng.traineddata.gz

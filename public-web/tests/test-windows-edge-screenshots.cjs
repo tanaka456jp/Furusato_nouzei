@@ -455,6 +455,18 @@ async function main(){
         await field("acknowledgedExclusions").check();
         await page.locator('#calculator button[type="submit"]').click();
         assert.equal(await page.locator("#result .amount").textContent(),"109,000円");
+      }else{
+        await field("municipality").selectOption("standard");
+        await field("acknowledgedExclusions").check();
+        await page.locator('#calculator button[type="submit"]').click();
+        assert.equal(await page.locator("#result").getAttribute("class"),"result hold");
+        await page.locator("#confirmBasicForecast").click();
+        assert.equal(await field("forecastReviewed").isChecked(),true);
+        await page.locator('#calculator button[type="submit"]').click();
+        assert.equal(await page.locator("#result .amount").textContent(),"57,000円");
+        assert.equal(await field("deductionsReference").inputValue(),"1430000");
+        await save("19-forecast-confirmed",page.locator("#result"));
+        console.log("SYNTHETIC_PRIOR_YEAR_FORECAST_57000_PASS");
       }
     }else{
       assert.equal(await page.locator("#slipConfirm").isEnabled(),false);
