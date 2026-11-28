@@ -1965,3 +1965,65 @@ console.log(JSON.stringify({schema:"web-high-salary-tax-integration/v1",highCase
  assert.ok(thresholds>0);
  console.log(JSON.stringify({schema:"web-filing-dense-yen-edges/v1",trials,nonMonotone,thresholds,actualCashRefundCertified:false,release:"HOLD"}));
 }
+
+
+// Cross-source gross-wage examples (not another model's calculated output).
+// Reviewed 2026-11-28: NTA No.1410/1190/1800 and Fukuoka City's
+// 2026-08-06 FY2027 resident-tax reform Q&A. Family inputs are INCOME,
+// not gross wages. These cases deliberately compose salary conversion,
+// family classification, statutory adjustment difference and insurance.
+{
+ const rows=[
+  // year, gross, income, spouse-kind, child-kind, child national,
+  // child local, child statutory difference, family count, life national
+  [2025,1229999,579999,"spouse","dependent-special",630000,450000,180000,1,40000],
+  [2025,1230000,580000,"spouse","dependent-special",630000,450000,180000,1,40000],
+  [2025,1230001,580001,"spouse-special","relative-special",630000,450000,0,0,40000],
+  [2025,1360000,710000,"spouse-special","relative-special",630000,450000,0,0,40000],
+  [2025,1600000,950000,"spouse-special","relative-special",510000,450000,0,0,40000],
+  [2026,1359999,619999,"spouse","dependent-special",630000,450000,180000,1,60000],
+  [2026,1360000,620000,"spouse","dependent-special",630000,450000,180000,1,60000],
+  [2026,1360001,620001,"spouse-special","relative-special",630000,450000,0,0,40000],
+  [2026,1600000,860000,"spouse-special","relative-special",610000,450000,0,0,40000]
+ ];
+ let grossCases=0;
+ for(const [year,gross,income,spKind,chKind,n,r,d,count,life] of rows){
+  const actualIncome=engine.salaryIncome(gross,year);
+  assert.equal(actualIncome,income,"Gross/income conversion "+year+"/"+gross);
+  const sp=family.calculate({...baseFamily,year,spouse:spouse(actualIncome)});
+  assert.equal(sp.status,"COMPONENTS_ONLY");
+  assert.equal(sp.calculation.items[0].kind,spKind);
+  assert.equal(sp.calculation.familyCount,count);
+  assert.deepEqual([sp.calculation.nationalFamilyDeductionYen,sp.calculation.residentFamilyDeductionYen,sp.calculation.familyAdjustmentDifferenceYen],[380000,330000,count?50000:0]);
+  const rel=[relative(20,actualIncome)];
+  const child=familyCheck({year,relatives:rel},[n,r,d,count]);
+  assert.equal(child.items[0].kind,chKind);
+  const premium=insCheck(year,rel,{generalNew:120000},[life,28000,0,0]);
+  assert.equal(premium.enhancedGeneral,year===2026&&count===1);
+  grossCases++;
+ }
+ // Municipal Q&A's single-resident non-taxable income threshold.
+ // Do not generalize this to all local flat-rate exemption rules.
+ let exemptionCases=0;
+ for(const [year,gross,income,exempt] of [
+  [2025,1099999,449999,true],[2025,1100000,450000,true],[2025,1100001,450001,false],
+  [2026,1189999,449999,true],[2026,1190000,450000,true],[2026,1190001,450001,false]
+ ]){
+  assert.equal(engine.salaryIncome(gross,year),income);
+  const c=familyCheck({year,taxpayerIncome:income},[0,0,0,0]);
+  assert.equal(c.ordinaryResidentIncomeLevyExempt,exempt);
+  exemptionCases++;
+ }
+ // NTA / municipal statutory student income limits, expressed in wages.
+ let studentCases=0;
+ for(const [year,gross,income,eligible] of [
+  [2025,1499999,849999,true],[2025,1500000,850000,true],[2025,1500001,850001,false],
+  [2026,1629999,889999,true],[2026,1630000,890000,true],[2026,1630001,890001,false]
+ ]){
+  assert.equal(engine.salaryIncome(gross,year),income);
+  const input={...otherBase,family:{...baseFamily,year,taxpayerIncome:income},workingStudent:true};
+  if(eligible)otherCheck(input,[270000,260000,10000]);else otherHold(input);
+  studentCases++;
+ }
+ console.log(JSON.stringify({schema:"web-annual-family-gross-source-cross-check/v1",grossCases,exemptionCases,studentCases,source:"NTA / Fukuoka FY2027 Q&A",syntheticOnly:true,release:"HOLD"}));
+}
