@@ -34,4 +34,37 @@ function calculate(input){
   totalRemainingYen:fraction(remaining,100n),city:part(city),prefecture:part(pref),
   finalRoundingCertified:false,oneStopCreditApplied:false}};
 }
-module.exports=Object.freeze({calculate});
+// Research only: compare the two separately calculated post-credit states.
+// Yokohama: application-special credit comes AFTER relief.
+// Itabashi and Hayashima: final 100-yen truncation follows tax credits.
+// Exact rational final floor is a candidate model, not certification of
+// intermediate statutory rounding or upstream credit amounts.
+function compare(input){
+ const names=["year","incomeYen","familyCount","filing","before","after"];
+ const pairKeys=["cityAfterCredits100","prefectureAfterCredits100","cityOneStop100","prefectureOneStop100"];
+ if(!input||typeof input!=="object"||Array.isArray(input)||
+    Object.keys(input).length!==names.length||!names.every(k=>Object.prototype.hasOwnProperty.call(input,k))||
+    !["return","one-stop"].includes(input.filing))return hold();
+ const read=(x,baseline)=>{
+  if(!x||typeof x!=="object"||Array.isArray(x)||Object.keys(x).length!==pairKeys.length||
+     !pairKeys.every(k=>Object.prototype.hasOwnProperty.call(x,k)&&valid(x[k],180500000))||
+     ((baseline||input.filing==="return")&&(x.cityOneStop100!==0||x.prefectureOneStop100!==0)))return null;
+  const result=calculate({year:input.year,incomeYen:input.incomeYen,familyCount:input.familyCount,
+   cityAfterCredits100:x.cityAfterCredits100,prefectureAfterCredits100:x.prefectureAfterCredits100,stage:STAGE});
+  if(result.status!=="COMPONENTS_ONLY")return null;
+  const c=result.calculation;
+  function bill(p,credit){
+   const d=BigInt(p.remainingYen.denominator),n=BigInt(p.remainingYen.numerator)*100n-BigInt(credit)*d;
+   return n<=0n?0:Number(n/(d*10000n)*100n);
+  }
+  const city=bill(c.city,x.cityOneStop100),prefecture=bill(c.prefecture,x.prefectureOneStop100);
+  return {reliefYen:c.totalReliefYen,cityYen:city,prefectureYen:prefecture,totalYen:city+prefecture};
+ };
+ const before=read(input.before,true),after=read(input.after,false);
+ if(!before||!after)return hold();
+ return {status:"COMPONENTS_ONLY",release:"HOLD",donationLimitYen:null,calculation:{
+  before,after,residentSavingYen:before.totalYen-after.totalYen,
+  finalRoundingModel:"exact-rational-then-floor-each-100-research",
+  intermediateRoundingCertified:false,upstreamCreditsCertified:false}};
+}
+module.exports=Object.freeze({calculate,compare});

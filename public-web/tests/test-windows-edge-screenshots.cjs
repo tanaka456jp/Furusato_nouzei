@@ -590,7 +590,23 @@ async function main(){
   assert.equal(mixedLines[2][11],"");assert.equal(mixedLines[2][12],"HOLD");
   await mixedDownload.delete();
   await save("18-raster-batch",page.locator("#batchStatus"));
-  await save("18-raster-batch-rows",page.locator("#batchRows"));
+  // A locator screenshot of a 6000px-wide table can miss the visible
+  // amount columns. Capture the actual browser viewport, scrolled to the
+  // two results; require both cells to be inside the viewport AND table clip.
+  await page.locator("#batchRows .batch-result").first().evaluate(el=>el.scrollIntoView({block:"center",inline:"center"}));
+  const visible=await page.evaluate(()=>{
+   const cells=[...document.querySelectorAll("#batchRows .batch-result")];
+   const clip=document.querySelector(".batch-viewport").getBoundingClientRect();
+   return cells.length===2&&cells.every(el=>{
+    const r=el.getBoundingClientRect();
+    return r.left>=Math.max(0,clip.left)-1&&r.right<=Math.min(innerWidth,clip.right)+1&&
+     r.top>=Math.max(0,clip.top)-1&&r.bottom<=Math.min(innerHeight,clip.bottom)+1;
+   });
+  });
+  assert.ok(visible,"Both mixed raster result cells must be in the captured viewport");
+  await page.screenshot({path:path.join(out,"18-raster-batch-rows.png"),animations:"disabled",fullPage:false});
+  checks.push("18-raster-batch-rows");
+  console.log("SYNTHETIC_MIXED_RASTER_VISIBLE_RESULT_CELLS_PASS");
   await page.locator("#batchClear").click();
   console.log("SYNTHETIC_RASTER_BATCH "+(rasterBatchEligible?"EXACT_CANDIDATE":"HOLD")+" NEGATIVE_HOLD");
   // Cancel during the English worker recognition itself, then prove a

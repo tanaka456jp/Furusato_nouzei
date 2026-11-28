@@ -2123,3 +2123,39 @@ console.log(JSON.stringify({schema:"web-high-salary-tax-integration/v1",highCase
  assert.deepEqual([exactCases,invalidCases,propertyCases],[14,18,420]);
  console.log(JSON.stringify({schema:"web-income-levy-relief-rational-research/v1",exactCases,invalidCases,propertyCases,finalRoundingCertified:false,uiIntegrated:false,release:"HOLD"}));
 }
+
+
+// Independent fixed cases for the displacement of income-levy relief by
+// ordinary donation/housing credits and subsequent one-stop credit.
+// Inputs are hypothetical post-credit states, not computed donation credits.
+{
+ const relief=require("../src/income-levy-relief.js");
+ const state=(city,pref,cityOneStop=0,prefOneStop=0)=>({
+  cityAfterCredits100:city*100,prefectureAfterCredits100:pref*100,
+  cityOneStop100:cityOneStop*100,prefectureOneStop100:prefOneStop*100});
+ let cases=0,holds=0;
+ for(const year of [2025,2026]){
+  const b={year,incomeYen:1900000,familyCount:3,filing:"return",before:state(90000,60000),after:state(90000,60000)};
+  for(const [filing,after,city,pref,saving] of [
+   ["return",state(60000,40000),48000,32000,0],
+   ["return",state(36000,24000),36000,24000,20000],
+   ["return",state(50000,40000),44400,35500,100],
+   ["return",state(0,0),0,0,80000],
+   ["one-stop",state(60000,40000,6000,4000),42000,28000,10000],
+   ["one-stop",state(60000,40000,49000,33000),0,0,80000],
+   ["one-stop",state(36000,24000,1,1),35900,23900,20200],
+   ["one-stop",state(50000,40000,44,55),44400,35500,100]
+  ]){
+   const out=relief.compare({...b,filing,after});assert.equal(out.status,"COMPONENTS_ONLY");assert.equal(out.donationLimitYen,null);
+   const c=out.calculation;assert.deepEqual([c.before.cityYen,c.before.prefectureYen,c.before.totalYen],[48000,32000,80000]);
+   assert.deepEqual([c.after.cityYen,c.after.prefectureYen,c.residentSavingYen],[city,pref,saving]);
+   assert.equal(c.intermediateRoundingCertified,false);assert.equal(c.upstreamCreditsCertified,false);cases++;
+  }
+  for(const changed of [{filing:"return",after:state(60000,40000,1,0)},{filing:"unknown"},{before:state(90000,60000,1,0)},
+   {after:state(-1,0)},{after:{...b.after,cityOneStop100:0.1}},{incomeYen:1820000},{after:{...b.after,extra:1}}]){
+   const out=relief.compare({...b,...changed});assert.equal(out.status,"HOLD");assert.equal(out.calculation,null);assert.equal(out.donationLimitYen,null);holds++;
+  }
+ }
+ assert.deepEqual([cases,holds],[16,14]);
+ console.log(JSON.stringify({schema:"web-income-levy-relief-post-credit-comparison/v1",cases,holds,uiIntegrated:false,intermediateRoundingCertified:false,release:"HOLD"}));
+}
