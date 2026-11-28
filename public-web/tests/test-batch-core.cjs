@@ -14,6 +14,7 @@ win.eval(fs.readFileSync(path.join(root,"app.js"),"utf8"));
 const guard=win.FurusatoEstimateGuard?.canDisplayEstimate;
 const selected=win.FurusatoEstimateGuard?.selectedReference;
 const fixture=(...args)=>{const row=batch.fromPage(...args);row.municipality="standard";return row;};
+const columns=row=>batch.csv([row]).split("\r\n")[1].split(",").map(x=>x.slice(1,-1));
 assert.equal(typeof guard,"function");
 assert.equal(batch.MAX_ROWS,20);
 const basic2026={year:2026,eligibleForManualTransfer:true,candidates:{
@@ -242,7 +243,7 @@ assert.equal(stale.appliedDeductionsYen,1670000);
 // Source input and computed total can be equal. Verify the actual columns,
  // not absence of a string anywhere in the CSV. Both computed outputs and
  // their status must be masked when ANY required confirmation is revoked.
-const columns=row=>batch.csv([row]).split("\r\n")[1].split(",").map(x=>x.slice(1,-1));
+
 assert.equal(columns(stale)[6],"1670000");
 assert.equal(columns(stale)[7],"1670000");
 assert.equal(columns(stale)[11],"109000");

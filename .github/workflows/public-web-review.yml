@@ -6,7 +6,7 @@ on:
       - 'gas/Engine.gs'
       - '.github/workflows/public-web-review.yml'
   # Trusted branch push only; never execute physical PC jobs for PRs.
-  # Acceptance checkpoint: exact medical deduction arithmetic and tax base audit; product HOLD.
+  # Acceptance checkpoint: annual scope regression fix and consolidated tax audit; product HOLD.
   push:
     branches: ['feature/public-web-ads-20261109']
     paths: ['.github/workflows/public-web-review.yml']
