@@ -10,9 +10,9 @@
  * https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1155.htm
  */
 (function(root,factory){
- if(typeof module==="object"&&module.exports)module.exports=factory(require("./family-deductions.js"),require("./insurance-deductions.js"),require("./other-deductions.js"),require("./medical-deductions.js"),require("./salary-adjustment.js"));
+ if(typeof module==="object"&&module.exports)module.exports=factory(require("./family-deductions.js"),require("./insurance-deductions.js"),require("./other-deductions.js"),require("./medical-deductions.js"),require("./salary-adjustment.js"),require("./income-levy-relief.js"));
  else root.FurusatoFamilyTax=factory(root.FurusatoFamilyDeductions,root.FurusatoInsuranceDeductions,root.FurusatoOtherDeductions,root.FurusatoMedicalDeductions,root.FurusatoSalaryAdjustment);
-}(typeof window!=="undefined"?window:this,function(family,insurance,other,medical,salaryAdjustment){
+}(typeof window!=="undefined"?window:this,function(family,insurance,other,medical,salaryAdjustment,reliefResearch){
  const valid=(n,max)=>Number.isSafeInteger(n)&&n>=0&&n<=max;
  const hold=reason=>({status:"HOLD",reason,calculation:null,donationLimitYen:null,release:"HOLD"});
  const floor1000=n=>Math.floor(Math.max(0,n)/1000)*1000;
@@ -25,7 +25,7 @@
   const reconstruction=Math.floor(incomeTax*21/1000);
   return {taxable,incomeTax,reconstruction,total:incomeTax+reconstruction};
  }
- function calculateCore(input,filing,highDetails=null,classifyOnly=false){
+ function calculateCore(input,filing,highDetails=null,classifyOnly=false,research=false){
   // The new path accepts the combined amount (G26), NEVER an ambiguous
   // socialInsurance amount. G25 is included in it, not an extra deduction.
   const groupedMedical=input?.conditions==="salary-basic-social-family-insurance-other-medical-filing-reviewed";
@@ -146,7 +146,7 @@
   // https://www.city.imizu.toyama.jp/guide/svGuideDtl.aspx?servno=54771
   // Until the pre/post donation and housing interaction is audited, stop
   // if even the unrounded pre-credit levy could trigger that relief.
-  if(city.beforeRounding100+prefecture.beforeRounding100>
+  if(!research&&city.beforeRounding100+prefecture.beforeRounding100>
      (income-c.ordinaryResidentIncomeLevyExemptionLimitYen)*100)
    return hold("住民税所得割の非課税限度額付近の調整措置は個別確認してください");
   if(levy<=0)return hold("住民税所得割がありません");
@@ -154,7 +154,7 @@
   const exactReference=Math.min(city.referenceLimitYen,prefecture.referenceLimitYen,incomeCap);
   const rounded=Math.floor(exactReference/1000)*1000;
   if(rounded<2000)return hold("寄附控除の参考上限を確認できません");
-  return {status:"ESTIMATE",donationLimitYen:rounded,release:"HOLD",calculation:{
+  return {status:research?"COMPONENTS_ONLY":"ESTIMATE",donationLimitYen:research?null:rounded,release:"HOLD",calculation:{
    year:input.year,residentYear:input.year+1,municipality:input.municipality,
    ...(highDetails?{salaryAdjustment:highDetails}:{}),family:c,...(withInsurance?{insurance:insuranceDetails}:{}),
    ...(withOther?{other:otherDetails,socialInsuranceOnlyYen:socialOnly,socialAndContributionsYen:input.socialAndContributions}:{}),
@@ -345,13 +345,15 @@
    possibleYen:possible,appliedYen:input.appliedYen,preCreditIncomeTaxYen:n.incomeTax,
    moveInYear:input.moveInYear,capClass:input.capClass,possibleFromApplied:input.possibleYen===null}};
  }
- function mortgageContext(request){
+ function mortgageContext(request,research=false){
   const exact=(x,ks)=>x&&typeof x==="object"&&!Array.isArray(x)&&Object.keys(x).length===ks.length&&ks.every(k=>Object.prototype.hasOwnProperty.call(x,k));
   if(!exact(request,["tax","housing","filing"])||!exact(request.housing,["moveInYear","capClass","possibleYen","eligibilityReviewed"])||
      !["one-stop","return"].includes(request.filing))return hold("住宅ローン控除の条件を確認してください");
   const h=request.housing,high=!!request.tax&&Object.prototype.hasOwnProperty.call(request.tax,"adjustment");
-  const ref=high?highCore(request.tax,true):calculateCore(request.tax,true);
-  if(ref.status!=="ESTIMATE")return ref;
+  if(research&&(high||!reliefResearch||typeof reliefResearch.compareCredits!=="function"))
+   return hold("調整措置の研究用計算条件を確認してください");
+  const ref=high?highCore(request.tax,true):calculateCore(request.tax,true,null,false,research);
+  if(ref.status!==(research?"COMPONENTS_ONLY":"ESTIMATE"))return ref;
   const c=ref.calculation,year=c.year,income=high?c.salaryAdjustment.salaryIncomeAfterAdjustmentYen:request.tax.salaryIncome;
   if(!Number.isSafeInteger(h.moveInYear)||h.moveInYear<2009||h.moveInYear>year||
      !["standard5","transitional7"].includes(h.capClass)||
@@ -398,21 +400,39 @@
    const base=donation-2000,oneStop=request.filing==="one-stop";
    const after=oneStop?before:nationalHousing(floor1000(income-c.nationalDeductionsYen-base));
    if(!after)return hold("寄附後の住宅ローン控除前所得税額が0円の条件は個別確認が必要です");
-   const localAfter=parts.map(p=>localTax(p,after,base,oneStop));
+   let localAfter=parts.map(p=>localTax(p,after,base,oneStop));
+   let baseline=localBefore,reliefComparison=null;
+   if(research){
+    const relief=reliefResearch.compareCredits({year,incomeYen:income,familyCount:c.family.familyCount,
+     municipality:c.municipality,specialRatePercent:c.specialRatePercent,donationYen:donation,
+     housingBeforeYen:before.residentHousingYen,housingAfterYen:after.residentHousingYen,
+     cityAdjusted100:c.city.beforeRounding100,prefectureAdjusted100:c.prefecture.beforeRounding100,filing:request.filing});
+    if(relief.status!=="COMPONENTS_ONLY")return hold("調整措置の研究用計算範囲外です");
+    reliefComparison=relief.calculation;
+    baseline=[reliefComparison.before.cityYen,reliefComparison.before.prefectureYen];
+    const bills=[reliefComparison.after.cityYen,reliefComparison.after.prefectureYen];
+    localAfter=localAfter.map((p,i)=>({...p,assessedYen:bills[i]}));
+   }
    const nationalSaving=before.nationalTaxYen-after.nationalTaxYen;
-   const residentSaving=localBefore.reduce((sum,v,i)=>sum+v-localAfter[i].assessedYen,0);
+   const residentSaving=baseline.reduce((sum,v,i)=>sum+v-localAfter[i].assessedYen,0);
    const selfPay=donation-nationalSaving-residentSaving;
    return {status:"COMPONENTS_ONLY",release:"HOLD",donationLimitYen:null,calculation:{
     year,residentYear:year+1,filing:request.filing,donationYen:donation,
-    housingPossibleYen:h.possibleYen,before,after,localBefore,localAfter,
+    housingPossibleYen:h.possibleYen,before,after,localBefore:baseline,localAfter,
+    ...(research?{reliefComparison,researchOnly:true,intermediateRoundingCertified:false}:{}),
     nationalSavingYen:nationalSaving,residentSavingYen:residentSaving,selfPayYen:selfPay,
     within2000:selfPay<=2000,excessOver2000Yen:Math.max(0,selfPay-2000),
     forecastNote:"前年の住宅ローン控除可能額を使用する場合、住宅ローン残高の変動は考慮していません。"}};
   }
-  return {status:"COMPONENTS_ONLY",trial,max:Math.min(c.incomeCapYen,ref.donationLimitYen)};
+  return {status:"COMPONENTS_ONLY",trial,max:Math.min(c.incomeCapYen,research?c.roundedReferenceYen:ref.donationLimitYen)};
  }
  function mortgageTrial(request,donation){
   const ctx=mortgageContext(request);
+  return ctx.status==="COMPONENTS_ONLY"?ctx.trial(donation):ctx;
+ }
+ // Node-only research entry: never exposed in the browser API or source/UI.
+ function mortgageReliefResearchTrial(request,donation){
+  const ctx=mortgageContext(request,true);
   return ctx.status==="COMPONENTS_ONLY"?ctx.trial(donation):ctx;
  }
  function mortgagePrefix(request){
@@ -429,5 +449,5 @@
   return {status:"COMPONENTS_ONLY",release:"HOLD",donationLimitYen:null,
    calculation:{conservativePrefixYen:last,firstFailureYen:firstFailure,stopOnFirstFailure:true,atPrefix:ctx.trial(last).calculation}};
  }
- return Object.freeze({calculate,calculateNoTax,classifyBasicNoTax,medicalFilingCalculation,filingTrial,filingPrefix,highSalaryCalculate,highSalaryMedicalFilingCalculation,highSalaryFilingTrial,highSalaryFilingPrefix,mortgageTrial,mortgagePrefix,reconcileMortgageSource});
+ return Object.freeze({calculate,calculateNoTax,classifyBasicNoTax,medicalFilingCalculation,filingTrial,filingPrefix,highSalaryCalculate,highSalaryMedicalFilingCalculation,highSalaryFilingTrial,highSalaryFilingPrefix,mortgageTrial,mortgagePrefix,reconcileMortgageSource,...(reliefResearch?{mortgageReliefResearchTrial}: {})});
 }));

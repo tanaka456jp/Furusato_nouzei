@@ -2230,3 +2230,66 @@ console.log(JSON.stringify({schema:"web-high-salary-tax-integration/v1",highCase
  assert.deepEqual([published,combined,rejections,product],[2,28,32,2]);
  console.log(JSON.stringify({schema:"web-relief-credit-bridge-and-rounding/v1",published,combined,rejections,product,upstreamHousingCertified:false,reliefUiIntegrated:false,release:"HOLD"}));
 }
+
+
+// Integration audit: real reviewed-family/tax engine -> national housing
+// -> municipal donation credits -> proportional relief -> actual net cost.
+// Synthetic inputs only. Fixed expected rows independently calculated using
+// Python fractions and statutory integer national-tax/100-yen local floors.
+// Existing product API must still reject relief-boundary inputs.
+{
+ const cases=[
+  [2025,"standard",3000,10000,"one-stop",0,0,48000,32000,47900,31900,0,200,2800],
+  [2025,"standard",20000,10000,"return",0,0,48000,32000,48000,31900,919,100,18981],
+  [2025,"standard",36000,100000,"return",49000,50700,48000,32000,36900,24600,0,18500,17500],
+  [2025,"standard",36000,100000,"one-stop",49000,49000,48000,32000,36800,24500,0,18700,17300],
+  [2025,"standard",50000,160000,"one-stop",71000,71000,44100,29400,22800,15200,0,35500,14500],
+  [2025,"designated",3000,10000,"one-stop",0,0,64000,16000,63900,15900,0,200,2800],
+  [2025,"designated",20000,10000,"return",0,0,64000,16000,64000,15900,919,100,18981],
+  [2025,"designated",36000,100000,"return",49000,50700,64000,16000,49200,12300,0,18500,17500],
+  [2025,"designated",36000,100000,"one-stop",49000,49000,64000,16000,49100,12200,0,18700,17300],
+  [2025,"designated",50000,160000,"one-stop",71000,71000,58800,14700,30400,7600,0,35500,14500],
+  [2026,"standard",3000,10000,"one-stop",0,0,48000,32000,47900,31900,0,200,2800],
+  [2026,"standard",20000,10000,"return",0,0,48000,32000,48000,31900,919,100,18981],
+  [2026,"standard",36000,100000,"return",57000,58700,48000,32000,32100,21400,0,26500,9500],
+  [2026,"standard",36000,100000,"one-stop",57000,57000,48000,32000,32000,21300,0,26700,9300],
+  [2026,"standard",50000,160000,"one-stop",71000,71000,44100,29400,22800,15200,0,35500,14500],
+  [2026,"designated",3000,10000,"one-stop",0,0,64000,16000,63900,15900,0,200,2800],
+  [2026,"designated",20000,10000,"return",0,0,64000,16000,64000,15900,919,100,18981],
+  [2026,"designated",36000,100000,"return",57000,58700,64000,16000,42800,10700,0,26500,9500],
+  [2026,"designated",36000,100000,"one-stop",57000,57000,64000,16000,42700,10600,0,26700,9300],
+  [2026,"designated",50000,160000,"one-stop",71000,71000,58800,14700,30400,7600,0,35500,14500]
+ ];
+ let integrated=0,productHolds=0,invalid=0,unaffected=0;
+ for(const [year,municipality,donation,possibleYen,filing,hb,ha,cb,pb,ca,pa,ns,rs,self] of cases){
+  const tax={year,municipality,salaryIncome:1900000,socialInsurance:0,spouse:null,relatives:[relative(5),relative(8),relative(12)],
+   conditions:"salary-basic-social-family-only-reviewed"};
+  const housing={moveInYear:2024,capClass:"standard5",possibleYen,eligibilityReviewed:true};
+  const request={tax,housing,filing};
+  const t=familyTax.mortgageReliefResearchTrial(request,donation);
+  assert.equal(t.status,"COMPONENTS_ONLY",t.reason);assert.equal(t.donationLimitYen,null);
+  const c=t.calculation;assert.equal(c.researchOnly,true);assert.equal(c.intermediateRoundingCertified,false);
+  assert.deepEqual([c.before.residentHousingYen,c.after.residentHousingYen,...c.localBefore,...c.localAfter.map(x=>x.assessedYen),c.nationalSavingYen,c.residentSavingYen,c.selfPayYen],[hb,ha,cb,pb,ca,pa,ns,rs,self]);
+  integrated++;
+  for(const p of [familyTax.calculate(tax),familyTax.mortgageTrial(request,donation),familyTax.mortgagePrefix(request)]){
+   assert.equal(p.status,"HOLD");assert.equal(p.calculation,null);assert.equal(p.donationLimitYen,null);productHolds++;
+  }
+  for(const q of [{...request,tax:{...tax,salaryIncome:1820000}},{...request,housing:{...housing,eligibilityReviewed:false}}]){
+   const result=familyTax.mortgageReliefResearchTrial(q,donation);
+   assert.equal(result.status,"HOLD");assert.equal(result.donationLimitYen,null);invalid++;
+  }
+  const normal={...request,tax:{...tax,salaryIncome:5200000,socialInsurance:1000000,relatives:[]}};
+  const a=familyTax.mortgageTrial(normal,donation),b=familyTax.mortgageReliefResearchTrial(normal,donation);
+  assert.equal(a.status,"COMPONENTS_ONLY");assert.equal(b.status,"COMPONENTS_ONLY");
+  for(const k of ["localBefore","localAfter","nationalSavingYen","residentSavingYen","selfPayYen"])
+   assert.deepEqual(a.calculation[k],b.calculation[k],k);
+  unaffected++;
+ }
+ assert.deepEqual([integrated,productHolds,invalid,unaffected],[20,60,40,20]);
+ // A browser evaluation has no CommonJS research dependency or entry.
+ const vm=require("node:vm"),fs=require("node:fs"),path=require("node:path");
+ const sandbox={window:{}};
+ vm.runInNewContext(fs.readFileSync(path.join(__dirname,"../src/family-tax.js"),"utf8"),sandbox);
+ assert.equal(typeof sandbox.window.FurusatoFamilyTax.mortgageReliefResearchTrial,"undefined");
+ console.log(JSON.stringify({schema:"web-mortgage-relief-integrated-research/v1",integrated,productHolds,invalid,unaffected,browserResearchEntry:false,release:"HOLD"}));
+}
