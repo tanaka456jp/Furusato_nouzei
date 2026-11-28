@@ -2371,3 +2371,78 @@ console.log(JSON.stringify({schema:"web-high-salary-tax-integration/v1",highCase
  assert.deepEqual([componentCases,trialCases,groupedHolds],[1120,1440,114]);
  console.log(JSON.stringify({schema:"web-medical-exact-twentieths-tax-base-audit/v1",componentCases,trialCases,groupedHolds,localDeductionRoundingSource:true,nationalTaxBaseEquivalent:true,nationalDeductionFieldRoundingCertified:false,release:"HOLD"}));
 }
+
+
+// Cross-source final audit: Chofu and Uji FY2026 personal-difference
+// tables; 2026 reform does NOT raise single-parent deductions until
+// income year 2027 (resident FY2028). NTA annual scope and MOF outline:
+// https://www.city.chofu.lg.jp/030010/p014042.html
+// https://www.city.uji.kyoto.jp/soshiki/44/5881.html
+// https://www.mof.go.jp/tax_policy/tax_reform/outline/fy2026/08taikou_01.htm
+// https://www.nta.go.jp/users/gensen/2026kiso/index.htm
+// Independent integer oracle, not a copy of product result fields.
+{
+ const min=(a,b)=>a<b?a:b,max=(a,b)=>a>b?a:b;
+ let scenarios=0,trials=0,yearGuards=0,childChecks=0;
+ for(const year of [2025,2026])for(const municipality of ["standard","designated"])
+ for(const [maritalRelief,personal] of [["singleParentFather",60000],["singleParentMother",100000]])
+ for(const delta of [-1000,0,1000,9000,10000,11000,49000,50000,51000]){
+  const income=4000000,basic=year===2025?680000:1040000,lt=2000000+delta;
+  const social=income-430000-300000-lt;
+  const input={year,salaryIncome:income,socialAndContributions:social,municipality,
+   spouse:null,relatives:[relative(15)],conditions:"salary-basic-social-family-insurance-other-only-reviewed",
+   premiums:{...premiumsZero},otherDeductions:{disability:{self:"none",spouse:"none",relatives:["none"]},
+    maritalRelief,childIndex:0,workingStudent:false,smallEnterpriseContributions:0}};
+  const nt=Math.floor((income-social-basic-350000)/1000)*1000;
+  const adjustment=delta<=0?personal:Math.max(50000,personal-delta);
+  const shares=municipality==="standard"?[3n,2n]:[4n,1n];
+  const raw=shares.map(s=>BigInt(lt)*2n*s-BigInt(adjustment)*s);
+  const bills=raw.map(n=>n/10000n*100n);
+  const ratio=84895n;
+  const specialBase=lt-personal-(basic-480000);
+  assert.ok(specialBase>0&&specialBase<=1950000&&nt>0&&nt<=1950000);
+  const out=familyTax.calculate(input);
+  assert.equal(out.status,"ESTIMATE",out.reason);
+  const q=out.calculation;
+  assert.deepEqual([q.other.marital.nationalYen,q.other.marital.residentYen,q.personalDifferenceYen,q.adjustmentBasisYen,
+   q.adjustmentYen,q.residentTaxableYen,q.nationalTaxableYen,q.residentSpecialBaseYen,q.specialRatePercent],
+   [350000,300000,personal,adjustment,adjustment/20,lt,nt,specialBase,5]);
+  assert.deepEqual([q.city.assessedYen,q.prefecture.assessedYen],bills.map(Number));
+  const limits=bills.map((b,i)=>2000n+b*100000n/(ratio*shares[i]));
+  const limit=Number(min(limits[0],limits[1])/1000n*1000n);
+  assert.equal(out.donationLimitYen,limit);
+  const tax=t=>t/20n+(t/20n)*21n/1000n;
+  const oracle=d=>{
+   const base=BigInt(d-2000),after=max(0n,BigInt(nt)-base)/1000n*1000n;
+   const ns=tax(BigInt(nt))-tax(after);
+   const local=shares.map((s,i)=>{
+    const credit=(base*s*10000n+min(raw[i]*1000n,base*s*ratio)+499999n)/500000n;
+    return bills[i]-max(0n,raw[i]-credit*100n)/10000n*100n;
+   });
+   return [ns,...local,BigInt(d)-ns-local[0]-local[1]].map(Number);
+  };
+  for(const d of [2000,2001,3000,limit,limit+1000,100000]){
+   const t=familyTax.filingTrial(input,d);assert.equal(t.status,"ESTIMATE",t.reason);
+   const a=t.calculation;
+   assert.deepEqual([a.nationalSavingYen,a.city.savingYen,a.prefecture.savingYen,a.selfPayYen],oracle(d));
+   trials++;
+  }
+  let prefix=2000;
+  for(let d=3000;d<=1200000;d+=1000){if(oracle(d)[3]>2000)break;prefix=d;}
+  assert.equal(familyTax.filingPrefix(input).donationLimitYen,prefix);
+  for(const future of [2024,2027,2028]){
+   const bad={...input,year:future};
+   for(const t of [familyTax.calculate(bad),familyTax.filingTrial(bad,3000),familyTax.filingPrefix(bad)]){
+    assert.equal(t.status,"HOLD");assert.equal(t.donationLimitYen,null);yearGuards++;
+   }
+  }
+  // 600k child total income only meets the 2026 annual 620k threshold.
+  const child={...input,relatives:[relative(15,600000)]};
+  const childResult=familyTax.calculate(child);
+  if(year===2025){assert.equal(childResult.status,"HOLD");assert.equal(childResult.donationLimitYen,null);}
+  else{assert.equal(childResult.status,"ESTIMATE");assert.equal(childResult.donationLimitYen,limit);}
+  childChecks++;scenarios++;
+ }
+ assert.deepEqual([scenarios,trials,yearGuards,childChecks],[72,432,648,72]);
+ console.log(JSON.stringify({schema:"web-single-parent-annual-adjustment-audit/v1",scenarios,trials,yearGuards,childChecks,"2027Supported":false,release:"HOLD"}));
+}
